@@ -5,7 +5,7 @@
     <groupId>org.yb</groupId>
     <artifactId>debezium-connector-yugabytedb</artifactId>
     <name>Debezium Connector for YugabyteDB</name>
-    <version>2.13.0-SNAPSHOT</version>
+    <version>1.7.0.1-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <scm>
@@ -18,30 +18,31 @@
 
     <properties>
         <!-- Debezium parent -->
-        <version.debezium>1.7.2.Final</version.debezium>
+        <version.debezium>1.7.0.Final</version.debezium>
 
         <!-- Plugins -->
         <version.surefire.plugin>3.0.0-M3</version.surefire.plugin>
         <version.failsafe.plugin>${version.surefire.plugin}</version.failsafe.plugin>
+        <version.assembly.plugin>3.1.1</version.assembly.plugin>
         <version.compiler.plugin>3.8.1</version.compiler.plugin>
         <version.resources.plugin>3.1.0</version.resources.plugin>
         <version.revapi-java.plugin>0.21.0</version.revapi-java.plugin>
         <version.docker.maven.plugin>0.31.0</version.docker.maven.plugin>
         <version.protoc.maven.plugin>3.8.0</version.protoc.maven.plugin>
-        
+
         <!-- Compile -->
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        
+
         <!-- Dependency Versions -->
         <version.postgresql.driver>42.2.14</version.postgresql.driver>
         <version.com.google.protobuf>3.8.0</version.com.google.protobuf>
         <version.kafka>2.8.0</version.kafka>
         <version.org.slf4j>1.7.30</version.org.slf4j>
         <version.log4j>1.2.17</version.log4j>
-        
-        <!-- 
+
+        <!--
           Specify the properties that will be used for setting up the integration tests' Docker container.
           Note that the `dockerhost.ip` property is computed from the IP address of DOCKER_HOST, which will
           work on all platforms. We'll set some of these as system properties during integration testing.
@@ -64,15 +65,8 @@
 
         <!-- We're tracking the API changes of the SPI. -->
         <revapi.skip>false</revapi.skip>
-
-        <!-- Testing
-        <version.junit>4.13.1</version.junit>
-        <version.fest>1.4</version.fest>
-        <version.awaitility>4.0.1</version.awaitility>
-        <version.testcontainers>1.15.1</version.testcontainers>
-        <version.confluent.platform>6.0.2</version.confluent.platform> -->
     </properties>
-    
+
     <repositories>
         <repository>
             <id>oss</id>
@@ -258,7 +252,7 @@
             <scope>compile</scope>
         </dependency>
     </dependencies>
-   
+
     <build>
         <plugins>
             <plugin>
@@ -385,7 +379,7 @@
                     </execution>
                 </executions>
             </plugin>
-            <!-- 
+            <!--
             Unlike surefire, the failsafe plugin ensures 'post-integration-test' phase always runs, even
             when there are failed integration tests. We rely upon this to always shut down the Docker container
             after the integration tests (defined as '*IT.java') are run.
