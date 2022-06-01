@@ -59,23 +59,11 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
         });
     }
 
-    protected Configuration.Builder getConfigBuilder(String fullTablenameWithSchema) throws Exception {
-        return TestHelper.defaultConfig()
-                .with(YugabyteDBConnectorConfig.HOSTNAME, "127.0.0.1") // this field is required as of now
-                .with(YugabyteDBConnectorConfig.PORT, 5433)
-                .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.NEVER.getValue())
-                .with(YugabyteDBConnectorConfig.DELETE_STREAM_ON_STOP, Boolean.TRUE)
-                .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, "127.0.0.1:7100")
-                .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, fullTablenameWithSchema)
-                .with(YugabyteDBConnectorConfig.AUTO_CREATE_STREAM, true);
-    }
-
     private void verifyPrimaryKeyOnly(long recordsCount) {
         System.out.println("verifyPrimaryKeyOnly ");
         int totalConsumedRecords = 0;
         long start = System.currentTimeMillis();
         List<SourceRecord> records = new ArrayList<>();
-        recordsCount = 100;
         while (totalConsumedRecords < recordsCount) {
             int consumed = super.consumeAvailableRecords(record -> {
                 System.out.println("The record being consumed is " + record);
@@ -137,16 +125,24 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
     }
 
     @After
-    public void after() {
+    public void after() throws Exception {
+        System.out.println("Stopping Connector");
         stopConnector();
+        System.out.println("Stopped Connector");
+        TestHelper.executeDDL("drop_postgres_tables.ddl");
     }
 
     @Test
     public void testRecordConsumption() throws Exception {
+        System.out.println("testRecordConsumption");
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("postgres_create_tables.ddl");
         Thread.sleep(1000);
-        Configuration.Builder configBuilder = getConfigBuilder("public.t1");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types");
+        System.out.println("DB Stream Id is " + dbStreamId);
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
         start(YugabyteDBConnector.class, configBuilder.build());
         assertConnectorIsRunning();
         final long recordsCount = 1;
@@ -164,13 +160,20 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
 
     @Test
     public void testSmallLoad() throws Exception {
+        System.out.println("testSmallLoad");
+
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("postgres_create_tables.ddl");
         Thread.sleep(1000);
-        Configuration.Builder configBuilder = getConfigBuilder("public.t1");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types");
+        System.out.println("DB Stream Id is " + dbStreamId);
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
         start(YugabyteDBConnector.class, configBuilder.build());
+
         assertConnectorIsRunning();
-        final long recordsCount = 75;
+        final long recordsCount = 5;
 
         // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertRecords(recordsCount);
@@ -182,11 +185,18 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
 
     @Test
     public void testVerifyValue() throws Exception {
+        System.out.println("testVerifyValue");
+
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("postgres_create_tables.ddl");
         Thread.sleep(1000);
-        Configuration.Builder configBuilder = getConfigBuilder("public.t1");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types");
+        System.out.println("DB Stream Id is " + dbStreamId);
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
         start(YugabyteDBConnector.class, configBuilder.build());
+
         assertConnectorIsRunning();
         final long recordsCount = 1;
 
@@ -204,9 +214,14 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("tables_in_non_public_schema.ddl");
         Thread.sleep(1000);
-        Configuration.Builder configBuilder = getConfigBuilder("test_schema.table_in_schema");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types");
+        System.out.println("DB Stream Id is " + dbStreamId);
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
         start(YugabyteDBConnector.class, configBuilder.build());
         assertConnectorIsRunning();
+
         final long recordsCount = 1;
 
         // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
