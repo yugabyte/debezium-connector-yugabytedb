@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.client.*;
 
+import io.debezium.DebeziumException;
 import io.debezium.connector.yugabytedb.connection.*;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage.Operation;
 import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoReplicationMessage;
@@ -307,6 +308,11 @@ public class YugabyteDBStreamingChangeEventSource implements
             final String tabletId = entry.getValue();
             offsetContext.initSourceInfo(tabletId, this.connectorConfig);
         }
+
+        // This will contain the tablet ID mapped to the number of records it has seen in the transactional block.
+        // Note that the entry will be created only when a BEGIN block is encountered.
+        Map<String, Integer> recordsInTransactionalBlock = new HashMap<>();
+
         LOGGER.debug("The init tabletSourceInfo is " + offsetContext.getTabletSourceInfo());
 
         final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
@@ -364,12 +370,26 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         // too early
                                         if (message.getOperation() == Operation.BEGIN) {
                                             LOGGER.debug("LSN in case of BEGIN is " + lsn);
+
+                                            recordsInTransactionalBlock.put(tabletId, 0);
                                         }
                                         if (message.getOperation() == Operation.COMMIT) {
                                             LOGGER.debug("LSN in case of COMMIT is " + lsn);
                                             offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
                                                     String.valueOf(message.getTransactionId()), null, null/* taskContext.getSlotXmin(connection) */);
                                             commitMessage(part, offsetContext, lsn);
+
+                                            if (recordsInTransactionalBlock.containsKey(tabletId)) {
+                                                if (recordsInTransactionalBlock.get(tabletId) == 0) {
+                                                    LOGGER.warn("Records in the transactional block for tablet {} are 0", tabletId);
+                                                } else {
+                                                    LOGGER.debug("Records in the transactional block for tablet {}: {}", tabletId, recordsInTransactionalBlock.get(tabletId));
+                                                }
+                                            } else {
+                                                throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");
+                                            }
+
+                                            recordsInTransactionalBlock.remove(tabletId);
                                         }
                                         continue;
                                     }
@@ -378,6 +398,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         LOGGER.debug("LSN in case of BEGIN is " + lsn);
                                         dispatcher.dispatchTransactionStartedEvent(part,
                                                 message.getTransactionId(), offsetContext);
+
+                                        recordsInTransactionalBlock.put(tabletId, 0);
                                     }
                                     else if (message.getOperation() == Operation.COMMIT) {
                                         LOGGER.debug("LSN in case of COMMIT is " + lsn);
@@ -385,6 +407,18 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                 String.valueOf(message.getTransactionId()), null, null/* taskContext.getSlotXmin(connection) */);
                                         commitMessage(part, offsetContext, lsn);
                                         dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
+
+                                        if (recordsInTransactionalBlock.containsKey(tabletId)) {
+                                            if (recordsInTransactionalBlock.get(tabletId) == 0) {
+                                                LOGGER.warn("Records in the transactional block for tablet {} are 0", tabletId);
+                                            } else {
+                                                LOGGER.debug("Records in the transactional block for tablet {}: {}", tabletId, recordsInTransactionalBlock.get(tabletId));
+                                            }
+                                        } else {
+                                            throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");
+                                        }
+
+                                        recordsInTransactionalBlock.remove(tabletId);
                                     }
                                     maybeWarnAboutGrowingWalBacklog(true);
                                 }
@@ -425,6 +459,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     boolean dispatched = message.getOperation() != Operation.NOOP
                                             && dispatcher.dispatchDataChangeEvent(tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
                                                     schema, connection, tableId, message, pgSchemaNameInRecord));
+
+                                    if (recordsInTransactionalBlock.containsKey(tabletId)) {
+                                        recordsInTransactionalBlock.merge(tabletId, 1, Integer::sum);
+                                    }
 
                                     maybeWarnAboutGrowingWalBacklog(dispatched);
                                 }
