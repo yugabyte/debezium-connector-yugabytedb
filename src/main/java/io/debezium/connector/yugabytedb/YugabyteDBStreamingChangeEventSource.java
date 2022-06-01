@@ -258,6 +258,45 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
+    private void bootstrapTabletWithRetry(List<Pair<String,String>> tabletPairList) throws Exception {
+        short retryCountForBootstrapping = 0;
+        final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+        for (Pair<String, String> entry : tabletPairList) {
+            // entry is a Pair<tableId, tabletId>
+            boolean shouldRetry = true;
+            while (retryCountForBootstrapping <= connectorConfig.maxConnectorRetries() && shouldRetry) {
+                try {
+                    bootstrapTablet(this.syncClient.openTableByUUID(entry.getKey()), entry.getValue());
+
+                    // Reset the retry flag if the bootstrap was successful
+                    shouldRetry = false;
+                } catch (Exception e) {
+                    ++retryCountForBootstrapping;
+
+                    // The connector should go for a retry if any exception is thrown
+                    shouldRetry = true;
+
+                    if (retryCountForBootstrapping > connectorConfig.maxConnectorRetries()) {
+                        LOGGER.error("Failed to bootstrap the tablet {} after {} retries", entry.getValue(), connectorConfig.maxConnectorRetries());
+                        throw e;
+                    }
+
+                    // If there are retries left, perform them after the specified delay.
+                    LOGGER.warn("Error while trying to bootstrap tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
+                            entry.getValue(), retryCountForBootstrapping, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
+
+                    try {
+                        retryMetronome.pause();
+                    } catch (InterruptedException ie) {
+                        LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            }
+        }
+    }
+
+
     private void getChanges2(ChangeEventSourceContext context,
                              YugabyteDBPartition partitionn,
                              YugabyteDBOffsetContext offsetContext)
@@ -299,9 +338,6 @@ public class YugabyteDBStreamingChangeEventSource implements
         Map<String, Boolean> schemaStreamed = new HashMap<>();
         for (Pair<String, String> entry : tabletPairList) {
             schemaStreamed.put(entry.getValue(), Boolean.TRUE);
-
-            // Iterate over the tablets and bootstrap them
-            bootstrapTablet(this.syncClient.openTableByUUID(entry.getKey()), entry.getValue());
         }
 
         for (Pair<String, String> entry : tabletPairList) {
@@ -317,6 +353,8 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
         final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+
+        bootstrapTabletWithRetry(tabletPairList);
 
         short retryCount = 0;
         while (retryCount <= connectorConfig.maxConnectorRetries()) {
