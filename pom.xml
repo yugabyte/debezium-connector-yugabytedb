@@ -24,6 +24,7 @@
         <version.surefire.plugin>3.0.0-M3</version.surefire.plugin>
         <version.failsafe.plugin>${version.surefire.plugin}</version.failsafe.plugin>
         <version.compiler.plugin>3.8.1</version.compiler.plugin>
+        <version.release.plugin>2.4.2</version.release.plugin>
         <version.resources.plugin>3.1.0</version.resources.plugin>
         <version.docker.maven.plugin>0.31.0</version.docker.maven.plugin>
         <version.protoc.maven.plugin>3.8.0</version.protoc.maven.plugin>
@@ -102,6 +103,10 @@
         <repository>
             <id>maven.yugabyte.repo</id>
             <url>s3://repository.yugabyte.com/maven</url>
+            <releases>
+                <enabled>true</enabled>
+                <updatePolicy>never</updatePolicy>
+            </releases>
         </repository>
     </repositories>
 
@@ -417,6 +422,16 @@
                     </systemPropertyVariables>
                 </configuration>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-release-plugin</artifactId>
+                <version>${version.release.plugin}</version>
+                <configuration>
+                    <tagNameFormat>v@{project.version}</tagNameFormat>
+                    <autoVersionSubmodules>true</autoVersionSubmodules>
+                    <releaseProfiles>releases</releaseProfiles>
+                </configuration>
+            </plugin>
         </plugins>
         <resources>
             <!-- Apply the properties set in the POM to the resource files -->
@@ -475,29 +490,19 @@
             </properties>
         </profile>
         <profile>
-            <id>postgres-10</id>
+            <id>releases</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+                <property>
+                    <name>quick</name>
+                </property>
+            </activation>
             <properties>
-                <version.postgres.server>10</version.postgres.server>
-            </properties>
-        </profile>
-        <profile>
-            <id>wal2json-decoder</id>
-            <properties>
-                <decoder.plugin.name>wal2json</decoder.plugin.name>
-            </properties>
-        </profile>
-        <profile>
-            <id>pgoutput-decoder</id>
-            <properties>
-                <decoder.plugin.name>pgoutput</decoder.plugin.name>
-            </properties>
-        </profile>
-        <profile>
-            <id>charset-8bit</id>
-            <properties>
-                <postgres.system.lang>${cs_CZ.iso-8859-2}</postgres.system.lang>
-                <postgres.encoding>LATIN2</postgres.encoding>
-            </properties>
+                <skipITs>true</skipITs>
+                <maven.test.skip>true</maven.test.skip>
+                <docker.skip>true</docker.skip>
+                <ignoreSnapshots>true</ignoreSnapshots>
+            </properties>     
         </profile>
     </profiles>
 </project>

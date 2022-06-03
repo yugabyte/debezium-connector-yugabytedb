@@ -18,4 +18,11 @@ Although using the Maven command is far simpler, the Maven command really just r
 
     $ docker run -it -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=postgres debezium/postgres:9.6 postgres
 
-This will use the `debezium/postgres:9.6` image to start a new container where the PostgreSQL instance uses the settings from [the docker image](https://github.com/debezium/docker-images/blob/master/postgres/9.6/postgresql.conf.sample) 
+This will use the `debezium/postgres:9.6` image to start a new container where the PostgreSQL instance uses the settings from [the docker image](https://github.com/debezium/docker-images/blob/master/postgres/9.6/postgresql.conf.sample)
+
+## Release Process
+
+
+   mvn release:clean
+   mvn release:prepare
+   mvn release:perform
