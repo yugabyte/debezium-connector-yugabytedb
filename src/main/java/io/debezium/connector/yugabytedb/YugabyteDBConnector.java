@@ -333,6 +333,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                         .map(tabletId -> new ImmutablePair<String, String>(tableId, tabletId))
                         .collect(Collectors.toList()));
             }
+            Collections.sort(this.tabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));
         }
         catch (Exception e) {
             LOGGER.error("Error while fetching all the tablets", e);
