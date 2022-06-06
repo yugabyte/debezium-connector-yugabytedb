@@ -67,6 +67,7 @@ public final class TestHelper {
     private static final String TEST_PROPERTY_PREFIX = "debezium.test.";
     private static final Logger LOGGER = LoggerFactory.getLogger(TestHelper.class);
 
+    // If this variable is changed, do not forget to change the name in postgres_create_tables.ddl
     private static final String SECONDARY_DATABASE = "secondary_database";
 
     // Set the localhost value as the defaults for now
@@ -287,19 +288,10 @@ public final class TestHelper {
     }
 
     protected static void createTableInSecondaryDatabase(String query) throws SQLException {
-        // try (YugabyteDBConnection conn = create()) {
-        // String createDatabaseStatement = "SELECT 'CREATE DATABASE " + newDatabaseName +
-        // "' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname='" + newDatabaseName + "');";
-        // System.out.println("Executing: " + createDatabaseStatement);
-        // Statement st = conn.connection().createStatement();
-        // st.execute(createDatabaseStatement);
-        // }
-
-        // Now create a connector to the new database and execute the query
+        // Create a connector to the new database and execute the query
         try (YugabyteDBConnection conn = createConnectionTo(SECONDARY_DATABASE)) {
             Statement st = conn.connection().createStatement();
             st.execute(query);
-            System.out.println("Created table in secondary database");
         }
     }
 
