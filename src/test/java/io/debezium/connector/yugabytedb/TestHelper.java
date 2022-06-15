@@ -35,6 +35,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.JdbcDatabaseContainer;
 import org.testcontainers.containers.YugabyteYSQLContainer;
+import org.testcontainers.containers.strategy.YugabyteYSQLWaitStrategy;
+import org.testcontainers.containers.wait.strategy.HostPortWaitStrategy;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
@@ -73,6 +75,8 @@ public final class TestHelper {
     // Set the localhost value as the defaults for now
     private static String CONTAINER_YSQL_HOST = "127.0.0.1";
     private static int CONTAINER_YSQL_PORT = 5433;
+    private static String CONTAINER_MASTER_PORT = "7100";
+    private static String MASTER_ADDRESS = "";
 
     /**
      * Key for schema parameter used to store DECIMAL/NUMERIC columns' precision.
@@ -262,6 +266,10 @@ public final class TestHelper {
         }
     }
 
+    public static void setMasterAddress(String address) {
+        MASTER_ADDRESS = address;
+    }
+
     public static YugabyteDBTypeRegistry getTypeRegistry() {
         final YugabyteDBConnectorConfig config = new YugabyteDBConnectorConfig(defaultConfig().build());
         try (final YugabyteDBConnection connection = new YugabyteDBConnection(config.getJdbcConfig(), getPostgresValueConverterBuilder(config))) {
@@ -301,7 +309,7 @@ public final class TestHelper {
                 .with(YugabyteDBConnectorConfig.PORT, CONTAINER_YSQL_PORT)
                 .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.NEVER.getValue())
                 .with(YugabyteDBConnectorConfig.DELETE_STREAM_ON_STOP, Boolean.TRUE)
-                .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, CONTAINER_YSQL_HOST + ":7100")
+                .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, CONTAINER_YSQL_HOST + ":" + CONTAINER_MASTER_PORT)
                 .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, fullTablenameWithSchema)
                 .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId);
     }
@@ -311,9 +319,16 @@ public final class TestHelper {
         CONTAINER_YSQL_PORT = port;
     }
 
+    protected static void setContainerMasterPort(int masterPort) {
+        CONTAINER_MASTER_PORT = String.valueOf(masterPort);
+    }
+
     protected static YugabyteYSQLContainer getYbContainer() {
-        YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:2.13.1.0-b112");
-        container.addExposedPorts(7100, 9100);
+        YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:2.13.2.0-b135");
+        container.withPassword("yugabyte");
+        container.withUsername("yugabyte");
+        container.withExposedPorts(7100, 9100);
+        container.withCommand("bin/yugabyted start --listen=0.0.0.0 --master_flags=rpc_bind_addresses=0.0.0.0 --daemon=false");
         return container;
     }
 
@@ -342,7 +357,7 @@ public final class TestHelper {
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName) throws Exception {
-        YBClient syncClient = getYbClient(CONTAINER_YSQL_HOST + ":7100");
+        YBClient syncClient = getYbClient(MASTER_ADDRESS);
 
         YBTable placeholderTable = getTableUUID(syncClient, tableName);
 

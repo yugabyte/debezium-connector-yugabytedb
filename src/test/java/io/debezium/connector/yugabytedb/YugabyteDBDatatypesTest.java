@@ -117,12 +117,19 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
 
     @BeforeClass
     public static void beforeClass() throws SQLException {
-        // ybContainer = TestHelper.getYbContainer();
-        // ybContainer.addExposedPorts(7100, 9100);
-        // ybContainer.start();
+        ybContainer = TestHelper.getYbContainer();
+        
+        ybContainer.start();
 
-        // System.out.println("Host: " + ybContainer.getContainerIpAddress() + " Port: " + ybContainer.getMappedPort(5433));
-        // TestHelper.setContainerHostPort(ybContainer.getContainerIpAddress(), ybContainer.getMappedPort(5433));
+        System.out.println("Split commands: " + ybContainer.getCommandParts().toString());
+
+        String containerIp = ybContainer.getContainerInfo().getNetworkSettings().getNetworks().entrySet().stream().findFirst().get().getValue().getIpAddress();
+        System.out.println("Host: " + ybContainer.getHost() + " Port: " + ybContainer.getMappedPort(5433));
+        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
+        System.out.println("Master mapped port: " + ybContainer.getMappedPort(7100));
+        TestHelper.setMasterAddress(containerIp + ":7100");
+        // TestHelper.setContainerMasterPort(containerIp + ":7100");
+        System.out.println("Exposed ports: " + ybContainer.getExposedPorts());;
 
         TestHelper.dropAllSchemas();
     }
@@ -133,8 +140,23 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
     }
 
     @After
-    public void after() {
+    public void after() throws Exception {
         stopConnector();
+        TestHelper.executeDDL("drop_tables_and_databases.ddl");
+    }
+
+    @Test
+    public void testTestContainers() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("postgres_create_tables.ddl");
+        Thread.sleep(1000);
+        System.out.println("Sleeping after creating tables");
+
+        insertRecords(2);
+        System.out.println("Sleeping after inserting records");
+        Thread.sleep(30000);
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+        System.out.println("DB stream ID: " + dbStreamId);
     }
 
     @Test
