@@ -89,3 +89,6 @@ si smallint, i4r int4range, i8r int8range, nr numrange, tsr tsrange, tstzr tstzr
 uuidval uuid);
 
 CREATE DATABASE secondary_database;
+
+CREATE TYPE enum_type AS ENUM ('ZERO', 'ONE', 'TWO');
+CREATE TABLE test_enum (id INT PRIMARY KEY, enum_col enum_type);

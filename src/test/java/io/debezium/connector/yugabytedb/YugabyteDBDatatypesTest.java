@@ -52,6 +52,20 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
         }).get();
     }
 
+    // This function will one row each of the specified enum labels
+    private void insertEnumRecords() throws Exception {
+        String[] enumLabels = {"ZERO", "ONE", "TWO"};
+        String formatInsertString = "INSERT INTO test_enum VALUES (%d, %s);";
+        /*return */CompletableFuture.runAsync(() -> {
+            for (int i = 0; i < enumLabels.length; i++) {
+                TestHelper.execute(String.format(formatInsertString, i, enumLabels[i]));
+            }
+
+        }).exceptionally(throwable -> {
+            throw new RuntimeException(throwable);
+        }).get();
+    }
+
     private void insertRecordsInSchema(long numOfRowsToBeInserted) throws Exception {
         String formatInsertString = "INSERT INTO test_schema.table_in_schema VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
         CompletableFuture.runAsync(() -> {
@@ -201,6 +215,31 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
         insertRecords(recordsCount);
 
         CompletableFuture.runAsync(() -> verifyValue(recordsCount))
+                .exceptionally(throwable -> {
+                    throw new RuntimeException(throwable);
+                }).get();
+    }
+
+    @Test
+    public void testEnumValue() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("postgres_create_tables.ddl");
+        Thread.sleep(1000);
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_enum");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_enum", dbStreamId);
+        start(YugabyteDBConnector.class, configBuilder.build());
+        assertConnectorIsRunning();
+
+        // 3 because there are 3 enum values in the enum type
+        final long recordsCount = 3;
+
+        Thread.sleep(3000);
+
+        // 3 records will be inserted in the table test_enum
+        insertEnumRecords();
+
+        CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
                 .exceptionally(throwable -> {
                     throw new RuntimeException(throwable);
                 }).get();
