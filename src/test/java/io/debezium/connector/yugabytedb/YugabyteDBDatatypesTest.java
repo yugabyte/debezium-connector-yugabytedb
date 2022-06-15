@@ -55,9 +55,10 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
     // This function will one row each of the specified enum labels
     private void insertEnumRecords() throws Exception {
         String[] enumLabels = {"ZERO", "ONE", "TWO"};
-        String formatInsertString = "INSERT INTO test_enum VALUES (%d, %s);";
+        String formatInsertString = "INSERT INTO test_enum VALUES (%d, '%s');";
         /*return */CompletableFuture.runAsync(() -> {
             for (int i = 0; i < enumLabels.length; i++) {
+                System.out.println(String.format(formatInsertString, i, enumLabels[i]));
                 TestHelper.execute(String.format(formatInsertString, i, enumLabels[i]));
             }
 
@@ -83,7 +84,7 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
         List<SourceRecord> records = new ArrayList<>();
         while (totalConsumedRecords < recordsCount) {
             int consumed = super.consumeAvailableRecords(record -> {
-                LOGGER.debug("The record being consumed is " + record);
+                System.out.println("The record being consumed is " + record);
                 records.add(record);
             });
             if (consumed > 0) {
