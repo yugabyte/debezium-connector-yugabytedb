@@ -14,6 +14,7 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.testcontainers.containers.YugabyteYSQLContainer;
+import org.yb.client.YBClient;
 
 import io.debezium.config.Configuration;
 import io.debezium.embedded.AbstractConnectorTest;
@@ -123,12 +124,10 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
 
         System.out.println("Split commands: " + ybContainer.getCommandParts().toString());
 
-        String containerIp = ybContainer.getContainerInfo().getNetworkSettings().getNetworks().entrySet().stream().findFirst().get().getValue().getIpAddress();
         System.out.println("Host: " + ybContainer.getHost() + " Port: " + ybContainer.getMappedPort(5433));
         TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
         System.out.println("Master mapped port: " + ybContainer.getMappedPort(7100));
-        TestHelper.setMasterAddress(containerIp + ":7100");
-        // TestHelper.setContainerMasterPort(containerIp + ":7100");
+        TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
         System.out.println("Exposed ports: " + ybContainer.getExposedPorts());;
 
         TestHelper.dropAllSchemas();
@@ -155,8 +154,13 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
         insertRecords(2);
         System.out.println("Sleeping after inserting records");
         Thread.sleep(30000);
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
-        System.out.println("DB stream ID: " + dbStreamId);
+        YBClient ybClient = TestHelper.getYbClient(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+
+        String leaderUUID = ybClient.getLeaderMasterHostAndPort().toString();
+        System.out.println("Leader master host port: " + leaderUUID);
+
+        // String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+        // System.out.println("DB stream ID: " + dbStreamId);
     }
 
     @Test
