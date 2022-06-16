@@ -384,6 +384,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 .getResp()
                                 .getCdcSdkProtoRecordsList()) {
                             CdcService.RowMessage m = record.getRowMessage();
+                            System.out.println("Row Message: " + m);
                             YbProtoReplicationMessage message = new YbProtoReplicationMessage(
                                     m, this.yugabyteDBTypeRegistry);
 

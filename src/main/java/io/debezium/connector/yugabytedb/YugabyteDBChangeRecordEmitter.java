@@ -206,17 +206,22 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
 
         final Set<String> undeliveredToastableColumns = new HashSet<>(schema
                 .getToastableColumnsForTableId(table.id()));
+        
+                System.out.println("Columns size: " + columns.size());
         for (ReplicationMessage.Column column : columns) {
             // DBZ-298 Quoted column names will be sent like that in messages,
             // but stored unquoted in the column names
             final String columnName = Strings.unquoteIdentifierPart(column.getName());
             undeliveredToastableColumns.remove(columnName);
-
             int position = getPosition(columnName, table, values);
             if (position != -1) {
                 Object value = column.getValue(() -> (BaseConnection) connection.connection(),
                         connectorConfig.includeUnknownDatatypes());
-                // values[position] = value;
+                // System.out.println("value is " + (String) value);
+                        // values[position] = value;
+                if (value == null) {
+                    System.out.println("value is null here in changerecordemitter");
+                }
                 values[position] = new Object[]{ value, Boolean.TRUE };
             }
         }
