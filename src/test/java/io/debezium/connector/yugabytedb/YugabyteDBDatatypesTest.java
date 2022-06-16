@@ -119,16 +119,10 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
     @BeforeClass
     public static void beforeClass() throws SQLException {
         ybContainer = TestHelper.getYbContainer();
-        
         ybContainer.start();
 
-        System.out.println("Split commands: " + ybContainer.getCommandParts().toString());
-
-        System.out.println("Host: " + ybContainer.getHost() + " Port: " + ybContainer.getMappedPort(5433));
         TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-        System.out.println("Master mapped port: " + ybContainer.getMappedPort(7100));
         TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
-        System.out.println("Exposed ports: " + ybContainer.getExposedPorts());;
 
         TestHelper.dropAllSchemas();
     }
@@ -144,23 +138,20 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
     }
 
+    // This test will just verify that the TestContainers are up and running
+    // and it will also verify that the unit tests are able to make API calls.
     @Test
     public void testTestContainers() throws Exception {
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("postgres_create_tables.ddl");
         Thread.sleep(1000);
-        System.out.println("Sleeping after creating tables");
 
         insertRecords(2);
-        System.out.println("Sleeping after inserting records");
-        Thread.sleep(30000);
-        YBClient ybClient = TestHelper.getYbClient(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+        Thread.sleep(3000);
 
-        String leaderUUID = ybClient.getLeaderMasterHostAndPort().toString();
-        System.out.println("Leader master host port: " + leaderUUID);
-
-        // String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
-        // System.out.println("DB stream ID: " + dbStreamId);
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+        assertNotNull(dbStreamId);
+        assertTrue(dbStreamId.length() > 0);
     }
 
     @Test

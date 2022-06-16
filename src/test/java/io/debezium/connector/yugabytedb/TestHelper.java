@@ -43,6 +43,9 @@ import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 
+import com.github.dockerjava.api.model.ExposedPort;
+import com.github.dockerjava.api.model.PortBinding;
+import com.github.dockerjava.api.model.Ports;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
@@ -327,9 +330,31 @@ public final class TestHelper {
         YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:2.13.2.0-b135");
         container.withPassword("yugabyte");
         container.withUsername("yugabyte");
-        container.withExposedPorts(7100, 9100);
+        container.withDatabaseName("yugabyte");
+        container.withExposedPorts(7100, 9100, 5433, 9042);
+        container.withCreateContainerCmdModifier(cmd -> cmd.withHostName("127.0.0.1").getHostConfig().withPortBindings(new ArrayList<PortBinding>() {
+            {
+                add(new PortBinding(Ports.Binding.bindPort(7100), new ExposedPort(7100)));
+                add(new PortBinding(Ports.Binding.bindPort(9100), new ExposedPort(9100)));
+                add(new PortBinding(Ports.Binding.bindPort(5433), new ExposedPort(5433)));
+                add(new PortBinding(Ports.Binding.bindPort(9042), new ExposedPort(9042)));
+            }
+        }));
         container.withCommand("bin/yugabyted start --listen=0.0.0.0 --master_flags=rpc_bind_addresses=0.0.0.0 --daemon=false");
         return container;
+        /*
+         YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:latest")
+				.withDatabaseName("yugabyte").withPassword("yugabyte").withUsername("yugabyte")
+				.withExposedPorts(5433, 7100, 9100, 9042).withCreateContainerCmdModifier(cmd -> cmd.withHostName("127.0.0.1").getHostConfig().withPortBindings(new ArrayList<PortBinding>() {
+                    {
+                        add(new PortBinding(Ports.Binding.bindPort(7100), new ExposedPort(7100)));
+                        add(new PortBinding(Ports.Binding.bindPort(9100), new ExposedPort(9100)));
+                        add(new PortBinding(Ports.Binding.bindPort(5433), new ExposedPort(5433)));
+                        add(new PortBinding(Ports.Binding.bindPort(9042), new ExposedPort(9042)));
+                    }
+                })).withCommand(
+						"bin/yugabyted start --listen=0.0.0.0 --master_flags=rpc_bind_addresses=0.0.0.0 --daemon=false");
+         */
     }
 
     protected static YBClient getYbClient(String masterAddresses) throws Exception {
