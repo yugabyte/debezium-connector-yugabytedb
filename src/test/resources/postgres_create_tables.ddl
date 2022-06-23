@@ -87,3 +87,5 @@ CREATE TABLE all_types (id INT PRIMARY KEY, bigintcol bigint, bitcol bit(5), var
 cidrval cidr, dt date, dp double precision, inetval inet, intervalval interval, jsonval json, jsonbval jsonb, mc macaddr, mc8 macaddr8, mn money, nm numeric, rl real,
 si smallint, i4r int4range, i8r int8range, nr numrange, tsr tsrange, tstzr tstzrange, dr daterange, txt text, tm time, tmtz timetz, ts timestamp, tstz timestamptz,
 uuidval uuid);
+
+CREATE DATABASE secondary_database;

@@ -8,10 +8,13 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import org.apache.kafka.connect.source.SourceRecord;
+import org.apache.log4j.Logger;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.testcontainers.containers.YugabyteYSQLContainer;
+import org.yb.client.YBClient;
 
 import io.debezium.config.Configuration;
 import io.debezium.embedded.AbstractConnectorTest;
@@ -24,6 +27,9 @@ import io.debezium.util.Strings;
  */
 
 public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
+    private final static Logger LOGGER = Logger.getLogger(YugabyteDBDatatypesTest.class);
+    private static YugabyteYSQLContainer ybContainer;
+
     private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
             "INSERT INTO s2.a (aa) VALUES (1);";
     private static final String CREATE_TABLES_STMT = "DROP SCHEMA IF EXISTS s1 CASCADE;" +
@@ -35,63 +41,48 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
     private static final String SETUP_TABLES_STMT = CREATE_TABLES_STMT + INSERT_STMT;
     private YugabyteDBConnector connector;
 
-    private CompletableFuture<Void> insertRecords(long numOfRowsToBeInserted) {
+    private void insertRecords(long numOfRowsToBeInserted) throws Exception {
         String formatInsertString = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
-        return CompletableFuture.runAsync(() -> {
+        /*return */CompletableFuture.runAsync(() -> {
             for (int i = 0; i < numOfRowsToBeInserted; i++) {
                 TestHelper.execute(String.format(formatInsertString, i));
             }
 
         }).exceptionally(throwable -> {
             throw new RuntimeException(throwable);
-        });
+        }).get();
     }
 
-    private CompletableFuture<Void> insertRecordsInSchema(long numOfRowsToBeInserted) {
-        String formatInsertString = "INSERT INTO test_schema.table_in_schema VALUES (%d, 'Vaibhav', " +
-                "'Kushwaha', 30);";
-        return CompletableFuture.runAsync(() -> {
+    private void insertRecordsInSchema(long numOfRowsToBeInserted) throws Exception {
+        String formatInsertString = "INSERT INTO test_schema.table_in_schema VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
+        CompletableFuture.runAsync(() -> {
             for (int i = 0; i < numOfRowsToBeInserted; i++) {
                 TestHelper.execute(String.format(formatInsertString, i));
             }
         }).exceptionally(throwable -> {
             throw new RuntimeException(throwable);
-        });
-    }
-
-    protected Configuration.Builder getConfigBuilder(String fullTablenameWithSchema) throws Exception {
-        return TestHelper.defaultConfig()
-                .with(YugabyteDBConnectorConfig.HOSTNAME, "127.0.0.1") // this field is required as of now
-                .with(YugabyteDBConnectorConfig.PORT, 5433)
-                .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.NEVER.getValue())
-                .with(YugabyteDBConnectorConfig.DELETE_STREAM_ON_STOP, Boolean.TRUE)
-                .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, "127.0.0.1:7100")
-                .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, fullTablenameWithSchema)
-                .with(YugabyteDBConnectorConfig.AUTO_CREATE_STREAM, true);
+        }).get();
     }
 
     private void verifyPrimaryKeyOnly(long recordsCount) {
-        System.out.println("verifyPrimaryKeyOnly ");
         int totalConsumedRecords = 0;
         long start = System.currentTimeMillis();
         List<SourceRecord> records = new ArrayList<>();
-        recordsCount = 100;
         while (totalConsumedRecords < recordsCount) {
             int consumed = super.consumeAvailableRecords(record -> {
-                System.out.println("The record being consumed is " + record);
+                LOGGER.debug("The record being consumed is " + record);
                 records.add(record);
             });
             if (consumed > 0) {
                 totalConsumedRecords += consumed;
-                System.out.println("Consumed " + totalConsumedRecords + " records");
+                LOGGER.debug("Consumed " + totalConsumedRecords + " records");
             }
         }
-        System.out.println("Total duration to ingest '" + recordsCount + "' records: " +
-                Strings.duration(System.currentTimeMillis() - start));
+        LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
 
         for (int i = 0; i < records.size(); ++i) {
             // verify the records
-            assertInsert(records.get(i), "id", i);
+            assertValueField(records.get(i), "after/id/value", i);
         }
 
     }
@@ -102,22 +93,21 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
         List<SourceRecord> records = new ArrayList<>();
         while (totalConsumedRecords < recordsCount) {
             int consumed = super.consumeAvailableRecords(record -> {
-                System.out.println("The record being consumed is " + record);
+                LOGGER.debug("The record being consumed is " + record);
                 records.add(record);
             });
             if (consumed > 0) {
                 totalConsumedRecords += consumed;
+                LOGGER.debug("Consumed " + totalConsumedRecords + " records");
             }
         }
-        System.out.println("Total duration to ingest '" + recordsCount + "' records: " +
-                Strings.duration(System.currentTimeMillis() - start));
+        LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
 
         try {
             for (int i = 0; i < records.size(); ++i) {
-                System.out.println(String.format("Verifying record values with pk: <id = %d>", i));
-                assertValueField(records.get(i), "after/id", i);
-                assertValueField(records.get(i), "after/first_name", "Vaibhav");
-                assertValueField(records.get(i), "after/last_name", "Kushwaha");
+                assertValueField(records.get(i), "after/id/value", i);
+                assertValueField(records.get(i), "after/first_name/value", "Vaibhav");
+                assertValueField(records.get(i), "after/last_name/value", "Kushwaha");
             }
         }
         catch (Exception e) {
@@ -128,6 +118,12 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
 
     @BeforeClass
     public static void beforeClass() throws SQLException {
+        ybContainer = TestHelper.getYbContainer();
+        ybContainer.start();
+
+        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
+        TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+
         TestHelper.dropAllSchemas();
     }
 
@@ -137,8 +133,25 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
     }
 
     @After
-    public void after() {
+    public void after() throws Exception {
         stopConnector();
+        TestHelper.executeDDL("drop_tables_and_databases.ddl");
+    }
+
+    // This test will just verify that the TestContainers are up and running
+    // and it will also verify that the unit tests are able to make API calls.
+    @Test
+    public void testTestContainers() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("postgres_create_tables.ddl");
+        Thread.sleep(1000);
+
+        insertRecords(2);
+        Thread.sleep(3000);
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+        assertNotNull(dbStreamId);
+        assertTrue(dbStreamId.length() > 0);
     }
 
     @Test
@@ -146,15 +159,17 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("postgres_create_tables.ddl");
         Thread.sleep(1000);
-        Configuration.Builder configBuilder = getConfigBuilder("public.t1");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
         start(YugabyteDBConnector.class, configBuilder.build());
         assertConnectorIsRunning();
         final long recordsCount = 1;
 
-        System.out.println("testRecordConsumption");
+        Thread.sleep(3000);
+
         // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertRecords(recordsCount);
-        System.out.println("testRecordConsumption");
 
         CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
                 .exceptionally(throwable -> {
@@ -167,13 +182,18 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("postgres_create_tables.ddl");
         Thread.sleep(1000);
-        Configuration.Builder configBuilder = getConfigBuilder("public.t1");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
         start(YugabyteDBConnector.class, configBuilder.build());
         assertConnectorIsRunning();
         final long recordsCount = 75;
 
+        Thread.sleep(3000);
+
         // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertRecords(recordsCount);
+
         CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
                 .exceptionally(throwable -> {
                     throw new RuntimeException(throwable);
@@ -185,10 +205,14 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("postgres_create_tables.ddl");
         Thread.sleep(1000);
-        Configuration.Builder configBuilder = getConfigBuilder("public.t1");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
         start(YugabyteDBConnector.class, configBuilder.build());
         assertConnectorIsRunning();
         final long recordsCount = 1;
+
+        Thread.sleep(3000);
 
         // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertRecords(recordsCount);
@@ -204,10 +228,14 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("tables_in_non_public_schema.ddl");
         Thread.sleep(1000);
-        Configuration.Builder configBuilder = getConfigBuilder("test_schema.table_in_schema");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "table_in_schema");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("test_schema.table_in_schema", dbStreamId);
         start(YugabyteDBConnector.class, configBuilder.build());
         assertConnectorIsRunning();
         final long recordsCount = 1;
+
+        Thread.sleep(3000);
 
         // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertRecordsInSchema(recordsCount);

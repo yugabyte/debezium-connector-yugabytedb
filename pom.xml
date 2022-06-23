@@ -182,6 +182,20 @@
             <version>${version.org.slf4j}</version>
         </dependency>
 
+        <!-- https://mvnrepository.com/artifact/com.yugabyte/testcontainers-yugabytedb -->
+        <dependency>
+            <groupId>com.yugabyte</groupId>
+            <artifactId>testcontainers-yugabytedb</artifactId>
+            <version>1.0.0-beta-3</version>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>5.0.1</version>
+        </dependency>
+
 		<!-- Building -->
         <dependency>
             <groupId>io.debezium</groupId>

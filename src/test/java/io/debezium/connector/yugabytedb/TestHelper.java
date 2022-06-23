@@ -14,20 +14,40 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Duration;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
+import javax.sql.DataSource;
 
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.postgresql.jdbc.PgConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.JdbcDatabaseContainer;
+import org.testcontainers.containers.YugabyteYSQLContainer;
+import org.testcontainers.containers.strategy.YugabyteYSQLWaitStrategy;
+import org.testcontainers.containers.wait.strategy.HostPortWaitStrategy;
+import org.yb.client.AsyncYBClient;
+import org.yb.client.ListTablesResponse;
+import org.yb.client.YBClient;
+import org.yb.client.YBTable;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
+
+import com.github.dockerjava.api.model.ExposedPort;
+import com.github.dockerjava.api.model.PortBinding;
+import com.github.dockerjava.api.model.Ports;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig.SecureConnectionMode;
@@ -52,6 +72,15 @@ public final class TestHelper {
     private static final String TEST_PROPERTY_PREFIX = "debezium.test.";
     private static final Logger LOGGER = LoggerFactory.getLogger(TestHelper.class);
 
+    // If this variable is changed, do not forget to change the name in postgres_create_tables.ddl
+    private static final String SECONDARY_DATABASE = "secondary_database";
+
+    // Set the localhost value as the defaults for now
+    private static String CONTAINER_YSQL_HOST = "127.0.0.1";
+    private static int CONTAINER_YSQL_PORT = 5433;
+    private static String CONTAINER_MASTER_PORT = "7100";
+    private static String MASTER_ADDRESS = "";
+
     /**
      * Key for schema parameter used to store DECIMAL/NUMERIC columns' precision.
      */
@@ -73,6 +102,25 @@ public final class TestHelper {
     static final String TYPE_SCALE_PARAMETER_KEY = "__debezium.source.column.scale";
 
     private TestHelper() {
+    }
+
+    protected static ResultSet performQuery(JdbcDatabaseContainer<?> container, String sql) throws SQLException {
+        DataSource ds = getDataSource(container);
+        Statement statement = ds.getConnection().createStatement();
+        statement.execute(sql);
+        ResultSet resultSet = statement.getResultSet();
+
+        resultSet.next();
+        return resultSet;
+    }
+
+    protected static DataSource getDataSource(JdbcDatabaseContainer<?> container) {
+        HikariConfig hikariConfig = new HikariConfig();
+        hikariConfig.setJdbcUrl(container.getJdbcUrl());
+        hikariConfig.setUsername(container.getUsername());
+        hikariConfig.setPassword(container.getPassword());
+        hikariConfig.setDriverClassName(container.getDriverClassName());
+        return new HikariDataSource(hikariConfig);
     }
 
     /**
@@ -109,10 +157,20 @@ public final class TestHelper {
      *
      * @return the PostgresConnection instance; never null
      */
+    // TODO: remove this function at the end of test development
     public static YugabyteDBConnection create() {
 
-        return new YugabyteDBConnection(defaultJdbcConfig());
+        // return new YugabyteDBConnection(defaultJdbcConfig());
+        return new YugabyteDBConnection(defaultJdbcConfig(CONTAINER_YSQL_HOST, CONTAINER_YSQL_PORT));
     }
+
+    public static YugabyteDBConnection createConnectionTo(String databaseName) {
+        return new YugabyteDBConnection(defaultJdbcConfig(CONTAINER_YSQL_HOST, CONTAINER_YSQL_PORT, databaseName));
+    }
+
+    // public static YugabyteDBConnection create(String host, String ysqlPort) {
+    // return new YugabyteDBConnection(defaultJdbcConfig(host, ysqlPort));
+    // }
 
     /**
      * Obtain a DB connection providing type registry.
@@ -211,6 +269,10 @@ public final class TestHelper {
         }
     }
 
+    public static void setMasterAddress(String address) {
+        MASTER_ADDRESS = address;
+    }
+
     public static YugabyteDBTypeRegistry getTypeRegistry() {
         final YugabyteDBConnectorConfig config = new YugabyteDBConnectorConfig(defaultConfig().build());
         try (final YugabyteDBConnection connection = new YugabyteDBConnection(config.getJdbcConfig(), getPostgresValueConverterBuilder(config))) {
@@ -236,12 +298,129 @@ public final class TestHelper {
         }
     }
 
+    protected static void createTableInSecondaryDatabase(String query) throws SQLException {
+        // Create a connector to the new database and execute the query
+        try (YugabyteDBConnection conn = createConnectionTo(SECONDARY_DATABASE)) {
+            Statement st = conn.connection().createStatement();
+            st.execute(query);
+        }
+    }
+
+    protected static Configuration.Builder getConfigBuilder(String fullTablenameWithSchema, String dbStreamId) throws Exception {
+        return TestHelper.defaultConfig()
+                .with(YugabyteDBConnectorConfig.HOSTNAME, CONTAINER_YSQL_HOST) // this field is required as of now
+                .with(YugabyteDBConnectorConfig.PORT, CONTAINER_YSQL_PORT)
+                .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.NEVER.getValue())
+                .with(YugabyteDBConnectorConfig.DELETE_STREAM_ON_STOP, Boolean.TRUE)
+                .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, CONTAINER_YSQL_HOST + ":" + CONTAINER_MASTER_PORT)
+                .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, fullTablenameWithSchema)
+                .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId);
+    }
+
+    protected static void setContainerHostPort(String host, int port) {
+        CONTAINER_YSQL_HOST = host;
+        CONTAINER_YSQL_PORT = port;
+    }
+
+    protected static void setContainerMasterPort(int masterPort) {
+        CONTAINER_MASTER_PORT = String.valueOf(masterPort);
+    }
+
+    protected static YugabyteYSQLContainer getYbContainer() {
+        YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:2.13.2.0-b135");
+        container.withPassword("yugabyte");
+        container.withUsername("yugabyte");
+        container.withDatabaseName("yugabyte");
+        container.withExposedPorts(7100, 9100, 5433, 9042);
+        container.withCreateContainerCmdModifier(cmd -> cmd.withHostName("127.0.0.1").getHostConfig().withPortBindings(new ArrayList<PortBinding>() {
+            {
+                add(new PortBinding(Ports.Binding.bindPort(7100), new ExposedPort(7100)));
+                add(new PortBinding(Ports.Binding.bindPort(9100), new ExposedPort(9100)));
+                add(new PortBinding(Ports.Binding.bindPort(5433), new ExposedPort(5433)));
+                add(new PortBinding(Ports.Binding.bindPort(9042), new ExposedPort(9042)));
+            }
+        }));
+        container.withCommand("bin/yugabyted start --listen=0.0.0.0 --master_flags=rpc_bind_addresses=0.0.0.0 --daemon=false");
+        return container;
+        /*
+         YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:latest")
+				.withDatabaseName("yugabyte").withPassword("yugabyte").withUsername("yugabyte")
+				.withExposedPorts(5433, 7100, 9100, 9042).withCreateContainerCmdModifier(cmd -> cmd.withHostName("127.0.0.1").getHostConfig().withPortBindings(new ArrayList<PortBinding>() {
+                    {
+                        add(new PortBinding(Ports.Binding.bindPort(7100), new ExposedPort(7100)));
+                        add(new PortBinding(Ports.Binding.bindPort(9100), new ExposedPort(9100)));
+                        add(new PortBinding(Ports.Binding.bindPort(5433), new ExposedPort(5433)));
+                        add(new PortBinding(Ports.Binding.bindPort(9042), new ExposedPort(9042)));
+                    }
+                })).withCommand(
+						"bin/yugabyted start --listen=0.0.0.0 --master_flags=rpc_bind_addresses=0.0.0.0 --daemon=false");
+         */
+    }
+
+    protected static YBClient getYbClient(String masterAddresses) throws Exception {
+        AsyncYBClient asyncClient = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses)
+                .defaultAdminOperationTimeoutMs(YugabyteDBConnectorConfig.DEFAULT_ADMIN_OPERATION_TIMEOUT_MS)
+                .defaultOperationTimeoutMs(YugabyteDBConnectorConfig.DEFAULT_OPERATION_TIMEOUT_MS)
+                .defaultSocketReadTimeoutMs(YugabyteDBConnectorConfig.DEFAULT_SOCKET_READ_TIMEOUT_MS)
+                .numTablets(YugabyteDBConnectorConfig.DEFAULT_MAX_NUM_TABLETS)
+                .build();
+
+        return new YBClient(asyncClient);
+    }
+
+    protected static YBTable getTableUUID(YBClient syncClient, String tableName) throws Exception {
+        ListTablesResponse resp = syncClient.getTablesList();
+
+        for (TableInfo tableInfo : resp.getTableInfoList()) {
+            if (Objects.equals(tableInfo.getName(), tableName)) {
+                return syncClient.openTableByUUID(tableInfo.getId().toStringUtf8());
+            }
+        }
+
+        // This will be returned in case no table match has been found for the given table name
+        return null;
+    }
+
+    public static String getNewDbStreamId(String namespaceName, String tableName) throws Exception {
+        YBClient syncClient = getYbClient(MASTER_ADDRESS);
+
+        YBTable placeholderTable = getTableUUID(syncClient, tableName);
+
+        if (placeholderTable == null) {
+            throw new NullPointerException("No table found with the name " + tableName);
+        }
+
+        return syncClient.createCDCStream(placeholderTable, namespaceName, "PROTO", "IMPLICIT").getStreamId();
+    }
+
     public static JdbcConfiguration defaultJdbcConfig() {
         try {
             return JdbcConfiguration.copy(Configuration.empty()/* fromSystemProperties("database.") */)
                     .withDefault(JdbcConfiguration.DATABASE, "yugabyte")
-                    .withDefault(JdbcConfiguration.HOSTNAME, "127.0.0.1"/* InetAddress.getLocalHost().getHostAddress() */)
+                    .withDefault(JdbcConfiguration.HOSTNAME, CONTAINER_YSQL_HOST/* InetAddress.getLocalHost().getHostAddress() */)
                     .withDefault(JdbcConfiguration.PORT, 5433)
+                    .withDefault(JdbcConfiguration.USER, "yugabyte")
+                    .withDefault(JdbcConfiguration.PASSWORD, "yugabyte")
+                    .with(YugabyteDBConnectorConfig.MAX_RETRIES, 2)
+                    .with(YugabyteDBConnectorConfig.RETRY_DELAY_MS, 2000)
+                    .build();
+        }
+        catch (Exception e) {
+            LOGGER.error("Exception thrown while creating connection...", e);
+            return null;
+        }
+    }
+
+    public static JdbcConfiguration defaultJdbcConfig(String host, int ysqlPort) {
+        return defaultJdbcConfig(host, ysqlPort, "yugabyte");
+    }
+
+    public static JdbcConfiguration defaultJdbcConfig(String host, int ysqlPort, String databaseName) {
+        try {
+            return JdbcConfiguration.copy(Configuration.empty())
+                    .withDefault(JdbcConfiguration.DATABASE, databaseName)
+                    .withDefault(JdbcConfiguration.HOSTNAME, host)
+                    .withDefault(JdbcConfiguration.PORT, ysqlPort)
                     .withDefault(JdbcConfiguration.USER, "yugabyte")
                     .withDefault(JdbcConfiguration.PASSWORD, "yugabyte")
                     .with(YugabyteDBConnectorConfig.MAX_RETRIES, 2)
@@ -278,6 +457,18 @@ public final class TestHelper {
                 .collect(Collectors.joining(System.lineSeparator()));
         try (YugabyteDBConnection connection = create()) {
             connection.executeWithoutCommitting(statements);
+        }
+    }
+
+    protected static void executeDDL(JdbcDatabaseContainer<?> container, String ddlFile) throws Exception {
+        URL ddlTestFile = TestHelper.class.getClassLoader().getResource(ddlFile);
+        assertNotNull("Cannot locate " + ddlFile, ddlTestFile);
+        String statements = Files.readAllLines(Paths.get(ddlTestFile.toURI()))
+                .stream()
+                .collect(Collectors.joining(System.lineSeparator()));
+        try (YugabyteDBConnection connection = create()) {
+            TestHelper.performQuery(container, statements);
+            // connection.executeWithoutCommitting(statements);
         }
     }
 
