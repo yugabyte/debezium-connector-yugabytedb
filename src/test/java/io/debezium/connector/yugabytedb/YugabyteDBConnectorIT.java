@@ -8,6 +8,7 @@ import java.util.concurrent.CompletableFuture;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.log4j.Logger;
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -44,6 +45,11 @@ public class YugabyteDBConnectorIT extends AbstractConnectorTest {
     public void after() throws Exception {
         stopConnector();
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
+    }
+
+    @AfterClass
+    public void afterClass() throws Exception {
+        ybContainer.stop();
     }
 
     private void validateFieldDef(Field expected) {

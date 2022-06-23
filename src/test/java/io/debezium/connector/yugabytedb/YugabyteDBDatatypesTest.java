@@ -10,6 +10,7 @@ import java.util.concurrent.CompletableFuture;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.log4j.Logger;
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -136,6 +137,11 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
     public void after() throws Exception {
         stopConnector();
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
+    }
+
+    @AfterClass
+    public static void afterClass() throws Exception {
+        ybContainer.stop();
     }
 
     // This test will just verify that the TestContainers are up and running
