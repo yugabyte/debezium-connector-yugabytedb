@@ -19,8 +19,8 @@ import io.debezium.config.Configuration;
 import io.debezium.config.Field;
 import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
 
-public class YugabyteDBConnectorIT extends YugabyteDBTestBase {
-    private final static Logger LOGGER = Logger.getLogger(YugabyteDBConnectorIT.class);
+public class YugabyteDBConnectorTest extends YugabyteDBTestBase {
+    private final static Logger LOGGER = Logger.getLogger(YugabyteDBConnectorTest.class);
 
     private static YugabyteYSQLContainer ybContainer;
 
