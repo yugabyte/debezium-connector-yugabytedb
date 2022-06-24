@@ -16,10 +16,10 @@ import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
-import io.debezium.embedded.AbstractConnectorTest;
+import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
 import io.debezium.util.Strings;
 
-public class YugabyteDBCompleteTypesTest extends AbstractConnectorTest {
+public class YugabyteDBCompleteTypesTest extends YugabyteDBTestBase {
     private final static Logger LOGGER = Logger.getLogger(YugabyteDBCompleteTypesTest.class);
     private static YugabyteYSQLContainer ybContainer;
 
@@ -117,9 +117,8 @@ public class YugabyteDBCompleteTypesTest extends AbstractConnectorTest {
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.all_types", dbStreamId);
         start(YugabyteDBConnector.class, configBuilder.build());
-        assertConnectorIsRunning();
 
-        Thread.sleep(3000);
+        awaitUntilConnectorIsReady();
 
         final long recordsCount = 1;
 

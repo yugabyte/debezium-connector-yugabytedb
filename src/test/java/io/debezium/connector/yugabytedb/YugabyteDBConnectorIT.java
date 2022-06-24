@@ -17,9 +17,9 @@ import org.testcontainers.containers.YugabyteYSQLContainer;
 import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
 import io.debezium.config.Field;
-import io.debezium.embedded.AbstractConnectorTest;
+import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
 
-public class YugabyteDBConnectorIT extends AbstractConnectorTest {
+public class YugabyteDBConnectorIT extends YugabyteDBTestBase {
     private final static Logger LOGGER = Logger.getLogger(YugabyteDBConnectorIT.class);
 
     private static YugabyteYSQLContainer ybContainer;
@@ -161,9 +161,8 @@ public class YugabyteDBConnectorIT extends AbstractConnectorTest {
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 
         start(YugabyteDBConnector.class, configBuilder.build());
-        assertConnectorIsRunning();
 
-        Thread.sleep(3000);
+        awaitUntilConnectorIsReady();
 
         int recordsCount = 10;
         insertRecords(recordsCount);
