@@ -19,8 +19,8 @@ import io.debezium.config.Configuration;
 import io.debezium.config.Field;
 import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
 
-public class YugabyteDBConnectorTest extends YugabyteDBTestBase {
-    private final static Logger LOGGER = Logger.getLogger(YugabyteDBConnectorTest.class);
+public class YugabyteDBConnectorIT extends YugabyteDBTestBase {
+    private final static Logger LOGGER = Logger.getLogger(YugabyteDBConnectorIT.class);
 
     private static YugabyteYSQLContainer ybContainer;
 
@@ -116,7 +116,6 @@ public class YugabyteDBConnectorTest extends YugabyteDBTestBase {
         TestHelper.dropAllSchemas();
 
         TestHelper.executeDDL("postgres_create_tables.ddl");
-        Thread.sleep(1000);
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types");
 
@@ -124,8 +123,6 @@ public class YugabyteDBConnectorTest extends YugabyteDBTestBase {
         TestHelper.execute("CREATE TABLE not_part_of_stream (id INT PRIMARY KEY);");
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.all_types,public.not_part_of_stream", dbStreamId);
-
-        Thread.sleep(3000);
 
         // This should throw a DebeziumException saying the table not_part_of_stream is not a part of stream ID
         start(YugabyteDBConnector.class, configBuilder.build(), (success, msg, error) -> {
@@ -145,7 +142,6 @@ public class YugabyteDBConnectorTest extends YugabyteDBTestBase {
         TestHelper.dropAllSchemas();
 
         TestHelper.executeDDL("postgres_create_tables.ddl");
-        Thread.sleep(1000);
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
 
