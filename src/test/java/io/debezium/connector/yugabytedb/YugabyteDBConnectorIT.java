@@ -8,6 +8,7 @@ import java.util.concurrent.CompletableFuture;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.log4j.Logger;
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -16,9 +17,9 @@ import org.testcontainers.containers.YugabyteYSQLContainer;
 import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
 import io.debezium.config.Field;
-import io.debezium.embedded.AbstractConnectorTest;
+import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
 
-public class YugabyteDBConnectorIT extends AbstractConnectorTest {
+public class YugabyteDBConnectorIT extends YugabyteDBTestBase {
     private final static Logger LOGGER = Logger.getLogger(YugabyteDBConnectorIT.class);
 
     private static YugabyteYSQLContainer ybContainer;
@@ -44,6 +45,11 @@ public class YugabyteDBConnectorIT extends AbstractConnectorTest {
     public void after() throws Exception {
         stopConnector();
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
+    }
+
+    @AfterClass
+    public void afterClass() throws Exception {
+        ybContainer.stop();
     }
 
     private void validateFieldDef(Field expected) {
@@ -109,8 +115,7 @@ public class YugabyteDBConnectorIT extends AbstractConnectorTest {
     public void shouldThrowExceptionWithWrongIncludeList() throws Exception {
         TestHelper.dropAllSchemas();
 
-        TestHelper.executeDDL("postgres_create_tables.ddl");
-        Thread.sleep(1000);
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types");
 
@@ -118,8 +123,6 @@ public class YugabyteDBConnectorIT extends AbstractConnectorTest {
         TestHelper.execute("CREATE TABLE not_part_of_stream (id INT PRIMARY KEY);");
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.all_types,public.not_part_of_stream", dbStreamId);
-
-        Thread.sleep(3000);
 
         // This should throw a DebeziumException saying the table not_part_of_stream is not a part of stream ID
         start(YugabyteDBConnector.class, configBuilder.build(), (success, msg, error) -> {
@@ -137,10 +140,6 @@ public class YugabyteDBConnectorIT extends AbstractConnectorTest {
     @Test
     public void shouldWorkWithSameNameTablePresentInAnotherDatabase() throws Exception {
         TestHelper.dropAllSchemas();
-
-        TestHelper.executeDDL("postgres_create_tables.ddl");
-        Thread.sleep(1000);
-
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
 
         // Create a same table in another database
@@ -155,9 +154,7 @@ public class YugabyteDBConnectorIT extends AbstractConnectorTest {
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 
         start(YugabyteDBConnector.class, configBuilder.build());
-        assertConnectorIsRunning();
-
-        Thread.sleep(3000);
+        awaitUntilConnectorIsReady();
 
         int recordsCount = 10;
         insertRecords(recordsCount);

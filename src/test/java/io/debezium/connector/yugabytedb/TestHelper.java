@@ -78,7 +78,6 @@ public final class TestHelper {
     // Set the localhost value as the defaults for now
     private static String CONTAINER_YSQL_HOST = "127.0.0.1";
     private static int CONTAINER_YSQL_PORT = 5433;
-
     private static String CONTAINER_MASTER_PORT = "7100";
     private static String MASTER_ADDRESS = "";
 
@@ -214,12 +213,6 @@ public final class TestHelper {
             connection.setAutoCommit(true); // setting auto-commit to true
             connection.executeWithoutCommitting(statement);
             Connection jdbcConn = connection.connection();
-            // if (!statement.endsWith("ROLLBACK;")) {
-            // jdbcConn.commit();
-            // }
-            // else {
-            // jdbcConn.rollback();
-            // }
         }
         catch (RuntimeException e) {
             throw e;
@@ -323,7 +316,6 @@ public final class TestHelper {
         CONTAINER_YSQL_PORT = port;
     }
 
-
     protected static void setContainerMasterPort(int masterPort) {
         CONTAINER_MASTER_PORT = String.valueOf(masterPort);
     }
@@ -344,19 +336,6 @@ public final class TestHelper {
         }));
         container.withCommand("bin/yugabyted start --listen=0.0.0.0 --master_flags=rpc_bind_addresses=0.0.0.0 --daemon=false");
         return container;
-        /*
-         YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:latest")
-				.withDatabaseName("yugabyte").withPassword("yugabyte").withUsername("yugabyte")
-				.withExposedPorts(5433, 7100, 9100, 9042).withCreateContainerCmdModifier(cmd -> cmd.withHostName("127.0.0.1").getHostConfig().withPortBindings(new ArrayList<PortBinding>() {
-                    {
-                        add(new PortBinding(Ports.Binding.bindPort(7100), new ExposedPort(7100)));
-                        add(new PortBinding(Ports.Binding.bindPort(9100), new ExposedPort(9100)));
-                        add(new PortBinding(Ports.Binding.bindPort(5433), new ExposedPort(5433)));
-                        add(new PortBinding(Ports.Binding.bindPort(9042), new ExposedPort(9042)));
-                    }
-                })).withCommand(
-						"bin/yugabyted start --listen=0.0.0.0 --master_flags=rpc_bind_addresses=0.0.0.0 --daemon=false");
-         */
     }
 
     protected static YBClient getYbClient(String masterAddresses) throws Exception {
@@ -397,9 +376,9 @@ public final class TestHelper {
 
     public static JdbcConfiguration defaultJdbcConfig() {
         try {
-            return JdbcConfiguration.copy(Configuration.empty()/* fromSystemProperties("database.") */)
+            return JdbcConfiguration.copy(Configuration.empty())
                     .withDefault(JdbcConfiguration.DATABASE, "yugabyte")
-                    .withDefault(JdbcConfiguration.HOSTNAME, CONTAINER_YSQL_HOST/* InetAddress.getLocalHost().getHostAddress() */)
+                    .withDefault(JdbcConfiguration.HOSTNAME, CONTAINER_YSQL_HOST)
                     .withDefault(JdbcConfiguration.PORT, 5433)
                     .withDefault(JdbcConfiguration.USER, "yugabyte")
                     .withDefault(JdbcConfiguration.PASSWORD, "yugabyte")
@@ -492,75 +471,6 @@ public final class TestHelper {
                         .with(YugabyteDBConnectorConfig.SERVER_NAME, TEST_SERVER)
                         .with(YugabyteDBConnectorConfig.DATABASE_NAME, TEST_DATABASE)
                         .build()));
-    }
-
-    protected static void createDefaultReplicationSlot() {
-        try {
-            execute(String.format(
-                    "SELECT * FROM pg_create_logical_replication_slot('%s', '%s')",
-                    ReplicationConnection.Builder.DEFAULT_SLOT_NAME,
-                    decoderPlugin().getPostgresPluginName()));
-        }
-        catch (Exception e) {
-            LOGGER.debug("Error while dropping default replication slot", e);
-        }
-    }
-
-    protected static void dropDefaultReplicationSlot() {
-        try {
-            execute("SELECT pg_drop_replication_slot('" + ReplicationConnection.Builder.DEFAULT_SLOT_NAME + "')");
-        }
-        catch (Exception e) {
-            if (!Throwables.getRootCause(e).getMessage().equals("ERROR: replication slot \"debezium\" does not exist")) {
-                throw e;
-            }
-        }
-    }
-
-    protected static void dropPublication() {
-        dropPublication(ReplicationConnection.Builder.DEFAULT_PUBLICATION_NAME);
-    }
-
-    protected static void dropPublication(String publicationName) {
-        // if (decoderPlugin().equals(PostgresConnectorConfig.LogicalDecoder.PGOUTPUT)) {
-        // try {
-        // execute("DROP PUBLICATION " + publicationName);
-        // }
-        // catch (Exception e) {
-        // LOGGER.debug("Error while dropping publication: '" + publicationName + "'", e);
-        // }
-        // }
-    }
-
-    protected static boolean publicationExists() {
-        return publicationExists(ReplicationConnection.Builder.DEFAULT_PUBLICATION_NAME);
-    }
-
-    protected static boolean publicationExists(String publicationName) {
-        // if (decoderPlugin().equals(PostgresConnectorConfig.LogicalDecoder.PGOUTPUT)) {
-        // try (PostgresConnection connection = create()) {
-        // String query = String.format("SELECT pubname FROM pg_catalog.pg_publication WHERE pubname = '%s'", publicationName);
-        // try {
-        // return connection.queryAndMap(query, ResultSet::next);
-        // }
-        // catch (SQLException e) {
-        // // ignored
-        // }
-        // }
-        // }
-        return false;
-    }
-
-    protected static void waitForDefaultReplicationSlotBeActive() {
-        try (YugabyteDBConnection connection = create()) {
-            Awaitility.await().atMost(5, TimeUnit.SECONDS).until(() -> connection.prepareQueryAndMap(
-                    "select * from pg_replication_slots where slot_name = ? and database = ? and plugin = ? and active = true", statement -> {
-                        statement.setString(1, ReplicationConnection.Builder.DEFAULT_SLOT_NAME);
-                        statement.setString(2, "postgres");
-                        statement.setString(3, TestHelper.decoderPlugin().getPostgresPluginName());
-                    },
-                    rs -> rs.next()));
-        }
     }
 
     protected static void assertNoOpenTransactions() throws SQLException {
