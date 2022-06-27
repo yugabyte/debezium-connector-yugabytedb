@@ -11,6 +11,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
@@ -19,9 +20,16 @@ import io.debezium.util.Strings;
 
 public class YugabyteDBCompleteTypesTest extends AbstractConnectorTest {
     private final static Logger LOGGER = Logger.getLogger(YugabyteDBCompleteTypesTest.class);
+    private static YugabyteYSQLContainer ybContainer;
 
     @BeforeClass
     public static void beforeClass() throws SQLException {
+        ybContainer = TestHelper.getYbContainer();
+        ybContainer.start();
+
+        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
+        TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+
         TestHelper.dropAllSchemas();
     }
 
@@ -31,8 +39,9 @@ public class YugabyteDBCompleteTypesTest extends AbstractConnectorTest {
     }
 
     @After
-    public void after() {
+    public void after() throws Exception {
         stopConnector();
+        TestHelper.executeDDL("drop_tables_and_databases.ddl");
     }
 
     private void consumeRecords(long recordsCount) {

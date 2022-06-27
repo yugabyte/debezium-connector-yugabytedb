@@ -14,6 +14,7 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.testcontainers.containers.YugabyteYSQLContainer;
+import org.yb.client.YBClient;
 
 import io.debezium.config.Configuration;
 import io.debezium.embedded.AbstractConnectorTest;
@@ -58,7 +59,8 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
         String formatInsertString = "INSERT INTO test_enum VALUES (%d, '%s');";
         /*return */CompletableFuture.runAsync(() -> {
             for (int i = 0; i < enumLabels.length; i++) {
-                System.out.println(String.format(formatInsertString, i, enumLabels[i]));
+              LOGGER.info("SKSK INSERTING..");
+              System.out.println(String.format(formatInsertString, i, enumLabels[i]));
                 TestHelper.execute(String.format(formatInsertString, i, enumLabels[i]));
             }
 
@@ -84,7 +86,7 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
         List<SourceRecord> records = new ArrayList<>();
         while (totalConsumedRecords < recordsCount) {
             int consumed = super.consumeAvailableRecords(record -> {
-                System.out.println("The record being consumed is " + record);
+                LOGGER.debug("The record being consumed is " + record);
                 records.add(record);
             });
             if (consumed > 0) {
@@ -98,7 +100,6 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
             // verify the records
             assertValueField(records.get(i), "after/id/value", i);
         }
-
     }
 
     private void verifyValue(long recordsCount) {
@@ -132,13 +133,11 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
 
     @BeforeClass
     public static void beforeClass() throws SQLException {
-        // ybContainer = TestHelper.getYbContainer();
-        // ybContainer.addExposedPorts(7100, 9100);
-        // ybContainer.start();
+        ybContainer = TestHelper.getYbContainer();
+        ybContainer.start();
 
-        // System.out.println("Host: " + ybContainer.getContainerIpAddress() + " Port: " + ybContainer.getMappedPort(5433));
-        // TestHelper.setContainerHostPort(ybContainer.getContainerIpAddress(), ybContainer.getMappedPort(5433));
-
+        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
+        TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
         TestHelper.dropAllSchemas();
     }
 
@@ -148,8 +147,25 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
     }
 
     @After
-    public void after() {
+    public void after() throws Exception {
         stopConnector();
+        TestHelper.executeDDL("drop_tables_and_databases.ddl");
+    }
+
+    // This test will just verify that the TestContainers are up and running
+    // and it will also verify that the unit tests are able to make API calls.
+    @Test
+    public void testTestContainers() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("postgres_create_tables.ddl");
+        Thread.sleep(1000);
+
+        insertRecords(2);
+        Thread.sleep(3000);
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+        assertNotNull(dbStreamId);
+        assertTrue(dbStreamId.length() > 0);
     }
 
     @Test

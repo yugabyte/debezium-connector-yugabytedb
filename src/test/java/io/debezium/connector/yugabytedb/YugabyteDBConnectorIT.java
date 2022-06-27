@@ -11,6 +11,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
@@ -20,10 +21,17 @@ import io.debezium.embedded.AbstractConnectorTest;
 public class YugabyteDBConnectorIT extends AbstractConnectorTest {
     private final static Logger LOGGER = Logger.getLogger(YugabyteDBConnectorIT.class);
 
+    private static YugabyteYSQLContainer ybContainer;
+
     private YugabyteDBConnector connector;
 
     @BeforeClass
     public static void beforeClass() throws SQLException {
+        ybContainer = TestHelper.getYbContainer();
+        ybContainer.start();
+
+        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
+        TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
         TestHelper.dropAllSchemas();
     }
 
