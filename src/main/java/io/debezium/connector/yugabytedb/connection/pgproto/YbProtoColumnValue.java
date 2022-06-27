@@ -358,6 +358,6 @@ public class YbProtoColumnValue extends AbstractColumnValue<Value.DatumMessagePB
             return asByteArray();
         }
 
-        return null;
+        return asString();
     }
 }
