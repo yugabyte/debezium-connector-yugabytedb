@@ -148,7 +148,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
     @Test
     public void testTestContainers() throws Exception {
         TestHelper.dropAllSchemas();
-        TestHelper.executeDDL("postgres_create_tables.ddl");
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
         insertRecords(2);
 
@@ -160,7 +160,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
     @Test
     public void testRecordConsumption() throws Exception {
         TestHelper.dropAllSchemas();
-        TestHelper.executeDDL("postgres_create_tables.ddl");
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
@@ -181,7 +181,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
     @Test
     public void testSmallLoad() throws Exception {
         TestHelper.dropAllSchemas();
-        TestHelper.executeDDL("postgres_create_tables.ddl");
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
@@ -202,7 +202,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
     @Test
     public void testVerifyValue() throws Exception {
         TestHelper.dropAllSchemas();
-        TestHelper.executeDDL("postgres_create_tables.ddl");
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);

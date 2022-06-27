@@ -115,7 +115,7 @@ public class YugabyteDBConnectorIT extends YugabyteDBTestBase {
     public void shouldThrowExceptionWithWrongIncludeList() throws Exception {
         TestHelper.dropAllSchemas();
 
-        TestHelper.executeDDL("postgres_create_tables.ddl");
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types");
 
@@ -141,7 +141,7 @@ public class YugabyteDBConnectorIT extends YugabyteDBTestBase {
     public void shouldWorkWithSameNameTablePresentInAnotherDatabase() throws Exception {
         TestHelper.dropAllSchemas();
 
-        TestHelper.executeDDL("postgres_create_tables.ddl");
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
 

@@ -111,7 +111,7 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBTestBase {
     @Test
     public void verifyAllWorkingDataTypesInSingleTable() throws Exception {
         TestHelper.dropAllSchemas();
-        TestHelper.executeDDL("postgres_create_tables.ddl");
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
         Thread.sleep(1000);
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types");
