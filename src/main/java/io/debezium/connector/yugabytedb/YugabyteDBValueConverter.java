@@ -203,7 +203,6 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
             case PgOid.NUM_RANGE_OID:
             case PgOid.INT8RANGE_OID:
             case PgOid.ENUM_OID:
-                System.out.println("OID value coming up: " + oidValue);
                 return SchemaBuilder.string();
             case PgOid.UUID:
                 return Uuid.builder();
@@ -323,7 +322,6 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
 
                 final YugabyteDBType resolvedType = yugabyteDBTypeRegistry.get(oidValue);
                 if (resolvedType.isEnumType()) {
-                    System.out.println("isEnumType true");
                     return io.debezium.data.Enum.builder(Strings.join(",", resolvedType.getEnumValues()));
                 }
                 else if (resolvedType.isArrayType() && resolvedType.getElementType().isEnumType()) {
@@ -395,8 +393,6 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
             case PgOid.NUM_RANGE_OID:
             case PgOid.INT8RANGE_OID:
             case PgOid.ENUM_OID:
-                System.out.println("OID in value converter: "  + oidValue);
-                // System.out.println(data);
                 return data -> convertString(column, fieldDefn, data);
             case PgOid.POINT:
                 return data -> convertPoint(column, fieldDefn, data);
@@ -1045,30 +1041,11 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
      */
     @Override
     protected Object convertString(Column column, Field fieldDefn, Object data) {
-        System.out.println("Coming to convertString inside YugabyteDBValueConverter");
-        if (column.nativeType() == PgOid.ENUM_OID) {
-            System.out.println("Coming inside custom conversion block...");
-            // return convertValue(column, fieldDefn, data, "", (r) -> {
-            //     if (data instanceof SQLXML) {
-            //         System.out.println("Data instance of SQLXML...");
-            //         r.deliver(data.toString());
-            //     } else {
-            //         System.out.println("Data not instance of SQLXML");
-            //         try {
-            //             r.deliver(((SQLXML) data).getString());
-            //         } catch (SQLException se) {
-            //             System.out.println("Exception caught in block: " + e);
-            //         }
-            //     }
-            // });
-        }
-
         return super.convertString(column, fieldDefn, data);
     }
 
     @Override
     protected Object handleUnknownData(Column column, Field fieldDefn, Object data) {
-        System.out.println("Coming to handleUnknownData inside YugabyteDBValueConverter");
         return super.handleUnknownData(column, fieldDefn, data);
     }
 }

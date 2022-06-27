@@ -59,8 +59,6 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
         String formatInsertString = "INSERT INTO test_enum VALUES (%d, '%s');";
         /*return */CompletableFuture.runAsync(() -> {
             for (int i = 0; i < enumLabels.length; i++) {
-              LOGGER.info("SKSK INSERTING..");
-              System.out.println(String.format(formatInsertString, i, enumLabels[i]));
                 TestHelper.execute(String.format(formatInsertString, i, enumLabels[i]));
             }
 
@@ -126,7 +124,7 @@ public class YugabyteDBDatatypesTest extends AbstractConnectorTest {
             }
         }
         catch (Exception e) {
-            System.out.println("Exception caught while parsing records: " + e);
+            LOGGER.error("Exception caught while parsing records: " + e);
             fail();
         }
     }

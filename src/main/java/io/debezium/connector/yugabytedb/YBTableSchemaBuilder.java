@@ -247,14 +247,8 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
                     .collect(Collectors.toList());
             int[] recordIndexes = indexesForColumns(columnsThatShouldBeAdded);
             Field[] fields = fieldsForColumns(schema, columnsThatShouldBeAdded);
-            System.out.println("VK fields for columns:");
-            for (Field f : fields) {
-                System.out.println(f);
-            }
             int numFields = recordIndexes.length;
-            System.out.println("Number of fields: " + numFields);
             ValueConverter[] converters = convertersForColumns(schema, tableId, columnsThatShouldBeAdded, mappers);
-            System.out.println("value converter length: " + converters.length);
             return (row) -> {
                 // columns
                 // .stream()
@@ -267,7 +261,6 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
                 // Schema valSchema = valSchemaBuilder.optional().build();
 
                 Struct result = new Struct(schema);
-                System.out.println("result struct: " + result);
 
                 for (int i = 0; i != numFields; ++i) {
                     validateIncomingRowToInternalMetadata(recordIndexes, fields, converters, row, i);
@@ -285,18 +278,14 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
                     if (converter != null) {
                         try {
                             if (value != null) {
-                                System.out.println("Column value is not null");
                                 value = converter.convert(((Object[]) value)[0]);
-                                System.out.println("value: " + value);
                                 Struct cell = new Struct(fields[i].schema());
-                                System.out.println("cell value: " + cell);
                                 cell.put("value", value);
                                 cell.put("set", true);
                                 // valueStruct.put(cdef.getColumnName(), cell);
                                 result.put(fields[i], cell);
                             }
                             else {
-                                System.out.println("Column value is null");
                                 result.put(fields[i], null);
                             }
                             // result.put(fields[i], value);
@@ -413,9 +402,6 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
             Schema optionalCellSchema = cellSchema(fieldNamer.fieldNameFor(column), fieldBuilder.build(), column.isOptional());
 
             builder.field(fieldNamer.fieldNameFor(column), optionalCellSchema);
-            System.out.println(String.format("- field '%s' (%s%s) from column %s", column.name(), builder.isOptional() ? "OPTIONAL " : "",
-                    fieldBuilder.type(),
-                    column));
             if (LOGGER.isDebugEnabled()) {
                 LOGGER.debug("- field '{}' ({}{}) from column {}", column.name(), builder.isOptional() ? "OPTIONAL " : "",
                         fieldBuilder.type(),
