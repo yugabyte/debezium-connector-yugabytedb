@@ -128,6 +128,34 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         }
     }
 
+  private void verifyEnumValue(long recordsCount) {
+    int totalConsumedRecords = 0;
+    long start = System.currentTimeMillis();
+    List<SourceRecord> records = new ArrayList<>();
+    while (totalConsumedRecords < recordsCount) {
+      int consumed = super.consumeAvailableRecords(record -> {
+        LOGGER.debug("The record being consumed is " + record);
+        records.add(record);
+      });
+      if (consumed > 0) {
+        totalConsumedRecords += consumed;
+        LOGGER.debug("Consumed " + totalConsumedRecords + " records");
+      }
+    }
+    LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
+    String[] enum_val = {"ZERO", "ONE", "TWO"};
+
+    try {
+      for (int i = 0; i < records.size(); ++i) {
+        assertValueField(records.get(i), "after/id/value", i);
+        assertValueField(records.get(i), "after/enum_col/value", enum_val[i]);
+      }
+    }
+    catch (Exception e) {
+      LOGGER.error("Exception caught while parsing records: " + e);
+      fail();
+    }
+  }
     @BeforeClass
     public static void beforeClass() throws SQLException {
         ybContainer = TestHelper.getYbContainer();
@@ -247,7 +275,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         // 3 records will be inserted in the table test_enum
         insertEnumRecords();
 
-        CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
+        CompletableFuture.runAsync(() -> verifyEnumValue(recordsCount))
                 .exceptionally(throwable -> {
                     throw new RuntimeException(throwable);
                 }).get();
