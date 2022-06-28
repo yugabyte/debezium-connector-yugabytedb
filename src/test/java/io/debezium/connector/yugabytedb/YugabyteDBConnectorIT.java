@@ -140,9 +140,7 @@ public class YugabyteDBConnectorIT extends YugabyteDBTestBase {
     @Test
     public void shouldWorkWithSameNameTablePresentInAnotherDatabase() throws Exception {
         TestHelper.dropAllSchemas();
-
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
-
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
 
         // Create a same table in another database
@@ -157,7 +155,6 @@ public class YugabyteDBConnectorIT extends YugabyteDBTestBase {
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 
         start(YugabyteDBConnector.class, configBuilder.build());
-
         awaitUntilConnectorIsReady();
 
         int recordsCount = 10;
