@@ -168,10 +168,6 @@ public final class TestHelper {
         return new YugabyteDBConnection(defaultJdbcConfig(CONTAINER_YSQL_HOST, CONTAINER_YSQL_PORT, databaseName));
     }
 
-    // public static YugabyteDBConnection create(String host, String ysqlPort) {
-    // return new YugabyteDBConnection(defaultJdbcConfig(host, ysqlPort));
-    // }
-
     /**
      * Obtain a DB connection providing type registry.
      *
