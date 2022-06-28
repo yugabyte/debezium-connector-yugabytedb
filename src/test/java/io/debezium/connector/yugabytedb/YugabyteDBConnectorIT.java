@@ -48,7 +48,7 @@ public class YugabyteDBConnectorIT extends YugabyteDBTestBase {
     }
 
     @AfterClass
-    public void afterClass() throws Exception {
+    public static void afterClass() throws Exception {
         ybContainer.stop();
     }
 
