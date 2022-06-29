@@ -65,7 +65,7 @@
         <protobuf.output.directory>${project.basedir}/generated-sources</protobuf.output.directory>
 
         <!-- Deploy -->
-        <version.s3.wagon>1.3.3</version.s3.wagon>
+        <version.s3.wagon>0.1.0</version.s3.wagon>
         <!-- We're tracking the API changes of the SPI. -->
         <revapi.skip>false</revapi.skip>
     </properties>
@@ -290,7 +290,7 @@
     <build>
         <extensions>
             <extension>
-                <groupId>com.github.seahen</groupId>
+                <groupId>com.yugabyte</groupId>
                 <artifactId>maven-s3-wagon</artifactId>
                 <version>${version.s3.wagon}</version>
            </extension>
