@@ -88,4 +88,8 @@ cidrval cidr, dt date, dp double precision, inetval inet, intervalval interval, 
 si smallint, i4r int4range, i8r int8range, nr numrange, tsr tsrange, tstzr tstzrange, dr daterange, txt text, tm time, tmtz timetz, ts timestamp, tstz timestamptz,
 uuidval uuid);
 
+DROP DATABASE if EXISTS secondary_database;
 CREATE DATABASE secondary_database;
+
+CREATE TYPE enum_type AS ENUM ('ZERO', 'ONE', 'TWO');
+CREATE TABLE test_enum (id INT PRIMARY KEY, enum_col enum_type);

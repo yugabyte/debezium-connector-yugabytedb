@@ -7,11 +7,7 @@ import java.util.concurrent.CompletableFuture;
 
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.log4j.Logger;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.DebeziumException;

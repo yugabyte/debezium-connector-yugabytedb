@@ -182,6 +182,7 @@ public class ReplicationMessageColumnValueResolver {
             case "int4range":
             case "numrange":
             case "int8range":
+            case "anyenum":
                 return value.asString();
 
             // catch-all for other known/builtin PG types

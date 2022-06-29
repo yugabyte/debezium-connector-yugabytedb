@@ -53,6 +53,19 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         }).get();
     }
 
+    // This function will one row each of the specified enum labels
+    private void insertEnumRecords() throws Exception {
+        String[] enumLabels = {"ZERO", "ONE", "TWO"};
+        String formatInsertString = "INSERT INTO test_enum VALUES (%d, '%s');";
+        CompletableFuture.runAsync(() -> {
+            for (int i = 0; i < enumLabels.length; i++) {
+                TestHelper.execute(String.format(formatInsertString, i, enumLabels[i]));
+            }
+        }).exceptionally(throwable -> {
+            throw new RuntimeException(throwable);
+        }).get();
+    }
+
     private void insertRecordsInSchema(long numOfRowsToBeInserted) throws Exception {
         String formatInsertString = "INSERT INTO test_schema.table_in_schema VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
         CompletableFuture.runAsync(() -> {
@@ -84,7 +97,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
             // verify the records
             assertValueField(records.get(i), "after/id/value", i);
         }
-
     }
 
     private void verifyValue(long recordsCount) {
@@ -111,11 +123,39 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
             }
         }
         catch (Exception e) {
-            System.out.println("Exception caught while parsing records: " + e);
+            LOGGER.error("Exception caught while parsing records: " + e);
             fail();
         }
     }
 
+  private void verifyEnumValue(long recordsCount) {
+    int totalConsumedRecords = 0;
+    long start = System.currentTimeMillis();
+    List<SourceRecord> records = new ArrayList<>();
+    while (totalConsumedRecords < recordsCount) {
+      int consumed = super.consumeAvailableRecords(record -> {
+        LOGGER.debug("The record being consumed is " + record);
+        records.add(record);
+      });
+      if (consumed > 0) {
+        totalConsumedRecords += consumed;
+        LOGGER.debug("Consumed " + totalConsumedRecords + " records");
+      }
+    }
+    LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
+    String[] enum_val = {"ZERO", "ONE", "TWO"};
+
+    try {
+      for (int i = 0; i < records.size(); ++i) {
+        assertValueField(records.get(i), "after/id/value", i);
+        assertValueField(records.get(i), "after/enum_col/value", enum_val[i]);
+      }
+    }
+    catch (Exception e) {
+      LOGGER.error("Exception caught while parsing records: " + e);
+      fail();
+    }
+  }
     @BeforeClass
     public static void beforeClass() throws SQLException {
         ybContainer = TestHelper.getYbContainer();
@@ -123,7 +163,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
 
         TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
         TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
-
         TestHelper.dropAllSchemas();
     }
 
@@ -142,7 +181,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
     public static void afterClass() throws Exception {
         ybContainer.stop();
     }
-
     // This test will just verify that the TestContainers are up and running
     // and it will also verify that the unit tests are able to make API calls.
     @Test
@@ -151,7 +189,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
         insertRecords(2);
-
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
         assertNotNull(dbStreamId);
         assertTrue(dbStreamId.length() > 0);
@@ -189,7 +226,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         final long recordsCount = 75;
 
         awaitUntilConnectorIsReady();
-
         // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertRecords(recordsCount);
 
@@ -221,6 +257,31 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
     }
 
     @Test
+    public void testEnumValue() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        Thread.sleep(1000);
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_enum");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_enum", dbStreamId);
+        start(YugabyteDBConnector.class, configBuilder.build());
+        assertConnectorIsRunning();
+
+        // 3 because there are 3 enum values in the enum type
+        final long recordsCount = 3;
+
+        awaitUntilConnectorIsReady();
+
+        // 3 records will be inserted in the table test_enum
+        insertEnumRecords();
+
+        CompletableFuture.runAsync(() -> verifyEnumValue(recordsCount))
+                .exceptionally(throwable -> {
+                    throw new RuntimeException(throwable);
+                }).get();
+    }
+
+    @Test
     public void testNonPublicSchema() throws Exception {
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("tables_in_non_public_schema.ddl");
@@ -231,7 +292,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         final long recordsCount = 1;
 
         awaitUntilConnectorIsReady();
-
         // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertRecordsInSchema(recordsCount);
 
