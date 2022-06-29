@@ -50,7 +50,7 @@
         -->
         <version.postgres.server>9.6</version.postgres.server>
         <postgres.host>192.168.1.5<!--${docker.host.address}--></postgres.host>
-        <postgres.port>5433</postgres.port>
+        <postgres.port>5432</postgres.port>
         <postgres.user>yugabyte</postgres.user>
         <postgres.password>yugabyte</postgres.password>
         <postgres.db.name>yugabyte</postgres.db.name>
