@@ -273,7 +273,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
     public void testRecordDeleteFieldWithYBExtractNewRecordState() throws Exception {
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
-        Thread.sleep(1000);
 
         YBExtractNewRecordState<SourceRecord> transformation = new YBExtractNewRecordState<>();
 
@@ -285,21 +284,20 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
         start(YugabyteDBConnector.class, configBuilder.build());
-        assertConnectorIsRunning();
         final long rowsCount = 1;
 
-        Thread.sleep(3000);
+        awaitUntilConnectorIsReady();
 
         // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertRecords(rowsCount);
         // update rows in the table t1 where id is <some-pk>
         updateRecords(rowsCount);
-        // delete rown in the table t1 where id is <some-pk>
+        // delete rows in the table t1 where id is <some-pk>
         deleteRecords(rowsCount);
 
         // We have called 'insert', 'update' and 'delete' on each row. Thus we expect (rowsCount * 3) number of recrods
-        final long recrodsCount = rowsCount * 3;
-        CompletableFuture.runAsync(() -> verifyDeletedFieldPresentInValue(recrodsCount, transformation))
+        final long recordsCount = rowsCount * 3;
+        CompletableFuture.runAsync(() -> verifyDeletedFieldPresentInValue(recordsCount, transformation))
                 .exceptionally(throwable -> {
                     throw new RuntimeException(throwable);
                 }).get();
