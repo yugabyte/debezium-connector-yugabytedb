@@ -4,12 +4,14 @@ import static org.junit.Assert.*;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
+import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.log4j.Logger;
-import org.awaitility.Awaitility;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -19,6 +21,8 @@ import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
+import io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState;
+import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
 import io.debezium.util.Strings;
 
 /**
@@ -66,6 +70,28 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         }).get();
     }
 
+    private void updateRecords(long numOfRowsToBeUpdated) throws Exception {
+        String formatUpdateString = "UPDATE t1 SET hours = 10 WHERE id = %d";
+        CompletableFuture.runAsync(() -> {
+            for (int i = 0; i < numOfRowsToBeUpdated; i++) {
+                TestHelper.execute(String.format(formatUpdateString, i));
+            }
+        }).exceptionally(throwable -> {
+            throw new RuntimeException(throwable);
+        }).get();
+    }
+
+    private void deleteRecords(long numOfRowsToBeDeleted) throws Exception {
+        String formatDeleteString = "DELETE FROM t1 WHERE id = %d;";
+        CompletableFuture.runAsync(() -> {
+            for (int i = 0; i < numOfRowsToBeDeleted; i++) {
+                TestHelper.execute(String.format(formatDeleteString, i));
+            }
+        }).exceptionally(throwable -> {
+            throw new RuntimeException(throwable);
+        }).get();
+    }
+
     private void insertRecordsInSchema(long numOfRowsToBeInserted) throws Exception {
         String formatInsertString = "INSERT INTO test_schema.table_in_schema VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
         CompletableFuture.runAsync(() -> {
@@ -75,6 +101,34 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         }).exceptionally(throwable -> {
             throw new RuntimeException(throwable);
         }).get();
+    }
+
+    private void verifyDeletedFieldPresentInValue(long recordsCount, YBExtractNewRecordState<SourceRecord> transformation) {
+        int totalConsumedRecords = 0;
+        long start = System.currentTimeMillis();
+        List<SourceRecord> records = new ArrayList<>();
+        while (totalConsumedRecords < recordsCount) {
+            int consumed = super.consumeAvailableRecords(record -> {
+                LOGGER.debug("The record being consumed is " + record);
+                records.add(record);
+            });
+            if (consumed > 0) {
+                totalConsumedRecords += consumed;
+                LOGGER.debug("Consumed " + totalConsumedRecords + " records");
+            }
+        }
+        LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
+
+        for (int i = 0; i < recordsCount; ++i) {
+            SourceRecord transformedRecrod = transformation.apply(records.get(i));
+            Struct transformedRecrodValue = (Struct) transformedRecrod.value();
+            Object deleteFieldValue = transformedRecrodValue.get("__deleted");
+            if (deleteFieldValue == null) {
+                throw new RuntimeException("Required field: '__deleted', dropped from value of source record");
+            }
+
+            LOGGER.debug("'__deleted' field's value in source recrod: " + deleteFieldValue.toString());
+        }
     }
 
     private void verifyPrimaryKeyOnly(long recordsCount) {
@@ -213,6 +267,42 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
                 .exceptionally(throwable -> {
                     throw new RuntimeException(throwable);
                 }).get();
+    }
+
+    @Test
+    public void testRecordDeleteFieldWithYBExtractNewRecordState() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        YBExtractNewRecordState<SourceRecord> transformation = new YBExtractNewRecordState<>();
+
+        Map<String, Object> configs = new HashMap<String, Object>();
+        configs.put(ExtractNewRecordStateConfigDefinition.DROP_TOMBSTONES.toString(), "false");
+        configs.put(ExtractNewRecordStateConfigDefinition.HANDLE_DELETES.toString(), "rewrite");
+        transformation.configure(configs);
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        start(YugabyteDBConnector.class, configBuilder.build());
+        final long rowsCount = 1;
+
+        awaitUntilConnectorIsReady();
+
+        // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
+        insertRecords(rowsCount);
+        // update rows in the table t1 where id is <some-pk>
+        updateRecords(rowsCount);
+        // delete rows in the table t1 where id is <some-pk>
+        deleteRecords(rowsCount);
+
+        // We have called 'insert', 'update' and 'delete' on each row. Thus we expect (rowsCount * 3) number of recrods
+        final long recordsCount = rowsCount * 3;
+        CompletableFuture.runAsync(() -> verifyDeletedFieldPresentInValue(recordsCount, transformation))
+                .exceptionally(throwable -> {
+                    throw new RuntimeException(throwable);
+                }).get();
+
+        transformation.close();
     }
 
     @Test
