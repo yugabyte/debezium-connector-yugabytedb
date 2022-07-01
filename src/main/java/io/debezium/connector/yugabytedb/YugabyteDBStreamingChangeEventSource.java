@@ -58,7 +58,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     private static final int THROTTLE_NO_MESSAGE_BEFORE_PAUSE = 5;
 
     private final YugabyteDBConnection connection;
-    private final EventDispatcher<TableId> dispatcher;
+    private final YugabyteDBEventDispatcher<TableId> dispatcher;
     private final ErrorHandler errorHandler;
     private final Clock clock;
     private final YugabyteDBSchema schema;
@@ -85,7 +85,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     private final Map<String, OpId> checkPointMap;
 
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
-                                                YugabyteDBConnection connection, EventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
+                                                YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
                                                 YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection) {
         this.connectorConfig = connectorConfig;
         this.connection = connection;
