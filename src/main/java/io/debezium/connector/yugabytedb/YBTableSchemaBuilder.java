@@ -53,6 +53,7 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
 
     private final SchemaNameAdjuster schemaNameAdjuster;
     private final ValueConverterProvider valueConverterProvider;
+    private final DefaultValueConverter defaultValueConverter;
     private final Schema sourceInfoSchema;
     private final FieldNamer<Column> fieldNamer;
     private final CustomConverterRegistry customConverterRegistry;
@@ -65,10 +66,11 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
      * @param schemaNameAdjuster the adjuster for schema names; may not be null
      */
     public YBTableSchemaBuilder(ValueConverterProvider valueConverterProvider, SchemaNameAdjuster schemaNameAdjuster, CustomConverterRegistry customConverterRegistry,
-                                Schema sourceInfoSchema, boolean sanitizeFieldNames) {
-        super(valueConverterProvider, schemaNameAdjuster, customConverterRegistry, sourceInfoSchema, sanitizeFieldNames);
+                                Schema sourceInfoSchema, boolean sanitizeFieldNames, boolean multiPartitionMode) {
+        super(valueConverterProvider, schemaNameAdjuster, customConverterRegistry, sourceInfoSchema, sanitizeFieldNames, multiPartitionMode);
         this.schemaNameAdjuster = schemaNameAdjuster;
         this.valueConverterProvider = valueConverterProvider;
+        this.defaultValueConverter = null;
         this.sourceInfoSchema = sourceInfoSchema;
         this.fieldNamer = FieldNameSelector.defaultSelector(sanitizeFieldNames);
         this.customConverterRegistry = customConverterRegistry;
@@ -382,7 +384,11 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
      * @param mapper the mapping function for the column; may be null if the columns is not to be mapped to different values
      */
     protected void addField(SchemaBuilder builder, Table table, Column column, ColumnMapper mapper) {
-        final SchemaBuilder fieldBuilder = customConverterRegistry.registerConverterFor(table.id(), column)
+        final Object defaultValue = column.defaultValueExpression()
+                .flatMap(e -> defaultValueConverter.parseDefaultValue(column, e))
+                .orElse(null);
+
+        final SchemaBuilder fieldBuilder = customConverterRegistry.registerConverterFor(table.id(), column, defaultValue)
                 .orElse(valueConverterProvider.schemaBuilder(column));
 
         if (fieldBuilder != null) {
@@ -397,7 +403,7 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
             // if the default value is provided
             if (column.hasDefaultValue()) {
                 fieldBuilder
-                        .defaultValue(customConverterRegistry.getValueConverter(table.id(), column).orElse(ValueConverter.passthrough()).convert(column.defaultValue()));
+                        .defaultValue(customConverterRegistry.getValueConverter(table.id(), column).orElse(ValueConverter.passthrough()).convert(column.defaultValueExpression()));
             }
             Schema optionalCellSchema = cellSchema(fieldNamer.fieldNameFor(column), fieldBuilder.build(), column.isOptional());
 
