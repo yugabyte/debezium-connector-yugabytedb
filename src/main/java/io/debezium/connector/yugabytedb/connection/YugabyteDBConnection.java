@@ -52,6 +52,12 @@ import io.debezium.util.Metronome;
  * @author Suranjan Kumar (skumar@yugabyte.com)
  */
 public class YugabyteDBConnection extends JdbcConnection {
+    public static final String CONNECTION_STREAMING = "Debezium Streaming";
+    public static final String CONNECTION_SLOT_INFO = "Debezium Slot Info";
+    public static final String CONNECTION_DROP_SLOT = "Debezium Drop Slot";
+    public static final String CONNECTION_VALIDATE_CONNECTION = "Debezium Validate Connection";
+    public static final String CONNECTION_HEARTBEAT = "Debezium Heartbeat";
+    public static final String CONNECTION_GENERAL = "Debezium General";
 
     private static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBConnection.class);
 
@@ -73,8 +79,8 @@ public class YugabyteDBConnection extends JdbcConnection {
      * @param config {@link Configuration} instance, may not be null.
      * @param valueConverterBuilder supplies a configured {@link YugabyteDBValueConverter} for a given {@link YugabyteDBTypeRegistry}
      */
-    public YugabyteDBConnection(Configuration config, YugabyteDBValueConverterBuilder valueConverterBuilder) {
-        super(config, FACTORY, YugabyteDBConnection::validateServerVersion, YugabyteDBConnection::defaultSettings, "\"", "\"");
+    public YugabyteDBConnection(JdbcConfiguration config, YugabyteDBValueConverterBuilder valueConverterBuilder, String connectionUsage) {
+        super(addDefaultSettings(config, connectionUsage) , FACTORY, YugabyteDBConnection::validateServerVersion, null, "\"", "\"");
 
         if (Objects.isNull(valueConverterBuilder)) {
             this.yugabyteDBTypeRegistry = null;
@@ -93,17 +99,16 @@ public class YugabyteDBConnection extends JdbcConnection {
      * @param config {@link Configuration} instance, may not be null.
      * @param yugabyteDBTypeRegistry an existing/already-primed {@link YugabyteDBTypeRegistry} instance
      */
-    public YugabyteDBConnection(Configuration config,
-                                YugabyteDBTypeRegistry yugabyteDBTypeRegistry) {
-        super(config, FACTORY, YugabyteDBConnection::validateServerVersion,
-                YugabyteDBConnection::defaultSettings, "\"", "\"");
+    public YugabyteDBConnection(YugabyteDBConnectorConfig config,
+                                YugabyteDBTypeRegistry yugabyteDBTypeRegistry, String connectionUsage) {
+        super(addDefaultSettings(config.getJdbcConfig(), connectionUsage), FACTORY, YugabyteDBConnection::validateServerVersion, null, "\"", "\"");
         if (Objects.isNull(yugabyteDBTypeRegistry)) {
             this.yugabyteDBTypeRegistry = null;
             this.defaultValueConverter = null;
         }
         else {
             this.yugabyteDBTypeRegistry = yugabyteDBTypeRegistry;
-            final YugabyteDBValueConverter valueConverter = YugabyteDBValueConverter.of(new YugabyteDBConnectorConfig(config), this.getDatabaseCharset(),
+            final YugabyteDBValueConverter valueConverter = YugabyteDBValueConverter.of(config, this.getDatabaseCharset(),
                     yugabyteDBTypeRegistry);
             this.defaultValueConverter = new YugabyteDBDefaultValueConverter(valueConverter, this.getTimestampUtils());
         }
@@ -115,8 +120,16 @@ public class YugabyteDBConnection extends JdbcConnection {
      *
      * @param config {@link Configuration} instance, may not be null.
      */
-    public YugabyteDBConnection(Configuration config) {
-        this(config, (YugabyteDBTypeRegistry) null);
+    public YugabyteDBConnection(JdbcConfiguration config, String connectionUsage) {
+        this(config, null, connectionUsage);
+    }
+
+    static JdbcConfiguration addDefaultSettings(JdbcConfiguration configuration, String connectionUsage) {
+        // we require Postgres 9.4 as the minimum server version since that's where logical replication was first introduced
+        return JdbcConfiguration.adapt(configuration.edit()
+                .with("assumeMinServerVersion", "9.4")
+                .with("ApplicationName", connectionUsage)
+                .build());
     }
 
     /**
@@ -471,9 +484,9 @@ public class YugabyteDBConnection extends JdbcConnection {
                 column.scale(nativeType.getDefaultScale());
             }
 
-            final String defaultValue = columnMetadata.getString(13);
-            if (defaultValue != null) {
-                getDefaultValue(column.create(), defaultValue).ifPresent(column::defaultValue);
+            final String defaultValueExpression = columnMetadata.getString(13);
+            if (defaultValueExpression != null && getDefaultValueConverter().supportConversion(column.typeName())) {
+                column.defaultValueExpression(defaultValueExpression);
             }
 
             return Optional.of(column);
@@ -482,9 +495,9 @@ public class YugabyteDBConnection extends JdbcConnection {
         return Optional.empty();
     }
 
-    @Override
-    protected Optional<Object> getDefaultValue(Column column, String defaultValue) {
-        return defaultValueConverter.parseDefaultValue(column, defaultValue);
+    public YugabyteDBDefaultValueConverter getDefaultValueConverter() {
+        Objects.requireNonNull(defaultValueConverter, "Connection does not provide default value converter");
+        return defaultValueConverter;
     }
 
     public YugabyteDBTypeRegistry getTypeRegistry() {
