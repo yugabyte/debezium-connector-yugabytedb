@@ -13,7 +13,6 @@ import io.debezium.connector.yugabytedb.spi.SlotCreationResult;
 import io.debezium.connector.yugabytedb.spi.SlotState;
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.pipeline.ErrorHandler;
-import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.source.snapshot.incremental.IncrementalSnapshotChangeEventSource;
 import io.debezium.pipeline.source.snapshot.incremental.SignalBasedIncrementalSnapshotChangeEventSource;
 import io.debezium.pipeline.source.spi.ChangeEventSourceFactory;
@@ -30,7 +29,7 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
     private final YugabyteDBConnectorConfig configuration;
     private final YugabyteDBConnection jdbcConnection;
     private final ErrorHandler errorHandler;
-    private final EventDispatcher<TableId> dispatcher;
+    private final YugabyteDBEventDispatcher<TableId> dispatcher;
     private final Clock clock;
     private final YugabyteDBSchema schema;
     private final YugabyteDBTaskContext taskContext;
@@ -43,7 +42,7 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
                                               Snapshotter snapshotter,
                                               YugabyteDBConnection jdbcConnection,
                                               ErrorHandler errorHandler,
-                                              EventDispatcher<TableId> dispatcher,
+                                              YugabyteDBEventDispatcher<TableId> dispatcher,
                                               Clock clock, YugabyteDBSchema schema,
                                               YugabyteDBTaskContext taskContext,
                                               ReplicationConnection replicationConnection,
@@ -90,10 +89,10 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
     }
 
     @Override
-    public Optional<IncrementalSnapshotChangeEventSource<? extends DataCollectionId>> getIncrementalSnapshotChangeEventSource(YugabyteDBOffsetContext offsetContext,
+    public Optional<IncrementalSnapshotChangeEventSource<YBPartition, ? extends DataCollectionId>> getIncrementalSnapshotChangeEventSource(YugabyteDBOffsetContext offsetContext,
                                                                                                                               SnapshotProgressListener snapshotProgressListener,
                                                                                                                               DataChangeEventListener dataChangeEventListener) {
-        final SignalBasedIncrementalSnapshotChangeEventSource<TableId> incrementalSnapshotChangeEventSource = new SignalBasedIncrementalSnapshotChangeEventSource<TableId>(
+        final SignalBasedIncrementalSnapshotChangeEventSource<YBPartition, TableId> incrementalSnapshotChangeEventSource = new SignalBasedIncrementalSnapshotChangeEventSource<YBPartition, TableId>(
                 configuration,
                 jdbcConnection,
                 dispatcher,
