@@ -40,7 +40,7 @@ import io.debezium.util.Metronome;
  * @author Suranjan Kumar (skumar@yugabyte.com)
  */
 public class YugabyteDBStreamingChangeEventSource implements
-        StreamingChangeEventSource<YugabyteDBPartition, YugabyteDBOffsetContext> {
+        StreamingChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
 
     private static final String KEEP_ALIVE_THREAD_NAME = "keep-alive";
 
@@ -114,7 +114,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     }
 
     @Override
-    public void execute(ChangeEventSourceContext context, YugabyteDBPartition partition, YugabyteDBOffsetContext offsetContext) {
+    public void execute(ChangeEventSourceContext context, YBPartition partition, YugabyteDBOffsetContext offsetContext) {
         if (!snapshotter.shouldStream()) {
             LOGGER.info("Streaming is not enabled in correct configuration");
             return;
@@ -297,7 +297,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
 
     private void getChanges2(ChangeEventSourceContext context,
-                             YugabyteDBPartition partitionn,
+                             YBPartition partition,
                              YugabyteDBOffsetContext offsetContext)
             throws Exception {
         LOGGER.debug("The offset is " + offsetContext.getOffset());
