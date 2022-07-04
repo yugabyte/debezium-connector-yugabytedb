@@ -12,7 +12,6 @@ import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoReplicationMes
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.heartbeat.Heartbeat;
 import io.debezium.pipeline.ErrorHandler;
-import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.source.spi.StreamingChangeEventSource;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
@@ -469,7 +468,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             String.valueOf(message.getTransactionId()), tableId, null/* taskContext.getSlotXmin(connection) */);
 
                                     boolean dispatched = message.getOperation() != Operation.NOOP
-                                            && dispatcher.dispatchDataChangeEvent(tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
+                                            && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
                                                     schema, connection, tableId, message, pgSchemaNameInRecord));
 
                                     if (recordsInTransactionalBlock.containsKey(tabletId)) {

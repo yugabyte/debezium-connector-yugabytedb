@@ -45,7 +45,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
                                                YugabyteDBTaskContext taskContext,
                                                Snapshotter snapshotter,
-                                               YugabyteDBSchema schema, EventDispatcher<TableId> dispatcher, Clock clock,
+                                               YugabyteDBSchema schema, YugabyteDBEventDispatcher<TableId> dispatcher, Clock clock,
                                                SnapshotProgressListener snapshotProgressListener) {
         super(connectorConfig, snapshotProgressListener);
         this.connectorConfig = connectorConfig;
