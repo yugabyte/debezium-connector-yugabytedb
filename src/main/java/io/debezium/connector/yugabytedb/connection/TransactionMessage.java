@@ -8,6 +8,7 @@ package io.debezium.connector.yugabytedb.connection;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.OptionalLong;
 
 /**
  * Replication message instance representing transaction demarcation events.
@@ -17,13 +18,13 @@ import java.util.List;
  */
 public class TransactionMessage implements ReplicationMessage {
 
-    private final long transationId;
+    private final Long transactionId;
     private final Instant commitTime;
     private final Operation operation;
 
-    public TransactionMessage(Operation operation, long transactionId, Instant commitTime) {
+    public TransactionMessage(Operation operation, Long transactionId, Instant commitTime) {
         this.operation = operation;
-        this.transationId = transactionId;
+        this.transactionId = transactionId;
         this.commitTime = commitTime;
     }
 
@@ -39,7 +40,7 @@ public class TransactionMessage implements ReplicationMessage {
 
     @Override
     public String getTransactionId() {
-        return String.valueOf(transationId);
+        return transactionId == null ? null : String.valueOf(transactionId);
     }
 
     @Override
@@ -69,7 +70,7 @@ public class TransactionMessage implements ReplicationMessage {
 
     @Override
     public String toString() {
-        return "TransactionMessage [transationId=" + transationId + ", commitTime=" + commitTime + ", operation="
+        return "TransactionMessage [transationId=" + transactionId + ", commitTime=" + commitTime + ", operation="
                 + operation + "]";
     }
 }
