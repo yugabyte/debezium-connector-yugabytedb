@@ -50,7 +50,7 @@ public class YbProtoMessageDecoder extends AbstractMessageDecoder {
             }
             final byte[] source = buffer.array();
             final byte[] content = Arrays.copyOfRange(source, buffer.arrayOffset(), source.length);
-            final PgProto.RowMessage message = PgProto.RowMessage.parseFrom(content);
+            final RowMessage message = PgProto.RowMessage.parseFrom(content);
             LOGGER.trace("Received protobuf message from the server {}", message);
             if (!message.getNewTypeinfoList().isEmpty() && message.getNewTupleCount() != message.getNewTypeinfoCount()) {
                 throw new ConnectException(String.format("Message from transaction {} has {} data columns but only {} of type info",
