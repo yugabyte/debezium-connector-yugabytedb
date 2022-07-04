@@ -171,8 +171,7 @@ public class YugabyteDBConnectorTask
                     .loggingContextSupplier(() -> taskContext.configureLoggingContext(CONTEXT_NAME))
                     .build();
 
-            ErrorHandler errorHandler = new YugabyteDBErrorHandler(connectorConfig.getLogicalName(),
-                    queue);
+            ErrorHandler errorHandler = new YugabyteDBErrorHandler(connectorConfig, queue);
 
             final YugabyteDBEventMetadataProvider metadataProvider = new YugabyteDBEventMetadataProvider();
 
