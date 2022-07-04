@@ -24,6 +24,7 @@ import io.debezium.connector.yugabytedb.proto.PgProto;
 import io.debezium.connector.yugabytedb.proto.PgProto.Op;
 import io.debezium.connector.yugabytedb.proto.PgProto.RowMessage;
 import io.debezium.util.Collect;
+import org.yb.cdc.CdcService;
 
 /**
  * ProtoBuf deserialization of message sent by <a href="https://github.com/debezium/postgres-decoderbufs">Postgres Decoderbufs</a>.
@@ -49,7 +50,7 @@ public class YbProtoMessageDecoder extends AbstractMessageDecoder {
             }
             final byte[] source = buffer.array();
             final byte[] content = Arrays.copyOfRange(source, buffer.arrayOffset(), source.length);
-            final RowMessage message = PgProto.RowMessage.parseFrom(content);
+            final CdcService.RowMessage message = PgProto.RowMessage.parseFrom(content);
             LOGGER.trace("Received protobuf message from the server {}", message);
             if (!message.getNewTypeinfoList().isEmpty() && message.getNewTupleCount() != message.getNewTypeinfoCount()) {
                 throw new ConnectException(String.format("Message from transaction {} has {} data columns but only {} of type info",
