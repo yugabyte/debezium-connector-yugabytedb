@@ -41,7 +41,7 @@ import io.debezium.pipeline.DataChangeEvent;
  * @author Suranjan Kumar (skumar@yugabyte.com)
  */
 public class YugabyteDBStreamingChangeEventSource implements
-        StreamingChangeEventSource<YugabyteDBPartition, YugabyteDBOffsetContext> {
+        StreamingChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
 
     private static final String KEEP_ALIVE_THREAD_NAME = "keep-alive";
 
@@ -114,7 +114,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     }
 
     @Override
-    public void execute(ChangeEventSourceContext context, YugabyteDBPartition partition, YugabyteDBOffsetContext offsetContext) {
+    public void execute(ChangeEventSourceContext context, YBPartition partition, YugabyteDBOffsetContext offsetContext) {
         Set<YBPartition> partitions = new YugabyteDBPartition.Provider(connectorConfig).getPartitions();
         boolean hasStartLsnStoredInContext = offsetContext != null && !offsetContext.getTabletSourceInfo().isEmpty();
 
@@ -180,7 +180,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     }
 
     private void getSnapshotChanges(ChangeEventSourceContext context,
-                                    YugabyteDBPartition partitionn,
+                                    YBPartition partitionn,
                                     YugabyteDBOffsetContext offsetContext,
                                     boolean previousOffsetPresent) {
 
@@ -241,10 +241,9 @@ public class YugabyteDBStreamingChangeEventSource implements
 
 
     private void getChanges2(ChangeEventSourceContext context,
-                             YugabyteDBPartition partitionn,
+                             YBPartition partitionn,
                              YugabyteDBOffsetContext offsetContext,
                              boolean previousOffsetPresent)
-
             throws Exception {
         LOGGER.debug("The offset is " + offsetContext.getOffset());
 
