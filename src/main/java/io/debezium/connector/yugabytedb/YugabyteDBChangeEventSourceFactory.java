@@ -24,7 +24,7 @@ import io.debezium.relational.TableId;
 import io.debezium.schema.DataCollectionId;
 import io.debezium.util.Clock;
 
-public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFactory<YugabyteDBPartition, YugabyteDBOffsetContext> {
+public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFactory<YBPartition, YugabyteDBOffsetContext> {
 
     private final YugabyteDBConnectorConfig configuration;
     private final YugabyteDBConnection jdbcConnection;
@@ -62,7 +62,7 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
     }
 
     @Override
-    public SnapshotChangeEventSource<YugabyteDBPartition, YugabyteDBOffsetContext> getSnapshotChangeEventSource(
+    public SnapshotChangeEventSource<YBPartition, YugabyteDBOffsetContext> getSnapshotChangeEventSource(
                                                                                                                 SnapshotProgressListener snapshotProgressListener) {
         return new YugabyteDBSnapshotChangeEventSource(
                 configuration,
@@ -75,7 +75,7 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
     }
 
     @Override
-    public StreamingChangeEventSource<YugabyteDBPartition, YugabyteDBOffsetContext> getStreamingChangeEventSource() {
+    public StreamingChangeEventSource<YBPartition, YugabyteDBOffsetContext> getStreamingChangeEventSource() {
         return new YugabyteDBStreamingChangeEventSource(
                 configuration,
                 snapshotter,

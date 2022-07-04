@@ -52,7 +52,7 @@ import io.debezium.util.SchemaNameAdjuster;
  * @author Suranjan Kumar (skumar@yugabyte.com)
  */
 public class YugabyteDBConnectorTask
-        extends BaseSourceTask<YugabyteDBPartition, YugabyteDBOffsetContext> {
+        extends BaseSourceTask<YBPartition, YugabyteDBOffsetContext> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBConnectorTask.class);
     private static final String CONTEXT_NAME = "yugabytedb-connector-task";
@@ -64,7 +64,7 @@ public class YugabyteDBConnectorTask
     private volatile YugabyteDBSchema schema;
 
     @Override
-    public ChangeEventSourceCoordinator<YugabyteDBPartition, YugabyteDBOffsetContext> start(Configuration config) {
+    public ChangeEventSourceCoordinator<YBPartition, YugabyteDBOffsetContext> start(Configuration config) {
         final YugabyteDBConnectorConfig connectorConfig = new YugabyteDBConnectorConfig(config);
         final TopicSelector<TableId> topicSelector = YugabyteDBTopicSelector.create(connectorConfig);
         final Snapshotter snapshotter = connectorConfig.getSnapshotter();
@@ -147,8 +147,8 @@ public class YugabyteDBConnectorTask
                 valueConverterBuilder.build(yugabyteDBTypeRegistry));
         this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector);
         // get the tablet ids and load the offsets
-        // final Offsets<YugabyteDBPartition, YugabyteDBOffsetContext> previousOffsets =
-        // getPreviousOffsetss(new YugabyteDBPartition.Provider(connectorConfig),
+        // final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets =
+        // getPreviousOffsetss(new YBPartition.Provider(connectorConfig),
         // new YugabyteDBOffsetContext.Loader(connectorConfig));
 
         final Map<YBPartition, YugabyteDBOffsetContext> previousOffsets = getPreviousOffsetss(new YugabyteDBPartition.Provider(connectorConfig),
@@ -210,7 +210,7 @@ public class YugabyteDBConnectorTask
                     jdbcConnection);
 
             YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
-                    Offsets.of(new YugabyteDBPartition(), context), // previousOffsets,
+                    Offsets.of(new YBPartition(), context), // previousOffsets,
                     errorHandler,
                     YugabyteDBConnector.class,
                     connectorConfig,

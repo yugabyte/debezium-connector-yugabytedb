@@ -29,20 +29,20 @@ import io.debezium.schema.DatabaseSchema;
  * Coordinates one or more {@link ChangeEventSource}s and executes them in order. Extends the base
  * {@link ChangeEventSourceCoordinator} to support a pre-snapshot catch up streaming phase.
  */
-public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoordinator<YugabyteDBPartition, YugabyteDBOffsetContext> {
+public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoordinator<YBPartition, YugabyteDBOffsetContext> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBChangeEventSourceCoordinator.class);
 
     private final Snapshotter snapshotter;
     private final SlotState slotInfo;
 
-    public YugabyteDBChangeEventSourceCoordinator(Offsets<YugabyteDBPartition, YugabyteDBOffsetContext> previousOffsets,
+    public YugabyteDBChangeEventSourceCoordinator(Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets,
                                                   ErrorHandler errorHandler,
                                                   Class<? extends SourceConnector> connectorType,
                                                   CommonConnectorConfig connectorConfig,
                                                   YugabyteDBChangeEventSourceFactory changeEventSourceFactory,
                                                   ChangeEventSourceMetricsFactory changeEventSourceMetricsFactory,
-                                                  EventDispatcher<?> eventDispatcher, DatabaseSchema<?> schema,
+                                                  EventDispatcher<YBPartition, ?> eventDispatcher, DatabaseSchema<?> schema,
                                                   Snapshotter snapshotter, SlotState slotInfo) {
         super(previousOffsets, errorHandler, connectorType, connectorConfig, changeEventSourceFactory,
                 changeEventSourceMetricsFactory, eventDispatcher, schema);
@@ -52,8 +52,8 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
 
     @Override
     protected CatchUpStreamingResult executeCatchUpStreaming(ChangeEventSourceContext context,
-                                                             SnapshotChangeEventSource<YugabyteDBPartition, YugabyteDBOffsetContext> snapshotSource,
-                                                             YugabyteDBPartition partition,
+                                                             SnapshotChangeEventSource<YBPartition, YugabyteDBOffsetContext> snapshotSource,
+                                                             YBPartition partition,
                                                              YugabyteDBOffsetContext previousOffset)
             throws InterruptedException {
         if (previousOffset != null && !snapshotter.shouldStreamEventsStartingFromSnapshot() && slotInfo != null) {
