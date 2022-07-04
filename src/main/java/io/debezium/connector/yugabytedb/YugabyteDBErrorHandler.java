@@ -17,8 +17,8 @@ import io.debezium.pipeline.ErrorHandler;
  */
 public class YugabyteDBErrorHandler extends ErrorHandler {
 
-    public YugabyteDBErrorHandler(String logicalName, ChangeEventQueue<?> queue) {
-        super(YugabyteDBConnector.class, logicalName, queue);
+    public YugabyteDBErrorHandler(YugabyteDBConnectorConfig connectorConfig, ChangeEventQueue<?> queue) {
+        super(YugabyteDBConnector.class, connectorConfig, queue);
     }
 
     @Override
