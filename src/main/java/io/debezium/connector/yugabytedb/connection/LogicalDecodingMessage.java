@@ -49,8 +49,8 @@ public class LogicalDecodingMessage implements ReplicationMessage {
     }
 
     @Override
-    public OptionalLong getTransactionId() {
-        return transactionId == null ? OptionalLong.empty() : OptionalLong.of(transactionId);
+    public String getTransactionId() {
+        return transactionId == null ? null : String.valueOf(transactionId);
     }
 
     @Override

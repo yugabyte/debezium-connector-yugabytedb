@@ -7,6 +7,7 @@ package io.debezium.connector.yugabytedb.connection.pgoutput;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.OptionalLong;
 
 import io.debezium.connector.yugabytedb.YugabyteDBStreamingChangeEventSource.PgConnectionSupplier;
 import io.debezium.connector.yugabytedb.YugabyteDBType;
@@ -22,12 +23,12 @@ public class YbOutputReplicationMessage implements ReplicationMessage {
 
     private Operation op;
     private Instant commitTimestamp;
-    private long transactionId;
+    private Long transactionId;
     private String table;
     private List<Column> oldColumns;
     private List<Column> newColumns;
 
-    public YbOutputReplicationMessage(Operation op, String table, Instant commitTimestamp, long transactionId, List<Column> oldColumns, List<Column> newColumns) {
+    public YbOutputReplicationMessage(Operation op, String table, Instant commitTimestamp, Long transactionId, List<Column> oldColumns, List<Column> newColumns) {
         this.op = op;
         this.commitTimestamp = commitTimestamp;
         this.transactionId = transactionId;
@@ -48,7 +49,7 @@ public class YbOutputReplicationMessage implements ReplicationMessage {
 
     @Override
     public String getTransactionId() {
-        return String.valueOf(transactionId);
+        return transactionId == null ? null : String.valueOf(transactionId);
     }
 
     @Override

@@ -11,7 +11,6 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.OffsetTime;
 import java.util.List;
-import java.util.OptionalLong;
 
 import org.postgresql.geometric.PGbox;
 import org.postgresql.geometric.PGcircle;
@@ -153,7 +152,7 @@ public interface ReplicationMessage {
      * @return An id of transaction to which this change belongs; will not be
      *         present for non-transactional logical decoding messages for instance
      */
-    public OptionalLong getTransactionId();
+    public String getTransactionId();
 
     /**
      * @return Table changed
@@ -194,6 +193,10 @@ public interface ReplicationMessage {
         return getOperation() == Operation.BEGIN || getOperation() == Operation.COMMIT;
     }
 
+    default boolean isDDLMessage() {
+        return getOperation() == Operation.DDL;
+    }
+
     /**
      * A special message type that is used to replace event filtered already at {@link MessageDecoder}.
      * Enables {@link YugabyteDBStreamingChangeEventSource} to advance LSN forward even in case of such messages.
@@ -221,8 +224,8 @@ public interface ReplicationMessage {
         }
 
         @Override
-        public OptionalLong getTransactionId() {
-            return transactionId == null ? OptionalLong.empty() : OptionalLong.of(transactionId);
+        public String getTransactionId() {
+            return transactionId == null ? null : String.valueOf(transactionId);
         }
 
         @Override
