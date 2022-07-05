@@ -35,8 +35,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.JdbcDatabaseContainer;
 import org.testcontainers.containers.YugabyteYSQLContainer;
-import org.testcontainers.containers.strategy.YugabyteYSQLWaitStrategy;
-import org.testcontainers.containers.wait.strategy.HostPortWaitStrategy;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
@@ -56,7 +54,6 @@ import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection.YugabyteDBValueConverterBuilder;
 import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
-import io.debezium.util.Throwables;
 
 /**
  * A utility for integration test cases to connect the PostgreSQL server running in the Docker container created by this module's
@@ -161,11 +158,11 @@ public final class TestHelper {
     public static YugabyteDBConnection create() {
 
         // return new YugabyteDBConnection(defaultJdbcConfig());
-        return new YugabyteDBConnection(defaultJdbcConfig(CONTAINER_YSQL_HOST, CONTAINER_YSQL_PORT));
+        return new YugabyteDBConnection(defaultJdbcConfig(CONTAINER_YSQL_HOST, CONTAINER_YSQL_PORT), YugabyteDBConnection.CONNECTION_GENERAL);
     }
 
     public static YugabyteDBConnection createConnectionTo(String databaseName) {
-        return new YugabyteDBConnection(defaultJdbcConfig(CONTAINER_YSQL_HOST, CONTAINER_YSQL_PORT, databaseName));
+        return new YugabyteDBConnection(defaultJdbcConfig(CONTAINER_YSQL_HOST, CONTAINER_YSQL_PORT, databaseName), YugabyteDBConnection.CONNECTION_GENERAL);
     }
 
     /**
@@ -178,7 +175,7 @@ public final class TestHelper {
 
         return new YugabyteDBConnection(
                 config.getJdbcConfig(),
-                getPostgresValueConverterBuilder(config));
+                getPostgresValueConverterBuilder(config), YugabyteDBConnection.CONNECTION_GENERAL);
     }
 
     /**
@@ -189,7 +186,7 @@ public final class TestHelper {
      * @return the PostgresConnection instance; never null
      */
     public static YugabyteDBConnection create(String appName) {
-        return new YugabyteDBConnection(defaultJdbcConfig().edit().with("ApplicationName", appName).build());
+        return new YugabyteDBConnection(Objects.requireNonNull(defaultJdbcConfigBuilder()).with("ApplicationName", appName).build(), YugabyteDBConnection.CONNECTION_GENERAL);
     }
 
     /**
@@ -278,7 +275,7 @@ public final class TestHelper {
 
     public static YugabyteDBTypeRegistry getTypeRegistry() {
         final YugabyteDBConnectorConfig config = new YugabyteDBConnectorConfig(defaultConfig().build());
-        try (final YugabyteDBConnection connection = new YugabyteDBConnection(config.getJdbcConfig(), getPostgresValueConverterBuilder(config))) {
+        try (final YugabyteDBConnection connection = new YugabyteDBConnection(config.getJdbcConfig(), getPostgresValueConverterBuilder(config), YugabyteDBConnection.CONNECTION_GENERAL)) {
             return connection.getTypeRegistry();
         }
     }
@@ -388,7 +385,7 @@ public final class TestHelper {
         return syncClient.createCDCStream(placeholderTable, namespaceName, "PROTO", "IMPLICIT").getStreamId();
     }
 
-    public static JdbcConfiguration defaultJdbcConfig() {
+    public static JdbcConfiguration.Builder defaultJdbcConfigBuilder() {
         try {
             return JdbcConfiguration.copy(Configuration.empty())
                     .withDefault(JdbcConfiguration.DATABASE, "yugabyte")
@@ -397,8 +394,17 @@ public final class TestHelper {
                     .withDefault(JdbcConfiguration.USER, "yugabyte")
                     .withDefault(JdbcConfiguration.PASSWORD, "yugabyte")
                     .with(YugabyteDBConnectorConfig.MAX_RETRIES, 2)
-                    .with(YugabyteDBConnectorConfig.RETRY_DELAY_MS, 2000)
-                    .build();
+                    .with(YugabyteDBConnectorConfig.RETRY_DELAY_MS, 2000);
+        }
+        catch (Exception e) {
+            LOGGER.error("Exception thrown while creating connection...", e);
+            return null;
+        }
+    }
+
+    public static JdbcConfiguration defaultJdbcConfig() {
+        try {
+            return Objects.requireNonNull(defaultJdbcConfigBuilder()).build();
         }
         catch (Exception e) {
             LOGGER.error("Exception thrown while creating connection...", e);
