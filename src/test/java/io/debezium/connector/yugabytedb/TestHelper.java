@@ -203,9 +203,15 @@ public final class TestHelper {
         }
 
         try (YugabyteDBConnection connection = create()) {
-            connection.setAutoCommit(true); // setting auto-commit to true
+            connection.setAutoCommit(false);
             connection.executeWithoutCommitting(statement);
             Connection jdbcConn = connection.connection();
+            if (!statement.endsWith("ROLLBACK;")) {
+                jdbcConn.commit();
+            }
+            else {
+                jdbcConn.rollback();
+            }
         }
         catch (RuntimeException e) {
             throw e;
@@ -439,7 +445,7 @@ public final class TestHelper {
                 .stream()
                 .collect(Collectors.joining(System.lineSeparator()));
         try (YugabyteDBConnection connection = create()) {
-            connection.executeWithoutCommitting(statements);
+            connection.execute(statements);
         }
     }
 
