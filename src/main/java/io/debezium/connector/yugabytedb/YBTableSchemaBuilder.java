@@ -403,7 +403,7 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
             // if the default value is provided
             if (column.hasDefaultValue()) {
                 fieldBuilder
-                        .defaultValue(customConverterRegistry.getValueConverter(table.id(), column).orElse(ValueConverter.passthrough()).convert(column.defaultValueExpression()));
+                        .defaultValue(customConverterRegistry.getValueConverter(table.id(), column).orElse(ValueConverter.passthrough()).convert(defaultValue));
             }
             Schema optionalCellSchema = cellSchema(fieldNamer.fieldNameFor(column), fieldBuilder.build(), column.isOptional());
 
