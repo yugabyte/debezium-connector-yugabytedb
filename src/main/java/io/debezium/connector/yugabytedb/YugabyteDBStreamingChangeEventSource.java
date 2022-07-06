@@ -357,7 +357,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         bootstrapTabletWithRetry(tabletPairList);
 
         short retryCount = 0;
-        while (retryCount <= connectorConfig.maxConnectorRetries()) {
+        while (context.isRunning() && retryCount <= connectorConfig.maxConnectorRetries()) {
             try {
                 while (context.isRunning() && (offsetContext.getStreamingStoppingLsn() == null ||
                         (lastCompletelyProcessedLsn.compareTo(offsetContext.getStreamingStoppingLsn()) < 0))) {
@@ -374,7 +374,13 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                         // GetChangesResponse response = getChangeResponse(offsetContext);
                         LOGGER.debug("Going to fetch for tablet " + tabletId + " from OpId " + cp + " " +
-                                "table " + table.getName());
+                                "table " + table.getName() + " Running:" + context.isRunning());
+
+                        // Check again if the thread has been interrupted.
+                        if (!context.isRunning()) {
+                            LOGGER.info("Connector has been stopped");
+                            break;
+                        }
 
                         GetChangesResponse response = this.syncClient.getChangesCDCSDK(
                                 table, streamId, tabletId,

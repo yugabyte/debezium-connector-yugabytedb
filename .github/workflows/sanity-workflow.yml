@@ -21,4 +21,4 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Sanity Test that code compiles and tests pass.
-        run: mvn clean install -Pquick
+        run: mvn clean test
