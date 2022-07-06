@@ -374,7 +374,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                         // GetChangesResponse response = getChangeResponse(offsetContext);
                         LOGGER.debug("Going to fetch for tablet " + tabletId + " from OpId " + cp + " " +
-                                "table " + table.getName());
+                                "table " + table.getName() + " Running:", context.isRunning());
 
                         GetChangesResponse response = this.syncClient.getChangesCDCSDK(
                                 table, streamId, tabletId,
