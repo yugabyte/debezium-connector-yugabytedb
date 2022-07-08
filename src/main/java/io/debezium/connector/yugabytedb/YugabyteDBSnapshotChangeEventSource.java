@@ -11,38 +11,37 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import io.debezium.pipeline.source.AbstractSnapshotChangeEventSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.pipeline.EventDispatcher;
-import io.debezium.pipeline.source.AbstractSnapshotChangeEventSource;
 import io.debezium.pipeline.source.spi.SnapshotProgressListener;
 import io.debezium.pipeline.spi.SnapshotResult;
 import io.debezium.relational.RelationalSnapshotChangeEventSource;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
 import io.debezium.schema.SchemaChangeEvent;
-import io.debezium.schema.SchemaChangeEvent.SchemaChangeEventType;
 import io.debezium.util.Clock;
 import io.debezium.util.Strings;
 
-public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeEventSource<YugabyteDBPartition, YugabyteDBOffsetContext> {
+public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSnapshotChangeEventSource.class);
     private final YugabyteDBConnectorConfig connectorConfig;
     private final YugabyteDBSchema schema;
     private final SnapshotProgressListener snapshotProgressListener;
     private final YugabyteDBTaskContext taskContext;
-    private final EventDispatcher<TableId> dispatcher;
+    private final EventDispatcher<YBPartition,TableId> dispatcher;
     protected final Clock clock;
     private final Snapshotter snapshotter;
 
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
                                                YugabyteDBTaskContext taskContext,
                                                Snapshotter snapshotter,
-                                               YugabyteDBSchema schema, EventDispatcher<TableId> dispatcher, Clock clock,
+                                               YugabyteDBSchema schema, YugabyteDBEventDispatcher<TableId> dispatcher, Clock clock,
                                                SnapshotProgressListener snapshotProgressListener) {
         super(connectorConfig, snapshotProgressListener);
         this.connectorConfig = connectorConfig;
@@ -51,7 +50,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.dispatcher = dispatcher;
         this.clock = clock;
         this.snapshotter = snapshotter;
-        // this.errorHandler = errorHandler;
 
         this.snapshotProgressListener = snapshotProgressListener;
     }
@@ -77,7 +75,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
-    private void determineCapturedTables(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> ctx)
+    private void determineCapturedTables(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx)
             throws Exception {
         Set<TableId> allTableIds = determineDataCollectionsToBeSnapshotted(getAllTableIds(ctx)).collect(Collectors.toSet());
 
@@ -106,12 +104,12 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     }
 
     @Override
-    public SnapshotResult<YugabyteDBOffsetContext> doExecute(
+    protected SnapshotResult<YugabyteDBOffsetContext> doExecute(
                                                              ChangeEventSourceContext context, YugabyteDBOffsetContext previousOffset,
-                                                             SnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> snapshotContext,
+                                                             SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
                                                              SnapshottingTask snapshottingTask)
             throws Exception {
-        final RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> ctx = (RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext>) snapshotContext;
+        final RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx = (RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext>) snapshotContext;
 
         // Connection connection = null;
         try {
@@ -129,7 +127,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             // Note that there's a minor race condition here: a new table matching the filters could be created between
             // this call and the determination of the initial snapshot position below; this seems acceptable, though
             determineCapturedTables(ctx);
-            snapshotProgressListener.monitoredDataCollectionsDetermined(ctx.capturedTables);
+            snapshotProgressListener.monitoredDataCollectionsDetermined(snapshotContext.partition, ctx.capturedTables);
 
             LOGGER.info("Snapshot step 3 - Locking captured tables {}", ctx.capturedTables);
 
@@ -176,7 +174,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     }
 
     private void createDataEvents(ChangeEventSourceContext sourceContext,
-                                  RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> snapshotContext)
+                                  RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext)
             throws Exception {
         EventDispatcher.SnapshotReceiver snapshotReceiver = dispatcher.getSnapshotChangeEventReceiver();
         // tryStartingSnapshot(snapshotContext);
@@ -205,7 +203,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     }
 
     private void createDataEventsForTable(ChangeEventSourceContext sourceContext,
-                                          RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> snapshotContext,
+                                          RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
                                           EventDispatcher.SnapshotReceiver snapshotReceiver, Table table, int tableOrder,
                                           int tableCount)
             throws InterruptedException {
@@ -216,7 +214,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         // final Optional<String> selectStatement = determineSnapshotSelect(snapshotContext, table.id());
         if (true/* !selectStatement.isPresent() */) {
             LOGGER.warn("For table '{}' the select statement was not provided, skipping table", table.id());
-            snapshotProgressListener.dataCollectionSnapshotCompleted(table.id(), 0);
+            snapshotProgressListener.dataCollectionSnapshotCompleted(snapshotContext.partition, table.id(), 0);
             return;
         }
         // LOGGER.info("\t For table '{}' using select statement: '{}'", table.id(), selectStatement.get());
@@ -266,7 +264,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
         LOGGER.info("\t Finished exporting {} records for table '{}'; total duration '{}'", rows,
                 table.id(), Strings.duration(clock.currentTimeInMillis() - exportStart));
-        snapshotProgressListener.dataCollectionSnapshotCompleted(table.id(), rows);
+        snapshotProgressListener.dataCollectionSnapshotCompleted(snapshotContext.partition, table.id(), rows);
         // }
         // catch (SQLException e) {
         // throw new ConnectException("Snapshotting of table " + table.id() + " failed", e);
@@ -274,7 +272,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     }
 
     @Override
-    protected SnapshottingTask getSnapshottingTask(YugabyteDBOffsetContext previousOffset) {
+    protected SnapshottingTask getSnapshottingTask(YBPartition partition, YugabyteDBOffsetContext previousOffset) {
         boolean snapshotSchema = true;
         boolean snapshotData = true;
 
@@ -291,7 +289,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     }
 
     @Override
-    protected SnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> prepare(YugabyteDBPartition partition)
+    protected SnapshotContext<YBPartition, YugabyteDBOffsetContext> prepare(YBPartition partition)
             throws Exception {
         return new PostgresSnapshotContext(partition, connectorConfig.databaseName());
     }
@@ -311,7 +309,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     // schema.refresh(jdbcConnection, false);
     // }
 
-    protected Set<TableId> getAllTableIds(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> ctx)
+    protected Set<TableId> getAllTableIds(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx)
             throws Exception {
         // return jdbcConnection.readTableNames(ctx.catalogName, null, null, new String[]{ "TABLE" });
         return new HashSet<>();
@@ -332,11 +330,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     // }
     // }
 
-    protected void releaseSchemaSnapshotLocks(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> snapshotContext)
+    protected void releaseSchemaSnapshotLocks(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext)
             throws SQLException {
     }
 
-    protected void determineSnapshotOffset(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> ctx,
+    protected void determineSnapshotOffset(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx,
                                            YugabyteDBOffsetContext previousOffset)
             throws Exception {
         YugabyteDBOffsetContext offset = ctx.offset;
@@ -392,7 +390,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     }
 
     protected void readTableStructure(ChangeEventSourceContext sourceContext,
-                                      RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> snapshotContext,
+                                      RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
                                       YugabyteDBOffsetContext offsetContext)
             throws SQLException, InterruptedException {
         Set<String> schemas = snapshotContext.capturedTables.stream()
@@ -420,23 +418,14 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     }
 
     protected SchemaChangeEvent getCreateTableEvent(
-                                                    RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> snapshotContext,
+                                                    RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
                                                     Table table)
             throws SQLException {
-        return new SchemaChangeEvent(
-                snapshotContext.partition.getSourcePartition(),
-                snapshotContext.offset.getOffset(),
-                snapshotContext.offset.getSourceInfo(),
-                snapshotContext.catalogName,
-                table.id().schema(),
-                null,
-                table,
-                SchemaChangeEventType.CREATE,
-                true);
+        return SchemaChangeEvent.ofSnapshotCreate(snapshotContext.partition, snapshotContext.offset, snapshotContext.catalogName, table);
     }
 
     @Override
-    protected void complete(SnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> snapshotContext) {
+    protected void complete(SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext) {
         snapshotter.snapshotCompleted();
     }
 
@@ -447,7 +436,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
      * @return a valid query string
      */
     protected Optional<String> getSnapshotSelect(
-                                                 RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> snapshotContext,
+                                                 RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
                                                  TableId tableId, List<String> columns) {
         return snapshotter.buildSnapshotQuery(tableId, columns);
     }
@@ -455,9 +444,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     /**
      * Mutable context which is populated in the course of snapshotting.
      */
-    private static class PostgresSnapshotContext extends RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> {
+    private static class PostgresSnapshotContext extends RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> {
 
-        public PostgresSnapshotContext(YugabyteDBPartition partition, String catalogName) throws SQLException {
+        public PostgresSnapshotContext(YBPartition partition, String catalogName) throws SQLException {
             super(partition, catalogName);
         }
     }

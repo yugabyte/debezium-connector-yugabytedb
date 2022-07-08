@@ -68,7 +68,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                                                             YugabyteDBValueConverter valueConverter) {
         return new YBTableSchemaBuilder(valueConverter, SchemaNameAdjuster.create(),
                 config.customConverterRegistry(), config.getSourceInfoStructMaker().schema(),
-                config.getSanitizeFieldNames());
+                config.getSanitizeFieldNames(), false);
     }
 
     /**

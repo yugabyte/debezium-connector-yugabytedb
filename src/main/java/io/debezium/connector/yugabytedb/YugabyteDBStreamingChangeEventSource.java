@@ -27,7 +27,6 @@ import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoReplicationMes
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.heartbeat.Heartbeat;
 import io.debezium.pipeline.ErrorHandler;
-import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.source.spi.StreamingChangeEventSource;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
@@ -41,7 +40,7 @@ import io.debezium.util.Metronome;
  * @author Suranjan Kumar (skumar@yugabyte.com)
  */
 public class YugabyteDBStreamingChangeEventSource implements
-        StreamingChangeEventSource<YugabyteDBPartition, YugabyteDBOffsetContext> {
+        StreamingChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
 
     private static final String KEEP_ALIVE_THREAD_NAME = "keep-alive";
 
@@ -58,7 +57,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     private static final int THROTTLE_NO_MESSAGE_BEFORE_PAUSE = 5;
 
     private final YugabyteDBConnection connection;
-    private final EventDispatcher<TableId> dispatcher;
+    private final YugabyteDBEventDispatcher<TableId> dispatcher;
     private final ErrorHandler errorHandler;
     private final Clock clock;
     private final YugabyteDBSchema schema;
@@ -85,7 +84,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     private final Map<String, OpId> checkPointMap;
 
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
-                                                YugabyteDBConnection connection, EventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
+                                                YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
                                                 YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection) {
         this.connectorConfig = connectorConfig;
         this.connection = connection;
@@ -115,7 +114,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     }
 
     @Override
-    public void execute(ChangeEventSourceContext context, YugabyteDBPartition partition, YugabyteDBOffsetContext offsetContext) {
+    public void execute(ChangeEventSourceContext context, YBPartition partition, YugabyteDBOffsetContext offsetContext) {
         if (!snapshotter.shouldStream()) {
             LOGGER.info("Streaming is not enabled in correct configuration");
             return;
@@ -298,7 +297,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
 
     private void getChanges2(ChangeEventSourceContext context,
-                             YugabyteDBPartition partitionn,
+                             YBPartition partition,
                              YugabyteDBOffsetContext offsetContext)
             throws Exception {
         LOGGER.debug("The offset is " + offsetContext.getOffset());
@@ -501,7 +500,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             String.valueOf(message.getTransactionId()), tableId, null/* taskContext.getSlotXmin(connection) */);
 
                                     boolean dispatched = message.getOperation() != Operation.NOOP
-                                            && dispatcher.dispatchDataChangeEvent(tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
+                                            && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
                                                     schema, connection, tableId, message, pgSchemaNameInRecord));
 
                                     if (recordsInTransactionalBlock.containsKey(tabletId)) {
@@ -547,6 +546,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // If there are retries left, perform them after the specified delay.
                 LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
                         retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
+                LOGGER.debug("Stacktrace", e);
 
                 try {
                     retryMetronome.pause();

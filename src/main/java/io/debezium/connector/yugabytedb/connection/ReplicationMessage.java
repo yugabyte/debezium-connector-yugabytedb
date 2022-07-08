@@ -44,6 +44,7 @@ public interface ReplicationMessage {
         UPDATE,
         DELETE,
         TRUNCATE,
+        MESSAGE,
         BEGIN,
         COMMIT,
         DDL,
@@ -59,8 +60,7 @@ public interface ReplicationMessage {
         YugabyteDBType getType();
 
         /**
-         * Returns additional metadata about this column's type. May only be called
-         * after checking {@link ReplicationMessage#hasMetadata()}.
+         * Returns additional metadata about this column's type.
          */
         ColumnTypeMetadata getTypeMetadata();
 
@@ -132,12 +132,9 @@ public interface ReplicationMessage {
 
         boolean isArray(YugabyteDBType type);
 
-        Object asArray(String columnName, YugabyteDBType type, String fullType,
-                       PgConnectionSupplier connection);
+        Object asArray(String columnName, YugabyteDBType type, String fullType, PgConnectionSupplier connection);
 
-        Object asDefault(YugabyteDBTypeRegistry yugabyteDBTypeRegistry, int columnType,
-                         String columnName, String fullType, boolean includeUnknownDatatypes,
-                         PgConnectionSupplier connection);
+        Object asDefault(YugabyteDBTypeRegistry typeRegistry, int columnType, String columnName, String fullType, boolean includeUnknownDatatypes, PgConnectionSupplier connection);
     }
 
     /**
@@ -151,7 +148,8 @@ public interface ReplicationMessage {
     public Instant getCommitTime();
 
     /**
-     * @return An id of transaction to which this change belongs
+     * @return An id of transaction to which this change belongs; will not be
+     *         present for non-transactional logical decoding messages for instance
      */
     public String getTransactionId();
 
@@ -198,70 +196,17 @@ public interface ReplicationMessage {
         return getOperation() == Operation.DDL;
     }
 
-    public class TransactionMessage implements ReplicationMessage {
-
-        private final String transationId;
-        private final Instant commitTime;
-        private final Operation operation;
-
-        public TransactionMessage(Operation operation, String transactionId, Instant commitTime) {
-            this.operation = operation;
-            this.transationId = transactionId;
-            this.commitTime = commitTime;
-        }
-
-        @Override
-        public boolean isLastEventForLsn() {
-            return true;
-        }
-
-        @Override
-        public boolean hasTypeMetadata() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public String getTransactionId() {
-            return transationId;
-        }
-
-        @Override
-        public String getTable() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public Operation getOperation() {
-            return operation;
-        }
-
-        @Override
-        public List<Column> getOldTupleList() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public List<Column> getNewTupleList() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public Instant getCommitTime() {
-            return commitTime;
-        }
-    };
-
     /**
      * A special message type that is used to replace event filtered already at {@link MessageDecoder}.
      * Enables {@link YugabyteDBStreamingChangeEventSource} to advance LSN forward even in case of such messages.
      */
     public class NoopMessage implements ReplicationMessage {
 
-        private final String transactionId;
+        private final Long transactionId;
         private final Instant commitTime;
         private final Operation operation;
 
-        public NoopMessage(String transactionId, Instant commitTime) {
+        public NoopMessage(Long transactionId, Instant commitTime) {
             this.operation = Operation.NOOP;
             this.transactionId = transactionId;
             this.commitTime = commitTime;
@@ -279,7 +224,7 @@ public interface ReplicationMessage {
 
         @Override
         public String getTransactionId() {
-            return transactionId;
+            return transactionId == null ? null : String.valueOf(transactionId);
         }
 
         @Override

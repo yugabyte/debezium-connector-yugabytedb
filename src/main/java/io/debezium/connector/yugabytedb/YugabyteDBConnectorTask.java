@@ -10,10 +10,10 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.time.Duration;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import io.debezium.heartbeat.HeartbeatFactory;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.RetriableException;
@@ -32,12 +32,9 @@ import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection.YugabyteDBValueConverterBuilder;
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
-import io.debezium.heartbeat.DatabaseHeartbeatImpl;
-import io.debezium.heartbeat.Heartbeat;
 import io.debezium.pipeline.ChangeEventSourceCoordinator;
 import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.pipeline.ErrorHandler;
-import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.metrics.DefaultChangeEventSourceMetricsFactory;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Offsets;
@@ -55,7 +52,7 @@ import io.debezium.util.SchemaNameAdjuster;
  * @author Suranjan Kumar (skumar@yugabyte.com)
  */
 public class YugabyteDBConnectorTask
-        extends BaseSourceTask<YugabyteDBPartition, YugabyteDBOffsetContext> {
+        extends BaseSourceTask<YBPartition, YugabyteDBOffsetContext> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBConnectorTask.class);
     private static final String CONTEXT_NAME = "yugabytedb-connector-task";
@@ -67,7 +64,7 @@ public class YugabyteDBConnectorTask
     private volatile YugabyteDBSchema schema;
 
     @Override
-    public ChangeEventSourceCoordinator<YugabyteDBPartition, YugabyteDBOffsetContext> start(Configuration config) {
+    public ChangeEventSourceCoordinator<YBPartition, YugabyteDBOffsetContext> start(Configuration config) {
         final YugabyteDBConnectorConfig connectorConfig = new YugabyteDBConnectorConfig(config);
         final TopicSelector<TableId> topicSelector = YugabyteDBTopicSelector.create(connectorConfig);
         final Snapshotter snapshotter = connectorConfig.getSnapshotter();
@@ -132,8 +129,7 @@ public class YugabyteDBConnectorTask
         // Global JDBC connection used both for snapshotting and streaming.
         // Must be able to resolve datatypes.
         // connection = new YugabyteDBConnection(connectorConfig.getJdbcConfig());
-        jdbcConnection = new YugabyteDBConnection(connectorConfig.getJdbcConfig(),
-                valueConverterBuilder);
+        jdbcConnection = new YugabyteDBConnection(connectorConfig.getJdbcConfig(), valueConverterBuilder, YugabyteDBConnection.CONNECTION_GENERAL);
         // try {
         // jdbcConnection.setAutoCommit(false);
         // }
@@ -151,8 +147,8 @@ public class YugabyteDBConnectorTask
                 valueConverterBuilder.build(yugabyteDBTypeRegistry));
         this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector);
         // get the tablet ids and load the offsets
-        // final Offsets<YugabyteDBPartition, YugabyteDBOffsetContext> previousOffsets =
-        // getPreviousOffsetss(new YugabyteDBPartition.Provider(connectorConfig),
+        // final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets =
+        // getPreviousOffsetss(new YBPartition.Provider(connectorConfig),
         // new YugabyteDBOffsetContext.Loader(connectorConfig));
 
         final Map<YBPartition, YugabyteDBOffsetContext> previousOffsets = getPreviousOffsetss(new YugabyteDBPartition.Provider(connectorConfig),
@@ -167,8 +163,6 @@ public class YugabyteDBConnectorTask
             // Print out the server information
             // CDCSDK Get the table,
 
-            ReplicationConnection replicationConnection = null;
-
             queue = new ChangeEventQueue.Builder<DataChangeEvent>()
                     .pollInterval(connectorConfig.getPollInterval())
                     .maxBatchSize(connectorConfig.getMaxBatchSize())
@@ -177,35 +171,31 @@ public class YugabyteDBConnectorTask
                     .loggingContextSupplier(() -> taskContext.configureLoggingContext(CONTEXT_NAME))
                     .build();
 
-            ErrorHandler errorHandler = new YugabyteDBErrorHandler(connectorConfig.getLogicalName(),
-                    queue);
+            ErrorHandler errorHandler = new YugabyteDBErrorHandler(connectorConfig, queue);
 
             final YugabyteDBEventMetadataProvider metadataProvider = new YugabyteDBEventMetadataProvider();
 
             Configuration configuration = connectorConfig.getConfig();
-            Heartbeat heartbeat = Heartbeat.create(
-                    configuration.getDuration(Heartbeat.HEARTBEAT_INTERVAL, ChronoUnit.MILLIS),
-                    configuration.getString(DatabaseHeartbeatImpl.HEARTBEAT_ACTION_QUERY),
-                    topicSelector.getHeartbeatTopic(),
-                    connectorConfig.getLogicalName(), heartbeatConnection, exception -> {
+            HeartbeatFactory heartbeatFactory = new HeartbeatFactory<>(
+                    connectorConfig,
+                    topicSelector,
+                    schemaNameAdjuster,
+                    () -> new YugabyteDBConnection(connectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL),
+                    exception -> {
                         String sqlErrorId = exception.getSQLState();
                         switch (sqlErrorId) {
                             case "57P01":
-                                // Postgres error admin_shutdown, see
-                                // https://www.postgresql.org/docs/12/errcodes-appendix.html
-                                throw new DebeziumException("Could not execute heartbeat action" +
-                                        " (Error: " + sqlErrorId + ")", exception);
+                                // Postgres error admin_shutdown, see https://www.postgresql.org/docs/12/errcodes-appendix.html
+                                throw new DebeziumException("Could not execute heartbeat action query (Error: " + sqlErrorId + ")", exception);
                             case "57P03":
-                                // Postgres error cannot_connect_now, see
-                                // https://www.postgresql.org/docs/12/errcodes-appendix.html
-                                throw new RetriableException("Could not execute heartbeat action" +
-                                        " (Error: " + sqlErrorId + ")", exception);
+                                // Postgres error cannot_connect_now, see https://www.postgresql.org/docs/12/errcodes-appendix.html
+                                throw new RetriableException("Could not execute heartbeat action query (Error: " + sqlErrorId + ")", exception);
                             default:
                                 break;
                         }
                     });
 
-            final EventDispatcher<TableId> dispatcher = new EventDispatcher<>(
+            final YugabyteDBEventDispatcher<TableId> dispatcher = new YugabyteDBEventDispatcher<>(
                     connectorConfig,
                     topicSelector,
                     schema,
@@ -214,13 +204,12 @@ public class YugabyteDBConnectorTask
                     DataChangeEvent::new,
                     YugabyteDBChangeRecordEmitter::updateSchema,
                     metadataProvider,
-                    heartbeat,
+                    heartbeatFactory,
                     schemaNameAdjuster,
                     jdbcConnection);
 
             YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
-                    new Offsets<>(Collections.singletonMap(new YugabyteDBPartition(),
-                            context)), // previousOffsets,
+                    Offsets.of(new YBPartition(), context), // previousOffsets,
                     errorHandler,
                     YugabyteDBConnector.class,
                     connectorConfig,
@@ -233,7 +222,7 @@ public class YugabyteDBConnectorTask
                             clock,
                             schema,
                             taskContext,
-                            replicationConnection,
+                            null,
                             null/* slotCreatedInfo */,
                             null/* slotInfo */),
                     new DefaultChangeEventSourceMetricsFactory(),

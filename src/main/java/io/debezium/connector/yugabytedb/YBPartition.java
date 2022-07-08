@@ -13,6 +13,10 @@ public class YBPartition implements Partition {
 
     private final String listOfTablets;
 
+    public YBPartition() {
+        this.listOfTablets = "";
+    }
+
     public YBPartition(String listOfTablets) {
         this.listOfTablets = listOfTablets;
     }
