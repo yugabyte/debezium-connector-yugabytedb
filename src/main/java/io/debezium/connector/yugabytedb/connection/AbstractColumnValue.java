@@ -30,7 +30,7 @@ import io.debezium.connector.yugabytedb.YugabyteDBStreamingChangeEventSource.PgC
 import io.debezium.connector.yugabytedb.YugabyteDBType;
 import io.debezium.connector.yugabytedb.YugabyteDBTypeRegistry;
 import io.debezium.connector.yugabytedb.YugabyteDBValueConverter;
-import io.debezium.connector.yugabytedb.connection.wal2json.DateTimeFormat;
+import io.debezium.connector.yugabytedb.connection.pgproto.DateTimeFormat;
 
 /**
  * @author Chris Cranford

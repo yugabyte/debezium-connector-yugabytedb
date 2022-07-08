@@ -3,7 +3,7 @@
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
  */
-package io.debezium.connector.yugabytedb.connection.wal2json;
+package io.debezium.connector.yugabytedb.connection.pgproto;
 
 import java.time.Instant;
 import java.time.LocalDate;
