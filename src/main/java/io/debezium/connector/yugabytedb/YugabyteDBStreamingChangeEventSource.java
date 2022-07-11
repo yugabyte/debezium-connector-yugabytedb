@@ -425,7 +425,8 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                             if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                                 if (recordsInTransactionalBlock.get(tabletId) == 0) {
-                                                    LOGGER.warn("Records in the transactional block with LSN: {}, for tablet {} are 0", lsn, tabletId);
+                                                    LOGGER.warn("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                                message.getTransactionId(), lsn, tabletId);
                                                 } else {
                                                     LOGGER.debug("Records in the transactional block for tablet {}: {}", tabletId, recordsInTransactionalBlock.get(tabletId));
                                                 }
@@ -454,7 +455,8 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                         if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                             if (recordsInTransactionalBlock.get(tabletId) == 0) {
-                                                LOGGER.warn("Records in the transactional block with LSN: {}, for tablet {} are 0", lsn, tabletId);
+                                                LOGGER.warn("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                            message.getTransactionId(), lsn, tabletId);
                                             } else {
                                                 LOGGER.debug("Records in the transactional block for tablet {}: {}", tabletId, recordsInTransactionalBlock.get(tabletId));
                                             }
