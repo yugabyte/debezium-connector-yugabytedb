@@ -454,7 +454,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                         if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                             if (recordsInTransactionalBlock.get(tabletId) == 0) {
-                                                LOGGER.warn("Records in the transactional block for tablet {} are 0", tabletId);
+                                                LOGGER.warn("Records in the transactional block with LSN: {}, for tablet {} are 0", lsn, tabletId);
                                             } else {
                                                 LOGGER.debug("Records in the transactional block for tablet {}: {}", tabletId, recordsInTransactionalBlock.get(tabletId));
                                             }
