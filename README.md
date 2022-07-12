@@ -18,7 +18,7 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
   2. Build the jar files using maven
       
       ```sh
-      mvn clean verify -Dquick
+      mvn clean package -Dquick
       ```
 
   3. Create a custom folder for the custom-connector
@@ -30,7 +30,7 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
   4. Copy the debezium-connector-yugabytedb2 jar to the custom-connector directory
       
       ```sh
-      cp debezium-connector-yugabytedb2/target/debezium-connector-yugabytedb-1.3.2-BETA.jar ~/custom-connector/
+      cp target/debezium-connector-yugabytedb-1.7.0.8-SNAPSHOT.jar ~/custom-connector/
       ```
 
   5. Navigate to the directory you created
@@ -60,7 +60,7 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
       # Deploy Kafka Connect yugabytedb
       RUN mkdir $KAFKA_CONNECT_YB_DIR && cd $KAFKA_CONNECT_YB_DIR
 
-      COPY debezium-connector-yugabytedb-1.3.2-BETA.jar \
+      COPY debezium-connector-yugabytedb-1.7.0.8-SNAPSHOT.jar \
       $KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb/
 
       COPY kafka-connect-jdbc-10.2.5.jar $KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb
