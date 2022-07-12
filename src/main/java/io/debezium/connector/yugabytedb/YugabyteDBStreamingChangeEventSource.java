@@ -428,7 +428,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                     LOGGER.warn("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                                                 message.getTransactionId(), lsn, tabletId);
                                                 } else {
-                                                    LOGGER.debug("Records in the transactional block for tablet {}: {}", tabletId, recordsInTransactionalBlock.get(tabletId));
+                                                    LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
+                                                                 message.getTransactionId(), lsn, tabletId, recordsInTransactionalBlock.get(tabletId));
                                                 }
                                             } else {
                                                 throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");
@@ -458,7 +459,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                 LOGGER.warn("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                                             message.getTransactionId(), lsn, tabletId);
                                             } else {
-                                                LOGGER.debug("Records in the transactional block for tablet {}: {}", tabletId, recordsInTransactionalBlock.get(tabletId));
+                                                LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
+                                                             message.getTransactionId(), lsn, tabletId, recordsInTransactionalBlock.get(tabletId));
                                             }
                                         } else {
                                             throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");
