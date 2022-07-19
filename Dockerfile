@@ -1,8 +1,11 @@
+# On your terminal, run the following to build the image:
+#  - mvn clean package -Dquick
+
 # The base image contains the following drivers and connectors prepopulated:
 #  - JDBC Sink Connector v10.2.5
 #  - YugabyteDB JDBC Driver v42.3.5-yb-1
 #  - MySql JDBC Driver v8.0.21
-FROM quay.io/yugabyte/connect-base-yb:0.1
+FROM quay.io/yugabyte/connect-base-yb:0.2
 
 # Create the directories for the connectors to be placed into
 ENV KAFKA_CONNECT_YB_DIR=$KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb
