@@ -19,7 +19,6 @@
     <properties>
         <!-- Debezium parent -->
         <version.debezium>1.7.0.Final</version.debezium>
-        <version.debezium.connector.yb>1.7.0.8</version.debezium.connector.yb>
 
         <!-- Plugins -->
         <version.surefire.plugin>3.0.0-M3</version.surefire.plugin>
@@ -423,7 +422,7 @@
                                 <contextDir>${project.basedir}</contextDir>
                                 <tags>
                                     <tag>latest</tag>
-                                    <tag>${version.debezium.connector.yb}</tag>
+                                    <tag>${project.version}</tag>
                                 </tags>
                             </build>
                         </image>
