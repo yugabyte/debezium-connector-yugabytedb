@@ -1,25 +1,28 @@
 package io.debezium.connector.yugabytedb;
 
-import java.util.*;
-
-import org.yb.client.*;
+import java.util.Map;
+import java.util.Objects;
 
 import io.debezium.pipeline.spi.Partition;
 import io.debezium.util.Collect;
 
 public class YBPartition implements Partition {
 
-    private static final String TABLETS_PARTITION_KEY = "tabletids";
+    private static final String TABLET_PARTITION_KEY = "tabletid";
 
-    private final String listOfTablets;
+    private final String tabletId;
 
-    public YBPartition(String listOfTablets) {
-        this.listOfTablets = listOfTablets;
+    public YBPartition(String tabletId) {
+        this.tabletId = tabletId;
     }
 
     @Override
     public Map<String, String> getSourcePartition() {
-        return Collect.hashMapOf(TABLETS_PARTITION_KEY, listOfTablets);
+        return Collect.hashMapOf(TABLET_PARTITION_KEY, tabletId);
+    }
+
+    public String getTabletId() {
+        return this.tabletId;
     }
 
     @Override
@@ -31,12 +34,18 @@ public class YBPartition implements Partition {
             return false;
         }
         final YBPartition other = (YBPartition) obj;
-        return Objects.equals(listOfTablets, other.listOfTablets);
+        return Objects.equals(tabletId, other.tabletId);
     }
 
     @Override
     public int hashCode() {
-        return listOfTablets.hashCode();
+        return tabletId.hashCode();
     }
 
+    @Override
+    public String toString() {
+        return "YBPartition{" +
+                "tabletId='" + tabletId + '\'' +
+                '}';
+    }
 }

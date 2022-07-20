@@ -6,13 +6,7 @@
 package io.debezium.connector.yugabytedb;
 
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.connect.data.Struct;
@@ -29,13 +23,7 @@ import io.debezium.function.Predicates;
 import io.debezium.pipeline.spi.ChangeRecordEmitter;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Partition;
-import io.debezium.relational.Column;
-import io.debezium.relational.ColumnEditor;
-import io.debezium.relational.RelationalChangeRecordEmitter;
-import io.debezium.relational.Table;
-import io.debezium.relational.TableEditor;
-import io.debezium.relational.TableId;
-import io.debezium.relational.TableSchema;
+import io.debezium.relational.*;
 import io.debezium.schema.DataCollectionSchema;
 import io.debezium.util.Clock;
 import io.debezium.util.Strings;
@@ -99,6 +87,8 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
                 return Operation.UPDATE;
             case DELETE:
                 return Operation.DELETE;
+            case READ:
+                return Operation.READ;
             case TRUNCATE:
                 return Operation.TRUNCATE;
             default:
@@ -128,6 +118,8 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
                     return null;
                 case UPDATE:
                     return null;
+                case READ:
+                    return null;
                 // return columnValues(message.getOldTupleList(), tableId, true,
                 // message.hasTypeMetadata(), true, true);
                 default:
@@ -150,6 +142,8 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
                     // todo vaibhav: add scenario for the case of multiple columns being updated
                     // return columnValues(message.getNewTupleList(), tableId, true, message.hasTypeMetadata(), false, false);
                     return updatedColumnValues(message.getNewTupleList(), tableId, true, message.hasTypeMetadata(), false, false);
+                case READ:
+                    return columnValues(message.getNewTupleList(), tableId, true, message.hasTypeMetadata(), false, false);
                 default:
                     return null;
             }

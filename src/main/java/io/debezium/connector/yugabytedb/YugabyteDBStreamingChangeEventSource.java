@@ -116,19 +116,29 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     @Override
     public void execute(ChangeEventSourceContext context, YugabyteDBPartition partition, YugabyteDBOffsetContext offsetContext) {
-        if (!snapshotter.shouldStream()) {
-            LOGGER.info("Streaming is not enabled in correct configuration");
-            return;
-        }
-
         // replication slot could exist at the time of starting Debezium so
         // we will stream from the position in the slot
         // instead of the last position in the database
-        boolean hasStartLsnStoredInContext = offsetContext != null;
+        // Get all partitions
+        // Get
+        Set<YBPartition> partitions = new YugabyteDBPartition.Provider(connectorConfig).getPartitions();
+        boolean hasStartLsnStoredInContext = offsetContext != null && !offsetContext.getTabletSourceInfo().isEmpty();
 
+        LOGGER.info("SKSK The offset context is " + offsetContext + " partition is " + partition);
         if (!hasStartLsnStoredInContext) {
-            offsetContext = YugabyteDBOffsetContext.initialContext(connectorConfig, connection, clock);
+            LOGGER.info("No start opid found in the context.");
+            if (snapshotter.shouldSnapshot()) {
+                offsetContext = YugabyteDBOffsetContext.initialContextForSnapshot(connectorConfig, connection, clock, partitions);
+            }
+            else {
+                offsetContext = YugabyteDBOffsetContext.initialContext(connectorConfig, connection, clock, partitions);
+            }
         }
+        /*
+         * if (snapshotter.shouldSnapshot()) {
+         * getSnapshotChanges();
+         * }
+         */
 
         try {
             final WalPositionLocator walPosition;
@@ -144,22 +154,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                 LOGGER.info("No previous LSN found in Kafka, streaming from the latest checkpoint" +
                         " in YugabyteDB");
                 walPosition = new WalPositionLocator();
+                // create snpashot offset.
+
                 // replicationStream.compareAndSet(null, replicationConnection.startStreaming(walPosition));
             }
-            // for large dbs, the refresh of schema can take too much time
-            // such that the connection times out. We must enable keep
-            // alive to ensure that it doesn't time out
-            // ReplicationStream stream = this.replicationStream.get();
-            // stream.startKeepAlive(Threads.newSingleThreadExecutor(PostgresConnector.class, connectorConfig.getLogicalName(), KEEP_ALIVE_THREAD_NAME));
-
-            // refresh the schema so we have a latest view of the DB tables
-            // taskContext.refreshSchema(connection, true);
-
-            // If we need to do a pre-snapshot streaming catch up, we should allow the snapshot transaction to persist
-            // but normally we want to start streaming without any open transactions.
-            // if (!isInPreSnapshotCatchUpStreaming(offsetContext)) {
-            // connection.commit();
-            // }
 
             // this.lastCompletelyProcessedLsn = replicationStream.get().startLsn();
 
@@ -181,7 +179,11 @@ public class YugabyteDBStreamingChangeEventSource implements
             // stream.startKeepAlive(Threads.newSingleThreadExecutor(PostgresConnector.class, connectorConfig.getLogicalName(), KEEP_ALIVE_THREAD_NAME));
             // }
             // processMessages(context, partition, offsetContext, stream);
-            getChanges2(context, partition, offsetContext);
+            // if (!snapshotter.shouldStream()) {
+            // LOGGER.info("Streaming is not enabled in correct configuration");
+            // return;
+            // }
+            getChanges2(context, partition, offsetContext, hasStartLsnStoredInContext);
         }
         catch (Throwable e) {
             errorHandler.setProducerThrowable(e);
@@ -239,8 +241,14 @@ public class YugabyteDBStreamingChangeEventSource implements
     }
 
     private GetChangesResponse getChangeResponse(YugabyteDBOffsetContext offsetContext) throws Exception {
-
         return null;
+    }
+
+    private void getSnapshotChanges(ChangeEventSourceContext context,
+                                    YugabyteDBPartition partitionn,
+                                    YugabyteDBOffsetContext offsetContext,
+                                    boolean previousOffsetPresent) {
+
     }
 
     private void bootstrapTablet(YBTable table, String tabletId) throws Exception {
@@ -299,7 +307,9 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     private void getChanges2(ChangeEventSourceContext context,
                              YugabyteDBPartition partitionn,
-                             YugabyteDBOffsetContext offsetContext)
+                             YugabyteDBOffsetContext offsetContext,
+                             boolean previousOffsetPresent)
+
             throws Exception {
         LOGGER.debug("The offset is " + offsetContext.getOffset());
 
@@ -334,6 +344,19 @@ public class YugabyteDBStreamingChangeEventSource implements
             tableIdToTable.put(tId, table);
         }
 
+        int noMessageIterations = 0;
+        // for (Pair<String, String> entry : tabletPairList) {
+        // final String tabletId = entry.getValue();
+        // offsetContext.initSourceInfo(tabletId, this.connectorConfig);
+        //
+        // offsetContext.getSourceInfo(tabletId).updateLastCommit(offsetContext.lastCompletelyProcessedLsn());
+        //
+        // if (offsetContext.lsn(tabletId).equals(new OpId(0, 0, null, 0, 0))) {
+        // offsetContext.getSourceInfo(tabletId)
+        // .updateLastCommit(new OpId(-1, -1, "".getBytes(), -1, 0));
+        // }
+        // }
+        LOGGER.info("The init tabletSourceInfo is " + offsetContext.getTabletSourceInfo());
         // todo: rename schemaStreamed to something else
         Map<String, Boolean> schemaStreamed = new HashMap<>();
         for (Pair<String, String> entry : tabletPairList) {
@@ -522,8 +545,15 @@ public class YugabyteDBStreamingChangeEventSource implements
                             // for the snapshot, this block must not commit during catch up streaming.
                             // CDCSDK Find out why this fails : connection.commit();
                         }
+                        OpId finalOpid = new OpId(
+                                response.getTerm(),
+                                response.getIndex(),
+                                response.getKey(),
+                                response.getWriteId(),
+                                response.getSnapshotTime());
+                        offsetContext.getSourceInfo(tabletId)
+                                .updateLastCommit(finalOpid);
                     }
-
                     // Reset the retry count, because if flow reached at this point, it means that the connection
                     // has succeeded
                     retryCount = 0;
@@ -531,7 +561,6 @@ public class YugabyteDBStreamingChangeEventSource implements
             }
             catch (Exception e) {
                 ++retryCount;
-
                 // If the retry limit is exceeded, log an error with a description and throw the exception.
                 if (retryCount > connectorConfig.maxConnectorRetries()) {
                     LOGGER.error("Too many errors while trying to get the changes from server. All {} retries failed.", connectorConfig.maxConnectorRetries());
