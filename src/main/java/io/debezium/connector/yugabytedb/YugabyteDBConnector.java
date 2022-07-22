@@ -115,6 +115,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         Map<String, ConfigValue> results = validateAllFields(config);
 
         validateTServerConnection(results, config);
+        
         String streamIdValue = this.yugabyteDBConnectorConfig.streamId();
         LOGGER.debug("The streamid in config is" + this.yugabyteDBConnectorConfig.streamId());
 
@@ -280,7 +281,6 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         }
 
         // Do a get and check if the streamid exists.
-        // TODO: Suranjan check the db stream info and verify if the tableIds are present
         // TODO: Find out where to do validation for table whitelist
         String streamId = yugabyteDBConnectorConfig.streamId();
         final ConfigValue streamIdConfig = configValues.get(YugabyteDBConnectorConfig.STREAM_ID.name());
@@ -399,13 +399,10 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                 }
             }
         }
-        catch (DebeziumException de) {
+        catch (Exception e) {
             // We are ultimately throwing this exception since this will be thrown while initializing the connector
             // and at this point if this exception is thrown, we should not proceed forward with the connector.
-            throw de;
-        }
-        catch (Exception e) {
-            e.printStackTrace();
+            throw new DebeziumException(e);
         }
         return tIds;
     }

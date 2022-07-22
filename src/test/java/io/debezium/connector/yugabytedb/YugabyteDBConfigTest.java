@@ -132,5 +132,40 @@ public class YugabyteDBConfigTest extends YugabyteDBTestBase {
                     throw new RuntimeException(throwable);
                 }).get();
     }
-  
+
+    @Test
+    public void shouldNotWorkWithWrongStreamId() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        String invalidStreamId = "someInvalidDbStreamId";
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", invalidStreamId);
+        start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+            assertFalse(success);
+
+            String expectedErrorMessageLine = String.format("Could not find CDC stream: db_stream_id: \"%s\"", invalidStreamId);
+            assertTrue(error.getCause().getMessage().contains(expectedErrorMessageLine));
+        });
+    }
+
+    @Test
+    public void shouldNotWorkWithWrongDatabaseName() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        // Create a dbStreamId on the default namespace but provide a different namespace to the configuration
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+
+        String wrongNamespaceName = "wrong_namespace";
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder(wrongNamespaceName, "public.t1", dbStreamId);
+        start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+            assertFalse(success);
+
+            String expectedErrorMessageLine = String.format("FATAL: database \"%s\" does not exist", wrongNamespaceName);
+            assertTrue(error.getCause().getMessage().contains(expectedErrorMessageLine));
+        });
+    }
 }
