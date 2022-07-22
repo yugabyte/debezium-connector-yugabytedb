@@ -88,12 +88,9 @@ public class YugabyteDBConfigTest extends YugabyteDBTestBase {
         // This should throw a DebeziumException saying the table not_part_of_stream is not a part of stream ID
         start(YugabyteDBConnector.class, configBuilder.build(), (success, msg, error) -> {
             assertFalse(success);
-            // assertThat(success).isFalse();
             assertTrue(error instanceof DebeziumException);
-            // assertThat(error).isInstanceOf(DebeziumException.class);
 
             assertTrue(error.getMessage().contains("is not a part of the stream ID " + dbStreamId));
-            // assertThat(error.getMessage().contains("is not a part of the stream ID " + dbStreamId)).isTrue();
         });
 
         assertConnectorNotRunning();
@@ -148,6 +145,8 @@ public class YugabyteDBConfigTest extends YugabyteDBTestBase {
             String expectedErrorMessageLine = String.format("Could not find CDC stream: db_stream_id: \"%s\"", invalidStreamId);
             assertTrue(error.getCause().getMessage().contains(expectedErrorMessageLine));
         });
+
+        assertConnectorNotRunning();
     }
 
     @Test
@@ -167,5 +166,47 @@ public class YugabyteDBConfigTest extends YugabyteDBTestBase {
             String expectedErrorMessageLine = String.format("FATAL: database \"%s\" does not exist", wrongNamespaceName);
             assertTrue(error.getCause().getMessage().contains(expectedErrorMessageLine));
         });
+
+        assertConnectorNotRunning();
+    }
+
+    @Test
+    public void shouldNotAuthenticateWithWrongUsername() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        // Create a dbStreamId on the default namespace but provide a different namespace to the configuration
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+
+        Configuration.Builder configBuilderWithWrongUser = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        configBuilderWithWrongUser.with(YugabyteDBConnectorConfig.USER, "wrong_username");
+        start(YugabyteDBConnector.class, configBuilderWithWrongUser.build(), (success, message, error) -> {
+            assertFalse(success);
+
+            assertTrue(error.getCause().getMessage().contains("authentication failed for user \"wrong_username\""));
+        });
+
+        assertConnectorNotRunning();
+    }
+
+    @Test
+    public void shouldNotAuthenticateWithWrongPassword() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        // Create a dbStreamId on the default namespace but provide a different namespace to the configuration
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+
+        Configuration.Builder configBuilderWithWrongPassword = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        configBuilderWithWrongPassword.with(YugabyteDBConnectorConfig.PASSWORD, "wrong_password");
+        start(YugabyteDBConnector.class, configBuilderWithWrongPassword.build(), (success, message, error) -> {
+            assertFalse(success);
+
+            assertTrue(error.getCause().getMessage().contains("password authentication failed for user \"yugabyte\""));
+        });
+
+        assertConnectorNotRunning();
     }
 }
