@@ -599,13 +599,6 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withImportance(Importance.LOW)
             .withDefault(false);
 
-    public static final Field AUTO_CREATE_STREAM = Field.create("auto.create.stream")
-            .withDisplayName("Specify whether to create a stream by default")
-            .withType(Type.BOOLEAN)
-            .withImportance(Importance.LOW)
-            .withDefault(false)
-            .withDescription("This will be enabled for testing purposes only, if set to true, the connector will create a DB stream ID");
-
     public static final Field CHAR_SET = Field.create(TASK_CONFIG_PREFIX + "charset")
             .withDisplayName("YugabyteDB charset")
             .withType(ConfigDef.Type.STRING)
@@ -1018,10 +1011,6 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return getConfig().getString(STREAM_ID);
     };
 
-    public boolean autoCreateStream() {
-        return getConfig().getBoolean(AUTO_CREATE_STREAM);
-    }
-
     public boolean ignoreExceptions() {
         return getConfig().getBoolean(IGNORE_EXCEPTIONS);
     }
@@ -1160,8 +1149,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     SSL_SOCKET_FACTORY,
                     STATUS_UPDATE_INTERVAL_MS,
                     TCP_KEEPALIVE,
-                    MAX_NUM_TABLETS,
-                    AUTO_CREATE_STREAM)
+                    MAX_NUM_TABLETS)
             .events(
                     INCLUDE_UNKNOWN_DATATYPES,
                     DatabaseHeartbeatImpl.HEARTBEAT_ACTION_QUERY)
