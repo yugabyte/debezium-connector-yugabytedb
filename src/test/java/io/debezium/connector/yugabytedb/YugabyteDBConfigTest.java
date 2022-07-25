@@ -176,7 +176,7 @@ public class YugabyteDBConfigTest extends YugabyteDBTestBase {
 
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
-        // Create a dbStreamId on the default namespace but provide a different namespace to the configuration
+        // Create a dbStreamId on the default namespace
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
 
         Configuration.Builder configBuilderWithWrongUser = TestHelper.getConfigBuilder("public.t1", dbStreamId);
@@ -196,7 +196,7 @@ public class YugabyteDBConfigTest extends YugabyteDBTestBase {
 
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
-        // Create a dbStreamId on the default namespace but provide a different namespace to the configuration
+        // Create a dbStreamId on the default namespace
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
 
         Configuration.Builder configBuilderWithWrongPassword = TestHelper.getConfigBuilder("public.t1", dbStreamId);
@@ -205,6 +205,63 @@ public class YugabyteDBConfigTest extends YugabyteDBTestBase {
             assertFalse(success);
 
             assertTrue(error.getCause().getMessage().contains("password authentication failed for user \"yugabyte\""));
+        });
+
+        assertConnectorNotRunning();
+    }
+
+    @Test
+    public void shouldThrowProperErrorMessageWithEmptyTableList() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        // Create a dbStreamId on the default namespace
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+
+        Configuration.Builder configBuilderWithWrongPassword = TestHelper.getConfigBuilder("", dbStreamId);
+        start(YugabyteDBConnector.class, configBuilderWithWrongPassword.build(), (success, message, error) -> {
+            assertFalse(success);
+
+            assertTrue(error.getMessage().contains("The table.include.list is empty, please provide a list of tables to get the changes from"));
+        });
+
+        assertConnectorNotRunning();
+    }
+
+    @Test
+    public void shouldThrowExceptionIfTheProvidedTableDoesNotExist() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        // Create a dbStreamId on the default namespace
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+
+        Configuration.Builder configBuilderWithWrongPassword = TestHelper.getConfigBuilder("public.non_existent_table", dbStreamId);
+        start(YugabyteDBConnector.class, configBuilderWithWrongPassword.build(), (success, message, error) -> {
+            assertFalse(success);
+
+            assertTrue(error.getMessage().contains("The tables provided in table.include.list do not exist"));
+        });
+
+        assertConnectorNotRunning();
+    }
+
+    @Test
+    public void shouldThrowProperErrorMessageWithEmptyStream() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        // Provide a empty stream ID as the configuration to verify for the error message
+        String dbStreamId = "";
+
+        Configuration.Builder configBuilderWithWrongPassword = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        start(YugabyteDBConnector.class, configBuilderWithWrongPassword.build(), (success, message, error) -> {
+            assertFalse(success);
+
+            assertTrue(error.getMessage().contains("DB Stream ID not provided, please provide a DB stream ID to proceed"));
         });
 
         assertConnectorNotRunning();
