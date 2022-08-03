@@ -215,6 +215,26 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
                 }).get();
     }
 
+  @Test
+  public void testSnapshotRecordConsumption() throws Exception {
+    TestHelper.dropAllSchemas();
+    TestHelper.executeDDL("yugabyte_create_tables.ddl");
+    final long recordsCount = 1;
+    // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
+    insertRecords(recordsCount);
+
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+    start(YugabyteDBConnector.class, configBuilder.build());
+
+    awaitUntilConnectorIsReady();
+
+    CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
+      .exceptionally(throwable -> {
+        throw new RuntimeException(throwable);
+      }).get();
+  }
+
     @Test
     public void testSmallLoad() throws Exception {
         TestHelper.dropAllSchemas();

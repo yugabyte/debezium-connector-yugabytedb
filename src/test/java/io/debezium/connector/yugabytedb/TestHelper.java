@@ -304,7 +304,8 @@ public final class TestHelper {
                 .with(YugabyteDBConnectorConfig.DELETE_STREAM_ON_STOP, Boolean.TRUE)
                 .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, CONTAINER_YSQL_HOST + ":" + CONTAINER_MASTER_PORT)
                 .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, fullTablenameWithSchema)
-                .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId);
+                .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId)
+                .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
     }
 
     protected static void setContainerHostPort(String host, int port) {

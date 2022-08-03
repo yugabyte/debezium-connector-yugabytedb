@@ -124,10 +124,11 @@ public class YugabyteDBStreamingChangeEventSource implements
         Set<YBPartition> partitions = new YugabyteDBPartition.Provider(connectorConfig).getPartitions();
         boolean hasStartLsnStoredInContext = offsetContext != null && !offsetContext.getTabletSourceInfo().isEmpty();
 
-        LOGGER.info("SKSK The offset context is " + offsetContext + " partition is " + partition);
+        // LOGGER.info("SKSK The offset context is " + offsetContext + " partition is " + partition);
         if (!hasStartLsnStoredInContext) {
             LOGGER.info("No start opid found in the context.");
             if (snapshotter.shouldSnapshot()) {
+                LOGGER.info("Going for snapshot!");
                 offsetContext = YugabyteDBOffsetContext.initialContextForSnapshot(connectorConfig, connection, clock, partitions);
             }
             else {
@@ -377,8 +378,9 @@ public class YugabyteDBStreamingChangeEventSource implements
         final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
         final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
 
-        bootstrapTabletWithRetry(tabletPairList);
-
+        if (!snapshotter.shouldSnapshot()) {
+          bootstrapTabletWithRetry(tabletPairList);
+        }
         short retryCount = 0;
         while (retryCount <= connectorConfig.maxConnectorRetries()) {
             try {

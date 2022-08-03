@@ -155,14 +155,15 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                                                 SnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> snapshotContext,
                                                                 SnapshottingTask snapshottingTask)
             throws Exception {
-        return null;
+      return SnapshotResult.skipped(previousOffset);
     }
 
     protected SnapshotResult<YugabyteDBOffsetContext> doExecute(ChangeEventSourceContext context, YugabyteDBPartition partition, YugabyteDBOffsetContext previousOffset,
                                                                 SnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> snapshotContext,
                                                                 SnapshottingTask snapshottingTask)
             throws Exception {
-        return null;
+      return SnapshotResult.skipped(previousOffset);
+      //return null;
     }
 
     // public SnapshotResult<YugabyteDBOffsetContext> doExecute(
