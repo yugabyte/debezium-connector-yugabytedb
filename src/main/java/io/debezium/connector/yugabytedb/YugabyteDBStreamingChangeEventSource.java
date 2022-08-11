@@ -5,21 +5,6 @@
  */
 package io.debezium.connector.yugabytedb;
 
-import java.io.IOException;
-import java.sql.SQLException;
-import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
-
-import org.apache.commons.lang3.tuple.Pair;
-import org.postgresql.core.BaseConnection;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.cdc.CdcService;
-import org.yb.client.*;
-
 import io.debezium.DebeziumException;
 import io.debezium.connector.yugabytedb.connection.*;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage.Operation;
@@ -35,6 +20,20 @@ import io.debezium.util.Clock;
 import io.debezium.util.DelayStrategy;
 import io.debezium.util.ElapsedTimeStrategy;
 import io.debezium.util.Metronome;
+import org.apache.commons.lang3.tuple.Pair;
+import org.postgresql.core.BaseConnection;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.cdc.CdcService;
+import org.yb.client.*;
+
+import java.io.IOException;
+import java.sql.SQLException;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 /**
  *
@@ -373,14 +372,14 @@ public class YugabyteDBStreamingChangeEventSource implements
         // Note that the entry will be created only when a BEGIN block is encountered.
         Map<String, Integer> recordsInTransactionalBlock = new HashMap<>();
 
-        LOGGER.debug("The init tabletSourceInfo is " + offsetContext.getTabletSourceInfo());
+        LOGGER.info("The init tabletSourceInfo is " + offsetContext.getTabletSourceInfo());
 
         final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
         final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
 
-        if (!snapshotter.shouldSnapshot()) {
-          bootstrapTabletWithRetry(tabletPairList);
-        }
+        Set<String> snapshotCompleted = new HashSet<>();
+        bootstrapTabletWithRetry(tabletPairList);
+
         short retryCount = 0;
         while (retryCount <= connectorConfig.maxConnectorRetries()) {
             try {
@@ -393,12 +392,18 @@ public class YugabyteDBStreamingChangeEventSource implements
                     for (Pair<String, String> entry : tabletPairList) {
                         final String tabletId = entry.getValue();
                         YBPartition part = new YBPartition(tabletId);
+                      if (snapshotCompleted.size() == tabletPairList.size()) {
+                        break;
+                      }
+                      if (snapshotCompleted.contains(tabletId)) {
+                        continue;
+                      }
 
                         YBTable table = tableIdToTable.get(entry.getKey());
-                        OpId cp = offsetContext.lsn(tabletId);
+                      OpId cp = snapshotter.shouldSnapshot()? offsetContext.snapshotLSN(tabletId): offsetContext.lsn(tabletId);
 
                         // GetChangesResponse response = getChangeResponse(offsetContext);
-                        LOGGER.debug("Going to fetch for tablet " + tabletId + " from OpId " + cp + " " +
+                        LOGGER.info("Going to fetch for tablet " + tabletId + " from OpId " + cp + " " +
                                 "table " + table.getName());
 
                         GetChangesResponse response = this.syncClient.getChangesCDCSDK(
@@ -555,6 +560,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 response.getSnapshotTime());
                         offsetContext.getSourceInfo(tabletId)
                                 .updateLastCommit(finalOpid);
+
+                        LOGGER.info("The final opid is " + finalOpid);
+                        if (snapshotter.shouldSnapshot() && finalOpid.equals(new OpId(-1, -1, "".getBytes(), 0 ,0))) {
+                          snapshotCompleted.add(tabletId);
+                          LOGGER.info("Stopping the snapshot for the tablet " + tabletId);
+                        }
                     }
                     // Reset the retry count, because if flow reached at this point, it means that the connection
                     // has succeeded

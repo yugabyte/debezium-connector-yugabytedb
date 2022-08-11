@@ -208,7 +208,6 @@ public final class TestHelper {
         try (YugabyteDBConnection connection = create()) {
             connection.setAutoCommit(true); // setting auto-commit to true
             connection.executeWithoutCommitting(statement);
-            Connection jdbcConn = connection.connection();
         }
         catch (RuntimeException e) {
             throw e;
@@ -218,6 +217,20 @@ public final class TestHelper {
         }
     }
 
+  public static void executeBulk(String statement, int numRecords) {
+    try (YugabyteDBConnection connection = create()) {
+      connection.setAutoCommit(true); // setting auto-commit to true
+      for(int i =0; i< numRecords; i++) {
+        connection.executeWithoutCommitting(String.format(statement, i));
+      }
+    }
+    catch (RuntimeException e) {
+      throw e;
+    }
+    catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
     /**
      * Drops all the public non system schemas from the DB.
      *

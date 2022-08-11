@@ -53,6 +53,14 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         }).get();
     }
 
+  private void insertBulkRecords(int numRecords) throws Exception {
+    String formatInsertString = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
+    CompletableFuture.runAsync(() -> {
+        TestHelper.executeBulk(formatInsertString, numRecords);
+    }).exceptionally(throwable -> {
+      throw new RuntimeException(throwable);
+    }).get();
+  }
     // This function will one row each of the specified enum labels
     private void insertEnumRecords() throws Exception {
         String[] enumLabels = {"ZERO", "ONE", "TWO"};
@@ -219,9 +227,9 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
   public void testSnapshotRecordConsumption() throws Exception {
     TestHelper.dropAllSchemas();
     TestHelper.executeDDL("yugabyte_create_tables.ddl");
-    final long recordsCount = 1;
+    final int recordsCount = 5000;
     // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
-    insertRecords(recordsCount);
+    insertBulkRecords(recordsCount);
 
     String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);

@@ -257,6 +257,13 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                 : sourceInfo.lsn();
     }
 
+    OpId snapshotLSN(String tabletId) {
+      // get the sourceInfo of the tablet
+      SourceInfo sourceInfo = getSourceInfo(tabletId);
+      return sourceInfo.lsn() == null ? new OpId(-1, -1, "".getBytes(), -1, -1)
+        : sourceInfo.lsn();
+    }
+
     OpId lastCompletelyProcessedLsn() {
         return lastCompletelyProcessedLsn;
     }
