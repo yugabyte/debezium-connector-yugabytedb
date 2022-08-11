@@ -393,6 +393,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                         final String tabletId = entry.getValue();
                         YBPartition part = new YBPartition(tabletId);
                       if (snapshotCompleted.size() == tabletPairList.size()) {
+                        LOGGER.info("Snapshot completed for all the tablets! Stopping.");
                         break;
                       }
                       if (snapshotCompleted.contains(tabletId)) {
