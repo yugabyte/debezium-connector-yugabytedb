@@ -399,7 +399,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                         continue;
                       }
 
-                        YBTable table = tableIdToTable.get(entry.getKey());
+                      YBTable table = tableIdToTable.get(entry.getKey());
                       OpId cp = snapshotter.shouldSnapshot()? offsetContext.snapshotLSN(tabletId): offsetContext.lsn(tabletId);
 
                         // GetChangesResponse response = getChangeResponse(offsetContext);
