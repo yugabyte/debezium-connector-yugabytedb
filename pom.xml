@@ -5,7 +5,7 @@
     <groupId>org.yb</groupId>
     <artifactId>debezium-connector-yugabytedb</artifactId>
     <name>Debezium Connector for YugabyteDB</name>
-    <version>1.7.0.9-BETA-SNAPSHOT</version>
+    <version>1.7.0.8-SNAP</version>
     <packaging>jar</packaging>
 
     <scm>
