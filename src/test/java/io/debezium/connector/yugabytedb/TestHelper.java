@@ -309,16 +309,20 @@ public final class TestHelper {
         }
     }
 
-    protected static Configuration.Builder getConfigBuilder(String fullTablenameWithSchema, String dbStreamId) throws Exception {
+    protected static Configuration.Builder getConfigBuilder(String fullTableNameWithSchema, String dbStreamId) throws Exception {
+        return getConfigBuilder("yugabyte", fullTableNameWithSchema, dbStreamId);
+    }
+
+    protected static Configuration.Builder getConfigBuilder(String namespaceName, String fullTableNameWithSchema, String dbStreamId) throws Exception {
         return TestHelper.defaultConfig()
+                .with(YugabyteDBConnectorConfig.DATABASE_NAME, namespaceName)
                 .with(YugabyteDBConnectorConfig.HOSTNAME, CONTAINER_YSQL_HOST) // this field is required as of now
                 .with(YugabyteDBConnectorConfig.PORT, CONTAINER_YSQL_PORT)
                 .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.NEVER.getValue())
                 .with(YugabyteDBConnectorConfig.DELETE_STREAM_ON_STOP, Boolean.TRUE)
                 .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, CONTAINER_YSQL_HOST + ":" + CONTAINER_MASTER_PORT)
-                .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, fullTablenameWithSchema)
-                .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId)
-                .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
+                .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, fullTableNameWithSchema)
+                .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId);
     }
 
     protected static void setContainerHostPort(String host, int port) {

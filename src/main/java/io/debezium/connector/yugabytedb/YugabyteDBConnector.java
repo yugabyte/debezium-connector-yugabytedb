@@ -115,6 +115,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         Map<String, ConfigValue> results = validateAllFields(config);
 
         validateTServerConnection(results, config);
+        
         String streamIdValue = this.yugabyteDBConnectorConfig.streamId();
         LOGGER.debug("The streamid in config is" + this.yugabyteDBConnectorConfig.streamId());
 
@@ -210,11 +211,13 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
     @Override
     public void stop() {
         this.props = null;
-        try {
+        if (this.ybClient != null) {
+          try {
             ybClient.close();
-        }
-        catch (Exception e) {
+          }
+          catch (Exception e) {
             LOGGER.warn("Received exception while shutting down the client", e);
+          }
         }
     }
 
@@ -280,38 +283,23 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         }
 
         // Do a get and check if the streamid exists.
-        // TODO: Suranjan check the db stream info and verify if the tableIds are present
         // TODO: Find out where to do validation for table whitelist
         String streamId = yugabyteDBConnectorConfig.streamId();
+        if (streamId == null || streamId.isEmpty()) {
+            // Coming to this block means the auto.create.stream is set to false and no stream ID is provided, the connector should not proceed forward.
+            throw new DebeziumException("DB Stream ID not provided, please provide a DB stream ID to proceed");
+        }
+
         final ConfigValue streamIdConfig = configValues.get(YugabyteDBConnectorConfig.STREAM_ID.name());
+
+        if (yugabyteDBConnectorConfig.tableIncludeList() == null || yugabyteDBConnectorConfig.tableIncludeList().isEmpty()) {
+            throw new DebeziumException("The table.include.list is empty, please provide a list of tables to get the changes from");
+        }
+
         this.tableIds = fetchTabletList();
 
-        if (tableIds.isEmpty()) {
-            LOGGER.info(String.format("The table id is empty."));
-            System.exit(1);
-        }
-
-        if (yugabyteDBConnectorConfig.autoCreateStream()) {
-            LOGGER.info("auto.create.stream set to true");
-            // Create stream.
-            String tableid = tableIds.stream().findFirst().get();
-            try {
-                YBTable t = this.ybClient.openTableByUUID(tableid);
-                streamId = this.ybClient.createCDCStream(t, yugabyteDBConnectorConfig.databaseName(), "PROTO", "IMPLICIT").getStreamId();
-
-                LOGGER.info(String.format("Created a new stream ID: %s", streamId));
-
-                configValues.put(YugabyteDBConnectorConfig.STREAM_ID.name(),
-                        new ConfigValue(YugabyteDBConnectorConfig.STREAM_ID.name(), streamId, new ArrayList<>(), new ArrayList<>()));
-
-            }
-            catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-        else if (streamId == null || streamId.isEmpty()) {
-            // Coming to this block means the auto.create.stream is set to false and no stream ID is provided, the connector should not proceed forward.
-            throw new DebeziumException("DB Stream ID not provided, please provide a DB stream ID to proceed...");
+        if (tableIds == null || tableIds.isEmpty()) {
+            throw new DebeziumException("The tables provided in table.include.list do not exist");
         }
 
         try {
@@ -399,13 +387,10 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                 }
             }
         }
-        catch (DebeziumException de) {
+        catch (Exception e) {
             // We are ultimately throwing this exception since this will be thrown while initializing the connector
             // and at this point if this exception is thrown, we should not proceed forward with the connector.
-            throw de;
-        }
-        catch (Exception e) {
-            e.printStackTrace();
+            throw new DebeziumException(e);
         }
         return tIds;
     }

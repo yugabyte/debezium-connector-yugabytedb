@@ -267,7 +267,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     OpId lastCompletelyProcessedLsn() {
         return lastCompletelyProcessedLsn;
     }
-
+    
     OpId lastCompletelyProcessedLsn(String tabletId) {
         return lastCompletelyProcessedLsn;
     }

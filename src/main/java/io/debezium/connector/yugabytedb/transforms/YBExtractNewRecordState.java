@@ -115,6 +115,7 @@ public class YBExtractNewRecordState<R extends ConnectRecord<R>> extends Extract
                 }
             }
             else {
+                updatedValue.put(field.name(), value.get(field));
             }
         }
 

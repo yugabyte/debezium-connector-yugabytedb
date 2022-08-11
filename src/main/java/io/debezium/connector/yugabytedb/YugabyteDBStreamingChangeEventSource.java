@@ -381,7 +381,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         bootstrapTabletWithRetry(tabletPairList);
 
         short retryCount = 0;
-        while (retryCount <= connectorConfig.maxConnectorRetries()) {
+        while (context.isRunning() && retryCount <= connectorConfig.maxConnectorRetries()) {
             try {
                 while (context.isRunning() && (offsetContext.getStreamingStoppingLsn() == null ||
                         (lastCompletelyProcessedLsn.compareTo(offsetContext.getStreamingStoppingLsn()) < 0))) {
@@ -400,12 +400,18 @@ public class YugabyteDBStreamingChangeEventSource implements
                       }
 
                       YBTable table = tableIdToTable.get(entry.getKey());
-                      OpId cp = snapshotter.shouldSnapshot()? offsetContext.snapshotLSN(tabletId): offsetContext.lsn(tabletId);
+                      OpId cp = snapshotter.shouldSnapshot() ? offsetContext.snapshotLSN(tabletId) : offsetContext.lsn(tabletId);
 
-                        // GetChangesResponse response = getChangeResponse(offsetContext);
-                        LOGGER.info("Going to fetch for tablet " + tabletId + " from OpId " + cp + " " +
-                                "table " + table.getName());
+                      // GetChangesResponse response = getChangeResponse(offsetContext);
 
+                      LOGGER.debug("Going to fetch for tablet " + tabletId + " from OpId " + cp + " " +
+                        "table " + table.getName() + " Running:" + context.isRunning());
+
+                      // Check again if the thread has been interrupted.
+                      if (!context.isRunning()) {
+                        LOGGER.info("Connector has been stopped");
+                        break;
+                      }
                         GetChangesResponse response = this.syncClient.getChangesCDCSDK(
                                 table, streamId, tabletId,
                                 cp.getTerm(), cp.getIndex(), cp.getKey(), cp.getWrite_id(), cp.getTime(), schemaStreamed.get(tabletId));
@@ -449,9 +455,11 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                             if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                                 if (recordsInTransactionalBlock.get(tabletId) == 0) {
-                                                    LOGGER.warn("Records in the transactional block for tablet {} are 0", tabletId);
+                                                    LOGGER.warn("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                                message.getTransactionId(), lsn, tabletId);
                                                 } else {
-                                                    LOGGER.debug("Records in the transactional block for tablet {}: {}", tabletId, recordsInTransactionalBlock.get(tabletId));
+                                                    LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
+                                                                 message.getTransactionId(), lsn, tabletId, recordsInTransactionalBlock.get(tabletId));
                                                 }
                                             } else {
                                                 throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");
@@ -478,9 +486,11 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                         if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                             if (recordsInTransactionalBlock.get(tabletId) == 0) {
-                                                LOGGER.warn("Records in the transactional block for tablet {} are 0", tabletId);
+                                                LOGGER.warn("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                            message.getTransactionId(), lsn, tabletId);
                                             } else {
-                                                LOGGER.debug("Records in the transactional block for tablet {}: {}", tabletId, recordsInTransactionalBlock.get(tabletId));
+                                                LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
+                                                             message.getTransactionId(), lsn, tabletId, recordsInTransactionalBlock.get(tabletId));
                                             }
                                         } else {
                                             throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");

@@ -14,61 +14,85 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
 
 ## Building the connector jar
 
-  1. Navigate to the debezium repository. This will assume that you are inside the parent repository of this connector.
-  2. Build the jar files using maven
+1. Navigate inside the repository.
+2. Build the jar files using maven, note that this step will also generate a docker image with the connector
       
-      ```sh
-      mvn clean verify -Dquick
-      ```
+    ```sh
+    mvn clean package -Dquick
+    ```
 
-  3. Create a custom folder for the custom-connector
-      
-      ```sh
-      mkdir ~/custom-connector
-      ```
+    The docker image will be tagged as:
+    ```
+    quay.io/yugabyte/debezium-connector:latest
+    ```
+    The above mentioned image is nothing but a Kafka Connect image bundled with the Debezium Connector for YugabyteDB.
 
-  4. Copy the debezium-connector-yugabytedb2 jar to the custom-connector directory
-      
-      ```sh
-      cp debezium-connector-yugabytedb2/target/debezium-connector-yugabytedb-1.3.2-BETA.jar ~/custom-connector/
-      ```
+## Quick start
 
-  5. Navigate to the directory you created
-      
-      ```sh
-      cd ~/custom-connector
-      ```
+1. Start Zookeeper:
+  ```sh
+  docker run -it --rm --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 debezium/zookeeper:1.7
+  ```
+2. Start Kafka:
+  ```sh
+  docker run -it --rm --name kafka -p 9092:9092 --link zookeeper:zookeeper debezium/kafka:1.7
+  ```
+3. Assign your machine's IP to an environment variable:
+  ```sh
+  # macOS:
+  export IP=$(ipconfig getifaddr en0)
 
-  6. Download the Kafka-Connect-JDBC jar file
-      
-      ```sh
-      wget https://packages.confluent.io/maven/io/confluent/kafka-connect-jdbc/10.2.5/kafka-connect-jdbc-10.2.5.jar
-      ```
-
-  7. Create a Dockerfile 
-      
-      ```sh
-      vi Dockerfile
-      ```
-      
-      Now copy the following contents to the Dockerfile:
-      
-      ```Dockerfile
-      FROM debezium/connect:1.6
-      ENV KAFKA_CONNECT_YB_DIR=$KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb
-
-      # Deploy Kafka Connect yugabytedb
-      RUN mkdir $KAFKA_CONNECT_YB_DIR && cd $KAFKA_CONNECT_YB_DIR
-
-      COPY debezium-connector-yugabytedb-1.3.2-BETA.jar \
-      $KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb/
-
-      COPY kafka-connect-jdbc-10.2.5.jar $KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb
-      
-      ENV KAFKA_OPTS="-Djdk.tls.client.protocols=TLSv1.2"
-      ```
-
-  8. Build the image
-      ```sh
-      docker build . -t yb-test-connector
-      ```
+  # Linux:
+  export IP=$(hostname -i)
+  ```
+4. Start a cluster using yugabyted. Note that you need to run yugabyted with the IP of your machine; otherwise, it would consider localhost (which would be mapped to the docker host instead of your machine). The yugabyted binary along with other required binaries can be downloaded from [download.yugabyte.com](https://download.yugabyte.com/).
+  ```sh
+  ./yugabyted start --advertise_address $IP
+  ```
+5. Connect using ysqlsh and create a table:
+  ```
+  ./bin/ysqlsh -h $IP
+  
+  create table test (id int primary key, name text, days_worked bigint);
+  ```
+6. Create a DB stream ID:
+  ```
+  ./yb-admin --master_addresses ${IP}:7100 create_change_data_stream ysql.yugabyte
+  ```
+7. Start Kafka Connect:
+  ```sh
+  docker run -it --rm \
+    --name connect -p 8083:8083 -e GROUP_ID=1 \
+    -e CONFIG_STORAGE_TOPIC=my_connect_configs \
+    -e OFFSET_STORAGE_TOPIC=my_connect_offsets \
+    -e STATUS_STORAGE_TOPIC=my_connect_statuses \
+    --link zookeeper:zookeeper --link kafka:kafka \
+        quay.io/yugabyte/debezium-connector:latest
+  ```
+8. Deploy the configuration for the connector:
+  **NOTE: Do not forget to change the `database.streamid` with the value you obtained in step 6**
+  ```sh
+  curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" \
+    localhost:8083/connectors/ \
+    -d '{
+    "name": "ybconnector",
+    "config": {
+        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+        "database.hostname":"'$IP'",
+        "database.port":"5433",
+        "database.master.addresses": "'$IP':7100",
+        "database.user": "yugabyte",
+        "database.password": "yugabyte",
+        "database.dbname" : "yugabyte",
+        "database.server.name": "dbserver1",
+        "table.include.list":"public.test",
+        "database.streamid":"d540f5e4890c4d3b812933cbfd703ed3",
+        "snapshot.mode":"never"
+    }
+    }'
+  ```
+9. Start a Kafka console consumer:
+  ```sh
+  docker run -it --rm --name consumer --link zookeeper:zookeeper --link kafka:kafka debezium/kafka:1.7 \
+  watch-topic -a dbserver1.public.test
+  ```
