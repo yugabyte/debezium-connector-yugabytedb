@@ -24,6 +24,8 @@ import io.debezium.pipeline.source.spi.StreamingChangeEventSource;
 import io.debezium.relational.TableId;
 import io.debezium.schema.DataCollectionId;
 import io.debezium.util.Clock;
+import io.debezium.connector.base.ChangeEventQueue;
+import io.debezium.pipeline.DataChangeEvent;
 
 public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFactory<YugabyteDBPartition, YugabyteDBOffsetContext> {
 
@@ -38,6 +40,7 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
     private final ReplicationConnection replicationConnection;
     private final SlotCreationResult slotCreatedInfo;
     private final SlotState startingSlotInfo;
+    private final ChangeEventQueue<DataChangeEvent> queue;
 
     public YugabyteDBChangeEventSourceFactory(YugabyteDBConnectorConfig configuration,
                                               Snapshotter snapshotter,
@@ -48,7 +51,8 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
                                               YugabyteDBTaskContext taskContext,
                                               ReplicationConnection replicationConnection,
                                               SlotCreationResult slotCreatedInfo,
-                                              SlotState startingSlotInfo) {
+                                              SlotState startingSlotInfo,
+                                              ChangeEventQueue<DataChangeEvent> queue) {
         this.configuration = configuration;
         this.jdbcConnection = jdbcConnection;
         this.errorHandler = errorHandler;
@@ -60,6 +64,7 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
         this.replicationConnection = replicationConnection;
         this.slotCreatedInfo = slotCreatedInfo;
         this.startingSlotInfo = startingSlotInfo;
+        this.queue = queue;
     }
 
     @Override
@@ -86,7 +91,8 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
                 clock,
                 schema,
                 taskContext,
-                replicationConnection);
+                replicationConnection,
+                queue);
     }
 
     @Override

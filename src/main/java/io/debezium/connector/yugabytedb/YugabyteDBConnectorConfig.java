@@ -510,6 +510,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final long DEFAULT_CDC_POLL_INTERVAL_MS = 500;
     protected static final int DEFAULT_MAX_CONNECTOR_RETRIES = 5;
     protected static final long DEFAULT_CONNECTOR_RETRY_DELAY_MS = 60000;
+    protected static final boolean DEFAULT_LIMIT_ONE_POLL_PER_ITERATION = false;
 
     @Override
     public Configuration getJdbcConfig() {
@@ -578,6 +579,13 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withImportance(Importance.LOW)
             .withDefault(DEFAULT_CDC_POLL_INTERVAL_MS)
             .withDescription("The poll interval in milliseconds at which the client will request for changes from the database");
+
+    public static final Field CDC_LIMIT_POLL_PER_ITERATION = Field.create("cdc.poll.limit")
+            .withDisplayName("Limit number of polls per iteration to 1")
+            .withType(Type.BOOLEAN)
+            .withImportance(Importance.LOW)
+            .withDefault(DEFAULT_LIMIT_ONE_POLL_PER_ITERATION)
+            .withDescription("Retrict polling of CDC RPC to once per iteration.");
 
     public static final Field MAX_CONNECTOR_RETRIES = Field.create("max.connector.retries")
             .withDisplayName("Maximum number of retries a connector can have")
@@ -1033,6 +1041,10 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
     public long cdcPollIntervalms() {
         return getConfig().getLong(CDC_POLL_INTERVAL_MS);
+    }
+
+    public boolean cdcLimitPollPerIteration() {
+        return getConfig().getBoolean(CDC_LIMIT_POLL_PER_ITERATION);
     }
 
     public int maxConnectorRetries() {

@@ -24,3 +24,7 @@ hs_err_pid*
 generated-sources
 **/target/
 .vscode
+# YouCompleteMe Plugin files
+.classpath
+.project
+.settings
