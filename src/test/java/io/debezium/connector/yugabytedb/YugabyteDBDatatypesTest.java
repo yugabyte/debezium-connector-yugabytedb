@@ -161,6 +161,23 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         }
     }
 
+    private void verifyRecordCount(long recordsCount) {
+        int totalConsumedRecords = 0;
+        long start = System.currentTimeMillis();
+        while (totalConsumedRecords < recordsCount) {
+            int consumed = super.consumeAvailableRecords(record -> {
+                LOGGER.debug("The record being consumed is " + record);
+            });
+            if (consumed > 0) {
+                totalConsumedRecords += consumed;
+                LOGGER.debug("Consumed " + totalConsumedRecords + " records");
+            }
+        }
+        LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
+
+        assertEquals(recordsCount, totalConsumedRecords);
+    }
+
     private void verifyValue(long recordsCount) {
         int totalConsumedRecords = 0;
         long start = System.currentTimeMillis();
@@ -287,11 +304,14 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
 
     String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+    configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
     start(YugabyteDBConnector.class, configBuilder.build());
 
     awaitUntilConnectorIsReady();
 
-    CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
+    // Only verifying the record count since the snapshot records are not ordered so it may be
+    // a little complex to verify them in the sorted order at the moment
+    CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount))
       .exceptionally(throwable -> {
         throw new RuntimeException(throwable);
       }).get();
