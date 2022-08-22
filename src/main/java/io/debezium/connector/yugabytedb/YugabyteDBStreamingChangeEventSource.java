@@ -372,7 +372,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                     if (this.connectorConfig.cdcLimitPollPerIteration()
                             && queue.remainingCapacity() < queue.totalCapacity()) {
-                        LOGGER.info("Queue has {} items. Skipping", queue.totalCapacity() - queue.remainingCapacity());
+                        LOGGER.debug("Queue has {} items. Skipping", queue.totalCapacity() - queue.remainingCapacity());
                         continue;
                     }
 
@@ -384,7 +384,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                         OpId cp = offsetContext.lsn(tabletId);
 
                         // GetChangesResponse response = getChangeResponse(offsetContext);
-                        LOGGER.info("Going to fetch for tablet " + tabletId + " from OpId " + cp + " " +
+                        LOGGER.debug("Going to fetch for tablet " + tabletId + " from OpId " + cp + " " +
                                 "table " + table.getName() + " Running:" + context.isRunning());
 
                         // Check again if the thread has been interrupted.
@@ -397,7 +397,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 table, streamId, tabletId,
                                 cp.getTerm(), cp.getIndex(), cp.getKey(), cp.getWrite_id(), cp.getTime(), schemaStreamed.get(tabletId));
 
-                        LOGGER.info("Processing {} records from getChanges call",
+                        LOGGER.debug("Processing {} records from getChanges call",
                                 response.getResp().getCdcSdkProtoRecordsList().size());
                         for (CdcService.CDCSDKProtoRecordPB record : response
                                 .getResp()
