@@ -88,7 +88,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     private final Map<String, OpId> checkPointMap;
     private final ChangeEventQueue<DataChangeEvent> queue;
 
-    class MessageContext {
+    class MessageContext implements Comparable<MessageContext> {
         public final CdcService.CDCSDKProtoRecordPB record;
         public final YBPartition partition;
         public final YBTable table;
@@ -102,6 +102,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 YBTable table, String tabletId, YugabyteDBOffsetContext offsetContext,
                 OpId cp, Map<String, Boolean> schemaStreamed) {
             this.record = record;
+            this.snapshotTime = snapshotTime;
             this.partition = partition;
             this.table = table;
             this.tabletId = tabletId;
@@ -109,9 +110,22 @@ public class YugabyteDBStreamingChangeEventSource implements
             this.cp = cp;
             this.schemaStreamed = schemaStreamed;
         }
+
+        @Override
+        public int compareTo(MessageContext o) {
+            long o1_commit_time = this.record.getRowMessage().getCommitTime();
+            long o2_commit_time = o.record.getRowMessage().getCommitTime();
+            if (o1_commit_time == o2_commit_time) {
+                return 0;
+            } else {
+                return o1_commit_time < o2_commit_time ? -1 : 1;
+            }
+        }
     }
 
-    private PriorityQueue<MessageContext> sortedMessages;
+    private PriorityQueue<MessageContext> sortedMessages = new PriorityQueue<>();
+
+    private Map<String, Long> maxCommitTime = new HashMap<>();
 
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
                                                 YugabyteDBConnection connection, EventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
@@ -143,18 +157,6 @@ public class YugabyteDBStreamingChangeEventSource implements
         syncClient = new YBClient(asyncYBClient);
         yugabyteDBTypeRegistry = taskContext.schema().getTypeRegistry();
         this.queue = queue;
-
-        final Comparator<MessageContext> messageComparator =
-            (final MessageContext o1, final MessageContext o2) -> {
-                long o1_commit_time = o1.record.getRowMessage().getCommitTime();
-                long o2_commit_time = o2.record.getRowMessage().getCommitTime();
-                if  (o1_commit_time == o2_commit_time) {
-                    return 0;
-                } else {
-                    return o1_commit_time < o2_commit_time ? -1 : 1;
-                }
-            });
-        sortedMessages = new PriorityQueue<>(messageComparator);
     }
 
     @Override
@@ -345,7 +347,13 @@ public class YugabyteDBStreamingChangeEventSource implements
         // Note that the entry will be created only when a BEGIN block is encountered.
         Map<String, Integer> recordsInTransactionalBlock = new HashMap<>();
 
-        while (sortedMessages.size() > 0) {
+        Long minCommitTime = Collections.min(maxCommitTime.values());
+
+        // TODO check if minCommitTime is NULL. Is that even possible if sortedMessage >
+        // 0 ?
+
+        while (sortedMessages.size() > 0 &&
+                sortedMessages.peek().record.getRowMessage().getCommitTime() <= minCommitTime) {
             MessageContext messageContext = sortedMessages.poll();
 
             CdcService.CDCSDKProtoRecordPB record = messageContext.record;
@@ -610,6 +618,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                             sortedMessages.add(
                                     new MessageContext(record, response.getSnapshotTime(),
                                             part, table, tabletId, offsetContext, cp, schemaStreamed));
+                            if (!maxCommitTime.containsKey(tabletId) ||
+                                    maxCommitTime.get(tabletId) < record.getRowMessage().getCommitTime()) {
+                                maxCommitTime.put(tabletId, record.getRowMessage().getCommitTime());
+                            }
                         }
 
                         this.dispatchMessages();
