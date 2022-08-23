@@ -91,7 +91,7 @@ public class OpId implements Comparable<OpId> {
             return false;
         OpId that = (OpId) o;
         return term == that.term && index == that.index && time == that.time
-                && write_id == that.write_id && Objects.equal(key, that.key);
+                && write_id == that.write_id && Arrays.equals(key, that.key);
     }
 
     @Override

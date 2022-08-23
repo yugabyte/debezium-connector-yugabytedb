@@ -158,8 +158,8 @@ public class YugabyteDBConnectorTask
         final Map<YBPartition, YugabyteDBOffsetContext> previousOffsets = getPreviousOffsetss(new YugabyteDBPartition.Provider(connectorConfig),
                 new YugabyteDBOffsetContext.Loader(connectorConfig));
         final Clock clock = Clock.system();
-        final Set<YugabyteDBOffsetContext> previousOffset = new HashSet<>(previousOffsets.values());
-        YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(previousOffset, connectorConfig);
+
+        YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(previousOffsets, connectorConfig);
 
         LoggingContext.PreviousContext previousContext = taskContext
                 .configureLoggingContext(CONTEXT_NAME);

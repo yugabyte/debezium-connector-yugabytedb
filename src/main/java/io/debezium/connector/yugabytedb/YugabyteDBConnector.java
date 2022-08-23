@@ -211,11 +211,12 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
     @Override
     public void stop() {
         this.props = null;
-        try {
+        if (this.ybClient != null) {
+          try {
             ybClient.close();
-        }
-        catch (Exception e) {
+          } catch (Exception e) {
             LOGGER.warn("Received exception while shutting down the client", e);
+          }
         }
     }
 

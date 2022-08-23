@@ -57,6 +57,14 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         }).get();
     }
 
+  private void insertBulkRecords(int numRecords) throws Exception {
+    String formatInsertString = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
+    CompletableFuture.runAsync(() -> {
+        TestHelper.executeBulk(formatInsertString, numRecords);
+    }).exceptionally(throwable -> {
+      throw new RuntimeException(throwable);
+    }).get();
+  }
     // This function will one row each of the specified enum labels
     private void insertEnumRecords() throws Exception {
         String[] enumLabels = {"ZERO", "ONE", "TWO"};
@@ -151,6 +159,23 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
             // verify the records
             assertValueField(records.get(i), "after/id/value", i);
         }
+    }
+
+    private void verifyRecordCount(long recordsCount) {
+        int totalConsumedRecords = 0;
+        long start = System.currentTimeMillis();
+        while (totalConsumedRecords < recordsCount) {
+            int consumed = super.consumeAvailableRecords(record -> {
+                LOGGER.debug("The record being consumed is " + record);
+            });
+            if (consumed > 0) {
+                totalConsumedRecords += consumed;
+                LOGGER.debug("Consumed " + totalConsumedRecords + " records");
+            }
+        }
+        LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
+
+        assertEquals(recordsCount, totalConsumedRecords);
     }
 
     private void verifyValue(long recordsCount) {
@@ -268,6 +293,29 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
                     throw new RuntimeException(throwable);
                 }).get();
     }
+
+  @Test
+  public void testSnapshotRecordConsumption() throws Exception {
+    TestHelper.dropAllSchemas();
+    TestHelper.executeDDL("yugabyte_create_tables.ddl");
+    final int recordsCount = 5000;
+    // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
+    insertBulkRecords(recordsCount);
+
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+    configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
+    start(YugabyteDBConnector.class, configBuilder.build());
+
+    awaitUntilConnectorIsReady();
+
+    // Only verifying the record count since the snapshot records are not ordered so it may be
+    // a little complex to verify them in the sorted order at the moment
+    CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount))
+      .exceptionally(throwable -> {
+        throw new RuntimeException(throwable);
+      }).get();
+  }
 
     @Test
     public void testRecordDeleteFieldWithYBExtractNewRecordState() throws Exception {
