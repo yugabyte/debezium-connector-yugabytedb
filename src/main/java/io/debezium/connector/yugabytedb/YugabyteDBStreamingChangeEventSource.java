@@ -20,6 +20,8 @@ import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.client.*;
 
+import com.google.protobuf.ByteString;
+
 import io.debezium.DebeziumException;
 import io.debezium.connector.yugabytedb.connection.*;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage.Operation;
@@ -96,10 +98,12 @@ public class YugabyteDBStreamingChangeEventSource implements
         public final OpId cp;
         public final Map<String, Boolean> schemaStreamed;
         public final long snapshotTime;
+        public final String txn;
+        public final int inTxnOrder;
 
         public MessageContext(CdcService.CDCSDKProtoRecordPB record, long snapshotTime, YBPartition partition,
                 YBTable table, String tabletId, YugabyteDBOffsetContext offsetContext,
-                OpId cp, Map<String, Boolean> schemaStreamed) {
+                OpId cp, Map<String, Boolean> schemaStreamed, String txn, int inTxnOrder) {
             this.record = record;
             this.snapshotTime = snapshotTime;
             this.partition = partition;
@@ -108,16 +112,20 @@ public class YugabyteDBStreamingChangeEventSource implements
             this.offsetContext = offsetContext;
             this.cp = cp;
             this.schemaStreamed = schemaStreamed;
+            this.txn = txn;
+            this.inTxnOrder = inTxnOrder;
         }
 
         @Override
         public int compareTo(MessageContext o) {
             long o1_commit_time = this.record.getRowMessage().getCommitTime();
             long o2_commit_time = o.record.getRowMessage().getCommitTime();
-            if (o1_commit_time == o2_commit_time) {
-                return 0;
-            } else {
+            if (o1_commit_time != o2_commit_time) {
                 return o1_commit_time < o2_commit_time ? -1 : 1;
+            } else if (!this.txn.equals(o.txn)) {
+                return -1;
+            } else {
+                return this.inTxnOrder < o.inTxnOrder ? -1 : 1;
             }
         }
     }
@@ -340,16 +348,9 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
-    private void dispatchMessages() {
-        // This will contain the tablet ID mapped to the number of records it has seen
-        // in the transactional block.
-        // Note that the entry will be created only when a BEGIN block is encountered.
-        Map<String, Integer> recordsInTransactionalBlock = new HashMap<>();
-
-        Long minCommitTime = Collections.min(maxCommitTime.values());
-
-        // TODO check if minCommitTime is NULL. Is that even possible if sortedMessage >
-        // 0 ?
+    private void dispatchMessages(Map<String, Integer> recordsInTransactionalBlock) {
+        long minCommitTime = Collections.min(maxCommitTime.values());
+        LOGGER.info("Min Commit Time: {}", minCommitTime);
 
         while (sortedMessages.size() > 0 &&
                 sortedMessages.peek().record.getRowMessage().getCommitTime() <= minCommitTime) {
@@ -360,8 +361,12 @@ public class YugabyteDBStreamingChangeEventSource implements
             CdcService.RowMessage m = record.getRowMessage();
             String tabletId = messageContext.tabletId;
             YugabyteDBOffsetContext offsetContext = messageContext.offsetContext;
-            OpId cp = messageContext.cp;
             Map<String, Boolean> schemaStreamed = messageContext.schemaStreamed;
+
+            LOGGER.info("Processing Record for {} with commit time {}, txn: {}, order: {}", tabletId,
+                    m.getCommitTime(), messageContext.txn, messageContext.inTxnOrder);
+
+            LOGGER.info("{}", m);
 
             YbProtoReplicationMessage message = new YbProtoReplicationMessage(
                     m, this.yugabyteDBTypeRegistry);
@@ -382,16 +387,16 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // Tx BEGIN/END event
                 if (message.isTransactionalMessage()) {
                     if (!connectorConfig.shouldProvideTransactionMetadata()) {
-                        LOGGER.debug("Received transactional message {}", record);
+                        LOGGER.info("Received transactional message {}", record);
                         // Don't skip on BEGIN message as it would flush LSN for the whole transaction
                         // too early
                         if (message.getOperation() == Operation.BEGIN) {
-                            LOGGER.debug("LSN in case of BEGIN is " + lsn);
+                            LOGGER.info("LSN in case of BEGIN is " + lsn);
 
                             recordsInTransactionalBlock.put(tabletId, 0);
                         }
                         if (message.getOperation() == Operation.COMMIT) {
-                            LOGGER.debug("LSN in case of COMMIT is " + lsn);
+                            LOGGER.info("LSN in case of COMMIT is " + lsn);
                             offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn,
                                     message.getCommitTime(),
                                     String.valueOf(message.getTransactionId()), null, null/*
@@ -422,13 +427,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                     }
 
                     if (message.getOperation() == Operation.BEGIN) {
-                        LOGGER.debug("LSN in case of BEGIN is " + lsn);
+                        LOGGER.info("LSN in case of BEGIN is " + lsn);
                         dispatcher.dispatchTransactionStartedEvent(part,
                                 message.getTransactionId(), offsetContext);
 
                         recordsInTransactionalBlock.put(tabletId, 0);
                     } else if (message.getOperation() == Operation.COMMIT) {
-                        LOGGER.debug("LSN in case of COMMIT is " + lsn);
+                        LOGGER.info("LSN in case of COMMIT is " + lsn);
                         offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn,
                                 message.getCommitTime(),
                                 String.valueOf(message.getTransactionId()), null, null/*
@@ -559,6 +564,10 @@ public class YugabyteDBStreamingChangeEventSource implements
             final String tabletId = entry.getValue();
             offsetContext.initSourceInfo(tabletId, this.connectorConfig);
         }
+        // This will contain the tablet ID mapped to the number of records it has seen
+        // in the transactional block.
+        // Note that the entry will be created only when a BEGIN block is encountered.
+        Map<String, Integer> recordsInTransactionalBlock = new HashMap<>();
 
         LOGGER.debug("The init tabletSourceInfo is " + offsetContext.getTabletSourceInfo());
 
@@ -568,6 +577,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                 Clock.SYSTEM);
 
         bootstrapTabletWithRetry(tabletPairList);
+
+        ByteString currentTxn = null;
+        int inTxnOrder = 0;
 
         short retryCount = 0;
         while (context.isRunning() && retryCount <= connectorConfig.maxConnectorRetries()) {
@@ -613,17 +625,38 @@ public class YugabyteDBStreamingChangeEventSource implements
                         for (CdcService.CDCSDKProtoRecordPB record : response
                                 .getResp()
                                 .getCdcSdkProtoRecordsList()) {
+                            LOGGER.info("Got record: {}", record.getRowMessage());
 
+                            ByteString txn = record.getRowMessage().getTransactionId();
+                            if (txn == null) {
+                                LOGGER.info("Txn is null");
+                                currentTxn = null;
+                                inTxnOrder = 0;
+                            } else if (currentTxn == null || !txn.toStringUtf8().equals(currentTxn.toStringUtf8())) {
+                                LOGGER.info("Not equal -{}-, -{}-",
+                                        currentTxn == null ? "null" : currentTxn.toStringUtf8(), txn.toStringUtf8());
+                                currentTxn = txn;
+                                inTxnOrder = 0;
+                            } else {
+                                inTxnOrder += 1;
+                                LOGGER.info("Equal. Incremented {}", inTxnOrder);
+                            }
+                            LOGGER.info("Inserting record with txn {} and order {}", txn.toStringUtf8(), inTxnOrder);
                             sortedMessages.add(
                                     new MessageContext(record, response.getSnapshotTime(),
-                                            part, table, tabletId, offsetContext, cp, schemaStreamed));
+                                            part, table, tabletId, offsetContext, cp, schemaStreamed,
+                                            txn.toStringUtf8(), inTxnOrder));
                             if (!maxCommitTime.containsKey(tabletId) ||
                                     maxCommitTime.get(tabletId) < record.getRowMessage().getCommitTime()) {
                                 maxCommitTime.put(tabletId, record.getRowMessage().getCommitTime());
+                                LOGGER.info("Tablet: {}, Max Commit Time: {}", tabletId,
+                                        record.getRowMessage().getCommitTime());
                             }
                         }
+                        if (sortedMessages.size() > 0) {
+                            this.dispatchMessages(recordsInTransactionalBlock);
+                        }
 
-                        this.dispatchMessages();
                         probeConnectionIfNeeded();
 
                         if (!isInPreSnapshotCatchUpStreaming(offsetContext)) {
@@ -651,7 +684,9 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                 // If there are retries left, perform them after the specified delay.
                 LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
-                        retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
+                        retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(),
+                        e.getMessage());
+                LOGGER.warn(e.getMessage(), e);
 
                 try {
                     retryMetronome.pause();
