@@ -34,6 +34,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import io.debezium.connector.base.ChangeEventQueue;
+import io.debezium.pipeline.DataChangeEvent;
 
 /**
  *
@@ -82,10 +84,12 @@ public class YugabyteDBStreamingChangeEventSource implements
     private final YBClient syncClient;
     private YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
     private final Map<String, OpId> checkPointMap;
+    private final ChangeEventQueue<DataChangeEvent> queue;
 
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
                                                 YugabyteDBConnection connection, EventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
-                                                YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection) {
+                                                YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection,
+                                                ChangeEventQueue<DataChangeEvent> queue) {
         this.connectorConfig = connectorConfig;
         this.connection = connection;
         this.dispatcher = dispatcher;
@@ -111,6 +115,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         syncClient = new YBClient(asyncYBClient);
         yugabyteDBTypeRegistry = taskContext.schema().getTypeRegistry();
+        this.queue = queue;
     }
 
     @Override
@@ -389,6 +394,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                     LOGGER.debug("Pausing for {} milliseconds before polling further", connectorConfig.cdcPollIntervalms());
                     pollIntervalMetronome.pause();
 
+                    if (this.connectorConfig.cdcLimitPollPerIteration()
+                            && queue.remainingCapacity() < queue.totalCapacity()) {
+                        LOGGER.debug("Queue has {} items. Skipping", queue.totalCapacity() - queue.remainingCapacity());
+                        continue;
+                    }
+
                     for (Pair<String, String> entry : tabletPairList) {
                         final String tabletId = entry.getValue();
                         YBPartition part = new YBPartition(tabletId);
@@ -417,6 +428,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 table, streamId, tabletId,
                                 cp.getTerm(), cp.getIndex(), cp.getKey(), cp.getWrite_id(), cp.getTime(), schemaStreamed.get(tabletId));
 
+                        LOGGER.debug("Processing {} records from getChanges call",
+                                response.getResp().getCdcSdkProtoRecordsList().size());
                         for (CdcService.CDCSDKProtoRecordPB record : response
                                 .getResp()
                                 .getCdcSdkProtoRecordsList()) {
