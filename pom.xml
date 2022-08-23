@@ -361,14 +361,6 @@
                             <goal>stop</goal>
                         </goals>
                     </execution>
-                    <execution>
-                        <id>upload</id>
-                        <phase>deploy</phase>
-                        <goals>
-                            <goal>build</goal>
-                            <goal>push</goal>
-                        </goals>
-                    </execution>
                 </executions>
             </plugin>
             <!--
