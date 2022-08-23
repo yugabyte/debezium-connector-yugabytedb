@@ -193,19 +193,10 @@ public interface ReplicationMessage {
         return getOperation() == Operation.BEGIN || getOperation() == Operation.COMMIT;
     }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 7747711... Return transationId as a string
     default boolean isDDLMessage() {
         return getOperation() == Operation.DDL;
     }
 
-<<<<<<< HEAD
-=======
->>>>>>> 9ffbf7f... Fix compilation errors in ConnectorTask
-=======
->>>>>>> 7747711... Return transationId as a string
     /**
      * A special message type that is used to replace event filtered already at {@link MessageDecoder}.
      * Enables {@link YugabyteDBStreamingChangeEventSource} to advance LSN forward even in case of such messages.
@@ -233,18 +224,8 @@ public interface ReplicationMessage {
         }
 
         @Override
-<<<<<<< HEAD
-<<<<<<< HEAD
         public String getTransactionId() {
             return transactionId == null ? null : String.valueOf(transactionId);
-=======
-        public OptionalLong getTransactionId() {
-            return transactionId == null ? OptionalLong.empty() : OptionalLong.of(transactionId);
->>>>>>> 9ffbf7f... Fix compilation errors in ConnectorTask
-=======
-        public String getTransactionId() {
-            return transactionId == null ? null : String.valueOf(transactionId);
->>>>>>> 7747711... Return transationId as a string
         }
 
         @Override

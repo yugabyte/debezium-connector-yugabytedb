@@ -60,7 +60,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     @Override
     public SnapshotResult<YugabyteDBOffsetContext> execute(ChangeEventSourceContext context, YBPartition partition, YugabyteDBOffsetContext previousOffset)
             throws InterruptedException {
-        SnapshottingTask snapshottingTask = getSnapshottingTask(previousOffset);
+        SnapshottingTask snapshottingTask = getSnapshottingTask(partition, previousOffset);
         if (snapshottingTask.shouldSkipSnapshot()) {
             LOGGER.debug("Skipping snapshotting");
             return SnapshotResult.skipped(previousOffset);
@@ -68,7 +68,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
         delaySnapshotIfNeeded(context);
 
-        final SnapshotContext<YugabyteDBPartition, YugabyteDBOffsetContext> ctx;
+        final SnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx;
         try {
             ctx = prepare(partition);
         }
