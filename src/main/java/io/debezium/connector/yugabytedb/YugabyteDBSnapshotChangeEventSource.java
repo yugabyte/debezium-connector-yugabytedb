@@ -80,7 +80,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         boolean completedSuccessfully = true;
 
         try {
-            snapshotProgressListener.snapshotStarted();
+            snapshotProgressListener.snapshotStarted(partition);
             return doExecute(context, partition, previousOffset, ctx, snapshottingTask);
         }
         catch (InterruptedException e) {
@@ -97,10 +97,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             complete(ctx);
 
             if (completedSuccessfully) {
-                snapshotProgressListener.snapshotCompleted();
+                snapshotProgressListener.snapshotCompleted(partition);
             }
             else {
-                snapshotProgressListener.snapshotAborted();
+                snapshotProgressListener.snapshotAborted(partition);
             }
         }
     }
