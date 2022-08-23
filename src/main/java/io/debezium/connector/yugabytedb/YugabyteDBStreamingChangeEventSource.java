@@ -505,7 +505,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                         offsetContext.getSourceInfo(tabletId)
                                 .updateLastCommit(finalOpid);
 
-                        LOGGER.info("The final opid is " + finalOpid);
+                        LOGGER.debug("The final opid is " + finalOpid);
                         if (snapshotter.shouldSnapshot() && finalOpid.equals(new OpId(-1, -1, "".getBytes(), 0 ,0))) {
                           snapshotCompleted.add(tabletId);
                           LOGGER.info("Stopping the snapshot for the tablet " + tabletId);
