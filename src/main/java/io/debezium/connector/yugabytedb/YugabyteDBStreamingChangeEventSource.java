@@ -34,6 +34,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import io.debezium.connector.base.ChangeEventQueue;
+import io.debezium.pipeline.DataChangeEvent;
 
 /**
  *
@@ -64,9 +66,6 @@ public class YugabyteDBStreamingChangeEventSource implements
     private final YugabyteDBConnectorConfig connectorConfig;
     private final YugabyteDBTaskContext taskContext;
 
-    // private final ReplicationConnection replicationConnection;
-    // private final AtomicReference<ReplicationStream> replicationStream = new AtomicReference<>();
-
     private final Snapshotter snapshotter;
     private final DelayStrategy pauseNoMessage;
     private final ElapsedTimeStrategy connectionProbeTimer;
@@ -82,10 +81,12 @@ public class YugabyteDBStreamingChangeEventSource implements
     private final YBClient syncClient;
     private YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
     private final Map<String, OpId> checkPointMap;
+    private final ChangeEventQueue<DataChangeEvent> queue;
 
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
                                                 YugabyteDBConnection connection, EventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
-                                                YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection) {
+                                                YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection,
+                                                ChangeEventQueue<DataChangeEvent> queue) {
         this.connectorConfig = connectorConfig;
         this.connection = connection;
         this.dispatcher = dispatcher;
@@ -96,7 +97,6 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.taskContext = taskContext;
         this.snapshotter = snapshotter;
         checkPointMap = new ConcurrentHashMap<>();
-        // this.replicationConnection = replicationConnection;
         this.connectionProbeTimer = ElapsedTimeStrategy.constant(Clock.system(), connectorConfig.statusUpdateInterval());
 
         String masterAddress = connectorConfig.masterAddresses();
@@ -111,19 +111,14 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         syncClient = new YBClient(asyncYBClient);
         yugabyteDBTypeRegistry = taskContext.schema().getTypeRegistry();
+        this.queue = queue;
     }
 
     @Override
     public void execute(ChangeEventSourceContext context, YugabyteDBPartition partition, YugabyteDBOffsetContext offsetContext) {
-        // replication slot could exist at the time of starting Debezium so
-        // we will stream from the position in the slot
-        // instead of the last position in the database
-        // Get all partitions
-        // Get
         Set<YBPartition> partitions = new YugabyteDBPartition.Provider(connectorConfig).getPartitions();
         boolean hasStartLsnStoredInContext = offsetContext != null && !offsetContext.getTabletSourceInfo().isEmpty();
 
-        // LOGGER.info("SKSK The offset context is " + offsetContext + " partition is " + partition);
         if (!hasStartLsnStoredInContext) {
             LOGGER.info("No start opid found in the context.");
             if (snapshotter.shouldSnapshot()) {
@@ -134,11 +129,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                 offsetContext = YugabyteDBOffsetContext.initialContext(connectorConfig, connection, clock, partitions);
             }
         }
-        /*
-         * if (snapshotter.shouldSnapshot()) {
-         * getSnapshotChanges();
-         * }
-         */
 
         try {
             final WalPositionLocator walPosition;
@@ -148,41 +138,15 @@ public class YugabyteDBStreamingChangeEventSource implements
                 final OpId lsn = offsetContext.lastCompletelyProcessedLsn() != null ? offsetContext.lastCompletelyProcessedLsn() : offsetContext.lsn();
                 LOGGER.info("Retrieved latest position from stored offset '{}'", lsn);
                 walPosition = new WalPositionLocator(offsetContext.lastCommitLsn(), lsn);
-                // replicationStream.compareAndSet(null, replicationConnection.startStreaming(lsn, walPosition));
             }
             else {
                 LOGGER.info("No previous LSN found in Kafka, streaming from the latest checkpoint" +
                         " in YugabyteDB");
                 walPosition = new WalPositionLocator();
-                // create snpashot offset.
 
-                // replicationStream.compareAndSet(null, replicationConnection.startStreaming(walPosition));
+                // TODO: if required - create snapshot offset
             }
 
-            // this.lastCompletelyProcessedLsn = replicationStream.get().startLsn();
-
-            // if (walPosition.searchingEnabled()) {
-            // searchWalPosition(context, stream, walPosition);
-            // try {
-            // if (!isInPreSnapshotCatchUpStreaming(offsetContext)) {
-            // connection.commit();
-            // }
-            // }
-            // catch (Exception e) {
-            // LOGGER.info("Commit failed while preparing for reconnect", e);
-            // }
-            // walPosition.enableFiltering();
-            // stream.stopKeepAlive();
-            // replicationConnection.reconnect();
-            // replicationStream.set(replicationConnection.startStreaming(walPosition.getLastEventStoredLsn(), walPosition));
-            // stream = this.replicationStream.get();
-            // stream.startKeepAlive(Threads.newSingleThreadExecutor(PostgresConnector.class, connectorConfig.getLogicalName(), KEEP_ALIVE_THREAD_NAME));
-            // }
-            // processMessages(context, partition, offsetContext, stream);
-            // if (!snapshotter.shouldStream()) {
-            // LOGGER.info("Streaming is not enabled in correct configuration");
-            // return;
-            // }
             getChanges2(context, partition, offsetContext, hasStartLsnStoredInContext);
         }
         catch (Throwable e) {
@@ -191,13 +155,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         finally {
 
             if (!isInPreSnapshotCatchUpStreaming(offsetContext)) {
-                // Need to CDCSDK see what can be done.
-                // try {
-                // connection.commit();
-                // }
-                // catch (SQLException throwables) {
-                // throwables.printStackTrace();
-                // }
+                // Need to see in CDCSDK what can be done.
             }
             if (asyncYBClient != null) {
                 try {
@@ -215,28 +173,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                     e.printStackTrace();
                 }
             }
-            // if (replicationConnection != null) {
-            // LOGGER.debug("stopping streaming...");
-            // // stop the keep alive thread, this also shuts down the
-            // // executor pool
-            // ReplicationStream stream = replicationStream.get();
-            // if (stream != null) {
-            // stream.stopKeepAlive();
-            // }
-            // // TODO author=Horia Chiorean date=08/11/2016 description=Ideally we'd close the stream, but it's not reliable atm (see javadoc)
-            // // replicationStream.close();
-            // // close the connection - this should also disconnect the current stream even if it's blocking
-            // try {
-            // if (!isInPreSnapshotCatchUpStreaming(offsetContext)) {
-            // connection.commit();
-            // }
-            // replicationConnection.close();
-            // }
-            // catch (Exception e) {
-            // LOGGER.debug("Exception while closing the connection", e);
-            // }
-            // replicationStream.set(null);
-            // }
         }
     }
 
@@ -345,18 +281,8 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
 
         int noMessageIterations = 0;
-        // for (Pair<String, String> entry : tabletPairList) {
-        // final String tabletId = entry.getValue();
-        // offsetContext.initSourceInfo(tabletId, this.connectorConfig);
-        //
-        // offsetContext.getSourceInfo(tabletId).updateLastCommit(offsetContext.lastCompletelyProcessedLsn());
-        //
-        // if (offsetContext.lsn(tabletId).equals(new OpId(0, 0, null, 0, 0))) {
-        // offsetContext.getSourceInfo(tabletId)
-        // .updateLastCommit(new OpId(-1, -1, "".getBytes(), -1, 0));
-        // }
-        // }
-        LOGGER.info("The init tabletSourceInfo is " + offsetContext.getTabletSourceInfo());
+
+        LOGGER.debug("The init tabletSourceInfo before updating is " + offsetContext.getTabletSourceInfo());
         // todo: rename schemaStreamed to something else
         Map<String, Boolean> schemaStreamed = new HashMap<>();
         for (Pair<String, String> entry : tabletPairList) {
@@ -372,7 +298,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         // Note that the entry will be created only when a BEGIN block is encountered.
         Map<String, Integer> recordsInTransactionalBlock = new HashMap<>();
 
-        LOGGER.info("The init tabletSourceInfo is " + offsetContext.getTabletSourceInfo());
+        LOGGER.debug("The init tabletSourceInfo after updating is " + offsetContext.getTabletSourceInfo());
 
         final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
         final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
@@ -389,6 +315,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                     LOGGER.debug("Pausing for {} milliseconds before polling further", connectorConfig.cdcPollIntervalms());
                     pollIntervalMetronome.pause();
 
+                    if (this.connectorConfig.cdcLimitPollPerIteration()
+                            && queue.remainingCapacity() < queue.totalCapacity()) {
+                        LOGGER.debug("Queue has {} items. Skipping", queue.totalCapacity() - queue.remainingCapacity());
+                        continue;
+                    }
+
                     for (Pair<String, String> entry : tabletPairList) {
                         final String tabletId = entry.getValue();
                         YBPartition part = new YBPartition(tabletId);
@@ -403,7 +335,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                       YBTable table = tableIdToTable.get(entry.getKey());
                       OpId cp = snapshotter.shouldSnapshot() ? offsetContext.snapshotLSN(tabletId) : offsetContext.lsn(tabletId);
 
-                      // GetChangesResponse response = getChangeResponse(offsetContext);
 
                       LOGGER.debug("Going to fetch for tablet " + tabletId + " from OpId " + cp + " " +
                         "table " + table.getName() + " Running:" + context.isRunning());
@@ -417,6 +348,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 table, streamId, tabletId,
                                 cp.getTerm(), cp.getIndex(), cp.getKey(), cp.getWrite_id(), cp.getTime(), schemaStreamed.get(tabletId));
 
+                        LOGGER.debug("Processing {} records from getChanges call",
+                                response.getResp().getCdcSdkProtoRecordsList().size());
                         for (CdcService.CDCSDKProtoRecordPB record : response
                                 .getResp()
                                 .getCdcSdkProtoRecordsList()) {
@@ -430,7 +363,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     record.getCdcSdkOpId().getIndex(),
                                     record.getCdcSdkOpId().getWriteIdKey().toByteArray(),
                                     record.getCdcSdkOpId().getWriteId(),
-                                    response.getSnapshotTime()); // stream.lastReceivedLsn();
+                                    response.getSnapshotTime());
 
                             if (message.isLastEventForLsn()) {
                                 lastCompletelyProcessedLsn = lsn;
@@ -709,12 +642,6 @@ public class YugabyteDBStreamingChangeEventSource implements
         else {
             LOGGER.debug("Streaming has already stopped, ignoring commit callback...");
         }
-        // }
-        /*
-         * catch (SQLException e) {
-         * throw new ConnectException(e);
-         * }
-         */
     }
 
     /**

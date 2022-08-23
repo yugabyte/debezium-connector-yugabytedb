@@ -7,7 +7,6 @@ import io.debezium.pipeline.spi.Partition;
 import io.debezium.util.Collect;
 
 public class YBPartition implements Partition {
-
     private static final String TABLET_PARTITION_KEY = "tabletid";
 
     private final String tabletId;
