@@ -223,10 +223,11 @@ public final class TestHelper {
 
   public static void executeBulk(String statement, int numRecords) {
     try (YugabyteDBConnection connection = create()) {
-      connection.setAutoCommit(true); // setting auto-commit to true
-      for(int i =0; i< numRecords; i++) {
-        connection.executeWithoutCommitting(String.format(statement, i));
+      connection.setAutoCommit(false); // setting auto-commit to true
+      for (int i = 0; i < numRecords; i++) {
+          connection.executeWithoutCommitting(String.format(statement, i));
       }
+      connection.commit();
     }
     catch (RuntimeException e) {
       throw e;
