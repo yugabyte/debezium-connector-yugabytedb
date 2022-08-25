@@ -76,6 +76,9 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
         return rawMessage.getCommitTime();
     }
 
+    public long getRecordTime() {
+        return rawMessage.getRecordTime();
+    }
     @Override
     public String getTransactionId() {
         return rawMessage.getTransactionId() == null ? null : String.valueOf(rawMessage.getTransactionId());
