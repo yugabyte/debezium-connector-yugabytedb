@@ -82,6 +82,12 @@ public final class SourceInfo extends BaseSourceInfo {
     public static final String LSN_KEY = "lsn";
     public static final String LAST_SNAPSHOT_RECORD_KEY = "last_snapshot_record";
 
+    public static final String COMMIT_TIME = "commit_time";
+
+    public static final String RECORD_TIME = "record_time";
+
+    public static final String TABLET_ID = "tablet_id";
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final String dbName;
@@ -94,6 +100,9 @@ public final class SourceInfo extends BaseSourceInfo {
     private String schemaName;
     private String tableName;
     private String tabletId;
+
+    private Long commitTime;
+    private Long recordTime;
 
     protected SourceInfo(YugabyteDBConnectorConfig connectorConfig) {
         super(connectorConfig);
@@ -110,6 +119,7 @@ public final class SourceInfo extends BaseSourceInfo {
     /**
      * Updates the source with information about a particular received or read event.
      *
+     * @param tabletId Tablet ID of the partition
      * @param lsn the position in the server WAL for a particular event; may be null indicating that this information is not
      * available
      * @param commitTime the commit time of the transaction that generated the event;
@@ -117,17 +127,17 @@ public final class SourceInfo extends BaseSourceInfo {
      * @param txId the ID of the transaction that generated the transaction; may be null if this information is not available
      * @param tableId the table that should be included in the source info; may be null
      * @param xmin the xmin of the slot, may be null
+     * @param recordTime Hybrid Time Stamp Time of the statement within the transaction.
      * @return this instance
      */
-    protected SourceInfo update(String tabletId, OpId lsn, Instant commitTime, String txId,
-                                TableId tableId,
-                                Long xmin) {
+    protected SourceInfo update(String tabletId, OpId lsn, long commitTime, String txId,
+                                TableId tableId, Long xmin, Long recordTime) {
         this.lsn = lsn;
-        if (commitTime != null) {
-            this.timestamp = commitTime;
-        }
+        this.commitTime = commitTime;
         this.txId = txId;
         this.xmin = xmin;
+        this.recordTime = recordTime;
+
         if (tableId != null && tableId.schema() != null) {
             this.schemaName = tableId.schema();
         }
@@ -204,6 +214,17 @@ public final class SourceInfo extends BaseSourceInfo {
 
     protected String txId() {
         return txId;
+    }
+
+    protected String tabletId() {
+        return this.tabletId;
+    }
+    protected Long commitTime() {
+        return this.commitTime;
+    }
+
+    protected Long recordTime() {
+        return this.recordTime;
     }
 
     @Override

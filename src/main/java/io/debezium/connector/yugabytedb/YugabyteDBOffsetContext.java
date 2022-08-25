@@ -88,7 +88,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                 String tabletId = context.getKey().getSourcePartition().values().stream().findAny().get();
                 initSourceInfo(tabletId, config);
                 this.updateWalPosition(tabletId,
-                        this.lastCommitLsn, lastCompletelyProcessedLsn, null, null, null, null);
+                        this.lastCommitLsn, lastCompletelyProcessedLsn, 0, null, null, null);
             }
         }
         LOGGER.debug("Populating the tabletsourceinfo with " + this.getTabletSourceInfo());
@@ -137,7 +137,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         for (YBPartition p : partitions) {
             if (context.getTabletSourceInfo().get(p.getTabletId()) == null) {
                 context.initSourceInfo(p.getTabletId(), connectorConfig);
-                context.updateWalPosition(p.getTabletId(), lastCommitLsn, lastCompletelyProcessedLsn, clock.currentTimeAsInstant(), String.valueOf(txId), null, null);
+                context.updateWalPosition(p.getTabletId(), lastCommitLsn, lastCompletelyProcessedLsn, clock.currentTimeInMicros(), String.valueOf(txId), null, null);
             }
         }
         return context;
@@ -214,14 +214,14 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     }
 
     public void updateWalPosition(String tabletId, OpId lsn, OpId lastCompletelyProcessedLsn,
-                                  Instant commitTime,
+                                  long commitTime,
                                   String txId, TableId tableId, Long xmin) {
 
         this.lastCompletelyProcessedLsn = lastCompletelyProcessedLsn;
 
-        sourceInfo.update(tabletId, lsn, commitTime, txId, tableId, xmin);
+        sourceInfo.update(tabletId, lsn, commitTime, txId, tableId, xmin,0L);
         SourceInfo info = this.tabletSourceInfo.get(tabletId);
-        info.update(tabletId, lsn, commitTime, txId, tableId, xmin);
+        info.update(tabletId, lsn, commitTime, txId, tableId, xmin,0L);
         this.tabletSourceInfo.put(tabletId, info);
     }
 
