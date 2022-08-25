@@ -395,7 +395,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         if (message.getOperation() == Operation.COMMIT) {
                                             LOGGER.debug("LSN in case of COMMIT is " + lsn);
                                             offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                                                    String.valueOf(message.getTransactionId()), null, null/* taskContext.getSlotXmin(connection) */);
+                                                    String.valueOf(message.getTransactionId()), null, null,/* taskContext.getSlotXmin(connection) */
+                                                    message.getRecordTime());
                                             commitMessage(part, offsetContext, lsn);
 
                                             if (recordsInTransactionalBlock.containsKey(tabletId)) {
@@ -427,7 +428,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     else if (message.getOperation() == Operation.COMMIT) {
                                         LOGGER.debug("LSN in case of COMMIT is " + lsn);
                                         offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                                                String.valueOf(message.getTransactionId()), null, null/* taskContext.getSlotXmin(connection) */);
+                                                String.valueOf(message.getTransactionId()), null, null/* taskContext.getSlotXmin(connection) */,
+                                                message.getRecordTime());
                                         commitMessage(part, offsetContext, lsn);
                                         dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
 
@@ -480,7 +482,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     LOGGER.debug("Received DML record {}", record);
 
                                     offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                                            String.valueOf(message.getTransactionId()), tableId, null/* taskContext.getSlotXmin(connection) */);
+                                            String.valueOf(message.getTransactionId()), tableId, null/* taskContext.getSlotXmin(connection) */,
+                                            message.getRecordTime());
 
                                     boolean dispatched = message.getOperation() != Operation.NOOP
                                             && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
