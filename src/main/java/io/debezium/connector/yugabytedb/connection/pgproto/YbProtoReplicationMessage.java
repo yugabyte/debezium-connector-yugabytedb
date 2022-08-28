@@ -28,7 +28,7 @@ import io.debezium.util.Strings;
 /**
  * Replication message representing message sent by <a href="https://github.com/debezium/postgres-decoderbufs">Postgres Decoderbufs</>
  *
- * @author Jiri Pechanec
+ * @author Suranjan Kumar
  */
 public class YbProtoReplicationMessage implements ReplicationMessage {
 
@@ -52,6 +52,8 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
                 return Operation.UPDATE;
             case DELETE:
                 return Operation.DELETE;
+            case READ:
+                return Operation.READ;
             case BEGIN:
                 return Operation.BEGIN;
             case COMMIT:

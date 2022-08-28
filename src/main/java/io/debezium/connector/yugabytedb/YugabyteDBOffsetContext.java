@@ -72,42 +72,56 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         this.incrementalSnapshotContext = incrementalSnapshotContext;
     }
 
-    public YugabyteDBOffsetContext(Set<YugabyteDBOffsetContext> s,
+    public YugabyteDBOffsetContext(Map<YBPartition, YugabyteDBOffsetContext> previousOffsets,
                                    YugabyteDBConnectorConfig config) {
         this.tabletSourceInfo = new ConcurrentHashMap();
         this.sourceInfo = new SourceInfo(config);
         this.sourceInfoSchema = sourceInfo.schema();
-        for (YugabyteDBOffsetContext context : s) {
-            if (context != null) {
-                LOGGER.debug("Populating the tabletsourceinfo" + context.getTabletSourceInfo());
-                if (context.getTabletSourceInfo() != null) {
-                    this.tabletSourceInfo.putAll(context.getTabletSourceInfo());
-                }
+
+        for (Map.Entry<YBPartition, YugabyteDBOffsetContext> context : previousOffsets.entrySet()) {
+            YugabyteDBOffsetContext c = context.getValue();
+            if (c != null) {
+                this.lastCompletelyProcessedLsn = c.lastCompletelyProcessedLsn;
+                this.lastCommitLsn = c.lastCommitLsn;
+                String tabletId = context.getKey().getSourcePartition().values().stream().findAny().get();
+                initSourceInfo(tabletId, config);
+                this.updateWalPosition(tabletId,
+                        this.lastCommitLsn, lastCompletelyProcessedLsn, null, null, null, null);
             }
         }
+        LOGGER.debug("Populating the tabletsourceinfo with " + this.getTabletSourceInfo());
         this.transactionContext = new TransactionContext();
         this.incrementalSnapshotContext = new SignalBasedIncrementalSnapshotContext<>();
     }
 
+    public static YugabyteDBOffsetContext initialContextForSnapshot(YugabyteDBConnectorConfig connectorConfig,
+                                                                    YugabyteDBConnection jdbcConnection,
+                                                                    Clock clock,
+                                                                    Set<YBPartition> partitions) {
+        return initialContext(connectorConfig, jdbcConnection, clock, new OpId(-1, -1, "".getBytes(), -1, 0),
+                new OpId(-1, -1, "".getBytes(), -1, 0), partitions);
+    }
+
     public static YugabyteDBOffsetContext initialContext(YugabyteDBConnectorConfig connectorConfig,
                                                          YugabyteDBConnection jdbcConnection,
-                                                         Clock clock) {
-        return initialContext(connectorConfig, jdbcConnection, clock, null,
-                null);
+                                                         Clock clock,
+                                                         Set<YBPartition> partitions) {
+        return initialContext(connectorConfig, jdbcConnection, clock, new OpId(0, 0, "".getBytes(), 0, 0),
+                new OpId(0, 0, "".getBytes(), 0, 0), partitions);
     }
 
     public static YugabyteDBOffsetContext initialContext(YugabyteDBConnectorConfig connectorConfig,
                                                          YugabyteDBConnection jdbcConnection,
                                                          Clock clock,
                                                          OpId lastCommitLsn,
-                                                         OpId lastCompletelyProcessedLsn) {
-
+                                                         OpId lastCompletelyProcessedLsn,
+                                                         Set<YBPartition> partitions) {
         LOGGER.info("Creating initial offset context");
         final OpId lsn = null; // OpId.valueOf(jdbcConnection.currentXLogLocation());
         // TODO:Suranjan read the offset for each of the tablet
         final long txId = 0L;// new OpId(0,0,"".getBytes(), 0);
         LOGGER.info("Read checkpoint at '{}' ", lsn, txId);
-        return new YugabyteDBOffsetContext(
+        YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(
                 connectorConfig,
                 lsn,
                 lastCompletelyProcessedLsn,
@@ -118,7 +132,13 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                 false,
                 new TransactionContext(),
                 new SignalBasedIncrementalSnapshotContext<>());
-
+        for (YBPartition p : partitions) {
+            if (context.getTabletSourceInfo().get(p.getTabletId()) == null) {
+                context.initSourceInfo(p.getTabletId(), connectorConfig);
+                context.updateWalPosition(p.getTabletId(), lastCommitLsn, lastCompletelyProcessedLsn, clock.currentTimeAsInstant(), String.valueOf(txId), null, null);
+            }
+        }
+        return context;
     }
 
     @Override
@@ -237,7 +257,18 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                 : sourceInfo.lsn();
     }
 
+    OpId snapshotLSN(String tabletId) {
+      // get the sourceInfo of the tablet
+      SourceInfo sourceInfo = getSourceInfo(tabletId);
+      return sourceInfo.lsn() == null ? new OpId(-1, -1, "".getBytes(), -1, -1)
+        : sourceInfo.lsn();
+    }
+
     OpId lastCompletelyProcessedLsn() {
+        return lastCompletelyProcessedLsn;
+    }
+    
+    OpId lastCompletelyProcessedLsn(String tabletId) {
         return lastCompletelyProcessedLsn;
     }
 
@@ -273,7 +304,8 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                 + ", lastCommitLsn=" + lastCommitLsn
                 + ", streamingStoppingLsn=" + streamingStoppingLsn
                 + ", transactionContext=" + transactionContext
-                + ", incrementalSnapshotContext=" + incrementalSnapshotContext + "]";
+                + ", incrementalSnapshotContext=" + incrementalSnapshotContext
+                + ", tabletSourceInfo=" + tabletSourceInfo + "]";
     }
 
     public OffsetState asOffsetState() {
@@ -333,7 +365,13 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         public YugabyteDBOffsetContext load(Map<String, ?> offset) {
 
             LOGGER.debug("The offset being loaded in YugabyteDBOffsetContext.. " + offset);
-
+            OpId lastCompletelyProcessedLsn;
+            if (offset != null) {
+                lastCompletelyProcessedLsn = OpId.valueOf((String) offset.get(YugabyteDBOffsetContext.LAST_COMPLETELY_PROCESSED_LSN_KEY));
+            }
+            else {
+                lastCompletelyProcessedLsn = new OpId(0, 0, "".getBytes(), 0, 0);
+            }
             /*
              * final OpId lsn = OpId.valueOf(readOptionalString(offset, SourceInfo.LSN_KEY));
              * final OpId lastCompletelyProcessedLsn = OpId.valueOf(readOptionalString(offset,
@@ -355,9 +393,9 @@ public class YugabyteDBOffsetContext implements OffsetContext {
              */
 
             return new YugabyteDBOffsetContext(connectorConfig,
-                    new OpId(0, 0, null, 0, 0),
-                    new OpId(0, 0, null, 0, 0),
-                    new OpId(0, 0, null, 0, 0),
+                    lastCompletelyProcessedLsn,
+                    lastCompletelyProcessedLsn,
+                    lastCompletelyProcessedLsn,
                     "txId", Instant.MIN, false, false,
                     TransactionContext.load(offset),
                     SignalBasedIncrementalSnapshotContext.load(offset));
