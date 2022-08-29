@@ -5,7 +5,7 @@
     <groupId>io.debezium</groupId>
     <artifactId>debezium-connector-yugabytedb</artifactId>
     <name>Debezium Connector for YugabyteDB</name>
-    <version>1.9.4.y.1-SNAPSHOT</version>
+    <version>1.9.5.y.1-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <scm>
@@ -18,7 +18,7 @@
 
     <properties>
         <!-- Debezium parent -->
-        <version.debezium>1.9.4.Final</version.debezium>
+        <version.debezium>1.9.5.Final</version.debezium>
 
         <!-- Plugins -->
         <version.surefire.plugin>3.0.0-M3</version.surefire.plugin>
@@ -37,11 +37,11 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Dependency Versions -->
-        <version.postgresql.driver>42.2.14</version.postgresql.driver>
-        <version.com.google.protobuf>3.21.2</version.com.google.protobuf>
-        <version.kafka>2.8.0</version.kafka>
+        <version.postgresql.driver>42.4.2</version.postgresql.driver>
+        <version.com.google.protobuf>3.21.5</version.com.google.protobuf>
+        <version.kafka>3.2.1</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
-        <version.ybclient>0.8.19-20220531.235858-1</version.ybclient>
+        <version.ybclient>0.8.21-20220715.193438-1</version.ybclient>
 
         <!--
           Specify the properties that will be used for setting up the integration tests' Docker container.
@@ -323,37 +323,6 @@
                             </inputDirectories>
                             <protocCommand>protoc</protocCommand> <!-- brew install protobuf -->
                         </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <groupId>io.fabric8</groupId>
-                <artifactId>docker-maven-plugin</artifactId>
-                <version>${version.docker.maven.plugin}</version>
-                <configuration>
-                    <watchInterval>500</watchInterval>
-                    <logDate>default</logDate>
-                    <verbose>true</verbose>
-                </configuration>
-                <!--
-                Connect this plugin to the maven lifecycle around the integration-test phase:
-                start the container in pre-integration-test and stop it in post-integration-test.
-                -->
-                <executions>
-                    <execution>
-                        <id>start</id>
-                        <phase>pre-integration-test</phase>
-                        <goals>
-                            <goal>build</goal>
-                            <goal>start</goal>
-                        </goals>
-                    </execution>
-                    <execution>
-                        <id>stop</id>
-                        <phase>post-integration-test</phase>
-                        <goals>
-                            <goal>stop</goal>
-                        </goals>
                     </execution>
                 </executions>
             </plugin>

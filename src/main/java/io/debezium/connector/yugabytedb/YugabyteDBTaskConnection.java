@@ -750,4 +750,19 @@ final class YugabyteDBTaskConnection implements BaseConnection {
     public boolean hintReadOnly() {
         return false;
     }
+
+    @Override
+    public boolean getLogServerErrorDetail() {
+        return false;
+    }
+
+    @Override
+    public void setAdaptiveFetch(boolean adaptiveFetch) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean getAdaptiveFetch() {
+        throw new UnsupportedOperationException();
+    }
 }
