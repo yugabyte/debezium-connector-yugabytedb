@@ -24,7 +24,6 @@ import io.debezium.connector.yugabytedb.proto.PgProto;
 import io.debezium.connector.yugabytedb.proto.PgProto.Op;
 import io.debezium.connector.yugabytedb.proto.PgProto.RowMessage;
 import io.debezium.util.Collect;
-import org.yb.cdc.CdcService;
 
 /**
  * ProtoBuf deserialization of message sent by <a href="https://github.com/debezium/postgres-decoderbufs">Postgres Decoderbufs</a>.
