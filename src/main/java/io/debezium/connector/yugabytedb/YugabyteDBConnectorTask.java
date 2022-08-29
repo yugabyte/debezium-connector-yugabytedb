@@ -147,15 +147,13 @@ public class YugabyteDBConnectorTask
                 valueConverterBuilder.build(yugabyteDBTypeRegistry));
         this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector);
         // get the tablet ids and load the offsets
-        // final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets =
-        // getPreviousOffsetss(new YBPartition.Provider(connectorConfig),
-        // new YugabyteDBOffsetContext.Loader(connectorConfig));
 
-        final Map<YBPartition, YugabyteDBOffsetContext> previousOffsets = getPreviousOffsetss(new YugabyteDBPartition.Provider(connectorConfig),
+        final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets = getPreviousOffsetss(
+                new YugabyteDBPartition.Provider(connectorConfig),
                 new YugabyteDBOffsetContext.Loader(connectorConfig));
         final Clock clock = Clock.system();
 
-        YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(previousOffsets, connectorConfig);
+        YugabyteDBOffsetContext context = previousOffsets.getTheOnlyOffset();
 
         LoggingContext.PreviousContext previousContext = taskContext
                 .configureLoggingContext(CONTEXT_NAME);
@@ -209,7 +207,7 @@ public class YugabyteDBConnectorTask
                     jdbcConnection);
 
             YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
-                    Offsets.of(new YBPartition(), context), // previousOffsets,
+                    previousOffsets,
                     errorHandler,
                     YugabyteDBConnector.class,
                     connectorConfig,
@@ -241,7 +239,7 @@ public class YugabyteDBConnectorTask
         }
     }
 
-    Map<YBPartition, YugabyteDBOffsetContext> getPreviousOffsetss(
+    Offsets<YBPartition, YugabyteDBOffsetContext> getPreviousOffsetss(
                                                                   Partition.Provider<YBPartition> provider,
                                                                   OffsetContext.Loader<YugabyteDBOffsetContext> loader) {
         // return super.getPreviousOffsets(provider, loader);
@@ -264,7 +262,7 @@ public class YugabyteDBConnectorTask
         if (!found) {
             LOGGER.info("No previous offsets found");
         }
-        return offsets;
+        return Offsets.of(offsets);
         // return new Offsets<>(offsets);
     }
 
