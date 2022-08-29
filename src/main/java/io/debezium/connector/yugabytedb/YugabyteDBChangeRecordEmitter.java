@@ -39,7 +39,7 @@ import io.debezium.util.Strings;
  *
  * @author Horia Chiorean (hchiorea@redhat.com), Jiri Pechanec
  */
-public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter {
+public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter<YBPartition> {
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBChangeRecordEmitter.class);
 
     private final ReplicationMessage message;
@@ -50,7 +50,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
 
     private final String pgSchemaName;
 
-    public YugabyteDBChangeRecordEmitter(Partition partition, OffsetContext offset, Clock clock,
+    public YugabyteDBChangeRecordEmitter(YBPartition partition, OffsetContext offset, Clock clock,
                                          YugabyteDBConnectorConfig connectorConfig,
                                          YugabyteDBSchema schema, YugabyteDBConnection connection,
                                          TableId tableId, ReplicationMessage message) {
@@ -67,7 +67,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         this.pgSchemaName = null;
     }
 
-    public YugabyteDBChangeRecordEmitter(Partition partition, OffsetContext offset, Clock clock,
+    public YugabyteDBChangeRecordEmitter(YBPartition partition, OffsetContext offset, Clock clock,
                                          YugabyteDBConnectorConfig connectorConfig,
                                          YugabyteDBSchema schema, YugabyteDBConnection connection,
                                          TableId tableId, ReplicationMessage message, String pgSchemaName) {
@@ -85,7 +85,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     }
 
     @Override
-    protected Operation getOperation() {
+    public Operation getOperation() {
         switch (message.getOperation()) {
             case INSERT:
                 return Operation.CREATE;
@@ -312,7 +312,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         }
     }
 
-    static Optional<DataCollectionSchema> updateSchema(TableId tableId,
+    static Optional<DataCollectionSchema> updateSchema(YBPartition partition, TableId tableId,
                                                        ChangeRecordEmitter changeRecordEmitter) {
         return ((YugabyteDBChangeRecordEmitter) changeRecordEmitter).newTable(tableId);
     }
@@ -434,8 +434,8 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
                             // as long as default value is not added to the decoded message metadata, we must apply
                             // the current default read from the database
                             Optional.ofNullable(table.columnWithName(column.getName()))
-                                    .map(Column::defaultValue)
-                                    .ifPresent(columnEditor::defaultValue);
+                                    .flatMap(Column::defaultValueExpression)
+                                    .ifPresent(columnEditor::defaultValueExpression);
 
                             return columnEditor.create();
                         })

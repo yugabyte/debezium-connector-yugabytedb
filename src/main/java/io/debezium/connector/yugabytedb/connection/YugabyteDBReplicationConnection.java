@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import io.debezium.jdbc.JdbcConfiguration;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.postgresql.core.BaseConnection;
 import org.postgresql.core.ServerVersion;
@@ -103,7 +104,7 @@ public class YugabyteDBReplicationConnection extends JdbcConnection implements R
                                             YugabyteDBTypeRegistry yugabyteDBTypeRegistry,
                                             Properties streamParams,
                                             YugabyteDBSchema schema) {
-        super(config.getJdbcConfig(), YugabyteDBConnection.FACTORY, null, YugabyteDBReplicationConnection::defaultSettings, "\"", "\"");
+        super(addDefaultSettings(config.getJdbcConfig()), YugabyteDBConnection.FACTORY, null, null, "\"", "\"");
 
         this.originalConfig = config;
         this.slotName = slotName;
@@ -118,6 +119,16 @@ public class YugabyteDBReplicationConnection extends JdbcConnection implements R
         this.streamParams = streamParams;
         this.slotCreationInfo = null;
         this.hasInitedSlot = false;
+    }
+
+    private static JdbcConfiguration addDefaultSettings(JdbcConfiguration configuration) {
+        // first copy the parent's default settings...
+        // then set some additional replication specific settings
+        return JdbcConfiguration.adapt(YugabyteDBConnection.addDefaultSettings(configuration, YugabyteDBConnection.CONNECTION_STREAMING)
+                .edit()
+                .with("replication", "database")
+                .with("preferQueryMode", "simple") // replication protocol only supports simple query mode
+                .build());
     }
 
     // private ServerInfo.ReplicationSlot getSlotInfo() throws SQLException, InterruptedException {
@@ -272,7 +283,7 @@ public class YugabyteDBReplicationConnection extends JdbcConnection implements R
      * 4. actually start the streamer
      * <p>
      * This method takes care of all of these and this method queries for a default starting position
-     * If you know where you are starting from you should call {@link #startStreaming(Lsn, WalPositionLocator)}, this method
+     * If you know where you are starting from you should call {@link #startStreaming(WalPositionLocator)}, this method
      * delegates to that method
      *
      * @return
@@ -619,7 +630,7 @@ public class YugabyteDBReplicationConnection extends JdbcConnection implements R
         }
         if (dropSlotOnClose && dropSlot) {
             // we're dropping the replication slot via a regular - i.e. not a replication - connection
-            try (YugabyteDBConnection connection = new YugabyteDBConnection(originalConfig.getJdbcConfig())) {
+            try (YugabyteDBConnection connection = new YugabyteDBConnection(originalConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_DROP_SLOT)) {
                 connection.dropReplicationSlot(slotName);
             }
             catch (Throwable e) {

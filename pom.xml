@@ -2,10 +2,10 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
     <modelVersion>4.0.0</modelVersion>
-    <groupId>org.yb</groupId>
+    <groupId>io.debezium</groupId>
     <artifactId>debezium-connector-yugabytedb</artifactId>
     <name>Debezium Connector for YugabyteDB</name>
-    <version>1.7.0.12-BETA-SNAPSHOT</version>
+    <version>1.9.4.y.1-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <scm>
@@ -18,7 +18,7 @@
 
     <properties>
         <!-- Debezium parent -->
-        <version.debezium>1.7.0.Final</version.debezium>
+        <version.debezium>1.9.4.Final</version.debezium>
 
         <!-- Plugins -->
         <version.surefire.plugin>3.0.0-M3</version.surefire.plugin>
@@ -29,7 +29,7 @@
         <version.site.plugin>3.7.1</version.site.plugin>
         <version.resources.plugin>3.1.0</version.resources.plugin>
         <version.docker.maven.plugin>0.31.0</version.docker.maven.plugin>
-        <version.protoc.maven.plugin>3.8.0</version.protoc.maven.plugin>
+        <version.protoc.maven.plugin>3.11.4</version.protoc.maven.plugin>
 
         <!-- Compile -->
         <maven.compiler.source>1.8</maven.compiler.source>
@@ -38,10 +38,9 @@
 
         <!-- Dependency Versions -->
         <version.postgresql.driver>42.2.14</version.postgresql.driver>
-        <version.com.google.protobuf>3.8.0</version.com.google.protobuf>
+        <version.com.google.protobuf>3.21.2</version.com.google.protobuf>
         <version.kafka>2.8.0</version.kafka>
-        <version.org.slf4j>1.7.30</version.org.slf4j>
-        <version.log4j>1.2.17</version.log4j>
+        <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.ybclient>0.8.19-20220531.235858-1</version.ybclient>
 
         <!--
@@ -222,12 +221,6 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>log4j</groupId>
-            <artifactId>log4j</artifactId>
-            <version>${version.log4j}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
             <scope>test</scope>
@@ -328,6 +321,7 @@
                             <inputDirectories>
                                 <include>src/main/proto</include>
                             </inputDirectories>
+                            <protocCommand>protoc</protocCommand> <!-- brew install protobuf -->
                         </configuration>
                     </execution>
                 </executions>

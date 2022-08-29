@@ -258,7 +258,7 @@ public class StreamingWal2JsonMessageDecoder extends AbstractMessageDecoder {
             // truncate table, materialized views, etc. The transaction still needs to be processed for the heartbeat
             // to fire.
             LOGGER.trace("Empty change arrived");
-            processor.process(new NoopMessage(String.valueOf(txId), commitTime));
+            processor.process(new NoopMessage(Long.valueOf(txId), commitTime));
         }
 
     }

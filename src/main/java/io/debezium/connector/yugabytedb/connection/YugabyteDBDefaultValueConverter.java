@@ -180,4 +180,8 @@ class YugabyteDBDefaultValueConverter {
 
         return extractDefault(defaultValue);
     }
+
+    public boolean supportConversion(String typeName) {
+        return defaultValueMappers.containsKey(typeName);
+    }
 }
