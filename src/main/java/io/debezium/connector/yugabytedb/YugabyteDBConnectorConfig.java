@@ -1198,8 +1198,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     TCP_KEEPALIVE,
                     MAX_NUM_TABLETS)
             .events(
-                    INCLUDE_UNKNOWN_DATATYPES,
-                    DatabaseHeartbeatImpl.HEARTBEAT_ACTION_QUERY)
+                    INCLUDE_UNKNOWN_DATATYPES)
             .connector(
                     SNAPSHOT_MODE,
                     SNAPSHOT_MODE_CLASS,
