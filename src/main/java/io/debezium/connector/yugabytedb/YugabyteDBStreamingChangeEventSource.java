@@ -323,16 +323,31 @@ public class YugabyteDBStreamingChangeEventSource implements
                         final String tabletId = entry.getValue();
                         YBPartition part = new YBPartition(tabletId);
                       if (snapshotCompleted.size() == tabletPairList.size()) {
-                        LOGGER.info("Snapshot completed for all the tablets! Stopping.");
-                        break;
+                        LOGGER.debug("Snapshot completed for all the tablets! Stopping.");
+                        if (!snapshotter.shouldStream()) {
+                            // This block will be executed in case of initial_only mode
+                            LOGGER.info("Snapshot completed for initial_only mode, you can stop the connector now");
+                            break;
+                        }
                       }
+
+
+                      OpId cp = snapshotter.shouldSnapshot() ? offsetContext.snapshotLSN(tabletId) : offsetContext.lsn(tabletId);
                       if (snapshotCompleted.contains(tabletId)) {
-                        continue;
+                        // If the snapshot is completed for a tablet then we should switch to streaming
+                        if (snapshotter.shouldStream()) {
+                            LOGGER.debug("Streaming changes for tablet {}", tabletId);
+                            cp = offsetContext.lsn(tabletId);
+                            if (cp.getTerm() == -1 && cp.getIndex() == -1) {
+                                // When the first call will be made to find the lsn after switching
+                                // from snapshot to streaming - it will return <-1,-1> - in that case
+                                // we need to call GetChanges with 0,0  checkpoint
+                                cp = new OpId(0, 0, null, 0, 0);
+                            }
+                        }
                       }
 
                       YBTable table = tableIdToTable.get(entry.getKey());
-                      OpId cp = snapshotter.shouldSnapshot() ? offsetContext.snapshotLSN(tabletId) : offsetContext.lsn(tabletId);
-
 
                       LOGGER.debug("Going to fetch for tablet " + tabletId + " from OpId " + cp + " " +
                         "table " + table.getName() + " Running:" + context.isRunning());
