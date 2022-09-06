@@ -326,8 +326,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                         LOGGER.debug("Snapshot completed for all the tablets! Stopping.");
                         if (!snapshotter.shouldStream()) {
                             // This block will be executed in case of initial_only mode
-                            LOGGER.info("Snapshot completed for initial_only mode, you can stop the connector now");
-                            break;
+                            LOGGER.info("Snapshot completed for initial_only mode, stopping the connector now");
+                            return;
                         }
                       }
 
