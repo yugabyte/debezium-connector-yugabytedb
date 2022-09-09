@@ -3,49 +3,49 @@ package io.debezium.connector.yugabytedb.transforms;
 import java.util.Map;
 import java.util.Objects;
 
-import org.apache.kafka.common.cache.Cache;
-import org.apache.kafka.common.cache.LRUCache;
-import org.apache.kafka.common.cache.SynchronizedCache;
+import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.connect.connector.ConnectRecord;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Schema.Type;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.transforms.Transformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.Pair;
 
-import io.debezium.transforms.ExtractNewRecordState;
-
-public class PGCompatible<R extends ConnectRecord<R>> extends ExtractNewRecordState<R> {
+public class PGCompatible<R extends ConnectRecord<R>> implements Transformation<R> {
     private static final Logger LOGGER = LoggerFactory.getLogger(PGCompatible.class);
 
     @Override
     public R apply(final R record) {
-        final R ret = super.apply(record);
-        if (ret == null || (ret.value() != null && !(ret.value() instanceof Struct))) {
-            return ret;
+        if (record == null || (record.value() != null && !(record.value() instanceof Struct))) {
+            return record;
         }
 
-        Pair p = getUpdatedValueAndSchema((Struct) ret.key());
-        Schema updatedSchemaForKey = (Schema) p.getFirst();
-        Struct updatedValueForKey = (Struct) p.getSecond();
+        Pair<Schema, Struct> p = getUpdatedValueAndSchema((Struct) record.key());
+        Schema updatedSchemaForKey = p.getFirst();
+        Struct updatedValueForKey = p.getSecond();
 
         Schema updatedSchemaForValue = null;
         Struct updatedValueForValue = null;
-        if (ret.value() != null) {
-            Pair val = getUpdatedValueAndSchema((Struct) ret.value());
-            updatedSchemaForValue = (Schema) val.getFirst();
-            updatedValueForValue = (Struct) val.getSecond();
+        if (record.value() != null) {
+            Pair<Schema, Struct> val = getUpdatedValueAndSchema((Struct) record.value());
+            updatedSchemaForValue = val.getFirst();
+            updatedValueForValue = val.getSecond();
         }
 
-        return ret.newRecord(ret.topic(), ret.kafkaPartition(), updatedSchemaForKey, updatedValueForKey, updatedSchemaForValue, updatedValueForValue, ret.timestamp());
+        return record.newRecord(record.topic(), record.kafkaPartition(), updatedSchemaForKey, updatedValueForKey, updatedSchemaForValue, updatedValueForValue, record.timestamp());
+    }
+
+    @Override
+    public ConfigDef config() {
+        return null;
     }
 
     @Override
     public void close() {
-        super.close();
     }
 
     private boolean isValueSetStruct(Field field) {
@@ -95,15 +95,16 @@ public class PGCompatible<R extends ConnectRecord<R>> extends ExtractNewRecordSt
         return updatedValue;
     }
 
-    public Pair<Schema, Struct> getUpdatedValueAndSchema(Struct obj) {
-        final Struct value = obj;
-        Schema updatedSchema = null;
-        if (updatedSchema == null) {
-            updatedSchema = makeUpdatedSchema(value.schema(), value);
-        }
+    public Pair<Schema, Struct> getUpdatedValueAndSchema(Struct value) {
+        Schema updatedSchema = makeUpdatedSchema(value.schema(), value);
 
         LOGGER.debug("Updated schema as json: " + io.debezium.data.SchemaUtil.asString(value.schema()));
 
-        return new org.yb.util.Pair<Schema, Struct>(updatedSchema, makeUpdatedValue(updatedSchema, value));
+        return new org.yb.util.Pair<>(updatedSchema, makeUpdatedValue(updatedSchema, value));
+    }
+
+    @Override
+    public void configure(Map<String, ?> map) {
+
     }
 }
