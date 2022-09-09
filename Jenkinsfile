@@ -15,11 +15,6 @@ pipeline {
         RELEASE_BUCKET_PATH = "s3://releases.yugabyte.com/debezium-connector-yugabytedb"
     }
     stages {
-        stage('Clean Workspace') {
-            steps {
-                cleanWs()
-            }
-        }
         // stage('Clone Project') {
         //     steps {                  
         //         git branch: '${BRANCH}', url: 'https://github.com/yugabyte/debezium-connector-yugabytedb.git'
@@ -56,6 +51,7 @@ pipeline {
     post {
         always {
             archiveArtifacts artifacts: '**/*Test.txt', fingerprint: true
+            // cleanWs()
         }
     }
 }
