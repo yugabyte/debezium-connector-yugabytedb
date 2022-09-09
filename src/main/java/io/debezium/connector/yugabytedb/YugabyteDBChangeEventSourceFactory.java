@@ -73,6 +73,7 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
                 configuration,
                 taskContext,
                 snapshotter,
+                jdbcConnection,
                 schema,
                 dispatcher,
                 clock,

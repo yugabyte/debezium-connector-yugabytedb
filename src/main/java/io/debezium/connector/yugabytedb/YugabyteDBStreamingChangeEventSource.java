@@ -118,9 +118,11 @@ public class YugabyteDBStreamingChangeEventSource implements
         Set<YBPartition> partitions = new YugabyteDBPartition.Provider(connectorConfig).getPartitions();
         boolean hasStartLsnStoredInContext = offsetContext != null && !offsetContext.getTabletSourceInfo().isEmpty();
 
+        LOGGER.info("Coming to execute inside the streaming class now");
+
         if (!hasStartLsnStoredInContext) {
             LOGGER.info("No start opid found in the context.");
-            if (snapshotter.shouldSnapshot()) {
+            if (false /*snapshotter.shouldSnapshot()*/) {
                 LOGGER.info("Going for snapshot!");
                 offsetContext = YugabyteDBOffsetContext.initialContextForSnapshot(connectorConfig, connection, clock, partitions);
             }
@@ -130,21 +132,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
 
         try {
-            final WalPositionLocator walPosition;
-
-            if (hasStartLsnStoredInContext) {
-                // start streaming from the last recorded position in the offset
-                final OpId lsn = offsetContext.lastCompletelyProcessedLsn() != null ? offsetContext.lastCompletelyProcessedLsn() : offsetContext.lsn();
-                LOGGER.info("Retrieved latest position from stored offset '{}'", lsn);
-                walPosition = new WalPositionLocator(offsetContext.lastCommitLsn(), lsn);
-            }
-            else {
-                LOGGER.info("No previous LSN found in Kafka, streaming from the latest checkpoint" +
-                        " in YugabyteDB");
-                walPosition = new WalPositionLocator();
-
-                // TODO: if required - create snapshot offset
-            }
+            // note to Vaibhav: removing code because it is not used anywhere
 
             getChanges2(context, partition, offsetContext, hasStartLsnStoredInContext);
         }
@@ -304,6 +292,8 @@ public class YugabyteDBStreamingChangeEventSource implements
         Set<String> snapshotCompleted = new HashSet<>();
         bootstrapTabletWithRetry(tabletPairList);
 
+        LOGGER.info("Dispatcher in streaming: " + dispatcher.toString());
+
         short retryCount = 0;
         while (context.isRunning() && retryCount <= connectorConfig.maxConnectorRetries()) {
             try {
@@ -332,7 +322,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                       }
 
 
-                      OpId cp = snapshotter.shouldSnapshot() ? offsetContext.snapshotLSN(tabletId) : offsetContext.lsn(tabletId);
+                      OpId cp = /*snapshotter.shouldSnapshot() ? offsetContext.snapshotLSN(tabletId) :*/ offsetContext.lsn(tabletId);
                       if (snapshotCompleted.contains(tabletId)) {
                         // If the snapshot is completed for a tablet then we should switch to streaming
                         if (snapshotter.shouldStream()) {
