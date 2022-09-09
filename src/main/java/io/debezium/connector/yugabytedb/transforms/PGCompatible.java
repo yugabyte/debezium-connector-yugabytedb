@@ -41,7 +41,7 @@ public class PGCompatible<R extends ConnectRecord<R>> implements Transformation<
 
     @Override
     public ConfigDef config() {
-        return null;
+        return new ConfigDef();
     }
 
     @Override
