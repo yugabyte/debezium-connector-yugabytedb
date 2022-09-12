@@ -266,4 +266,23 @@ public class YugabyteDBConfigTest extends YugabyteDBTestBase {
 
         assertConnectorNotRunning();
     }
+
+    @Test
+    public void throwProperErrorMessageIfStreamIdIsNotAssociatedWithAnyTable() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        TestHelper.execute("CREATE TABLE dummy_table (id INT);");
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "dummy_table");
+
+        Configuration.Builder configBuilderWithHollowStreamId = 
+            TestHelper.getConfigBuilder("public.dummy_table", dbStreamId);
+        
+        start(YugabyteDBConnector.class, configBuilderWithHollowStreamId.build(), (success, message, error) -> {
+            assertFalse(success);
+
+            assertTrue(error.getMessage().contains("The provided stream ID is not associated with any table"));
+        });
+
+        assertConnectorNotRunning();
+    }
 }
