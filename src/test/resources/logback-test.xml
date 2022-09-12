@@ -11,7 +11,7 @@
         <appender-ref ref="CONSOLE" />
     </root>
 
-    <!-- Set up the default logging to be INFO level, then override specific 
+    <!-- Set up the default logging to be INFO level, then override specific
         units -->
     <logger name="io.debezium" level="info" additivity="false">
         <appender-ref ref="CONSOLE" />
@@ -33,16 +33,21 @@
         additivity="false">
         <appender-ref ref="CONSOLE" />
     </logger>
-    <!-- Needed for PostgresConnectorIT.shouldClearDatabaseWarnings() -->
-    <logger
-        name="io.debezium.connector.postgresql.connection.PostgresReplicationConnection"
-        level="debug" additivity="false">
+
+    <logger name="io.debezium.pipeline" level="info"
+        additivity="false">
         <appender-ref ref="CONSOLE" />
     </logger>
-    <!-- Needed for SignalsIT -->
-    <logger
-        name="io.debezium.pipeline.signal.Signal"
-        level="debug" additivity="false">
+    <logger name="io.debezium.connector.yugabytedb" level="info"
+        additivity="false">
+        <appender-ref ref="CONSOLE" />
+    </logger>
+    <logger name="com.stumbleupon.async.Deferred" level="info"
+        additivity="false">
+        <appender-ref ref="CONSOLE" />
+    </logger>
+    <logger name="org.yb.client.TabletClient" level="info"
+        additivity="false">
         <appender-ref ref="CONSOLE" />
     </logger>
 </configuration>
