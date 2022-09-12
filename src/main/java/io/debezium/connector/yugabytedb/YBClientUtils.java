@@ -12,13 +12,11 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.GetCheckpointResponse;
 import org.yb.client.GetDBStreamInfoResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 import org.yb.master.MasterDdlOuterClass;
-import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB;
 
 import io.debezium.DebeziumException;
 import io.debezium.relational.TableId;
@@ -141,6 +139,16 @@ public class YBClientUtils {
     }
 
     return tableToTabletIds;
+  }
+
+  public static void setCheckpoint(YBClient ybClient, String streamId, String tableId, 
+                                   String tabletId, long term, long index, 
+                                   boolean initialCheckpoint, boolean bootstrap) throws Exception {
+    String logFormatString = "Connector setting checkpoint for tablet {} with streamId {} - " 
+                             + "term: {} index: {} initialCheckpoint: {} bootstrap: {}";
+    LOGGER.info(logFormatString, tabletId, streamId, term, index, initialCheckpoint, bootstrap);
+    ybClient.bootstrapTablet(ybClient.openTableByUUID(tableId), streamId, tabletId, term, 
+                             index, initialCheckpoint, bootstrap);
   }
 
   public static void setCheckpoint(YBClient ybClient, String streamId, String tableId, String tabletId, int term, int index, boolean bootstrap) throws Exception {

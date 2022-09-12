@@ -215,10 +215,21 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             throws Exception {
       LOGGER.info("Coming to execute inside the snapshot class now");
       // Get the list of tablets
-      Set<String> tableIds = YBClientUtils.fetchTableList(this.syncClient, this.connectorConfig);
-      List<Pair<String, String>> tableToTabletIds = 
-            YBClientUtils.getTabletListMappedToTableIds(this.syncClient, tableIds);
-      
+      // Set<String> tableIds = YBClientUtils.fetchTableList(this.syncClient, this.connectorConfig);
+      // List<Pair<String, String>> tableToTabletIds = 
+      //       YBClientUtils.getTabletListMappedToTableIds(this.syncClient, tableIds);
+      List<Pair<String, String>> tableToTabletIds = null;
+      try {
+        String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
+        tableToTabletIds = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
+        LOGGER.info("The table to tabletID list: ");
+        for (Pair<String, String> entry : tableToTabletIds) {
+          LOGGER.info("Table: " + entry.getKey() + " tablet: " + entry.getValue());
+        }
+      } catch (Exception e) {
+        LOGGER.error("The tablet list cannot be deserialized");
+      }
+
       Map<String, Boolean> schemaNeeded = new HashMap<>();
       Set<String> snapshotCompletedTablets = new HashSet<>();
 
@@ -231,7 +242,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       // Bootstrap with bootstrap flag false
       for (Pair<String, String> entry : tableToTabletIds) {
         try {
-          YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), entry.getKey(), entry.getValue(), -1, -1, false);
+          YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), entry.getKey(), entry.getValue(), -1, -1, false, false);
         } catch (Exception e) {
           throw new DebeziumException(e);
         }
@@ -258,7 +269,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     // todo vaibhav: move this to complete() function
                     for (Pair<String, String> entry : tableToTabletIds) {
                       try {
-                        YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), entry.getKey(), entry.getValue(), 0, 0, false);
+                        OpId opId = previousOffset.lsn(tabletId);
+                        YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), entry.getKey(), entry.getValue(), 0, 0, true, true);
                       } catch (Exception e) {
                         throw new DebeziumException(e);
                       }
