@@ -9,7 +9,8 @@ import io.debezium.embedded.AbstractConnectorTest;
 public class YugabyteDBTestBase extends AbstractConnectorTest {
     public void awaitUntilConnectorIsReady() throws Exception {
         Awaitility.await()
-                  .atMost(Duration.ofSeconds(5))
+                  .pollDelay(Duration.ofSeconds(5))
+                  .atMost(Duration.ofSeconds(10))
                   .until(() -> {
                     if (engine.isRunning()) {
                         return true;
