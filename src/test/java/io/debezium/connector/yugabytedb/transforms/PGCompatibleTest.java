@@ -144,11 +144,11 @@ public class PGCompatibleTest {
 
             final SourceRecord createRecord = createCreateRecord();
             final SourceRecord unwrapped = transform.apply(createRecord);
-            assert(((Struct) unwrapped.value()).getInt64("id") == 1);
-            assert(((Struct) unwrapped.value()).getString("name").equals("yb"));
-            assert(unwrapped.headers().size() == 1);
-            String headerValue = getSourceRecordHeaderByKey(unwrapped, ExtractNewRecordStateConfigDefinition.DEBEZIUM_OPERATION_HEADER_KEY);
-            assert(headerValue.equals(Envelope.Operation.CREATE.code()));
+            Struct after = ((Struct) unwrapped.value()).getStruct("after");
+            assert (after.getInt64("id") == 1);
+            assert (after.getString("name").equals("yb"));
+
+            assert (((Struct) unwrapped.value()).getString("op") == "c");
         }
     }
 }
