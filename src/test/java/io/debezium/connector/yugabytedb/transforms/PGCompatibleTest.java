@@ -144,7 +144,6 @@ public class PGCompatibleTest {
 
             final SourceRecord createRecord = createCreateRecord();
             final SourceRecord unwrapped = transform.apply(createRecord);
-            assert(((Struct) unwrapped.value()).getString("__deleted").equals("false"));
             assert(((Struct) unwrapped.value()).getInt64("id") == 1);
             assert(((Struct) unwrapped.value()).getString("name").equals("yb"));
             assert(unwrapped.headers().size() == 1);
