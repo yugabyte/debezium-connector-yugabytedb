@@ -97,5 +97,5 @@ public class YugabyteDBPartitionTest extends YugabyteDBTestBase {
     LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
 
     assertEquals(recordsCount, totalConsumedRecords);
-}
+  }
 }
