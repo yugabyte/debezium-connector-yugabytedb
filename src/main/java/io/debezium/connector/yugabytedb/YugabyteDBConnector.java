@@ -294,22 +294,29 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             throw new DebeziumException("The table.include.list is empty, please provide a list of tables to get the changes from");
         }
 
-        // this.tableIds = fetchTabletList();
+        // If the stream ID is not associated with any table then we should throw an exception
+        // early, this would save us some work on the connector side since we would then not be
+        // going to fetch all the tables then verify if they are a part of the stream ID,
+        // eventually saving us some network calls as well
+        GetDBStreamInfoResponse getStreamInfoResp = null;
+        try {
+            getStreamInfoResp = this.ybClient.getDBStreamInfo(streamId);
+        } catch (Exception e) {
+            String errorMessage = String.format("Failed fetching all tables for the streamid %s", streamId);
+            LOGGER.error(errorMessage, e);
+            throw new DebeziumException(errorMessage, e);
+        }
+        
+        if (getStreamInfoResp.getTableInfoList().isEmpty()) {
+            String errorMessage = "The provided stream ID is not associated with any table";
+            LOGGER.error(errorMessage);
+            throw new DebeziumException(errorMessage);
+        }
+
         this.tableIds = YBClientUtils.fetchTableList(this.ybClient, this.yugabyteDBConnectorConfig);
 
         if (tableIds == null || tableIds.isEmpty()) {
             throw new DebeziumException("The tables provided in table.include.list do not exist");
-        }
-
-        try {
-            GetDBStreamInfoResponse res = this.ybClient.getDBStreamInfo(streamId);
-            if (res.getTableInfoList().isEmpty()) {
-                LOGGER.info("The table info is empty!");
-            }
-        }
-        catch (Exception e) {
-            LOGGER.error("Failed fetching all tables for the streamid {} ", streamIdConfig, e);
-            streamIdConfig.addErrorMessage("Failed fetching all tables for the streamid: " + e.getMessage());
         }
 
         this.tabletIds = new ArrayList<>();
