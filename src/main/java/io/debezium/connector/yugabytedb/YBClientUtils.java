@@ -163,7 +163,7 @@ public class YBClientUtils {
                                    boolean initialCheckpoint, boolean bootstrap) throws Exception {
     String logFormatString = "Connector setting checkpoint for tablet {} with streamId {} - " 
                              + "term: {} index: {} initialCheckpoint: {} bootstrap: {}";
-    LOGGER.info(logFormatString, tabletId, streamId, term, index, initialCheckpoint, bootstrap);
+    LOGGER.debug(logFormatString, tabletId, streamId, term, index, initialCheckpoint, bootstrap);
     ybClient.bootstrapTablet(ybClient.openTableByUUID(tableId), streamId, tabletId, term, 
                              index, initialCheckpoint, bootstrap);
   }
