@@ -221,10 +221,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       try {
         String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
         tableToTabletIds = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
-        LOGGER.info("The table to tabletID list: ");
-        for (Pair<String, String> entry : tableToTabletIds) {
-          LOGGER.info("Table: " + entry.getKey() + " tablet: " + entry.getValue());
-        }
       } catch (Exception e) {
         LOGGER.error("The tablet list cannot be deserialized");
       }
