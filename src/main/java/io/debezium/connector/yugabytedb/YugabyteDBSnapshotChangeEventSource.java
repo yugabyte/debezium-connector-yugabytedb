@@ -246,7 +246,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         previousOffset.initSourceInfo(entry.getValue(), this.connectorConfig);
       }
 
-      // Bootstrap with bootstrap flag false
+      // Set checkpoint with bootstrap and initialCheckpoint as false.
+      // A call to set the checkpoint is required first otherwise we will get an error 
+      // from the server side saying:
+      // INTERNAL_ERROR[code 21]: Stream ID {} is expired for Tablet ID {}
       for (Pair<String, String> entry : tableToTabletIds) {
         try {
           if (hasSnapshotCompletedPreviously(entry.getKey(), entry.getValue())) {
