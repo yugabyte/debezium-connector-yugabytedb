@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.GetChangesResponse;
+import org.yb.client.GetCheckpointResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 
@@ -241,6 +242,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
       Map<String, Boolean> schemaNeeded = new HashMap<>();
       Set<String> snapshotCompletedTablets = new HashSet<>();
+      Set<String> snapshotCompletedPreviously = new HashSet<>();
 
       for (Pair<String, String> entry : tableToTabletIds) {
         schemaNeeded.put(entry.getValue(), Boolean.TRUE);
@@ -251,11 +253,19 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       // Bootstrap with bootstrap flag false
       for (Pair<String, String> entry : tableToTabletIds) {
         try {
-          YBClientUtils.setCheckpoint(this.syncClient, 
-                                      this.connectorConfig.streamId(), 
-                                      entry.getKey() /* tableId */, entry.getValue() /* tabletId */, 
-                                      -1 /* term */, -1 /* index */, 
-                                      false /* initialCheckpoint */, false /* bootstrap */);
+          if (hasSnapshotCompletedPreviously(entry.getKey(), entry.getValue())) {
+            LOGGER.info("Skipping snapshot for tablet {} since tablet has streamed some data before", 
+                        entry.getValue());
+            snapshotCompletedTablets.add(entry.getValue());
+            snapshotCompletedPreviously.add(entry.getValue());
+          } else {
+            YBClientUtils.setCheckpoint(this.syncClient, 
+                                        this.connectorConfig.streamId(), 
+                                        entry.getKey() /* tableId */, 
+                                        entry.getValue() /* tabletId */, 
+                                        -1 /* term */, -1 /* index */, 
+                                        false /* initialCheckpoint */, false /* bootstrap */);
+          }
         } catch (Exception e) {
           throw new DebeziumException(e);
         }
@@ -278,19 +288,30 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     // Commit checkpoints for all tablets to make them ready for streaming changes
                     for (Pair<String, String> entry : tableToTabletIds) {
                       try {
-                        YBClientUtils.setCheckpoint(this.syncClient, 
-                                                    this.connectorConfig.streamId(),
-                                                    entry.getKey() /* tableId */,
-                                                    entry.getValue() /* tabletId */,
-                                                    0 /* term */, 0 /* index */,
-                                                    true /* initialCheckpoint */, 
-                                                    true /* bootstrap */);
+                        // Only checkpoint in case this is the first time snapshot has been 
+                        // completed, otherwise we will end up setting the checkpoint to 0,0 even
+                        // for tablets for which snapshot has been completed in a previous run
+                        // of the connector
+                        if (!snapshotCompletedPreviously.contains(entry.getValue())) {
+                          YBClientUtils.setCheckpoint(this.syncClient, 
+                                                      this.connectorConfig.streamId(),
+                                                      entry.getKey() /* tableId */,
+                                                      entry.getValue() /* tabletId */,
+                                                      0 /* term */, 0 /* index */,
+                                                      true /* initialCheckpoint */, 
+                                                      true /* bootstrap */);
+                        }
                       } catch (Exception e) {
                         throw new DebeziumException(e);
                       }
                     }
 
                     return SnapshotResult.completed(previousOffset);
+                }
+
+                // Skip the tablet if snapshot has already been taken for this tablet
+                if (snapshotCompletedTablets.contains(tabletId)) {
+                  continue;
                 }
 
                 OpId cp = previousOffset.snapshotLSN(tabletId);
@@ -452,6 +473,36 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     protected SnapshotContext<YBPartition, YugabyteDBOffsetContext> prepare(YBPartition partition)
             throws Exception {
         return new YugabyteDBSnapshotContext(partition, connectorConfig.databaseName());
+    }
+
+    /**
+     * Check on the server side if the tablet already has some checkpoint, if it does then do
+     * not take a snapshot for it again since some data has already been streamed out of it
+     * @param tableId the UUID of the table
+     * @param tabletId the UUID of the tablet
+     * @return true if snapshot has been taken or some data has streamed already
+     * @throws Exception if checkpoint cannot be retreived from server side
+     */
+    protected boolean hasSnapshotCompletedPreviously(String tableId, String tabletId) 
+        throws Exception {
+      // The default behaviour is configured to allow the connector to take a snapshot again
+      // and returning false at this stage would indicate that the snapshot has not been taken
+      // so the connector would try to take a snapshot considering this as the first time
+      // it is going for the snapshot
+      if (this.connectorConfig.snapshotAgain()) {
+        return false;
+      }
+
+      GetCheckpointResponse resp = this.syncClient.getCheckpoint(
+                                       this.syncClient.openTableByUUID(tableId), 
+                                       this.connectorConfig.streamId(), tabletId);
+
+      if (resp.getTerm() == -1 && resp.getIndex() == -1) {
+        // This condition indicates that some data has already streamed from the tablet.
+        return false;
+      } else {
+        return true;
+      }
     }
 
     protected Set<TableId> getAllTableIds(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx)

@@ -851,6 +851,15 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     + "'exported' deprecated, use 'initial' instead; "
                     + "'custom' to specify a custom class with 'snapshot.custom_class' which will be loaded and used to determine the snapshot, see docs for more details.");
 
+    public static final Field SNAPSHOT_AGAIN = Field.create("snapshot.again")
+            .withDisplayName("Whether to take snapshot again")
+            .withDefault(true)
+            .withType(Type.BOOLEAN)
+            .withImportance(Importance.LOW)
+            .withValidation(Field::isBoolean)
+            .withDescription("When 'take.snapshot.again' is set to true, the connector will forcefully take the snapshot of the specified tables otherwise it will simply skip the snapshot "
+                    + "if it finds out that the tablet has streamed some data already.");
+
     public static final Field SNAPSHOT_MODE_CLASS = Field.create("snapshot.custom.class")
             .withDisplayName("Snapshot Mode Custom Class")
             .withType(Type.STRING)
@@ -1098,6 +1107,10 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return getConfig().getString(SSL_CLIENT_KEY);
     }
 
+    public boolean snapshotAgain() {
+        return getConfig().getBoolean(SNAPSHOT_AGAIN);
+    }
+
     protected LogicalDecoder plugin() {
         return LogicalDecoder.parse(getConfig().getString(PLUGIN_NAME));
     }
@@ -1196,7 +1209,8 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     SSL_SOCKET_FACTORY,
                     STATUS_UPDATE_INTERVAL_MS,
                     TCP_KEEPALIVE,
-                    MAX_NUM_TABLETS)
+                    MAX_NUM_TABLETS,
+                    SNAPSHOT_AGAIN)
             .events(
                     INCLUDE_UNKNOWN_DATATYPES)
             .connector(
