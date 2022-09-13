@@ -311,15 +311,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                   try {
                     if (message.isTransactionalMessage()) {
-                      if (this.connectorConfig.shouldProvideTransactionMetadata()) {
-
-                      } else {
-                        if (message.getOperation() == Operation.BEGIN) {
-
-                        } else if (message.getOperation() == Operation.COMMIT) {
-
-                        }
-                      }
+                      // Ideally there shouldn't be any BEGIN-COMMIT record while streaming
+                      // the snapshot, if one is encountered then log a warning in case any
+                      // debugging is required.
+                      LOGGER.warn("Transactional record of type {} encountered while snapshotting the table", message.getOperation().toString());
                     } else if (message.isDDLMessage()) {
                       LOGGER.info("For table {}, received a DDL record {}", 
                                   message.getTable(), message.getSchema().toString());
@@ -335,8 +330,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       Table t = schema.tableFor(tId);
                       LOGGER.debug("The schema is already registered {}", t);
                       if (t == null) {
-                        // If we fail to achieve the table, that means we have not specified correct schema information,
-                        // now try to refresh the schema.
+                        // If we fail to achieve the table, that means we have not specified 
+                        // correct schema information. Now try to refresh the schema.
                         schema.refreshWithSchema(tId, message.getSchema(), pgSchemaName);
                       }
                     } else {
@@ -362,8 +357,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                                                 connection, tId, message, 
                                                                 pgSchemaName));
                     }
-                  } catch (Exception e) {
-                    // TODO: handle exception
+                  } catch (InterruptedException e) {
+                    LOGGER.error("Exception while processing messages for snapshot: " + e);
+                    throw e;
                   }
                 }
 
@@ -409,6 +405,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         }
       }
     
+      // If the flow comes at this stage then it either failed or was aborted by 
+      // some user interruption
       return SnapshotResult.aborted();
     }
 
@@ -472,9 +470,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     @Override
     protected void complete(SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext) {
         snapshotter.snapshotCompleted();
-
-        // call bootstrap function to set the checkpoint as 0,0 with bootstrap flag as false
-
 
         // close the YbClient instances
         try {

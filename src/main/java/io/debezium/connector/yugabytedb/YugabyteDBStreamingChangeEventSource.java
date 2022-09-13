@@ -118,7 +118,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         Set<YBPartition> partitions = new YugabyteDBPartition.Provider(connectorConfig).getPartitions();
         boolean hasStartLsnStoredInContext = offsetContext != null && !offsetContext.getTabletSourceInfo().isEmpty();
 
-        LOGGER.info("Coming to execute inside the streaming class now");
+        LOGGER.info("Starting the change streaming process now");
 
         if (!hasStartLsnStoredInContext) {
             LOGGER.info("No start opid found in the context.");
@@ -126,8 +126,6 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
 
         try {
-            // note to Vaibhav: removing code because it is not used anywhere
-
             getChanges2(context, partition, offsetContext, hasStartLsnStoredInContext);
         }
         catch (Throwable e) {
@@ -249,10 +247,13 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
 
         LOGGER.debug("The init tabletSourceInfo before updating is " + offsetContext.getTabletSourceInfo());
-        // todo: rename schemaStreamed to something else
-        Map<String, Boolean> schemaStreamed = new HashMap<>();
+        
+        // Initialize the offsetContext and other supporting flags
+        Map<String, Boolean> schemaNeeded = new HashMap<>();
         for (Pair<String, String> entry : tabletPairList) {
-            schemaStreamed.put(entry.getValue(), Boolean.TRUE);
+            // entry.getValue() will give the tabletId
+            offsetContext.initSourceInfo(entry.getValue(), this.connectorConfig);
+            schemaNeeded.put(entry.getValue(), Boolean.TRUE);
         }
 
         for (Pair<String, String> entry : tabletPairList) {
@@ -260,8 +261,9 @@ public class YugabyteDBStreamingChangeEventSource implements
             offsetContext.initSourceInfo(tabletId, this.connectorConfig);
         }
 
-        // This will contain the tablet ID mapped to the number of records it has seen in the transactional block.
-        // Note that the entry will be created only when a BEGIN block is encountered.
+        // This will contain the tablet ID mapped to the number of records it has seen 
+        // in the transactional block. Note that the entry will be created only when 
+        // a BEGIN block is encountered.
         Map<String, Integer> recordsInTransactionalBlock = new HashMap<>();
 
         LOGGER.debug("The init tabletSourceInfo after updating is " + offsetContext.getTabletSourceInfo());
@@ -269,13 +271,15 @@ public class YugabyteDBStreamingChangeEventSource implements
         final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
         final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
 
-        if (!snapshotter.shouldSnapshot()) { // only bootstrap if no snapshot has been enabled
-            bootstrapTabletWithRetry(tabletPairList);
-        } else {
+        // Only bootstrap if no snapshot has been enabled - if snapshot is enabled then
+        // the assumption is that there will already be some checkpoints for the tablet in
+        // the cdc_state table. Avoiding additional bootstrap call in that case will also help
+        // us avoid unnecessary network calls.
+        if (snapshotter.shouldSnapshot()) {
             LOGGER.info("Skipping bootstrap because snapshot has been taken so streaming will resume there onwards");
+        } else {
+            bootstrapTabletWithRetry(tabletPairList);
         }
-
-        LOGGER.info("Dispatcher in streaming: " + dispatcher.toString());
 
         short retryCount = 0;
         while (context.isRunning() && retryCount <= connectorConfig.maxConnectorRetries()) {
@@ -403,7 +407,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             + " the table is " + message.getTable());
 
                                     // If a DDL message is received for a tablet, we do not need its schema again
-                                    schemaStreamed.put(tabletId, Boolean.FALSE);
+                                    schemaNeeded.put(tabletId, Boolean.FALSE);
 
                                     TableId tableId = null;
                                     if (message.getOperation() != Operation.NOOP) {
