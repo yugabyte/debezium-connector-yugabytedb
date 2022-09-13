@@ -148,12 +148,13 @@ public class YugabyteDBConnectorTask
         this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector);
         // get the tablet ids and load the offsets
 
-        final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets = getPreviousOffsetss(
+        final Map<YBPartition, YugabyteDBOffsetContext> previousOffsets = getPreviousOffsetss(
                 new YugabyteDBPartition.Provider(connectorConfig),
                 new YugabyteDBOffsetContext.Loader(connectorConfig));
         final Clock clock = Clock.system();
 
-        YugabyteDBOffsetContext context = previousOffsets.getTheOnlyOffset();
+        YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(previousOffsets, 
+                                                                      connectorConfig);
 
         LoggingContext.PreviousContext previousContext = taskContext
                 .configureLoggingContext(CONTEXT_NAME);
@@ -207,7 +208,7 @@ public class YugabyteDBConnectorTask
                     jdbcConnection);
 
             YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
-                    previousOffsets,
+                    Offsets.of(new YBPartition(), context) ,
                     errorHandler,
                     YugabyteDBConnector.class,
                     connectorConfig,
@@ -239,9 +240,9 @@ public class YugabyteDBConnectorTask
         }
     }
 
-    Offsets<YBPartition, YugabyteDBOffsetContext> getPreviousOffsetss(
-                                                                  Partition.Provider<YBPartition> provider,
-                                                                  OffsetContext.Loader<YugabyteDBOffsetContext> loader) {
+    Map<YBPartition, YugabyteDBOffsetContext> getPreviousOffsetss(
+        Partition.Provider<YBPartition> provider,
+        OffsetContext.Loader<YugabyteDBOffsetContext> loader) {
         // return super.getPreviousOffsets(provider, loader);
         Set<YBPartition> partitions = provider.getPartitions();
         LOGGER.debug("The size of partitions is " + partitions.size());
@@ -262,8 +263,8 @@ public class YugabyteDBConnectorTask
         if (!found) {
             LOGGER.info("No previous offsets found");
         }
-        return Offsets.of(offsets);
-        // return new Offsets<>(offsets);
+
+        return offsets;
     }
 
     public ReplicationConnection createReplicationConnection(YugabyteDBTaskContext taskContext,
