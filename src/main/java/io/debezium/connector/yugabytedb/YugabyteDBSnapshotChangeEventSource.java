@@ -213,11 +213,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                                                 SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
                                                                 SnapshottingTask snapshottingTask)
             throws Exception {
-      LOGGER.info("Coming to execute inside the snapshot class now");
+      LOGGER.info("Starting the snapshot process now");
+      
       // Get the list of tablets
-      // Set<String> tableIds = YBClientUtils.fetchTableList(this.syncClient, this.connectorConfig);
-      // List<Pair<String, String>> tableToTabletIds = 
-      //       YBClientUtils.getTabletListMappedToTableIds(this.syncClient, tableIds);
       List<Pair<String, String>> tableToTabletIds = null;
       try {
         String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
@@ -269,7 +267,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     // todo vaibhav: move this to complete() function
                     for (Pair<String, String> entry : tableToTabletIds) {
                       try {
-                        OpId opId = previousOffset.lsn(tabletId);
                         YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), entry.getKey(), entry.getValue(), 0, 0, true, true);
                       } catch (Exception e) {
                         throw new DebeziumException(e);
@@ -412,7 +409,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         }
       }
     
-    //   return SnapshotResult.skipped(previousOffset); // todo vaibhav: make changes here
       return SnapshotResult.aborted();
     }
 

@@ -122,13 +122,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         if (!hasStartLsnStoredInContext) {
             LOGGER.info("No start opid found in the context.");
-            // if (false /*snapshotter.shouldSnapshot()*/) {
-            //     LOGGER.info("Going for snapshot!");
-            //     offsetContext = YugabyteDBOffsetContext.initialContextForSnapshot(connectorConfig, connection, clock, partitions);
-            // }
-            // else {
                 offsetContext = YugabyteDBOffsetContext.initialContext(connectorConfig, connection, clock, partitions);
-            // }
         }
 
         try {
@@ -162,17 +156,6 @@ public class YugabyteDBStreamingChangeEventSource implements
             }
         }
     }
-
-    // private GetChangesResponse getChangeResponse(YugabyteDBOffsetContext offsetContext) throws Exception {
-    //     return null;
-    // }
-
-    // private void getSnapshotChanges(ChangeEventSourceContext context,
-    //                                 YBPartition partitionn,
-    //                                 YugabyteDBOffsetContext offsetContext,
-    //                                 boolean previousOffsetPresent) {
-
-    // }
 
     private void bootstrapTablet(YBTable table, String tabletId) throws Exception {
         GetCheckpointResponse getCheckpointResponse = this.syncClient.getCheckpoint(table, connectorConfig.streamId(), tabletId);
@@ -236,7 +219,6 @@ public class YugabyteDBStreamingChangeEventSource implements
         LOGGER.debug("The offset is " + offsetContext.getOffset());
 
         LOGGER.info("Processing messages");
-        // ListTablesResponse tablesResp = syncClient.getTablesList();
 
         String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
 
@@ -266,8 +248,6 @@ public class YugabyteDBStreamingChangeEventSource implements
             tableIdToTable.put(tId, table);
         }
 
-        // int noMessageIterations = 0;
-
         LOGGER.debug("The init tabletSourceInfo before updating is " + offsetContext.getTabletSourceInfo());
         // todo: rename schemaStreamed to something else
         Map<String, Boolean> schemaStreamed = new HashMap<>();
@@ -289,7 +269,6 @@ public class YugabyteDBStreamingChangeEventSource implements
         final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
         final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
 
-        // Set<String> snapshotCompleted = new HashSet<>();
         if (!snapshotter.shouldSnapshot()) { // only bootstrap if no snapshot has been enabled
             bootstrapTabletWithRetry(tabletPairList);
         } else {
@@ -316,30 +295,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                     for (Pair<String, String> entry : tabletPairList) {
                         final String tabletId = entry.getValue();
                         YBPartition part = new YBPartition(tabletId);
-                    //   if (snapshotCompleted.size() == tabletPairList.size()) {
-                    //     LOGGER.debug("Snapshot completed for all the tablets! Stopping.");
-                    //     if (!snapshotter.shouldStream()) {
-                    //         // This block will be executed in case of initial_only mode
-                    //         LOGGER.info("Snapshot completed for initial_only mode, stopping the connector now");
-                    //         return;
-                    //     }
-                    //   }
 
-
-                      OpId cp = /*snapshotter.shouldSnapshot() ? offsetContext.snapshotLSN(tabletId) :*/ offsetContext.lsn(tabletId);
-                    //   if (snapshotCompleted.contains(tabletId)) {
-                    //     // If the snapshot is completed for a tablet then we should switch to streaming
-                    //     if (snapshotter.shouldStream()) {
-                    //         LOGGER.debug("Streaming changes for tablet {}", tabletId);
-                    //         cp = offsetContext.lsn(tabletId);
-                    //         if (cp.getTerm() == -1 && cp.getIndex() == -1) {
-                    //             // When the first call will be made to find the lsn after switching
-                    //             // from snapshot to streaming - it will return <-1,-1> - in that case
-                    //             // we need to call GetChanges with 0,0  checkpoint
-                    //             cp = new OpId(0, 0, null, 0, 0);
-                    //         }
-                    //     }
-                    //   }
+                      OpId cp = offsetContext.lsn(tabletId);
 
                       YBTable table = tableIdToTable.get(entry.getKey());
 
@@ -513,10 +470,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 .updateLastCommit(finalOpid);
 
                         LOGGER.debug("The final opid is " + finalOpid);
-                        // if (snapshotter.shouldSnapshot() && finalOpid.equals(new OpId(-1, -1, "".getBytes(), 0 ,0))) {
-                        //   snapshotCompleted.add(tabletId);
-                        //   LOGGER.info("Stopping the snapshot for the tablet " + tabletId);
-                        // }
                     }
                     // Reset the retry count, because if flow reached at this point, it means that the connection
                     // has succeeded
