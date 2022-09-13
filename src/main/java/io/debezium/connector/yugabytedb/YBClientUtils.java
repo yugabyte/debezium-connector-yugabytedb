@@ -24,6 +24,11 @@ import io.debezium.relational.TableId;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.master.MasterTypes;
 
+/**
+ * Utility class to provide function to help functioning of the connector processes.
+ * 
+ * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
+ */
 public class YBClientUtils {
   private final static Logger LOGGER = LoggerFactory.getLogger(YBClientUtils.class);
 
@@ -141,6 +146,18 @@ public class YBClientUtils {
     return tableToTabletIds;
   }
 
+  /**
+   * Helper function to set the checkpoint on YugabyteDB server side
+   * @param ybClient {@link YBClient} instance
+   * @param streamId DB stream ID
+   * @param tableId table UUID
+   * @param tabletId tablet UUID
+   * @param term term of the checkpoint
+   * @param index index of the checkpoint
+   * @param initialCheckpoint flag to indicate whether to start retaining intents
+   * @param bootstrap flag to indicate whether to bootstrap the tablet
+   * @throws Exception if things go wrong
+   */
   public static void setCheckpoint(YBClient ybClient, String streamId, String tableId, 
                                    String tabletId, long term, long index, 
                                    boolean initialCheckpoint, boolean bootstrap) throws Exception {
@@ -150,22 +167,4 @@ public class YBClientUtils {
     ybClient.bootstrapTablet(ybClient.openTableByUUID(tableId), streamId, tabletId, term, 
                              index, initialCheckpoint, bootstrap);
   }
-
-  public static void setCheckpoint(YBClient ybClient, String streamId, String tableId, String tabletId, int term, int index, boolean bootstrap) throws Exception {
-
-    // ybClient.commitCheckpoint(ybClient.openTableByUUID(tableId), streamId, tabletId, term, index, true);
-    ybClient.bootstrapTablet(ybClient.openTableByUUID(tableId), streamId, tabletId, term, index, true, bootstrap);
-
-    // long term = getCheckpointResponse.getTerm();
-    // long index = getCheckpointResponse.getIndex();
-    // LOGGER.info("Checkpoint for tablet {} before going to bootstrap: {}.{}", tabletId, term, index);
-    // if (term == -1 && index == -1) {
-    //     LOGGER.info("Bootstrapping the tablet {}", tabletId);
-    //     this.syncClient.bootstrapTablet(table, connectorConfig.streamId(), tabletId, 0, 0, true, true);
-    // }
-    // else {
-    //     LOGGER.info("Skipping bootstrap for tablet {} as it has a checkpoint {}.{}", tabletId, term, index);
-    // }
-}
-
 }
