@@ -315,7 +315,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 OpId cp = previousOffset.snapshotLSN(tabletId);
 
-                LOGGER.info("Going to fetch from checkpoint {} for tablet {} for table {}", 
+                LOGGER.debug("Going to fetch from checkpoint {} for tablet {} for table {}", 
                             cp, tabletId, table.getName());
 
                 if (!context.isRunning()) {
@@ -349,11 +349,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   try {
                     if (message.isTransactionalMessage()) {
                       // Ideally there shouldn't be any BEGIN-COMMIT record while streaming
-                      // the snapshot, if one is encountered then log a warning in case any
-                      // debugging is required.
+                      // the snapshot, if one is encountered then log a warning so the user knows
+                      // that some debugging is required
                       LOGGER.warn("Transactional record of type {} encountered while snapshotting the table", message.getOperation().toString());
                     } else if (message.isDDLMessage()) {
-                      LOGGER.info("For table {}, received a DDL record {}", 
+                      LOGGER.debug("For table {}, received a DDL record {}", 
                                   message.getTable(), message.getSchema().toString());
                       
                       schemaNeeded.put(tabletId, Boolean.FALSE);
@@ -411,7 +411,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 if (finalOpId.equals(new OpId(-1, -1, "".getBytes(), 0, 0))) {
                     // This will mark the snapshot completed for the tablet
                     snapshotCompletedTablets.add(tabletId);
-                    LOGGER.info("Snapshot completed for tablet {}", tabletId);
+                    LOGGER.info("Snapshot completed for tablet {} belonging to table {} ({})", 
+                                tabletId, table.getName(), tableId);
                 }
 
             }
@@ -423,10 +424,19 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         } catch (Exception e) {
           ++retryCount;
 
-          // TODO Vaibhav: discuss failure scenarios here
+          // TODO Vaibhav: handle failure scenarios here
           if (retryCount > this.connectorConfig.maxConnectorRetries()) {
             LOGGER.error("Too many errors while trying to stream the snapshot, "
                          + "all {} retries failed.", this.connectorConfig.maxConnectorRetries());
+            
+            LOGGER.info("Tablets in the failed task:");
+            for (Pair<String, String> entry : tableToTabletIds) {
+              LOGGER.info("Tablet: {} table: {}({})", 
+                          entry.getValue() /* tablet UUID */,
+                          tableIdToTable.get(entry.getKey()).getName() /* table name */,
+                          entry.getKey() /* table UUID */);
+            }
+
             throw e;
           }
 
@@ -542,7 +552,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     protected void complete(SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext) {
         snapshotter.snapshotCompleted();
 
-        // close the YbClient instances
+        // Close the YbClient instances
         try {
           this.syncClient.close();
           this.asyncClient.close();
