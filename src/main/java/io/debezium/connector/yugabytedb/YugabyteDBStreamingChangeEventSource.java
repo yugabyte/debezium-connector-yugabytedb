@@ -115,6 +115,11 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     @Override
     public void execute(ChangeEventSourceContext context, YBPartition partition, YugabyteDBOffsetContext offsetContext) {
+        if (!snapshotter.shouldStream()) {
+            LOGGER.info("Skipping streaming since it's not enabled in the configuration");
+            return;
+        }
+
         Set<YBPartition> partitions = new YugabyteDBPartition.Provider(connectorConfig).getPartitions();
         boolean hasStartLsnStoredInContext = offsetContext != null && !offsetContext.getTabletSourceInfo().isEmpty();
 
@@ -314,7 +319,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                       }
                         GetChangesResponse response = this.syncClient.getChangesCDCSDK(
                                 table, streamId, tabletId,
-                                cp.getTerm(), cp.getIndex(), cp.getKey(), cp.getWrite_id(), cp.getTime(), schemaStreamed.get(tabletId));
+                                cp.getTerm(), cp.getIndex(), cp.getKey(), cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId));
 
                         LOGGER.debug("Processing {} records from getChanges call",
                                 response.getResp().getCdcSdkProtoRecordsList().size());

@@ -8,6 +8,7 @@ package io.debezium.connector.yugabytedb;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
+import java.util.Map.Entry;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -17,7 +18,6 @@ import io.debezium.pipeline.source.AbstractSnapshotChangeEventSource;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.Opid;
 import org.yb.cdc.CdcService;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.GetChangesResponse;
@@ -228,6 +228,17 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         LOGGER.error("The tablet list cannot be deserialized");
       }
 
+      Map<String, YBTable> tableIdToTable = new HashMap<>();
+      Set<String> tableUUIDs = tableToTabletIds.stream()
+                                  .map(pair -> pair.getLeft())
+                                  .collect(Collectors.toSet());
+      for (String tableUUID : tableUUIDs) {
+        tableIdToTable.put(tableUUID, this.syncClient.openTableByUUID(tableUUID));
+      }
+
+      // TODO: Filter tablets based on the snapshot include list, and set checkpoint with bootstrap
+      // for streaming for the rest of them
+
       Map<String, Boolean> schemaNeeded = new HashMap<>();
       Set<String> snapshotCompletedTablets = new HashSet<>();
 
@@ -240,7 +251,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       // Bootstrap with bootstrap flag false
       for (Pair<String, String> entry : tableToTabletIds) {
         try {
-          YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), entry.getKey(), entry.getValue(), -1, -1, false, false);
+          YBClientUtils.setCheckpoint(this.syncClient, 
+                                      this.connectorConfig.streamId(), 
+                                      entry.getKey() /* tableId */, entry.getValue() /* tabletId */, 
+                                      -1 /* term */, -1 /* index */, 
+                                      false /* initialCheckpoint */, false /* bootstrap */);
         } catch (Exception e) {
           throw new DebeziumException(e);
         }
@@ -250,24 +265,26 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       while (context.isRunning() && retryCount <= this.connectorConfig.maxConnectorRetries()) {
         try {
             while (context.isRunning() && (previousOffset.getStreamingStoppingLsn() == null)) {
-              // TODO Vaibhav: add the logic to limit poll per call to one
-
               for (Pair<String, String> tableIdToTabletId : tableToTabletIds) {
                 String tableId = tableIdToTabletId.getKey();
-                YBTable table = this.syncClient.openTableByUUID(tableId);
+                YBTable table = tableIdToTable.get(tableId);
 
                 String tabletId = tableIdToTabletId.getValue();
                 YBPartition part = new YBPartition(tabletId);
-                /*
-                 * check if snapshot is completed here, if it is, then break out of the loop
-                 */
+                
+                 // Check if snapshot is completed here, if it is, then break out of the loop
                 if (snapshotCompletedTablets.size() == tableToTabletIds.size()) {
                     LOGGER.info("Snapshot completed for all the tablets");
-                    // commit checkpoints for all tablets for streaming
-                    // todo vaibhav: move this to complete() function
+                    // Commit checkpoints for all tablets to make them ready for streaming changes
                     for (Pair<String, String> entry : tableToTabletIds) {
                       try {
-                        YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), entry.getKey(), entry.getValue(), 0, 0, true, true);
+                        YBClientUtils.setCheckpoint(this.syncClient, 
+                                                    this.connectorConfig.streamId(),
+                                                    entry.getKey() /* tableId */,
+                                                    entry.getValue() /* tabletId */,
+                                                    0 /* term */, 0 /* index */,
+                                                    true /* initialCheckpoint */, 
+                                                    true /* bootstrap */);
                       } catch (Exception e) {
                         throw new DebeziumException(e);
                       }
@@ -356,6 +373,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                                                 this.connectorConfig, schema, 
                                                                 connection, tId, message, 
                                                                 pgSchemaName));
+
+                      LOGGER.debug("Dispatched snapshot record successfully");
                     }
                   } catch (InterruptedException e) {
                     LOGGER.error("Exception while processing messages for snapshot: " + e);
@@ -365,6 +384,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 OpId finalOpId = new OpId(resp.getTerm(), resp.getIndex(), resp.getKey(), 
                                           resp.getWriteId(), resp.getSnapshotTime());
+                LOGGER.debug("Final OpId is {}", finalOpId);
                 
                 previousOffset.getSourceInfo(tabletId).updateLastCommit(finalOpId);
                 
@@ -411,7 +431,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     }
 
     @Override
-    protected SnapshottingTask getSnapshottingTask(YBPartition partition, YugabyteDBOffsetContext previousOffset) {
+    protected SnapshottingTask getSnapshottingTask(YBPartition partition, 
+                                                   YugabyteDBOffsetContext previousOffset) {
         boolean snapshotSchema = true;
         boolean snapshotData = true;
 
@@ -476,7 +497,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           this.syncClient.close();
           this.asyncClient.close();
         } catch (Exception e) {
-          throw new DebeziumException("Exception while trying to close the ybClient instances", e);
+          throw new DebeziumException("Cannot shutdown the yb-client instances", e);
         }
     }
 
