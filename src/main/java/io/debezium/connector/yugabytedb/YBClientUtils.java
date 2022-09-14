@@ -167,4 +167,24 @@ public class YBClientUtils {
     ybClient.bootstrapTablet(ybClient.openTableByUUID(tableId), streamId, tabletId, term, 
                              index, initialCheckpoint, bootstrap);
   }
+
+  /**
+   * Helper function to get the Debezium style TableId of a table from table UUID
+   * @param ybClient the {@link YBClient} instance
+   * @param tableUuid UUID of the YugabyteDB table
+   * @return the {@link TableId}
+   * @throws Exception if a {@link YBTable} cannot be opened by the client
+   */
+  public static TableId getTableIdFromTableUUID(YBClient ybClient, String tableUuid) throws Exception {
+    YBTable table = ybClient.openTableByUUID(tableUuid);
+
+    // Going ahead with the hardcoded schema name
+    // todo Vaibhav: change in future if and when the server side changes land
+    return new TableId(table.getKeyspace(), "public", table.getName());
+  }
+
+  public static TableId getTableIdFromYbTable(YBTable ybTable) throws Exception {
+    // todo Vaibhav: change the hardcoded value
+    return new TableId(ybTable.getKeyspace(), "public", ybTable.getName());
+  }
 }

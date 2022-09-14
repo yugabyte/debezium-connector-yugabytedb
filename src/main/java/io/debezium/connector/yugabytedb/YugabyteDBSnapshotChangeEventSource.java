@@ -176,30 +176,31 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
     private void determineCapturedTables(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx)
             throws Exception {
-        Set<TableId> allTableIds = determineDataCollectionsToBeSnapshotted(getAllTableIds(ctx)).collect(Collectors.toSet());
+        // Get the TableIds - io.debezium.relation.TableId
+        // Set<TableId> allTableIds = determineDataCollectionsToBeSnapshotted(getAllTableIds(ctx)).collect(Collectors.toSet());
 
-        Set<TableId> capturedTables = new HashSet<>();
-        Set<TableId> capturedSchemaTables = new HashSet<>();
+        // Set<TableId> capturedTables = new HashSet<>();
+        // Set<TableId> capturedSchemaTables = new HashSet<>();
 
-        for (TableId tableId : allTableIds) {
-            if (connectorConfig.getTableFilters().eligibleDataCollectionFilter().isIncluded(tableId)) {
-                LOGGER.trace("Adding table {} to the list of capture schema tables", tableId);
-                capturedSchemaTables.add(tableId);
-            }
-            if (connectorConfig.getTableFilters().dataCollectionFilter().isIncluded(tableId)) {
-                LOGGER.trace("Adding table {} to the list of captured tables", tableId);
-                capturedTables.add(tableId);
-            }
-            else {
-                LOGGER.trace("Ignoring table {} as it's not included in the filter configuration", tableId);
-            }
-        }
+        // for (TableId tableId : allTableIds) {
+        //     if (connectorConfig.getTableFilters().eligibleDataCollectionFilter().isIncluded(tableId)) {
+        //         LOGGER.trace("Adding table {} to the list of capture schema tables", tableId);
+        //         capturedSchemaTables.add(tableId);
+        //     }
+        //     if (connectorConfig.getTableFilters().dataCollectionFilter().isIncluded(tableId)) {
+        //         LOGGER.trace("Adding table {} to the list of captured tables", tableId);
+        //         capturedTables.add(tableId);
+        //     }
+        //     else {
+        //         LOGGER.trace("Ignoring table {} as it's not included in the filter configuration", tableId);
+        //     }
+        // }
 
-        ctx.capturedTables = sort(capturedTables);
-        ctx.capturedSchemaTables = capturedSchemaTables
-                .stream()
-                .sorted()
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+        // ctx.capturedTables = sort(capturedTables);
+        // ctx.capturedSchemaTables = capturedSchemaTables
+        //         .stream()
+        //         .sorted()
+        //         .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     @Override
@@ -233,8 +234,37 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         tableIdToTable.put(tableUUID, this.syncClient.openTableByUUID(tableUUID));
       }
 
+      Map<TableId, String> tableIdToUuid = new HashMap<>();
+      Set<TableId> dbzTableIds = new HashSet<>();
       // TODO: Filter tablets based on the snapshot include list, and set checkpoint with bootstrap
       // for streaming for the rest of them
+      for (Entry<String, YBTable> entry : tableIdToTable.entrySet()) {
+        tableIdToUuid.put(YBClientUtils.getTableIdFromYbTable(entry.getValue()), entry.getKey());
+      }
+      dbzTableIds = tableIdToUuid.entrySet().stream()
+                                  .map(entry -> entry.getKey())
+                                  .collect(Collectors.toSet());
+      LOGGER.info("Debezium table IDs:");
+      for (TableId t : dbzTableIds) {
+        LOGGER.info("====================== {}", t.toString());
+      }
+
+      //todo Vaibhav: This is more of a hack to get the filter to work, need to do it in a cleaner way
+      Set<Pattern> dataCollectionsToBeSnapshotted = this.connectorConfig.getDataCollectionsToBeSnapshotted();
+      Set<String> patterns = new HashSet<>();
+      for (Pattern p : dataCollectionsToBeSnapshotted) {
+        patterns.add(p.pattern());
+      }
+
+      Set<TableId> filteredTables = dbzTableIds.stream()
+          .filter(dataCollectionId -> patterns.contains(dataCollectionId.schema()+"."+dataCollectionId.table()))
+          .collect(Collectors.toSet());
+
+      for (TableId t : filteredTables) {
+        LOGGER.info("======================= " + t.toString());
+      }
+      // tableIdToUuid will only contain the tables ready for streaming
+      tableIdToUuid.keySet().removeIf(obj -> !filteredTables.contains(obj));
 
       Map<String, Boolean> schemaNeeded = new HashMap<>();
       Set<String> snapshotCompletedTablets = new HashSet<>();
@@ -246,11 +276,31 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         previousOffset.initSourceInfo(entry.getValue(), this.connectorConfig);
       }
 
+      List<Pair<String, String>> tableToTabletForSnapshot = new ArrayList<>();
+      List<Pair<String, String>> tableToTabletNoSnapshot = new ArrayList<>();
+
+      for (Pair<String, String> entry : tableToTabletIds) {
+        String tableUuid = entry.getKey();
+        String tabletUuid = entry.getValue();
+
+        // todo: convert this to ternary operator maybe
+        if (tableIdToUuid.containsValue(tableUuid)) {
+          // this means we need to add this table/tablet to snapshot
+          tableToTabletForSnapshot.add(entry);
+        } else {
+          tableToTabletNoSnapshot.add(entry);
+          // bootstrap the tablets if snapshot is not required for them
+          LOGGER.info("Skipping the tablet {} since it is not a part of the snapshot collection include list", tabletUuid);
+          YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), 
+                                      tableUuid, tabletUuid, -1, -1, true, true);
+        }
+      }
+
       // Set checkpoint with bootstrap and initialCheckpoint as false.
       // A call to set the checkpoint is required first otherwise we will get an error 
       // from the server side saying:
       // INTERNAL_ERROR[code 21]: Stream ID {} is expired for Tablet ID {}
-      for (Pair<String, String> entry : tableToTabletIds) {
+      for (Pair<String, String> entry : tableToTabletForSnapshot) {
         try {
           if (hasSnapshotCompletedPreviously(entry.getKey(), entry.getValue())) {
             LOGGER.info("Skipping snapshot for tablet {} since tablet has streamed some data before", 
@@ -274,7 +324,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       while (context.isRunning() && retryCount <= this.connectorConfig.maxConnectorRetries()) {
         try {
             while (context.isRunning() && (previousOffset.getStreamingStoppingLsn() == null)) {
-              for (Pair<String, String> tableIdToTabletId : tableToTabletIds) {
+              for (Pair<String, String> tableIdToTabletId : tableToTabletForSnapshot) {
                 String tableId = tableIdToTabletId.getKey();
                 YBTable table = tableIdToTable.get(tableId);
 
@@ -282,7 +332,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 YBPartition part = new YBPartition(tabletId);
                 
                  // Check if snapshot is completed here, if it is, then break out of the loop
-                if (snapshotCompletedTablets.size() == tableToTabletIds.size()) {
+                if (snapshotCompletedTablets.size() == tableToTabletForSnapshot.size()) {
                     LOGGER.info("Snapshot completed for all the tablets");
                     // Commit checkpoints for all tablets to make them ready for streaming changes
                     for (Pair<String, String> entry : tableToTabletIds) {
