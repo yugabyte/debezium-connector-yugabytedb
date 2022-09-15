@@ -501,4 +501,10 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
                 throw new RuntimeException(throwable);
             }).get();
     }
+
+    @Test
+    public void testClientUtil() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+    }
 }

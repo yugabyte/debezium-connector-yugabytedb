@@ -23,6 +23,7 @@ import io.debezium.relational.TableId;
 
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.master.MasterTypes;
+import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 
 /**
  * Utility class to provide function to help functioning of the connector processes.
@@ -178,9 +179,14 @@ public class YBClientUtils {
   public static TableId getTableIdFromTableUUID(YBClient ybClient, String tableUuid) throws Exception {
     YBTable table = ybClient.openTableByUUID(tableUuid);
 
-    // Going ahead with the hardcoded schema name
-    // todo Vaibhav: change in future if and when the server side changes land
-    return new TableId(table.getKeyspace(), "public", table.getName());
+    ListTablesResponse resp = ybClient.getTablesList(table.getName());
+    for (TableInfo tInfo : resp.getTableInfoList()) {
+      if (tInfo.getName() == table.getName() && tInfo.getNamespace().getName() == table.getKeyspace()) {
+        return new TableId(tInfo.getNamespace().getName(), tInfo.getPgschemaName(), tInfo.getName());
+      }
+    }
+
+    return null;
   }
 
   public static TableId getTableIdFromYbTable(YBTable ybTable) throws Exception {

@@ -236,18 +236,13 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
       Map<TableId, String> tableIdToUuid = new HashMap<>();
       Set<TableId> dbzTableIds = new HashSet<>();
-      // TODO: Filter tablets based on the snapshot include list, and set checkpoint with bootstrap
-      // for streaming for the rest of them
+
       for (Entry<String, YBTable> entry : tableIdToTable.entrySet()) {
-        tableIdToUuid.put(YBClientUtils.getTableIdFromYbTable(entry.getValue()), entry.getKey());
+        tableIdToUuid.put(YBClientUtils.getTableIdFromTableUUID(this.syncClient, entry.getKey()), entry.getKey());
       }
       dbzTableIds = tableIdToUuid.entrySet().stream()
                                   .map(entry -> entry.getKey())
                                   .collect(Collectors.toSet());
-      LOGGER.info("Debezium table IDs:");
-      for (TableId t : dbzTableIds) {
-        LOGGER.info("====================== {}", t.toString());
-      }
 
       //todo Vaibhav: This is more of a hack to get the filter to work, need to do it in a cleaner way
       Set<Pattern> dataCollectionsToBeSnapshotted = this.connectorConfig.getDataCollectionsToBeSnapshotted();
@@ -256,14 +251,13 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         patterns.add(p.pattern());
       }
 
+      // TODO Vaibhav: Need to add regex based matching, the current implementation won't work
+      // Also move the filtering logic to determineCapturedTables function
       Set<TableId> filteredTables = dbzTableIds.stream()
           .filter(dataCollectionId -> patterns.contains(dataCollectionId.schema()+"."+dataCollectionId.table()))
           .collect(Collectors.toSet());
 
-      for (TableId t : filteredTables) {
-        LOGGER.info("======================= " + t.toString());
-      }
-      // tableIdToUuid will only contain the tables ready for streaming
+      // tableIdToUuid will now only contain the tables ready for streaming
       tableIdToUuid.keySet().removeIf(obj -> !filteredTables.contains(obj));
 
       Map<String, Boolean> schemaNeeded = new HashMap<>();
