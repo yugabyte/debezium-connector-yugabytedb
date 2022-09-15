@@ -176,16 +176,13 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     }
 
     private Map<TableId, String> determineTablesForSnapshot(Map<String, YBTable> tableIdToTable) throws Exception {
-      // 
       Map<TableId, String> res = new HashMap<>();
-      
-      // Set<String> tableUUIDs = tableToTabletIds.stream()
-      //                              .map(pair -> pair.getLeft())
-      //                              .collect(Collectors.toSet());
+
       Set<TableId> dbzTableIds = new HashSet<>();
       
       for (Entry<String, YBTable> entry : tableIdToTable.entrySet()) {
-        res.put(YBClientUtils.getTableIdFromTableUUID(this.syncClient, entry.getKey()), entry.getKey());
+        res.put(
+            YBClientUtils.getTableIdFromYbTable(this.syncClient, entry.getValue()), entry.getKey());
       }
 
       dbzTableIds = res.entrySet().stream().map(entry -> entry.getKey())

@@ -172,13 +172,11 @@ public class YBClientUtils {
   /**
    * Helper function to get the Debezium style TableId of a table from table UUID
    * @param ybClient the {@link YBClient} instance
-   * @param tableUuid UUID of the YugabyteDB table
+   * @param table the {@link YBTable} instance
    * @return the {@link TableId}
    * @throws Exception if a {@link YBTable} cannot be opened by the client
    */
-  public static TableId getTableIdFromTableUUID(YBClient ybClient, String tableUuid) throws Exception {
-    YBTable table = ybClient.openTableByUUID(tableUuid);
-
+  public static TableId getTableIdFromYbTable(YBClient ybClient, YBTable table) throws Exception {
     ListTablesResponse resp = ybClient.getTablesList(table.getName());
     for (TableInfo tInfo : resp.getTableInfoList()) {
       if (tInfo.getName().equals(table.getName()) && tInfo.getNamespace().getName().equals(table.getKeyspace())) {
