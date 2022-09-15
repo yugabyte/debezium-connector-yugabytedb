@@ -197,6 +197,23 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         assertEquals(recordsCount, totalConsumedRecords);
     }
 
+    private void func(long recordsCount, long milliSecondsToWait) {
+        int totalConsumedRecords = 0;
+        long start = System.currentTimeMillis();
+        while (totalConsumedRecords < recordsCount && ((System.currentTimeMillis() - start) < milliSecondsToWait)) {
+            int consumed = super.consumeAvailableRecords(record -> {
+                LOGGER.debug("The record being consumed is " + record);
+            });
+            if (consumed > 0) {
+                totalConsumedRecords += consumed;
+                LOGGER.debug("Consumed " + totalConsumedRecords + " records");
+            }
+        }
+        LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
+
+        assertEquals(recordsCount, totalConsumedRecords);
+    }
+
     private void verifyValue(long recordsCount) {
         int totalConsumedRecords = 0;
         long start = System.currentTimeMillis();
@@ -503,8 +520,45 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
     }
 
     @Test
-    public void testClientUtil() throws Exception {
+    public void shouldOnlySnapshotTablesInList() throws Exception {
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        int recordCountT1 = 5000;
+
+        // Insert records in the table t1
+        insertBulkRecords(recordCountT1);
+
+        // Insert records in the table all_types
+        TestHelper.execute(HelperStrings.INSERT_ALL_TYPES);
+        TestHelper.execute(HelperStrings.INSERT_ALL_TYPES);
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1,public.all_types", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE_TABLES, "public.t1");
+
+        start(YugabyteDBConnector.class, configBuilder.build());
+
+        awaitUntilConnectorIsReady();
+
+        // Dummy wait condition to wait for another 10 seconds
+        Awaitility.await()
+            .pollDelay(Duration.ofSeconds(10))
+            .atMost(Duration.ofSeconds(15))
+            .until(() -> {
+                return true;
+            });   
+        
+        SourceRecords records = consumeRecordsByTopic(recordCountT1);
+
+        assertNotNull(records);
+
+        // Assert that there are the expected number of records in the snapshotted table
+        assertEquals(recordCountT1, records.recordsForTopic("test_server.public.t1").size());
+
+        // Since there are no records for this topic, the topic itself won't be created
+        // so if the topic simply doesn't exist then the test should pass
+        assertFalse(records.topics().contains("test_server.public.all_types"));
     }
 }

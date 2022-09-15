@@ -69,7 +69,6 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBTestBase {
         // todo: make these assertions inside a for loop
         // At this point of time, it is assumed that the list has only one record, so it is safe to get the record at index 0.
         SourceRecord record = records.get(0);
-        assertValueField(record, "after/id/value", 404);
         assertValueField(record, "after/bigintcol/value", 123456);
         assertValueField(record, "after/bitcol/value", "11011");
         assertValueField(record, "after/varbitcol/value", "10101");
