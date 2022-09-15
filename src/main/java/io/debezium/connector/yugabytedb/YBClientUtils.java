@@ -181,16 +181,11 @@ public class YBClientUtils {
 
     ListTablesResponse resp = ybClient.getTablesList(table.getName());
     for (TableInfo tInfo : resp.getTableInfoList()) {
-      if (tInfo.getName() == table.getName() && tInfo.getNamespace().getName() == table.getKeyspace()) {
+      if (tInfo.getName().equals(table.getName()) && tInfo.getNamespace().getName().equals(table.getKeyspace())) {
         return new TableId(tInfo.getNamespace().getName(), tInfo.getPgschemaName(), tInfo.getName());
       }
     }
 
     return null;
-  }
-
-  public static TableId getTableIdFromYbTable(YBTable ybTable) throws Exception {
-    // todo Vaibhav: change the hardcoded value
-    return new TableId(ybTable.getKeyspace(), "public", ybTable.getName());
   }
 }
