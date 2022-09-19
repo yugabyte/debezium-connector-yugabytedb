@@ -50,7 +50,7 @@ import io.debezium.util.Strings;
 
 public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSnapshotChangeEventSource.class);
-    private final YugabyteDBConnectorConfig ybConnectorConfig;
+    private final YugabyteDBConnectorConfig connectorConfig;
     private final YugabyteDBSchema schema;
     private final SnapshotProgressListener snapshotProgressListener;
     private final YugabyteDBTaskContext taskContext;
@@ -74,7 +74,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                                YugabyteDBSchema schema, YugabyteDBEventDispatcher<TableId> dispatcher, Clock clock,
                                                SnapshotProgressListener snapshotProgressListener) {
         super(connectorConfig, snapshotProgressListener);
-        this.ybConnectorConfig = connectorConfig;
+        this.connectorConfig = connectorConfig;
         this.schema = schema;
         this.taskContext = taskContext;
         this.dispatcher = dispatcher;
@@ -104,7 +104,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     public SnapshotResult<YugabyteDBOffsetContext> execute(ChangeEventSourceContext context, YBPartition partition, YugabyteDBOffsetContext previousOffset)
             throws InterruptedException {
         SnapshottingTask snapshottingTask = getSnapshottingTask(partition, previousOffset);
-        LOGGER.info("Dispatcher in snapshot: " + dispatcher.toString());
+        LOGGER.debug("Dispatcher in snapshot: " + dispatcher.toString());
         if (snapshottingTask.shouldSkipSnapshot()) {
             LOGGER.debug("Skipping snapshotting");
             return SnapshotResult.skipped(previousOffset);
@@ -125,10 +125,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
         try {
             snapshotProgressListener.snapshotStarted(partition);
-            Set<YBPartition> partitions = new YugabyteDBPartition.Provider(ybConnectorConfig).getPartitions();
+            Set<YBPartition> partitions = new YugabyteDBPartition.Provider(connectorConfig).getPartitions();
 
             LOGGER.info("Setting offsetContext/previousOffset for snapshot...");
-            previousOffset = YugabyteDBOffsetContext.initialContextForSnapshot(this.ybConnectorConfig, connection, clock, partitions);
+            previousOffset = YugabyteDBOffsetContext.initialContextForSnapshot(this.connectorConfig, connection, clock, partitions);
 
             return doExecute(context, partition, previousOffset, ctx, snapshottingTask);
         }
@@ -157,12 +157,12 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     private Stream<TableId> toTableIds(Set<TableId> tableIds, Pattern pattern) {
         return tableIds
                 .stream()
-                .filter(tid -> pattern.asPredicate().test(ybConnectorConfig.getTableIdMapper().toString(tid)))
+                .filter(tid -> pattern.asPredicate().test(connectorConfig.getTableIdMapper().toString(tid)))
                 .sorted();
     }
 
     private Set<TableId> sort(Set<TableId> capturedTables) throws Exception {
-        String tableIncludeList = this.ybConnectorConfig.tableIncludeList();
+        String tableIncludeList = this.connectorConfig.tableIncludeList();
         if (tableIncludeList != null) {
             return Strings.listOfRegex(tableIncludeList, Pattern.CASE_INSENSITIVE)
                     .stream()
@@ -214,7 +214,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       // Get the list of tablets
       List<Pair<String, String>> tableToTabletIds = null;
       try {
-        String tabletList = this.ybConnectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
+        String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
         tableToTabletIds = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
       } catch (Exception e) {
         LOGGER.error("The tablet list cannot be deserialized");
@@ -237,7 +237,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       for (Pair<String, String> entry : tableToTabletIds) {
         schemaNeeded.put(entry.getValue(), Boolean.TRUE);
 
-        previousOffset.initSourceInfo(entry.getValue(), this.ybConnectorConfig);
+        previousOffset.initSourceInfo(entry.getValue(), this.connectorConfig);
       }
 
       List<Pair<String, String>> tableToTabletForSnapshot = new ArrayList<>();
@@ -256,7 +256,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           LOGGER.info(
             "Skipping the tablet {} since it is not a part of the snapshot collection include list",
             tabletUuid);
-          YBClientUtils.setCheckpoint(this.syncClient, this.ybConnectorConfig.streamId(), 
+          YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), 
                                       tableUuid, tabletUuid, -1, -1, true, true);
         }
       }
@@ -274,7 +274,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             snapshotCompletedPreviously.add(entry.getValue());
           } else {
             YBClientUtils.setCheckpoint(this.syncClient, 
-                                        this.ybConnectorConfig.streamId(), 
+                                        this.connectorConfig.streamId(), 
                                         entry.getKey() /* tableId */, 
                                         entry.getValue() /* tabletId */, 
                                         -1 /* term */, -1 /* index */, 
@@ -286,7 +286,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       }
 
       short retryCount = 0;
-      while (context.isRunning() && retryCount <= this.ybConnectorConfig.maxConnectorRetries()) {
+      while (context.isRunning() && retryCount <= this.connectorConfig.maxConnectorRetries()) {
         try {
             while (context.isRunning() && (previousOffset.getStreamingStoppingLsn() == null)) {
               for (Pair<String, String> tableIdToTabletId : tableToTabletForSnapshot) {
@@ -308,7 +308,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                         // of the connector
                         if (!snapshotCompletedPreviously.contains(entry.getValue())) {
                           YBClientUtils.setCheckpoint(this.syncClient, 
-                                                      this.ybConnectorConfig.streamId(),
+                                                      this.connectorConfig.streamId(),
                                                       entry.getKey() /* tableId */,
                                                       entry.getValue() /* tabletId */,
                                                       0 /* term */, 0 /* index */,
@@ -339,7 +339,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 }
                 
                 GetChangesResponse resp = this.syncClient.getChangesCDCSDK(table, 
-                    ybConnectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(), 
+                    connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(), 
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId));
                 
                 // Process the response
@@ -405,7 +405,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       boolean dispatched = (message.getOperation() != Operation.NOOP) && 
                           dispatcher.dispatchDataChangeEvent(part, tId, 
                               new YugabyteDBChangeRecordEmitter(part, previousOffset, clock, 
-                                                                this.ybConnectorConfig, schema, 
+                                                                this.connectorConfig, schema, 
                                                                 connection, tId, message, 
                                                                 pgSchemaName));
 
@@ -440,9 +440,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           ++retryCount;
 
           // TODO Vaibhav: handle failure scenarios here
-          if (retryCount > this.ybConnectorConfig.maxConnectorRetries()) {
+          if (retryCount > this.connectorConfig.maxConnectorRetries()) {
             LOGGER.error("Too many errors while trying to stream the snapshot, "
-                         + "all {} retries failed.", this.ybConnectorConfig.maxConnectorRetries());
+                         + "all {} retries failed.", this.connectorConfig.maxConnectorRetries());
             
             LOGGER.info("Tablets in the failed task:");
             for (Pair<String, String> entry : tableToTabletIds) {
@@ -457,8 +457,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
           LOGGER.warn("Error while trying to get the snapshot from the server; will attempt " 
                       + "retry {} of {} after {} milli-seconds. Exception message: {}", retryCount, 
-                       this.ybConnectorConfig.maxConnectorRetries(), 
-                       this.ybConnectorConfig.connectorRetryDelayMs(), e.getMessage());
+                       this.connectorConfig.maxConnectorRetries(), 
+                       this.connectorConfig.connectorRetryDelayMs(), e.getMessage());
           LOGGER.debug("Stacktrace: ", e);
 
           try {
@@ -477,7 +477,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
     protected Stream<TableId> getDataCollectionsToBeSnapshotted(Set<TableId> allDataCollections) {
       final Set<Pattern> snapshotAllowedDataCollections = 
-          this.ybConnectorConfig.getDataCollectionsToBeSnapshotted();
+          this.connectorConfig.getDataCollectionsToBeSnapshotted();
       if (snapshotAllowedDataCollections.size() == 0) {
           // If no snapshot.include.collection.list is specified then we should return all of it
           return allDataCollections.stream();
@@ -511,7 +511,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     @Override
     protected SnapshotContext<YBPartition, YugabyteDBOffsetContext> prepare(YBPartition partition)
             throws Exception {
-        return new YugabyteDBSnapshotContext(partition, ybConnectorConfig.databaseName());
+        return new YugabyteDBSnapshotContext(partition, connectorConfig.databaseName());
     }
 
     /**
@@ -528,13 +528,13 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       // and returning false at this stage would indicate that the snapshot has not been taken
       // so the connector would try to take a snapshot considering this as the first time
       // it is going for the snapshot
-      if (this.ybConnectorConfig.snapshotAgain()) {
+      if (this.connectorConfig.snapshotAgain()) {
         return false;
       }
 
       GetCheckpointResponse resp = this.syncClient.getCheckpoint(
                                        this.syncClient.openTableByUUID(tableId), 
-                                       this.ybConnectorConfig.streamId(), tabletId);
+                                       this.connectorConfig.streamId(), tabletId);
 
       if (resp.getTerm() == -1 && resp.getIndex() == -1) {
         // This condition indicates that some data has already streamed from the tablet.
