@@ -220,6 +220,12 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         LOGGER.error("The tablet list cannot be deserialized");
       }
 
+      // Check if snapshot has been taken already
+      if (hasSnapshotCompletedForAllTablets(tableToTabletIds)) {
+        LOGGER.info("Snapshot streamed for all the tablets already, skipping snapshot now");
+        return SnapshotResult.aborted();
+      }
+
       Map<String, YBTable> tableIdToTable = new HashMap<>();
       Set<String> tableUUIDs = tableToTabletIds.stream()
                                   .map(pair -> pair.getLeft())
@@ -542,6 +548,32 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       } else {
         return true;
       }
+    }
+
+    /**
+     * Function to check if all the tablets in the assigned task have completed snapshot or not.
+     * @param tableToTabletIds a list of Pair where table ID is mapped to tablet ID
+     * @return true if snapshot is complete for all tablets
+     * @throws Exception if checkpoint cannot be retrieved from the server side
+     */
+    protected boolean hasSnapshotCompletedForAllTablets(List<Pair<String, String>> tableToTabletIds)
+        throws Exception {
+      // Iterate over all the tablets and check if they all are in the streaming mode
+      // i.e. the snapshot has completed / skipped already
+
+      for (Pair<String, String> entry : tableToTabletIds) {
+        GetCheckpointResponse resp = this.syncClient.getCheckpoint(
+                                         this.syncClient.openTableByUUID(entry.getKey()),
+                                         this.connectorConfig.streamId(), entry.getValue());
+
+        if (resp.getTerm() == -1 && resp.getIndex() == -1) {
+          LOGGER.debug("Snapshot not complete for tablet {}", entry.getValue());
+          return false;
+        }
+      }
+
+      LOGGER.debug("Snapshot complete for all the tablets in the task");
+      return true;
     }
 
     protected Set<TableId> getAllTableIds(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx)
