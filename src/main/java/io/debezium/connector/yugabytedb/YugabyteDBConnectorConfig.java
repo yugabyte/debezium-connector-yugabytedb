@@ -853,7 +853,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
     public static final Field SNAPSHOT_AGAIN = Field.create("snapshot.again")
             .withDisplayName("Whether to take snapshot again")
-            .withDefault(true)
+            .withDefault(false)
             .withType(Type.BOOLEAN)
             .withImportance(Importance.LOW)
             .withValidation(Field::isBoolean)
