@@ -452,6 +452,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     maybeWarnAboutGrowingWalBacklog(dispatched);
                                 }
                             }
+                            // todo Vaibhav: change this IOException to the exact exception for handling tablet split once the code lands
+                            catch (IOException ioe) {
+                                errorHandler.setProducerThrowable(ioe);
+                            }
                             catch (InterruptedException ie) {
                                 ie.printStackTrace();
                             }

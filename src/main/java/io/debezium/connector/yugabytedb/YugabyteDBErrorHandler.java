@@ -6,6 +6,7 @@
 package io.debezium.connector.yugabytedb;
 
 import org.postgresql.util.PSQLException;
+import org.yb.client.CDCErrorException;
 
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.ErrorHandler;
@@ -23,6 +24,16 @@ public class YugabyteDBErrorHandler extends ErrorHandler {
 
     @Override
     protected boolean isRetriable(Throwable throwable) {
+        // Error class indicating tablet split
+        // TODO Vaibhav: replace with the error code for tablet split
+        if (throwable instanceof CDCErrorException) {
+            CDCErrorException errorException = (CDCErrorException) throwable;
+            if (errorException.getCDCError().getCode().equals(
+                    org.yb.cdc.CdcService.CDCErrorPB.Code.TABLET_NOT_FOUND)) {
+                return true;
+            }
+        }
+
         if (throwable instanceof PSQLException
                 && (throwable.getMessage().contains("Database connection failed when writing to copy")
                         || throwable.getMessage().contains("Database connection failed when reading from copy"))

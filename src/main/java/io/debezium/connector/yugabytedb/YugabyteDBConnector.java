@@ -304,6 +304,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             throw new DebeziumException("The tables provided in table.include.list do not exist");
         }
 
+        // todo Vaibhav: add the relevant changes to use the new APIs to fetch the tablet IDs
         this.tabletIds = new ArrayList<>();
         try {
             for (String tableId : tableIds) {

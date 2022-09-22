@@ -223,6 +223,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         this.tabletSourceInfo.put(tabletId, info);
     }
 
+    // todo Vaibhav: you may need to change this to get the new offset values from the TabletCheckpointPair
     public void initSourceInfo(String tabletId, YugabyteDBConnectorConfig connectorConfig) {
         this.tabletSourceInfo.put(tabletId, new SourceInfo(connectorConfig));
     }
