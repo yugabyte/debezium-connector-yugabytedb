@@ -24,14 +24,14 @@ public class PGCompatible<R extends ConnectRecord<R>> implements Transformation<
             return record;
         }
 
-        Pair<Schema, Struct> p = getUpdatedValueAndSchema((Struct) record.key());
+        Pair<Schema, Struct> p = getUpdatedValueAndSchema(record.keySchema(), (Struct) record.key());
         Schema updatedSchemaForKey = p.getFirst();
         Struct updatedValueForKey = p.getSecond();
 
         Schema updatedSchemaForValue = null;
         Struct updatedValueForValue = null;
         if (record.value() != null) {
-            Pair<Schema, Struct> val = getUpdatedValueAndSchema((Struct) record.value());
+            Pair<Schema, Struct> val = getUpdatedValueAndSchema(record.valueSchema(), (Struct) record.value());
             updatedSchemaForValue = val.getFirst();
             updatedValueForValue = val.getSecond();
         }
@@ -54,19 +54,15 @@ public class PGCompatible<R extends ConnectRecord<R>> implements Transformation<
                 && Objects.equals(field.schema().fields().get(1).name(), "set"));
     }
 
-    private Schema makeUpdatedSchema(Schema schema, Struct value) {
-        if (value == null) {
-            return schema;
-        }
-
+    private Schema makeUpdatedSchema(Schema schema) {
         final SchemaBuilder builder = SchemaUtil.copySchemaBasics(schema, SchemaBuilder.struct());
 
         for (Field field : schema.fields()) {
             if (field.schema().type() == Type.STRUCT) {
-                if (isValueSetStruct(field) && value.get(field.name()) != null) {
+                if (isValueSetStruct(field)) {
                     builder.field(field.name(), field.schema().field("value").schema());
                 } else {
-                    builder.field(field.name(), makeUpdatedSchema(field.schema(), (Struct) value.get(field.name())));
+                    builder.field(field.name(), makeUpdatedSchema(field.schema()));
                 }
             } else {
                 builder.field(field.name(), field.schema());
@@ -95,10 +91,10 @@ public class PGCompatible<R extends ConnectRecord<R>> implements Transformation<
         return updatedValue;
     }
 
-    public Pair<Schema, Struct> getUpdatedValueAndSchema(Struct value) {
-        Schema updatedSchema = makeUpdatedSchema(value.schema(), value);
+    public Pair<Schema, Struct> getUpdatedValueAndSchema(Schema schema, Struct value) {
+        Schema updatedSchema = makeUpdatedSchema(schema);
 
-        LOGGER.debug("Updated schema as json: " + io.debezium.data.SchemaUtil.asString(value.schema()));
+        LOGGER.info("Updated schema as json: " + io.debezium.data.SchemaUtil.asString(value.schema()));
 
         return new org.yb.util.Pair<>(updatedSchema, makeUpdatedValue(updatedSchema, value));
     }

@@ -28,7 +28,8 @@ public class PGCompatibleTest {
 
     final Schema nameSchema =  SchemaBuilder.struct()
             .field("value", Schema.STRING_SCHEMA)
-            .field("set", Schema.BOOLEAN_SCHEMA);
+            .field("set", Schema.BOOLEAN_SCHEMA)
+            .optional();
 
     final Schema keySchema = SchemaBuilder.struct()
             .field("id", idSchema)
@@ -37,6 +38,7 @@ public class PGCompatibleTest {
     final Schema valueSchema = SchemaBuilder.struct()
             .field("id", idSchema)
             .field("name", nameSchema)
+            .field("location", nameSchema)
             .build();
 
     final Schema sourceSchema = SchemaBuilder.struct()
@@ -70,6 +72,7 @@ public class PGCompatibleTest {
         final Struct value = new Struct(valueSchema);
         value.put("id", createIdStruct());
         value.put("name", createNameStruct());
+        value.put("location", null);
 
         return value;
     }
@@ -77,9 +80,10 @@ public class PGCompatibleTest {
     @Test
     public void testSingleLevelStruct() {
         try (final PGCompatible<SourceRecord> transform = new PGCompatible<>()) {
-            final Pair<Schema, Struct> unwrapped = transform.getUpdatedValueAndSchema(createValue());
+            final Pair<Schema, Struct> unwrapped = transform.getUpdatedValueAndSchema(valueSchema, createValue());
             assert(((Struct) unwrapped.getSecond()).getInt64("id") == 1);
             assert(((Struct) unwrapped.getSecond()).getString("name").equals("yb"));
+            assert(((Struct) unwrapped.getSecond()).getString("location") == null);
 
         }
     }
@@ -95,7 +99,7 @@ public class PGCompatibleTest {
     @Test
     public void testPayload() {
         try (final PGCompatible<SourceRecord> transform = new PGCompatible<>()) {
-            final Pair<Schema, Struct> unwrapped = transform.getUpdatedValueAndSchema(createPayload());
+            final Pair<Schema, Struct> unwrapped = transform.getUpdatedValueAndSchema(sourceSchema, createPayload());
             Schema valueSchema = unwrapped.getFirst();
 
             assert(valueSchema.type() == Schema.Type.STRUCT);
