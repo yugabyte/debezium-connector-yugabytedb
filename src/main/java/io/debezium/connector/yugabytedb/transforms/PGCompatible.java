@@ -57,14 +57,25 @@ public class PGCompatible<R extends ConnectRecord<R>> implements Transformation<
     private Schema makeUpdatedSchema(Schema schema) {
         final SchemaBuilder builder = SchemaUtil.copySchemaBasics(schema, SchemaBuilder.struct());
 
+        if (schema.isOptional()) {
+            builder.optional();
+        } else {
+            builder.required();
+        }
+
         for (Field field : schema.fields()) {
+            LOGGER.debug("Considering {}", field.name());
             if (field.schema().type() == Type.STRUCT) {
+                LOGGER.debug("Field is a struct");
                 if (isValueSetStruct(field)) {
+                    LOGGER.debug("Field is valueset");
                     builder.field(field.name(), field.schema().field("value").schema());
                 } else {
+                    LOGGER.debug("Field is not valueset");
                     builder.field(field.name(), makeUpdatedSchema(field.schema()));
                 }
             } else {
+                LOGGER.debug("Field is not a struct");
                 builder.field(field.name(), field.schema());
             }
         }
@@ -76,14 +87,19 @@ public class PGCompatible<R extends ConnectRecord<R>> implements Transformation<
         final Struct updatedValue = new Struct(updatedSchema);
 
         for (Field field : value.schema().fields()) {
+            LOGGER.debug("Considering value {}", field.name());
             if (field.schema().type() == Type.STRUCT) {
+                LOGGER.debug("Value is a struct");
                 Struct fieldValue = (Struct) value.get(field);
                 if (isValueSetStruct(field) && fieldValue != null) {
+                    LOGGER.debug("value is valueset");
                     updatedValue.put(field.name(), fieldValue.get("value"));
                 } else if (fieldValue != null) {
+                    LOGGER.debug("value is not valueset");
                     updatedValue.put(field.name(), makeUpdatedValue(updatedSchema.field(field.name()).schema(), fieldValue));
                 }
             } else {
+                LOGGER.debug("value is not a struct");
                 updatedValue.put(field.name(), value.get(field));
             }
         }
@@ -94,9 +110,13 @@ public class PGCompatible<R extends ConnectRecord<R>> implements Transformation<
     public Pair<Schema, Struct> getUpdatedValueAndSchema(Schema schema, Struct value) {
         Schema updatedSchema = makeUpdatedSchema(schema);
 
-        LOGGER.info("Updated schema as json: " + io.debezium.data.SchemaUtil.asString(value.schema()));
+        LOGGER.debug("Updated schema as json: " + io.debezium.data.SchemaUtil.asString(updatedSchema));
 
-        return new org.yb.util.Pair<>(updatedSchema, makeUpdatedValue(updatedSchema, value));
+        Struct updatedValue = makeUpdatedValue(updatedSchema, value);
+
+        LOGGER.debug("Update value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(updatedValue));
+
+        return new org.yb.util.Pair<>(updatedSchema, updatedValue);
     }
 
     @Override
