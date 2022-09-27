@@ -109,4 +109,8 @@ public class OpId implements Comparable<OpId> {
         else
             return write_id + Long.MIN_VALUE < o.write_id + Long.MIN_VALUE ? -1 : 1;
     }
+
+    public static OpId from(long term, long index) {
+        return new OpId(term, index, "".getBytes(), 0, 0);
+    }
 }
