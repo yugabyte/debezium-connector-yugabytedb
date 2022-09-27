@@ -453,8 +453,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 }
                             }
                             // todo Vaibhav: change this IOException to the exact exception for handling tablet split once the code lands
-                            catch (IOException ioe) {
-                                errorHandler.setProducerThrowable(ioe);
+                            catch (CDCErrorException cdcException) {
+                                // This will cause the connector to restart
+                                errorHandler.setProducerThrowable(cdcException);
                             }
                             catch (InterruptedException ie) {
                                 ie.printStackTrace();

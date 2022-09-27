@@ -24,12 +24,11 @@ public class YugabyteDBErrorHandler extends ErrorHandler {
 
     @Override
     protected boolean isRetriable(Throwable throwable) {
-        // Error class indicating tablet split
-        // TODO Vaibhav: replace with the error code for tablet split
+        // Error throwable class indicating tablet split
         if (throwable instanceof CDCErrorException) {
             CDCErrorException errorException = (CDCErrorException) throwable;
             if (errorException.getCDCError().getCode().equals(
-                    org.yb.cdc.CdcService.CDCErrorPB.Code.TABLET_NOT_FOUND)) {
+                    org.yb.cdc.CdcService.CDCErrorPB.Code.TABLET_SPLIT)) {
                 return true;
             }
         }
