@@ -27,7 +27,7 @@ public class PGCompatibleTest {
             .field("set", Schema.BOOLEAN_SCHEMA);
 
     final Schema nameSchema =  SchemaBuilder.struct()
-            .field("value", Schema.STRING_SCHEMA)
+            .field("value", Schema.OPTIONAL_STRING_SCHEMA)
             .field("set", Schema.BOOLEAN_SCHEMA)
             .optional();
 
@@ -38,7 +38,7 @@ public class PGCompatibleTest {
     final Schema valueSchema = SchemaBuilder.struct()
             .field("id", idSchema)
             .field("name", nameSchema)
-            .field("location", nameSchema)
+            .field("location", nameSchema).optional()
             .build();
 
     final Schema sourceSchema = SchemaBuilder.struct()
@@ -68,11 +68,18 @@ public class PGCompatibleTest {
         return name;
     }
 
+    private Struct createLocationStruct() {
+        final Struct name = new Struct(nameSchema);
+        name.put("value", null);
+        name.put("set", false);
+        return name;
+    }
+
     private Struct createValue() {
         final Struct value = new Struct(valueSchema);
         value.put("id", createIdStruct());
         value.put("name", createNameStruct());
-        value.put("location", null);
+        value.put("location", createLocationStruct());
 
         return value;
     }
@@ -84,7 +91,6 @@ public class PGCompatibleTest {
             assert(((Struct) unwrapped.getSecond()).getInt64("id") == 1);
             assert(((Struct) unwrapped.getSecond()).getString("name").equals("yb"));
             assert(((Struct) unwrapped.getSecond()).getString("location") == null);
-
         }
     }
 
@@ -99,7 +105,8 @@ public class PGCompatibleTest {
     @Test
     public void testPayload() {
         try (final PGCompatible<SourceRecord> transform = new PGCompatible<>()) {
-            final Pair<Schema, Struct> unwrapped = transform.getUpdatedValueAndSchema(sourceSchema, createPayload());
+            Struct payload = createPayload();
+            final Pair<Schema, Struct> unwrapped = transform.getUpdatedValueAndSchema(payload.schema(), payload);
             Schema valueSchema = unwrapped.getFirst();
 
             assert(valueSchema.type() == Schema.Type.STRUCT);
@@ -108,9 +115,10 @@ public class PGCompatibleTest {
 
             Schema afterSchema = valueSchema.field("after").schema();
             assert (afterSchema.type() == Schema.Type.STRUCT);
-            assert (afterSchema.fields().size() == 2);
+            assert (afterSchema.fields().size() == 3);
             assert (afterSchema.field("id").schema().type() == Schema.Type.INT64);
             assert (afterSchema.field("name").schema().type() == Schema.Type.STRING);
+            assert (afterSchema.field("location").schema().type() == Schema.Type.STRING);
 
             Struct after = ((Struct) unwrapped.getSecond()).getStruct("after");
             assert(after.getInt64("id") == 1);
@@ -148,12 +156,8 @@ public class PGCompatibleTest {
 
             final SourceRecord createRecord = createCreateRecord();
             final SourceRecord unwrapped = transform.apply(createRecord);
-            assert(((Struct) unwrapped.value()).getString("__deleted").equals("false"));
-            assert(((Struct) unwrapped.value()).getInt64("id") == 1);
-            assert(((Struct) unwrapped.value()).getString("name").equals("yb"));
-            assert(unwrapped.headers().size() == 1);
-            String headerValue = getSourceRecordHeaderByKey(unwrapped, ExtractNewRecordStateConfigDefinition.DEBEZIUM_OPERATION_HEADER_KEY);
-            assert(headerValue.equals(Envelope.Operation.CREATE.code()));
+            assert(((Struct) unwrapped.value()).getStruct("after").getInt64("id") == 1);
+            assert(((Struct) unwrapped.value()).getStruct("after").getString("name").equals("yb"));
         }
     }
 }

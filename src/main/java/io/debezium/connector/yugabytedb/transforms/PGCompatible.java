@@ -108,12 +108,12 @@ public class PGCompatible<R extends ConnectRecord<R>> implements Transformation<
     }
 
     public Pair<Schema, Struct> getUpdatedValueAndSchema(Schema schema, Struct value) {
+        LOGGER.debug("Original Schema as json: " + io.debezium.data.SchemaUtil.asString(schema));
         Schema updatedSchema = makeUpdatedSchema(schema);
-
         LOGGER.debug("Updated schema as json: " + io.debezium.data.SchemaUtil.asString(updatedSchema));
 
+        LOGGER.debug("Original value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(value));
         Struct updatedValue = makeUpdatedValue(updatedSchema, value);
-
         LOGGER.debug("Update value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(updatedValue));
 
         return new org.yb.util.Pair<>(updatedSchema, updatedValue);
