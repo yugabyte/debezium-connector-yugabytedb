@@ -516,6 +516,16 @@ public final class TestHelper {
         }
     }
 
+    // Function to introduce dummy wait conditions in tests
+    protected static void waitFor(Duration duration) {
+        Awaitility.await()
+            .pollDelay(duration)
+            .atMost(duration.plusSeconds(1))
+            .until(() -> {
+                return true;
+            });
+    }
+
     private static List<String> getOpenIdleTransactions(YugabyteDBConnection connection) throws SQLException {
         int connectionPID = ((PgConnection) connection.connection()).getBackendPID();
         return connection.queryAndMap(
