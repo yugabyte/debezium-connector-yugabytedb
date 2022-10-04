@@ -221,21 +221,42 @@ public final class TestHelper {
         }
     }
 
-  public static void executeBulk(String statement, int numRecords) {
-    try (YugabyteDBConnection connection = create()) {
-      connection.setAutoCommit(false); // setting auto-commit to true
-      for (int i = 0; i < numRecords; i++) {
-          connection.executeWithoutCommitting(String.format(statement, i));
-      }
-      connection.commit();
+    public static void executeBulk(String statement, int numRecords) {
+        try (YugabyteDBConnection connection = create()) {
+            connection.setAutoCommit(false); // setting auto-commit to true
+            for (int i = 0; i < numRecords; i++) {
+                connection.executeWithoutCommitting(String.format(statement, i));
+            }
+            connection.commit();
+        }
+        catch (RuntimeException e) {
+            throw e;
+        }
+        catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
-    catch (RuntimeException e) {
-      throw e;
+
+    /**
+     * Executes the statement with the key range as [beginKey, endKey)
+     * @param statement the format string of the statement to be executed
+     * @param beginKey key to start inserting, included in the range
+     * @param endKey key to end insertion at, excluded in the range
+     */
+    public static void executeBulkWithRange(String statement, int beginKey, int endKey) {
+        try (YugabyteDBConnection connection = create()) {
+            connection.setAutoCommit(false); // setting auto-commit to true
+            for (int i = beginKey; i < endKey; i++) {
+                connection.executeWithoutCommitting(String.format(statement, i));
+            }
+            connection.commit();
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
-    catch (Exception e) {
-      throw new RuntimeException(e);
-    }
-  }
+
     /**
      * Drops all the public non system schemas from the DB.
      *
