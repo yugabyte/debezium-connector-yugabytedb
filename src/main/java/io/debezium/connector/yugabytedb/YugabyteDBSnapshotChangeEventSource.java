@@ -218,6 +218,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         tableToTabletIds = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
       } catch (Exception e) {
         LOGGER.error("The tablet list cannot be deserialized");
+        throw new DebeziumException(e);
       }
 
       Map<String, YBTable> tableIdToTable = new HashMap<>();
@@ -238,6 +239,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         schemaNeeded.put(entry.getValue(), Boolean.TRUE);
 
         previousOffset.initSourceInfo(entry.getValue(), this.connectorConfig);
+        LOGGER.debug("Previous offset for tablet {} is {}", entry.getValue(), previousOffset.toString());
       }
 
       List<Pair<String, String>> tableToTabletForSnapshot = new ArrayList<>();
@@ -536,12 +538,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                        this.syncClient.openTableByUUID(tableId), 
                                        this.connectorConfig.streamId(), tabletId);
 
-      if (resp.getTerm() == -1 && resp.getIndex() == -1) {
-        // This condition indicates that some data has already streamed from the tablet.
-        return false;
-      } else {
-        return true;
-      }
+      return !(resp.getTerm() == -1 && resp.getIndex() == -1);
     }
 
     protected Set<TableId> getAllTableIds(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx)

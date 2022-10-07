@@ -857,8 +857,8 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withType(Type.BOOLEAN)
             .withImportance(Importance.LOW)
             .withValidation(Field::isBoolean)
-            .withDescription("When 'snapshot.again' is set to true, the connector will forcefully take the snapshot of the specified tables otherwise it will simply skip the snapshot "
-                    + "if it finds out that the tablet has streamed some data already.");
+            .withDescription("When 'snapshot.again' is set to true, the connector will forcefully take the snapshot of the specified tables otherwise (if set to false) "
+                    + "it will simply skip the snapshot if it finds out that the tablet has streamed some data already.");
 
     public static final Field SNAPSHOT_MODE_CLASS = Field.create("snapshot.custom.class")
             .withDisplayName("Snapshot Mode Custom Class")
