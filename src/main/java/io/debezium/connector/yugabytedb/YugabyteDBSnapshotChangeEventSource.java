@@ -559,14 +559,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
      */
     protected boolean hasSnapshotCompletedPreviously(String tableId, String tabletId) 
         throws Exception {
-      // The default behaviour is configured to allow the connector to take a snapshot again
-      // and returning false at this stage would indicate that the snapshot has not been taken
-      // so the connector would try to take a snapshot considering this as the first time
-      // it is going for the snapshot
-      if (this.connectorConfig.snapshotAgain()) {
-        return false;
-      }
-
       GetCheckpointResponse resp = this.syncClient.getCheckpoint(
                                        this.syncClient.openTableByUUID(tableId), 
                                        this.connectorConfig.streamId(), tabletId);
