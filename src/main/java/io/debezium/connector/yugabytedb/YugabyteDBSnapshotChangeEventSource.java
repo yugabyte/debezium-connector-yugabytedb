@@ -205,6 +205,53 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       return SnapshotResult.skipped(previousOffset);
     }
 
+    protected void setCheckpointWithRetryBeforeSnapshot(
+        String tableId, String tabletId, Set<String> snapshotCompletedTablets, 
+        Set<String> snapshotCompletedPreviously) throws Exception {
+      short retryCount = 0;
+      try {
+        if (hasSnapshotCompletedPreviously(tableId, tabletId)) {
+          LOGGER.info("Skipping snapshot for tablet {} since tablet has streamed some data before", 
+                      tabletId);
+          snapshotCompletedTablets.add(tabletId);
+          snapshotCompletedPreviously.add(tabletId);
+        } else {
+          YBClientUtils.setCheckpoint(this.syncClient, 
+                                      this.connectorConfig.streamId(), 
+                                      tableId /* tableId */, 
+                                      tabletId /* tabletId */, 
+                                      -1 /* term */, -1 /* index */, 
+                                      false /* initialCheckpoint */, false /* bootstrap */);
+        }
+
+        // Reaching this point would mean that the process went through without failure so reset
+        // the retry counter here.
+        retryCount = 0;
+      } catch (Exception e) {
+        ++retryCount;
+
+        if (retryCount > this.connectorConfig.maxConnectorRetries()) {
+          LOGGER.error("Too many errors while trying to set checkpoint, "
+                        + "all {} retries failed.", this.connectorConfig.maxConnectorRetries());
+
+          throw e;
+        }
+
+        LOGGER.warn("Error while trying to set the checkpoint; will attempt " 
+                    + "retry {} of {} after {} milli-seconds. Exception message: {}", retryCount, 
+                      this.connectorConfig.maxConnectorRetries(), 
+                      this.connectorConfig.connectorRetryDelayMs(), e.getMessage());
+        LOGGER.debug("Stacktrace: ", e);
+
+        try {
+          this.retryMetronome.pause();
+        } catch (InterruptedException ie) {
+          LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
+          Thread.currentThread().interrupt();
+        }
+      }
+    }
+
     protected SnapshotResult<YugabyteDBOffsetContext> doExecute(ChangeEventSourceContext context, YBPartition partition, YugabyteDBOffsetContext previousOffset,
                                                                 SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
                                                                 SnapshottingTask snapshottingTask)
@@ -268,23 +315,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       // from the server side saying:
       // INTERNAL_ERROR[code 21]: Stream ID {} is expired for Tablet ID {}
       for (Pair<String, String> entry : tableToTabletForSnapshot) {
-        try {
-          if (hasSnapshotCompletedPreviously(entry.getKey(), entry.getValue())) {
-            LOGGER.info("Skipping snapshot for tablet {} since tablet has streamed some data before", 
-                        entry.getValue());
-            snapshotCompletedTablets.add(entry.getValue());
-            snapshotCompletedPreviously.add(entry.getValue());
-          } else {
-            YBClientUtils.setCheckpoint(this.syncClient, 
-                                        this.connectorConfig.streamId(), 
-                                        entry.getKey() /* tableId */, 
-                                        entry.getValue() /* tabletId */, 
-                                        -1 /* term */, -1 /* index */, 
-                                        false /* initialCheckpoint */, false /* bootstrap */);
-          }
-        } catch (Exception e) {
-          throw new DebeziumException(e);
-        }
+        setCheckpointWithRetryBeforeSnapshot(entry.getKey() /*tableId*/,
+                                             entry.getValue() /*tabletId*/,
+                                             snapshotCompletedTablets,
+                                             snapshotCompletedPreviously);
       }
 
       short retryCount = 0;
@@ -441,7 +475,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         } catch (Exception e) {
           ++retryCount;
 
-          // TODO Vaibhav: handle failure scenarios here
           if (retryCount > this.connectorConfig.maxConnectorRetries()) {
             LOGGER.error("Too many errors while trying to stream the snapshot, "
                          + "all {} retries failed.", this.connectorConfig.maxConnectorRetries());
