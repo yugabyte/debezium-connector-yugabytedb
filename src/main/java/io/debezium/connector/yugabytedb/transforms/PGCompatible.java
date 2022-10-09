@@ -24,14 +24,14 @@ public class PGCompatible<R extends ConnectRecord<R>> implements Transformation<
             return record;
         }
 
-        Pair<Schema, Struct> p = getUpdatedValueAndSchema((Struct) record.key());
+        Pair<Schema, Struct> p = getUpdatedValueAndSchema(record.keySchema(), (Struct) record.key());
         Schema updatedSchemaForKey = p.getFirst();
         Struct updatedValueForKey = p.getSecond();
 
         Schema updatedSchemaForValue = null;
         Struct updatedValueForValue = null;
         if (record.value() != null) {
-            Pair<Schema, Struct> val = getUpdatedValueAndSchema((Struct) record.value());
+            Pair<Schema, Struct> val = getUpdatedValueAndSchema(record.valueSchema(), (Struct) record.value());
             updatedSchemaForValue = val.getFirst();
             updatedValueForValue = val.getSecond();
         }
@@ -54,21 +54,28 @@ public class PGCompatible<R extends ConnectRecord<R>> implements Transformation<
                 && Objects.equals(field.schema().fields().get(1).name(), "set"));
     }
 
-    private Schema makeUpdatedSchema(Schema schema, Struct value) {
-        if (value == null) {
-            return schema;
-        }
-
+    private Schema makeUpdatedSchema(Schema schema) {
         final SchemaBuilder builder = SchemaUtil.copySchemaBasics(schema, SchemaBuilder.struct());
 
+        if (schema.isOptional()) {
+            builder.optional();
+        } else {
+            builder.required();
+        }
+
         for (Field field : schema.fields()) {
+            LOGGER.debug("Considering {}", field.name());
             if (field.schema().type() == Type.STRUCT) {
-                if (isValueSetStruct(field) && value.get(field.name()) != null) {
+                LOGGER.debug("Field is a struct");
+                if (isValueSetStruct(field)) {
+                    LOGGER.debug("Field is valueset");
                     builder.field(field.name(), field.schema().field("value").schema());
                 } else {
-                    builder.field(field.name(), makeUpdatedSchema(field.schema(), (Struct) value.get(field.name())));
+                    LOGGER.debug("Field is not valueset");
+                    builder.field(field.name(), makeUpdatedSchema(field.schema()));
                 }
             } else {
+                LOGGER.debug("Field is not a struct");
                 builder.field(field.name(), field.schema());
             }
         }
@@ -80,14 +87,19 @@ public class PGCompatible<R extends ConnectRecord<R>> implements Transformation<
         final Struct updatedValue = new Struct(updatedSchema);
 
         for (Field field : value.schema().fields()) {
+            LOGGER.debug("Considering value {}", field.name());
             if (field.schema().type() == Type.STRUCT) {
+                LOGGER.debug("Value is a struct");
                 Struct fieldValue = (Struct) value.get(field);
                 if (isValueSetStruct(field) && fieldValue != null) {
+                    LOGGER.debug("value is valueset");
                     updatedValue.put(field.name(), fieldValue.get("value"));
                 } else if (fieldValue != null) {
+                    LOGGER.debug("value is not valueset");
                     updatedValue.put(field.name(), makeUpdatedValue(updatedSchema.field(field.name()).schema(), fieldValue));
                 }
             } else {
+                LOGGER.debug("value is not a struct");
                 updatedValue.put(field.name(), value.get(field));
             }
         }
@@ -95,12 +107,16 @@ public class PGCompatible<R extends ConnectRecord<R>> implements Transformation<
         return updatedValue;
     }
 
-    public Pair<Schema, Struct> getUpdatedValueAndSchema(Struct value) {
-        Schema updatedSchema = makeUpdatedSchema(value.schema(), value);
+    public Pair<Schema, Struct> getUpdatedValueAndSchema(Schema schema, Struct value) {
+        LOGGER.debug("Original Schema as json: " + io.debezium.data.SchemaUtil.asString(schema));
+        Schema updatedSchema = makeUpdatedSchema(schema);
+        LOGGER.debug("Updated schema as json: " + io.debezium.data.SchemaUtil.asString(updatedSchema));
 
-        LOGGER.debug("Updated schema as json: " + io.debezium.data.SchemaUtil.asString(value.schema()));
+        LOGGER.debug("Original value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(value));
+        Struct updatedValue = makeUpdatedValue(updatedSchema, value);
+        LOGGER.debug("Update value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(updatedValue));
 
-        return new org.yb.util.Pair<>(updatedSchema, makeUpdatedValue(updatedSchema, value));
+        return new org.yb.util.Pair<>(updatedSchema, updatedValue);
     }
 
     @Override

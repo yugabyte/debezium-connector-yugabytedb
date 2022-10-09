@@ -475,50 +475,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
                 }).get();
     }
 
-    // Unit test to verify if the config 'snapshot.again:false' works
-    @Test
-    public void shouldNotSnapshotAgainIfConfigPreset() throws Exception {
-        TestHelper.dropAllSchemas();
-        TestHelper.executeDDL("yugabyte_create_tables.ddl");
-        final int recordsCount = 5000;
-        // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
-        insertBulkRecords(recordsCount);
-
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
-        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_AGAIN, false);
-        start(YugabyteDBConnector.class, configBuilder.build());
-
-        awaitUntilConnectorIsReady();
-
-        // Verify that the expected number of records are streamed
-        CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount))
-            .exceptionally(throwable -> {
-                throw new RuntimeException(throwable);
-            }).get();
-
-        // Restart
-        stopConnector();
-        start(YugabyteDBConnector.class, configBuilder.build());
-
-        awaitUntilConnectorIsReady();
-        // Wait before counting again to ensure connector has started properly and snapshot might
-        // have finished by this time - using dummy wait condition for 10s
-        Awaitility.await()
-            .pollDelay(Duration.ofSeconds(10))
-            .atMost(Duration.ofSeconds(15))
-            .until(() -> {
-                return true;
-            });
-
-        // Start again with the config to verify no records are streamed again
-        CompletableFuture.runAsync(() -> verifyRecordCountUntilTimeExpires(0, 10000))
-            .exceptionally(throwable -> {
-                throw new RuntimeException(throwable);
-            }).get();
-    }
-
     @Test
     public void shouldOnlySnapshotTablesInList() throws Exception {
         TestHelper.dropAllSchemas();
