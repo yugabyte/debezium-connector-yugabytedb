@@ -258,8 +258,9 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                     }
                     if (message.getOperation() == ReplicationMessage.Operation.COMMIT) {
                         LOGGER.debug("LSN in case of COMMIT is " + lsn);
-                        offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
-                                String.valueOf(message.getTransactionId()), null, null/* taskContext.getSlotXmin(connection) */);
+                        offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                                String.valueOf(message.getTransactionId()), null, null,/* taskContext.getSlotXmin(connection) */
+                                message.getRecordTime());
                         commitMessage(part, offsetContext, lsn);
 
                         if (recordsInTransactionalBlock.containsKey(tabletId)) {
@@ -288,8 +289,9 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                 }
                 else if (message.getOperation() == ReplicationMessage.Operation.COMMIT) {
                     LOGGER.debug("LSN in case of COMMIT is " + lsn);
-                    offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
-                            String.valueOf(message.getTransactionId()), null, null/* taskContext.getSlotXmin(connection) */);
+                    offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                            String.valueOf(message.getTransactionId()), null, null,/* taskContext.getSlotXmin(connection) */
+                            message.getRecordTime());
                     commitMessage(part, offsetContext, lsn);
                     dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
 
@@ -340,8 +342,9 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                 // If you need to print the received record, change debug level to info
                 LOGGER.debug("Received DML record {}", record);
 
-                offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
-                        String.valueOf(message.getTransactionId()), tableId, null/* taskContext.getSlotXmin(connection) */);
+                offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                        String.valueOf(message.getTransactionId()), tableId, null/* taskContext.getSlotXmin(connection) */,
+                        message.getRecordTime());
 
                 boolean dispatched = message.getOperation() != ReplicationMessage.Operation.NOOP
                         && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
