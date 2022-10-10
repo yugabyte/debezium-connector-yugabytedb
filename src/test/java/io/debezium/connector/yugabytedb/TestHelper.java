@@ -57,10 +57,10 @@ import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
 
 /**
- * A utility for integration test cases to connect the PostgreSQL server running in the Docker container created by this module's
- * build.
+ * A utility for integration test cases to connect the YugabyteDB instance running in the Docker 
+ * container created by this module's build.
  *
- * @author Horia Chiorean
+ * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public final class TestHelper {
 
@@ -78,6 +78,7 @@ public final class TestHelper {
     private static int CONTAINER_YSQL_PORT = 5433;
     private static String CONTAINER_MASTER_PORT = "7100";
     private static String MASTER_ADDRESS = "";
+    private static String DEFAULT_DATABASE_NAME = "yugabyte";
 
     /**
      * Key for schema parameter used to store DECIMAL/NUMERIC columns' precision.
@@ -153,12 +154,10 @@ public final class TestHelper {
     /**
      * Obtain a default DB connection.
      *
-     * @return the PostgresConnection instance; never null
+     * @return the YugabyteDBConnection instance; never null
      */
-    // TODO: remove this function at the end of test development
     public static YugabyteDBConnection create() {
 
-        // return new YugabyteDBConnection(defaultJdbcConfig());
         return new YugabyteDBConnection(defaultJdbcConfig(CONTAINER_YSQL_HOST, CONTAINER_YSQL_PORT), YugabyteDBConnection.CONNECTION_GENERAL);
     }
 
@@ -191,7 +190,7 @@ public final class TestHelper {
     }
 
     /**
-     * Executes a JDBC statement using the default jdbc config without autocommitting the connection
+     * Executes a JDBC statement using the default jdbc config
      *
      * @param statement A SQL statement
      * @param furtherStatements Further SQL statement(s)
@@ -204,20 +203,25 @@ public final class TestHelper {
         }
 
         try (YugabyteDBConnection connection = create()) {
-            connection.setAutoCommit(false);
-            connection.executeWithoutCommitting(statement);
-            Connection jdbcConn = connection.connection();
-            if (!statement.endsWith("ROLLBACK;")) {
-                jdbcConn.commit();
-            }
-            else {
-                jdbcConn.rollback();
-            }
+            connection.execute(statement);
         }
         catch (RuntimeException e) {
             throw e;
         }
         catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Execute a JDBC statement on a database
+     * @param statement A SQL statement
+     * @param databaseName The database to execute the statement onto
+     */
+    public static void executeInDatabase(String statement, String databaseName) {
+        try (YugabyteDBConnection connection = createConnectionTo(databaseName)) {
+            connection.execute(statement);
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
