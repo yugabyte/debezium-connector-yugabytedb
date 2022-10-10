@@ -450,7 +450,7 @@
                 <configuration>
                     <images>
                         <image>
-                            <name>quay.io/yugabyte/debezium-connector</name>
+                            <name>debezium-connector</name>
                             <build>
                                 <contextDir>${project.basedir}</contextDir>
                                 <tags>

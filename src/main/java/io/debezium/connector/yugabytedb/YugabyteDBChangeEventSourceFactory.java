@@ -25,8 +25,11 @@ import io.debezium.schema.DataCollectionId;
 import io.debezium.util.Clock;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.DataChangeEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFactory<YBPartition, YugabyteDBOffsetContext> {
+    private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBChangeEventSourceFactory.class);
 
     private final YugabyteDBConnectorConfig configuration;
     private final YugabyteDBConnection jdbcConnection;
@@ -82,17 +85,34 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
 
     @Override
     public StreamingChangeEventSource<YBPartition, YugabyteDBOffsetContext> getStreamingChangeEventSource() {
-        return new YugabyteDBStreamingChangeEventSource(
-                configuration,
-                snapshotter,
-                jdbcConnection,
-                dispatcher,
-                errorHandler,
-                clock,
-                schema,
-                taskContext,
-                replicationConnection,
-                queue);
+        LOGGER.info("Consistency mode is {}", configuration.consistencyMode().getValue());
+        if (configuration.consistencyMode() == YugabyteDBConnectorConfig.ConsistencyMode.DEFAULT) {
+            LOGGER.info("Instantiating Vanilla Streaming Source");
+            return new YugabyteDBStreamingChangeEventSource(
+                    configuration,
+                    snapshotter,
+                    jdbcConnection,
+                    dispatcher,
+                    errorHandler,
+                    clock,
+                    schema,
+                    taskContext,
+                    replicationConnection,
+                    queue);
+        } else {
+            LOGGER.info("Instantiating CONSISTENT Streaming Source");
+            return new YugabyteDbConsistentStreaming(
+                    configuration,
+                    snapshotter,
+                    jdbcConnection,
+                    dispatcher,
+                    errorHandler,
+                    clock,
+                    schema,
+                    taskContext,
+                    replicationConnection,
+                    queue);
+        }
     }
 
     @Override
