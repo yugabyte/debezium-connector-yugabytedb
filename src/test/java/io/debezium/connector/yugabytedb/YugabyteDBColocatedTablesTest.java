@@ -49,7 +49,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
   @After
   public void after() throws Exception {
     stopConnector();
-    TestHelper.executeDDL("drop_tables_and_databases.ddl");
+    TestHelper.executeDDL("drop_colocated_tables.ddl", "colocated_database");
   }
 
   @AfterClass
@@ -60,7 +60,8 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
   @Test
   public void shouldSupportBasicColocatedTableStreaming() throws Exception {
     TestHelper.dropAllSchemas();
-    TestHelper.executeDDL("colocated_tables.ddl");
+    TestHelper.executeDDL("create_databases.ddl");
+    TestHelper.executeDDL("colocated_tables.ddl", "colocated_database");
 
     String dbStreamId = TestHelper.getNewDbStreamId("colocated_database", "test_1");
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("colocated_database",
@@ -70,7 +71,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
 
     awaitUntilConnectorIsReady();
 
-    TestHelper.executeBulk(INSERT_TEST_1, 10);
+    TestHelper.executeBulk(INSERT_TEST_1, 10, "colocated_database");
 
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
@@ -92,7 +93,8 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
   @Test
   public void shouldWorkForTablesInIncludeListOnly() throws Exception {
     TestHelper.dropAllSchemas();
-    TestHelper.executeDDL("colocated_tables.ddl");
+    TestHelper.executeDDL("create_databases.ddl");
+    TestHelper.executeDDL("colocated_tables.ddl", "colocated_database");
 
     String dbStreamId = TestHelper.getNewDbStreamId("colocated_database", "test_1");
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("colocated_database",
@@ -102,9 +104,9 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
 
     awaitUntilConnectorIsReady();
 
-    TestHelper.executeBulk(INSERT_TEST_1, 10);
-    TestHelper.executeBulk(INSERT_TEST_2, 10);
-    TestHelper.executeBulk(INSERT_TEST_3, 10);
+    TestHelper.executeBulk(INSERT_TEST_1, 10, "colocated_database");
+    TestHelper.executeBulk(INSERT_TEST_2, 10, "colocated_database");
+    TestHelper.executeBulk(INSERT_TEST_3, 10, "colocated_database");
 
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
@@ -127,20 +129,21 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
   @Test
   public void shouldWorkWithMixOfColocatedAndNonColocatedTables() throws Exception {
     TestHelper.dropAllSchemas();
-    TestHelper.executeDDL("colocated_tables.ddl");
+    TestHelper.executeDDL("create_databases.ddl");
+    TestHelper.executeDDL("colocated_tables.ddl", "colocated_database");
 
     String dbStreamId = TestHelper.getNewDbStreamId("colocated_database", "test_1");
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("colocated_database",
-        "pubic.test_1,public.test_2,public.test_no_colocated", dbStreamId);
+        "public.test_1,public.test_2,public.test_no_colocated", dbStreamId);
 
     start(YugabyteDBConnector.class, configBuilder.build());
 
     awaitUntilConnectorIsReady();
 
-    TestHelper.executeBulk(INSERT_TEST_1, 10);
-    TestHelper.executeBulk(INSERT_TEST_2, 10);
-    TestHelper.executeBulk(INSERT_TEST_3, 10);
-    TestHelper.executeBulk(INSERT_TEST_NO_COLOCATED, 10);
+    TestHelper.executeBulk(INSERT_TEST_1, 10, "colocated_database");
+    TestHelper.executeBulk(INSERT_TEST_2, 10, "colocated_database");
+    TestHelper.executeBulk(INSERT_TEST_3, 10, "colocated_database");
+    TestHelper.executeBulk(INSERT_TEST_NO_COLOCATED, 10, "colocated_database");
 
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
@@ -162,20 +165,21 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
   @Test
   public void shouldWorkAfterAddingTableAfterRestart() throws Exception {
     TestHelper.dropAllSchemas();
-    TestHelper.executeDDL("colocated_tables.ddl");
+    TestHelper.executeDDL("create_databases.ddl");
+    TestHelper.executeDDL("colocated_tables.ddl", "colocated_database");
 
     String dbStreamId = TestHelper.getNewDbStreamId("colocated_database", "test_1");
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("colocated_database",
-        "pubic.test_1,public.test_2", dbStreamId);
+        "public.test_1,public.test_2", dbStreamId);
 
     start(YugabyteDBConnector.class, configBuilder.build());
 
     awaitUntilConnectorIsReady();
 
-    TestHelper.executeBulk(INSERT_TEST_1, 10);
-    TestHelper.executeBulk(INSERT_TEST_2, 10);
-    TestHelper.executeBulk(INSERT_TEST_3, 10);
-    TestHelper.executeBulk(INSERT_TEST_NO_COLOCATED, 10);
+    TestHelper.executeBulk(INSERT_TEST_1, 10, "colocated_database");
+    TestHelper.executeBulk(INSERT_TEST_2, 10, "colocated_database");
+    TestHelper.executeBulk(INSERT_TEST_3, 10, "colocated_database");
+    TestHelper.executeBulk(INSERT_TEST_NO_COLOCATED, 10, "colocated_database");
 
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
@@ -204,9 +208,9 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
 
     // The below statements will insert records of the respective types with keys in the
     // range [11,21)
-    TestHelper.executeBulkWithRange(INSERT_TEST_1, 11, 21);
-    TestHelper.executeBulkWithRange(INSERT_TEST_2, 11, 21);
-    TestHelper.executeBulkWithRange(INSERT_TEST_3, 11, 21);
+    TestHelper.executeBulkWithRange(INSERT_TEST_1, 11, 21, "colocated_database");
+    TestHelper.executeBulkWithRange(INSERT_TEST_2, 11, 21, "colocated_database");
+    TestHelper.executeBulkWithRange(INSERT_TEST_3, 11, 21, "colocated_database");
 
     // Dummy wait for 10 more seconds
     TestHelper.waitFor(Duration.ofSeconds(10));

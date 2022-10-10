@@ -35,6 +35,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.JdbcDatabaseContainer;
 import org.testcontainers.containers.YugabyteYSQLContainer;
+import org.testcontainers.utility.DockerImageName;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
@@ -222,7 +223,11 @@ public final class TestHelper {
     }
 
     public static void executeBulk(String statement, int numRecords) {
-        try (YugabyteDBConnection connection = create()) {
+        executeBulk(statement, numRecords, "yugabyte");
+    }
+
+    public static void executeBulk(String statement, int numRecords, String databaseName) {
+        try (YugabyteDBConnection connection = createConnectionTo(databaseName)) {
             connection.setAutoCommit(false); // setting auto-commit to true
             for (int i = 0; i < numRecords; i++) {
                 connection.executeWithoutCommitting(String.format(statement, i));
@@ -242,9 +247,11 @@ public final class TestHelper {
      * @param statement the format string of the statement to be executed
      * @param beginKey key to start inserting, included in the range
      * @param endKey key to end insertion at, excluded in the range
+     * @param databaseName the database to create the connection onto
      */
-    public static void executeBulkWithRange(String statement, int beginKey, int endKey) {
-        try (YugabyteDBConnection connection = create()) {
+    public static void executeBulkWithRange(String statement, int beginKey, int endKey,
+                                            String databaseName) {
+        try (YugabyteDBConnection connection = createConnectionTo(databaseName)) {
             connection.setAutoCommit(false); // setting auto-commit to true
             for (int i = beginKey; i < endKey; i++) {
                 connection.executeWithoutCommitting(String.format(statement, i));
@@ -255,6 +262,10 @@ public final class TestHelper {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static void executeBulkWithRange(String statement, int beginKey, int endKey) {
+        executeBulkWithRange(statement, beginKey, endKey, "yugabyte");
     }
 
     /**
@@ -361,7 +372,7 @@ public final class TestHelper {
     }
 
     protected static YugabyteYSQLContainer getYbContainer() {
-        YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:2.12.7.0-b27");
+        YugabyteYSQLContainer container = new YugabyteYSQLContainer(DockerImageName.parse("quay.io/yugabyte/yugabyte:2.15.4.0-b72").asCompatibleSubstituteFor("yugabytedb/yugabyte"));
         container.withPassword("yugabyte");
         container.withUsername("yugabyte");
         container.withDatabaseName("yugabyte");
@@ -480,12 +491,16 @@ public final class TestHelper {
     }
 
     protected static void executeDDL(String ddlFile) throws Exception {
+        executeDDL(ddlFile, "yugabyte");
+    }
+
+    protected static void executeDDL(String ddlFile, String databaseName) throws Exception {
         URL ddlTestFile = TestHelper.class.getClassLoader().getResource(ddlFile);
         assertNotNull("Cannot locate " + ddlFile, ddlTestFile);
         String statements = Files.readAllLines(Paths.get(ddlTestFile.toURI()))
                 .stream()
                 .collect(Collectors.joining(System.lineSeparator()));
-        try (YugabyteDBConnection connection = create()) {
+        try (YugabyteDBConnection connection = createConnectionTo(databaseName)) {
             connection.execute(statements);
         }
     }

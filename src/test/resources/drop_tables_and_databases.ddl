@@ -2,5 +2,3 @@ DROP TABLE IF EXISTS t1;
 DROP TABLE IF EXISTS all_types;
 DROP TABLE IF EXISTS test_enum;
 DROP DATABASE IF EXISTS secondary_database;
-
-DROP DATABASE IF EXISTS colocated_database;

@@ -1,0 +1,1 @@
+CREATE DATABASE colocated_database WITH COLOCATED = true;
