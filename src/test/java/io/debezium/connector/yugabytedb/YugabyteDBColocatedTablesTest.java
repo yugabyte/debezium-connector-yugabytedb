@@ -48,14 +48,13 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
   public void before() throws Exception {
     initializeConnectorTestFramework();
     TestHelper.dropAllSchemas();
-    createColocatedTables();
+    createTables();
   }
 
   @After
   public void after() throws Exception {
     stopConnector();
-    dropColocatedTables();
-    // TestHelper.executeDDL("drop_tables_and_databases.ddl");
+    dropTables();
   }
 
   @AfterClass
@@ -223,9 +222,9 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
   }
 
   /**
-   * Helper function to create the colocated tables in the database COLOCATED_DB_NAME
+   * Helper function to create the required tables in the database COLOCATED_DB_NAME
    */
-  private void createColocatedTables() {
+  private void createTables() {
     final String createTest1 =
       "CREATE TABLE test_1 (id INT PRIMARY KEY, name TEXT) WITH (COLOCATED = true);";
     final String createTest2 =
@@ -244,9 +243,9 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
   }
 
   /**
-   * Helper function to drop the colocated tables from the database COLOCATED_DB_NAME
+   * Helper function to drop the tables from the database COLOCATED_DB_NAME
    */
-  private void dropColocatedTables() {
+  private void dropTables() {
     TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_1;", COLOCATED_DB_NAME);
     TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_2;", COLOCATED_DB_NAME);
     TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_3;", COLOCATED_DB_NAME);
