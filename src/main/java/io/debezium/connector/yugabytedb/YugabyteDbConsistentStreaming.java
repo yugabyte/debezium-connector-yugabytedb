@@ -7,6 +7,8 @@ import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoReplicationMessage;
+import io.debezium.connector.yugabytedb.consistent.Merger;
+import io.debezium.connector.yugabytedb.consistent.Message;
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.pipeline.ErrorHandler;
@@ -89,6 +91,8 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
             offsetContext.initSourceInfo(tabletId, this.connectorConfig);
         }
 
+        Merger merger = new Merger(tabletPairList.stream().map(Pair::getRight).collect(Collectors.toList()));
+
         // This will contain the tablet ID mapped to the number of records it has seen in the transactional block.
         // Note that the entry will be created only when a BEGIN block is encountered.
         Map<String, Integer> recordsInTransactionalBlock = new HashMap<>();
@@ -118,7 +122,6 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
 
                     for (Pair<String, String> entry : tabletPairList) {
                         final String tabletId = entry.getValue();
-                        YBPartition part = new YBPartition(tabletId);
                         if (snapshotCompleted.size() == tabletPairList.size()) {
                             LOGGER.debug("Snapshot completed for all the tablets! Stopping.");
                             if (!snapshotter.shouldStream()) {
@@ -154,46 +157,51 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                             LOGGER.info("Connector has been stopped");
                             break;
                         }
-                        GetChangesResponse response = this.syncClient.getChangesCDCSDK(
-                                table, streamId, tabletId,
-                                cp.getTerm(), cp.getIndex(), cp.getKey(), cp.getWrite_id(), cp.getTime(), schemaStreamed.get(tabletId));
+                        if (merger.isSlotEmpty(tabletId)) {
+                            GetChangesResponse response = this.syncClient.getChangesCDCSDK(
+                                    table, streamId, tabletId,
+                                    cp.getTerm(), cp.getIndex(), cp.getKey(), cp.getWrite_id(), cp.getTime(), schemaStreamed.get(tabletId));
 
-                        LOGGER.debug("Processing {} records from getChanges call",
-                                response.getResp().getCdcSdkProtoRecordsList().size());
-                        for (CdcService.CDCSDKProtoRecordPB record : response
-                                .getResp()
-                                .getCdcSdkProtoRecordsList()) {
-                            CdcService.RowMessage m = record.getRowMessage();
-                            YbProtoReplicationMessage message = new YbProtoReplicationMessage(
-                                    m, this.yugabyteDBTypeRegistry);
+                            LOGGER.debug("Processing {} records from getChanges call",
+                                    response.getResp().getCdcSdkProtoRecordsList().size());
+                            for (CdcService.CDCSDKProtoRecordPB record : response
+                                    .getResp()
+                                    .getCdcSdkProtoRecordsList()) {
+                                merger.addMessage(new Message.Builder()
+                                        .setRecord(record)
+                                        .setTabletId(tabletId)
+                                        .setSnapshotTime(response.getSnapshotTime())
+                                        .build());
+                            }
+                            OpId finalOpid = new OpId(
+                                    response.getTerm(),
+                                    response.getIndex(),
+                                    response.getKey(),
+                                    response.getWriteId(),
+                                    response.getSnapshotTime());
+                            offsetContext.getSourceInfo(tabletId)
+                                    .updateLastCommit(finalOpid);
 
-                            dispatchMessage(offsetContext, schemaStreamed, recordsInTransactionalBlock, tabletId, part, response, record, m, message);
-                        }
-
-                        probeConnectionIfNeeded();
-
-                        if (!isInPreSnapshotCatchUpStreaming(offsetContext)) {
-                            // During catch up streaming, the streaming phase needs to hold a transaction open so that
-                            // the phase can stream event up to a specific lsn and the snapshot that occurs after the catch up
-                            // streaming will not lose the current view of data. Since we need to hold the transaction open
-                            // for the snapshot, this block must not commit during catch up streaming.
-                            // CDCSDK Find out why this fails : connection.commit();
-                        }
-                        OpId finalOpid = new OpId(
-                                response.getTerm(),
-                                response.getIndex(),
-                                response.getKey(),
-                                response.getWriteId(),
-                                response.getSnapshotTime());
-                        offsetContext.getSourceInfo(tabletId)
-                                .updateLastCommit(finalOpid);
-
-                        LOGGER.debug("The final opid is " + finalOpid);
-                        if (snapshotter.shouldSnapshot() && finalOpid.equals(new OpId(-1, -1, "".getBytes(), 0 ,0))) {
-                            snapshotCompleted.add(tabletId);
-                            LOGGER.info("Stopping the snapshot for the tablet " + tabletId);
+                            LOGGER.debug("The final opid is " + finalOpid);
+                            if (snapshotter.shouldSnapshot() && finalOpid.equals(new OpId(-1, -1, "".getBytes(), 0 ,0))) {
+                                snapshotCompleted.add(tabletId);
+                                LOGGER.info("Stopping the snapshot for the tablet " + tabletId);
+                            }
                         }
                     }
+
+                    while (!merger.isEmpty()) {
+                        LOGGER.info("Merger has records");
+                        Message message = merger.poll();
+                        CdcService.RowMessage m = message.record.getRowMessage();
+                        YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(
+                                m, this.yugabyteDBTypeRegistry);
+
+                        dispatchMessage(offsetContext, schemaStreamed, recordsInTransactionalBlock,
+                                message.tablet, new YBPartition(message.tablet),
+                                message.snapShotTime, message.record, m, ybMessage);
+                    }
+
                     // Reset the retry count, because if flow reached at this point, it means that the connection
                     // has succeeded
                     retryCount = 0;
@@ -209,7 +217,7 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
 
                 // If there are retries left, perform them after the specified delay.
                 LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
-                        retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
+                        retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage(), e);
                 LOGGER.debug("Stacktrace", e);
 
                 try {
@@ -223,22 +231,22 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
         }
     }
 
-    private boolean dispatchMessage(YugabyteDBOffsetContext offsetContext,
-                                    Map<String, Boolean> schemaStreamed,
-                                    Map<String, Integer> recordsInTransactionalBlock,
-                                    String tabletId,
-                                    YBPartition part,
-                                    GetChangesResponse response,
-                                    CdcService.CDCSDKProtoRecordPB record,
-                                    CdcService.RowMessage m,
-                                    YbProtoReplicationMessage message) {
+    private void dispatchMessage(YugabyteDBOffsetContext offsetContext,
+                                 Map<String, Boolean> schemaStreamed,
+                                 Map<String, Integer> recordsInTransactionalBlock,
+                                 String tabletId,
+                                 YBPartition part,
+                                 long snapshotTime,
+                                 CdcService.CDCSDKProtoRecordPB record,
+                                 CdcService.RowMessage m,
+                                 YbProtoReplicationMessage message) {
         String pgSchemaNameInRecord = m.getPgschemaName();
 
         final OpId lsn = new OpId(record.getCdcSdkOpId().getTerm(),
                 record.getCdcSdkOpId().getIndex(),
                 record.getCdcSdkOpId().getWriteIdKey().toByteArray(),
                 record.getCdcSdkOpId().getWriteId(),
-                response.getSnapshotTime());
+                snapshotTime);
 
         if (message.isLastEventForLsn()) {
             lastCompletelyProcessedLsn = lsn;
@@ -277,7 +285,7 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
 
                         recordsInTransactionalBlock.remove(tabletId);
                     }
-                    return true;
+                    return;
                 }
 
                 if (message.getOperation() == ReplicationMessage.Operation.BEGIN) {
@@ -363,7 +371,6 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
         catch (SQLException se) {
             se.printStackTrace();
         }
-        return false;
     }
 
 }
