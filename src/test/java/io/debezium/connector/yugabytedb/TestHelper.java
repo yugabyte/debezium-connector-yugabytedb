@@ -340,7 +340,7 @@ public final class TestHelper {
     }
 
     protected static YugabyteYSQLContainer getYbContainer() {
-        YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:2.12.7.0-b27");
+        YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:2.14.3.0-b33");
         container.withPassword("yugabyte");
         container.withUsername("yugabyte");
         container.withDatabaseName("yugabyte");

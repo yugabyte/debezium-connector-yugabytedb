@@ -36,11 +36,11 @@ public class YugabyteDBUserDefinedTypesTest extends YugabyteDBTestBase {
   public static void beforeClass() throws Exception {
     // Make sure this test is using the YugabyteDB version which has the changes to support
     // composite types with Change data capture
-    // ybContainer = TestHelper.getYbContainer();
-    // ybContainer.start();
+    ybContainer = TestHelper.getYbContainer();
+    ybContainer.start();
 
-    // TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-    // TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+    TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
+    TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
     TestHelper.dropAllSchemas();
   }
 
