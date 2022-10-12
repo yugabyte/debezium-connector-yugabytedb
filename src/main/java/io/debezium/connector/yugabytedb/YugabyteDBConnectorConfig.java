@@ -513,7 +513,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final boolean DEFAULT_LIMIT_ONE_POLL_PER_ITERATION = false;
 
     @Override
-    public Configuration getJdbcConfig() {
+    public JdbcConfiguration getJdbcConfig() {
         return super.getJdbcConfig();
     }
 
@@ -851,6 +851,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     + "'exported' deprecated, use 'initial' instead; "
                     + "'custom' to specify a custom class with 'snapshot.custom_class' which will be loaded and used to determine the snapshot, see docs for more details.");
 
+
     public static final Field SNAPSHOT_MODE_CLASS = Field.create("snapshot.custom.class")
             .withDisplayName("Snapshot Mode Custom Class")
             .withType(Type.STRING)
@@ -878,6 +879,33 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withDescription("Specify how TRUNCATE operations are handled for change events (supported only on pg11+ pgoutput plugin), including: " +
                     "'skip' to skip / ignore TRUNCATE events (default), " +
                     "'include' to handle and include TRUNCATE events");
+
+    /**
+     * A comma-separated list of regular expressions that match the prefix of logical decoding messages to be excluded
+     * from monitoring. Must not be used with {@link #LOGICAL_DECODING_MESSAGE_PREFIX_INCLUDE_LIST}
+     */
+    public static final Field LOGICAL_DECODING_MESSAGE_PREFIX_EXCLUDE_LIST = Field.create("message.prefix.exclude.list")
+            .withDisplayName("Exclude Logical Decoding Message Prefixes")
+            .withType(Type.LIST)
+            .withGroup(Field.createGroupEntry(Field.Group.CONNECTOR, 25))
+            .withWidth(Width.LONG)
+            .withImportance(Importance.MEDIUM)
+            .withValidation(Field::isListOfRegex, YugabyteDBConnectorConfig::validateLogicalDecodingMessageExcludeList)
+            .withDescription("A comma-separated list of regular expressions that match the logical decoding message prefixes to be excluded from monitoring.");
+
+    /**
+     * A comma-separated list of regular expressions that match the prefix of logical decoding messages to be monitored.
+     * Must not be used with {@link #LOGICAL_DECODING_MESSAGE_PREFIX_EXCLUDE_LIST}
+     */
+    public static final Field LOGICAL_DECODING_MESSAGE_PREFIX_INCLUDE_LIST = Field.create("message.prefix.include.list")
+            .withDisplayName("Include Logical Decoding Message Prefixes")
+            .withType(Type.LIST)
+            .withGroup(Field.createGroupEntry(Field.Group.CONNECTOR, 24))
+            .withWidth(Width.LONG)
+            .withImportance(Importance.MEDIUM)
+            .withValidation(Field::isListOfRegex)
+            .withDescription(
+                    "A comma-separated list of regular expressions that match the logical decoding message prefixes to be monitored. All prefixes are monitored by default.");
 
     public static final Field HSTORE_HANDLING_MODE = Field.create("hstore.handling.mode")
             .withDisplayName("HStore Handling")
@@ -980,6 +1008,8 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
     private final TableFilter databaseFilter;
 
+    private final LogicalDecodingMessageFilter logicalDecodingMessageFilter;
+
     public YugabyteDBConnectorConfig(Configuration config) {
         super(
                 config,
@@ -990,6 +1020,8 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 ColumnFilterMode.SCHEMA);
 
         this.truncateHandlingMode = TruncateHandlingMode.parse(config.getString(YugabyteDBConnectorConfig.TRUNCATE_HANDLING_MODE));
+        this.logicalDecodingMessageFilter = new LogicalDecodingMessageFilter(config.getString(LOGICAL_DECODING_MESSAGE_PREFIX_INCLUDE_LIST),
+                config.getString(LOGICAL_DECODING_MESSAGE_PREFIX_EXCLUDE_LIST));
         String hstoreHandlingModeStr = config.getString(YugabyteDBConnectorConfig.HSTORE_HANDLING_MODE);
         this.hStoreHandlingMode = HStoreHandlingMode.parse(hstoreHandlingModeStr);
         this.intervalHandlingMode = IntervalHandlingMode.parse(config.getString(YugabyteDBConnectorConfig.INTERVAL_HANDLING_MODE));
@@ -1095,6 +1127,10 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return hStoreHandlingMode;
     }
 
+    public LogicalDecodingMessageFilter getMessageFilter() {
+        return logicalDecodingMessageFilter;
+    }
+
     protected IntervalHandlingMode intervalHandlingMode() {
         return intervalHandlingMode;
     }
@@ -1163,8 +1199,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     TCP_KEEPALIVE,
                     MAX_NUM_TABLETS)
             .events(
-                    INCLUDE_UNKNOWN_DATATYPES,
-                    DatabaseHeartbeatImpl.HEARTBEAT_ACTION_QUERY)
+                    INCLUDE_UNKNOWN_DATATYPES)
             .connector(
                     SNAPSHOT_MODE,
                     SNAPSHOT_MODE_CLASS,
@@ -1210,6 +1245,18 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             }
         }
         return errors;
+    }
+
+    private static int validateLogicalDecodingMessageExcludeList(Configuration config, Field field, Field.ValidationOutput problems) {
+        String includeList = config.getString(LOGICAL_DECODING_MESSAGE_PREFIX_INCLUDE_LIST);
+        String excludeList = config.getString(LOGICAL_DECODING_MESSAGE_PREFIX_EXCLUDE_LIST);
+
+        if (includeList != null && excludeList != null) {
+            problems.accept(LOGICAL_DECODING_MESSAGE_PREFIX_EXCLUDE_LIST, excludeList,
+                    "\"logical_decoding_message.prefix.include.list\" is already specified");
+            return 1;
+        }
+        return 0;
     }
 
     @Override

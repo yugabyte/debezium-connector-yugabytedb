@@ -21,9 +21,6 @@ import org.apache.kafka.connect.util.ConnectorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.*;
-import org.yb.master.MasterDdlOuterClass;
-import org.yb.master.MasterReplicationOuterClass;
-import org.yb.master.MasterTypes;
 
 import com.google.common.net.HostAndPort;
 
@@ -32,7 +29,6 @@ import io.debezium.config.Configuration;
 import io.debezium.connector.common.RelationalBaseSourceConnector;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
-import io.debezium.relational.TableId;
 
 /**
  * A Kafka Connect source connector that creates tasks which use YugabyteDB CDC API
@@ -83,7 +79,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             return Collections.emptyList();
         }
 
-        connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig());
+        connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL);
         final Charset databaseCharset = connection.getDatabaseCharset();
         String charSetName = databaseCharset.name();
 
@@ -197,17 +193,6 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         return new YBClient(asyncClient);
     }
 
-    private YBClient getYBClient(String hostAddress, long adminTimeout, long opTimeout,
-                                 long socketTimeout) {
-        return getYBClient(hostAddress, adminTimeout, opTimeout, socketTimeout, -1);
-    }
-
-    // over loaded function
-    private YBClient getYBClient(String hostAddress, long adminTimeout, long opTimeout,
-                                 long socketTimeout, int numTablets) {
-        return getYBClientBase(hostAddress, adminTimeout, opTimeout, socketTimeout, numTablets, null, null, null);
-    }
-
     @Override
     public void stop() {
         this.props = null;
@@ -235,8 +220,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
         final ConfigValue hostnameValue = configValues.get(RelationalDatabaseConnectorConfig.HOSTNAME.name());
         // Try to connect to the database ...
-        try (YugabyteDBConnection connection = new YugabyteDBConnection(yugabyteDBConnectorConfig
-                .getJdbcConfig())) {
+        try (YugabyteDBConnection connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL)) {
             try {
                 // Prepare connection without initial statement execution
                 connection.connection(false);
@@ -295,21 +279,29 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             throw new DebeziumException("The table.include.list is empty, please provide a list of tables to get the changes from");
         }
 
-        this.tableIds = fetchTabletList();
+        // If the stream ID is not associated with any table then we should throw an exception
+        // early, this would save us some work on the connector side since we would then not be
+        // going to fetch all the tables then verify if they are a part of the stream ID,
+        // eventually saving us some network calls as well
+        GetDBStreamInfoResponse getStreamInfoResp = null;
+        try {
+            getStreamInfoResp = this.ybClient.getDBStreamInfo(streamId);
+        } catch (Exception e) {
+            String errorMessage = String.format("Failed fetching all tables for the streamid %s", streamId);
+            LOGGER.error(errorMessage, e);
+            throw new DebeziumException(errorMessage, e);
+        }
+        
+        if (getStreamInfoResp.getTableInfoList().isEmpty()) {
+            String errorMessage = "The provided stream ID is not associated with any table";
+            LOGGER.error(errorMessage);
+            throw new DebeziumException(errorMessage);
+        }
+
+        this.tableIds = YBClientUtils.fetchTableList(this.ybClient, this.yugabyteDBConnectorConfig);
 
         if (tableIds == null || tableIds.isEmpty()) {
             throw new DebeziumException("The tables provided in table.include.list do not exist");
-        }
-
-        try {
-            GetDBStreamInfoResponse res = this.ybClient.getDBStreamInfo(streamId);
-            if (res.getTableInfoList().isEmpty()) {
-                LOGGER.info("The table info is empty!");
-            }
-        }
-        catch (Exception e) {
-            LOGGER.error("Failed fetching all tables for the streamid {} ", streamIdConfig, e);
-            streamIdConfig.addErrorMessage("Failed fetching all tables for the streamid: " + e.getMessage());
         }
 
         this.tabletIds = new ArrayList<>();
@@ -325,72 +317,5 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         catch (Exception e) {
             LOGGER.error("Error while fetching all the tablets", e);
         }
-    }
-
-    private boolean isTableIncludedInStreamId(GetDBStreamInfoResponse resp, String tableId) {
-        for (MasterReplicationOuterClass.GetCDCDBStreamInfoResponsePB.TableInfo tableInfo : resp.getTableInfoList()) {
-            if (Objects.equals(tableId, tableInfo.getTableId().toStringUtf8())) {
-                return true;
-            }
-        }
-
-        // This signifies that the table ID we have provided is not a part of the stream ID
-        return false;
-    }
-
-    private Set<String> fetchTabletList() {
-        LOGGER.debug("Fetching tables");
-        Set<String> tIds = new HashSet<>();
-        try {
-            ListTablesResponse tablesResp = this.ybClient.getTablesList();
-            for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo : tablesResp.getTableInfoList()) {
-                if (tableInfo.getRelationType() == MasterTypes.RelationType.INDEX_TABLE_RELATION ||
-                        tableInfo.getRelationType() == MasterTypes.RelationType.SYSTEM_TABLE_RELATION) {
-                    // Ignoring the index and system tables from getting added for streaming.
-                    continue;
-                }
-
-                // Ignore the tables without a pgschema_name, these tables are the ones created with the older versions of YugabyteDB where
-                // the changes for CDCSDK were not present. For more details, visit https://github.com/yugabyte/yugabyte-db/issues/11976
-                if (tableInfo.getPgschemaName() == null || tableInfo.getPgschemaName().isEmpty()) {
-                    LOGGER.warn(String.format("Ignoring the table %s.%s since it does not have a pgschema_name value (possibly because it was created using an older "
-                            + "YugabyteDB version)",
-                            tableInfo.getNamespace().getName(),
-                            tableInfo.getName()));
-                    continue;
-                }
-
-                String fqlTableName = tableInfo.getNamespace().getName() + "." + tableInfo.getPgschemaName() + "." + tableInfo.getName();
-                TableId tableId = YugabyteDBSchema.parseWithSchema(fqlTableName, tableInfo.getPgschemaName());
-
-                // Retrieve the list of tables in the stream ID,
-                GetDBStreamInfoResponse dbStreamInfoResponse = this.ybClient.getDBStreamInfo(yugabyteDBConnectorConfig.streamId());
-
-                if (yugabyteDBConnectorConfig.getTableFilters().dataCollectionFilter().isIncluded(tableId)
-                        && yugabyteDBConnectorConfig.databaseFilter().isIncluded(tableId)) {
-                    // Throw an exception if the table in the include list is not a part of DB stream ID
-                    if (!isTableIncludedInStreamId(dbStreamInfoResponse, tableInfo.getId().toStringUtf8())) {
-                        String warningMessage = "The table " + tableId + " is not a part of the stream ID " + yugabyteDBConnectorConfig.streamId();
-                        if (yugabyteDBConnectorConfig.ignoreExceptions()) {
-                            LOGGER.warn(warningMessage + ". Ignoring the table.");
-                            continue;
-                        }
-                        throw new DebeziumException(warningMessage);
-                    }
-
-                    LOGGER.info(String.format("Adding table %s for streaming (%s)", tableInfo.getId().toStringUtf8(), fqlTableName));
-                    tIds.add(tableInfo.getId().toStringUtf8());
-                }
-                else {
-                    LOGGER.warn("Filtering out the table {} since it was not in the include list", tableId);
-                }
-            }
-        }
-        catch (Exception e) {
-            // We are ultimately throwing this exception since this will be thrown while initializing the connector
-            // and at this point if this exception is thrown, we should not proceed forward with the connector.
-            throw new DebeziumException(e);
-        }
-        return tIds;
     }
 }

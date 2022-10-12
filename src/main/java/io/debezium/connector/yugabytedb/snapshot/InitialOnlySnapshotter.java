@@ -31,15 +31,15 @@ public class InitialOnlySnapshotter extends QueryingSnapshotter {
     @Override
     public boolean shouldSnapshot() {
         if (sourceInfo == null) {
-            LOGGER.info("Taking initial snapshot for new datasource");
+            LOGGER.debug("Taking initial snapshot for new datasource");
             return true;
         }
         else if (sourceInfo.snapshotInEffect()) {
-            LOGGER.info("Found previous incomplete snapshot");
+            LOGGER.debug("Found previous incomplete snapshot");
             return true;
         }
         else {
-            LOGGER.info("Previous initial snapshot completed, no snapshot will be performed");
+            LOGGER.debug("Previous initial snapshot completed, no snapshot will be performed");
             return false;
         }
     }

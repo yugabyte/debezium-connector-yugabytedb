@@ -9,6 +9,7 @@ package io.debezium.connector.yugabytedb.connection.wal2json;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalLong;
 import java.util.regex.Matcher;
 
 import org.apache.kafka.connect.data.Field;
@@ -36,16 +37,16 @@ class Wal2JsonReplicationMessage implements ReplicationMessage {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Wal2JsonReplicationMessage.class);
 
-    private final long txId;
+    private final Long transactionId;
     private final Instant commitTime;
     private final Document rawMessage;
     private final boolean hasMetadata;
     private final boolean lastEventForLsn;
     private final YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
 
-    public Wal2JsonReplicationMessage(long txId, Instant commitTime, Document rawMessage, boolean hasMetadata, boolean lastEventForLsn,
+    public Wal2JsonReplicationMessage(Long transactionId, Instant commitTime, Document rawMessage, boolean hasMetadata, boolean lastEventForLsn,
                                       YugabyteDBTypeRegistry yugabyteDBTypeRegistry) {
-        this.txId = txId;
+        this.transactionId = transactionId;
         this.commitTime = commitTime;
         this.rawMessage = rawMessage;
         this.hasMetadata = hasMetadata;
@@ -75,7 +76,7 @@ class Wal2JsonReplicationMessage implements ReplicationMessage {
 
     @Override
     public String getTransactionId() {
-        return String.valueOf(txId);
+        return transactionId == null ? null : String.valueOf(transactionId);
     }
 
     @Override

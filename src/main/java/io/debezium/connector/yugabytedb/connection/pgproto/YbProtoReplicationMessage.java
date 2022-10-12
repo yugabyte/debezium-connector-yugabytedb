@@ -9,6 +9,7 @@ package io.debezium.connector.yugabytedb.connection.pgproto;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -73,7 +74,7 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
 
     @Override
     public String getTransactionId() {
-        return rawMessage.getTransactionId().toStringUtf8();
+        return rawMessage.getTransactionId() == null ? null : String.valueOf(rawMessage.getTransactionId());
     }
 
     @Override

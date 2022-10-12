@@ -103,7 +103,7 @@ public class YbOutputMessageDecoder extends AbstractMessageDecoder {
 
     public YbOutputMessageDecoder(MessageDecoderContext decoderContext) {
         this.decoderContext = decoderContext;
-        this.connection = new YugabyteDBConnection(decoderContext.getConfig().getJdbcConfig(), decoderContext.getSchema().getTypeRegistry());
+        this.connection = new YugabyteDBConnection(decoderContext.getConfig(), decoderContext.getSchema().getTypeRegistry(), YugabyteDBConnection.CONNECTION_GENERAL);
     }
 
     @Override
@@ -218,7 +218,7 @@ public class YbOutputMessageDecoder extends AbstractMessageDecoder {
         LOGGER.trace("Final LSN of transaction: {}", lsn);
         LOGGER.trace("Commit timestamp of transaction: {}", commitTimestamp);
         LOGGER.trace("XID of transaction: {}", transactionId);
-        processor.process(new TransactionMessage(Operation.BEGIN, transactionId, commitTimestamp));
+        processor.process(new TransactionMessage(Operation.BEGIN, Long.valueOf(transactionId), commitTimestamp));
     }
 
     /**
@@ -237,7 +237,7 @@ public class YbOutputMessageDecoder extends AbstractMessageDecoder {
         LOGGER.trace("Commit LSN: {}", lsn);
         LOGGER.trace("End LSN of transaction: {}", endLsn);
         LOGGER.trace("Commit timestamp of transaction: {}", commitTimestamp);
-        processor.process(new TransactionMessage(Operation.COMMIT, transactionId, commitTimestamp));
+        processor.process(new TransactionMessage(Operation.COMMIT, Long.valueOf(transactionId), commitTimestamp));
     }
 
     /**
@@ -257,7 +257,7 @@ public class YbOutputMessageDecoder extends AbstractMessageDecoder {
         LOGGER.trace("Schema: '{}', Table: '{}'", schemaName, tableName);
 
         // Perform several out-of-bands database metadata queries
-        Map<String, Optional<Object>> columnDefaults;
+        Map<String, Optional<String>> columnDefaults;
         Map<String, Boolean> columnOptionality;
         List<String> primaryKeyColumns;
 
@@ -267,7 +267,7 @@ public class YbOutputMessageDecoder extends AbstractMessageDecoder {
         final List<io.debezium.relational.Column> readColumns = getTableColumnsFromDatabase(connection, databaseMetadata, tableId);
         columnDefaults = readColumns.stream()
                 .filter(io.debezium.relational.Column::hasDefaultValue)
-                .collect(toMap(io.debezium.relational.Column::name, column -> Optional.ofNullable(column.defaultValue())));
+                .collect(toMap(io.debezium.relational.Column::name, io.debezium.relational.Column::defaultValueExpression));
 
         columnOptionality = readColumns.stream().collect(toMap(io.debezium.relational.Column::name,
                 io.debezium.relational.Column::isOptional));
@@ -297,11 +297,10 @@ public class YbOutputMessageDecoder extends AbstractMessageDecoder {
             }
 
             final boolean hasDefault = columnDefaults.containsKey(columnName);
-            final Object defaultValue = columnDefaults.getOrDefault(columnName,
-                    Optional.empty()).orElse(null);
+            final String defaultValueExpression = columnDefaults.getOrDefault(columnName, Optional.empty()).orElse(null);
 
             columns.add(new ColumnMetaData(columnName, yugabyteDBType, key, optional, hasDefault,
-                    defaultValue, attypmod));
+                    defaultValueExpression, attypmod));
             columnNames.add(columnName);
         }
 
@@ -396,7 +395,7 @@ public class YbOutputMessageDecoder extends AbstractMessageDecoder {
 
         // non-captured table
         if (!resolvedTable.isPresent()) {
-            processor.process(new NoopMessage(String.valueOf(transactionId), commitTimestamp));
+            processor.process(new NoopMessage(Long.valueOf(transactionId), commitTimestamp));
         }
         else {
             Table table = resolvedTable.get();
@@ -406,7 +405,7 @@ public class YbOutputMessageDecoder extends AbstractMessageDecoder {
                     Operation.INSERT,
                     table.id().toDoubleQuotedString(),
                     commitTimestamp,
-                    transactionId,
+                    Long.valueOf(transactionId),
                     null,
                     columns));
         }
@@ -430,7 +429,7 @@ public class YbOutputMessageDecoder extends AbstractMessageDecoder {
 
         // non-captured table
         if (!resolvedTable.isPresent()) {
-            processor.process(new NoopMessage(String.valueOf(transactionId), commitTimestamp));
+            processor.process(new NoopMessage(Long.valueOf(transactionId), commitTimestamp));
         }
         else {
             Table table = resolvedTable.get();
@@ -457,7 +456,7 @@ public class YbOutputMessageDecoder extends AbstractMessageDecoder {
                     Operation.UPDATE,
                     table.id().toDoubleQuotedString(),
                     commitTimestamp,
-                    transactionId,
+                    Long.valueOf(transactionId),
                     oldColumns,
                     columns));
         }
@@ -484,7 +483,7 @@ public class YbOutputMessageDecoder extends AbstractMessageDecoder {
 
         // non-captured table
         if (!resolvedTable.isPresent()) {
-            processor.process(new NoopMessage(String.valueOf(transactionId), commitTimestamp));
+            processor.process(new NoopMessage(Long.valueOf(transactionId), commitTimestamp));
         }
         else {
             Table table = resolvedTable.get();
@@ -494,7 +493,7 @@ public class YbOutputMessageDecoder extends AbstractMessageDecoder {
                     Operation.DELETE,
                     table.id().toDoubleQuotedString(),
                     commitTimestamp,
-                    transactionId,
+                    Long.valueOf(transactionId),
                     columns,
                     null));
         }
@@ -604,7 +603,7 @@ public class YbOutputMessageDecoder extends AbstractMessageDecoder {
                     .scale(columnMetadata.getScale());
 
             if (columnMetadata.hasDefaultValue()) {
-                editor.defaultValue(columnMetadata.getDefaultValue());
+                editor.defaultValueExpression(columnMetadata.getDefaultValueExpression());
             }
 
             columns.add(editor.create());
