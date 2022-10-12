@@ -83,7 +83,7 @@ CREATE TABLE t1 (id INT PRIMARY KEY, first_name TEXT NOT NULL, last_name VARCHAR
 -- -- GRANT ALL ON ALL TABLES IN SCHEMA "Quoted_Schema" TO postgres;
 -- CREATE TABLE "Quoted_"" . Schema"."Quoted_"" . Table" (pk SERIAL, "Quoted_"" . Text_Column" TEXT, PRIMARY KEY(pk));
 
-CREATE TABLE all_types (id INT PRIMARY KEY, bigintcol bigint, bitcol bit(5), varbitcol varbit(5), booleanval boolean, byteaval bytea, ch char(5), vchar varchar(25),
+CREATE TABLE all_types (id SERIAL PRIMARY KEY, bigintcol bigint, bitcol bit(5), varbitcol varbit(5), booleanval boolean, byteaval bytea, ch char(5), vchar varchar(25),
 cidrval cidr, dt date, dp double precision, inetval inet, intervalval interval, jsonval json, jsonbval jsonb, mc macaddr, mc8 macaddr8, mn money, nm numeric, rl real,
 si smallint, i4r int4range, i8r int8range, nr numrange, tsr tsrange, tstzr tstzrange, dr daterange, txt text, tm time, tmtz timetz, ts timestamp, tstz timestamptz,
 uuidval uuid);

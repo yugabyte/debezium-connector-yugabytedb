@@ -851,6 +851,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     + "'exported' deprecated, use 'initial' instead; "
                     + "'custom' to specify a custom class with 'snapshot.custom_class' which will be loaded and used to determine the snapshot, see docs for more details.");
 
+
     public static final Field SNAPSHOT_MODE_CLASS = Field.create("snapshot.custom.class")
             .withDisplayName("Snapshot Mode Custom Class")
             .withType(Type.STRING)
