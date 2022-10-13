@@ -1,8 +1,8 @@
 package io.debezium.connector.yugabytedb.consistent;
 
-import io.debezium.connector.yugabytedb.YugabyteDbConsistentStreaming;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.cdc.CdcService;
 
 import java.util.*;
 
@@ -16,6 +16,9 @@ public class Merger {
     }
 
     public void addMessage(Message message) {
+        if (message.record.getRowMessage().getOp() == CdcService.RowMessage.Op.SAFEPOINT) {
+            LOGGER.info("Received safe point message {}", message);
+        }
         queue.add(message);
         mergeSlots.get(message.tablet).add(message);
         LOGGER.info("Add message {}", message);
@@ -26,7 +29,7 @@ public class Merger {
     }
 
     public Message poll() {
-        Message message = queue.poll();
+        Message message = Objects.requireNonNull(queue.poll());
         LOGGER.info("Message is: {}", message);
         LOGGER.info("Records for tablet: {}", mergeSlots.get(message.tablet).size());
         mergeSlots.get(message.tablet).removeIf(item -> item.compareTo(message) == 0);
