@@ -20,10 +20,6 @@ public class YBPartition implements Partition {
 
     private final String tabletId;
 
-    public YBPartition() {
-        this.tabletId = "";
-    }
-
     public YBPartition(String tabletId) {
         this.tabletId = tabletId;
     }
