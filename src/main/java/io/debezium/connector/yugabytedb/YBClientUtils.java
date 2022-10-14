@@ -143,9 +143,6 @@ public class YBClientUtils {
             tableToTabletIds.add(
                 new ImmutablePair<String,String>(tableId, pair.getTabletId().toStringUtf8()));
           }
-          // tableToTabletIds.addAll(ybClient.getTabletUUIDs(table).stream()
-          //         .map(tabletId -> new ImmutablePair<String, String>(tableId, tabletId))
-          //         .collect(Collectors.toList()));
       }
       Collections.sort(tableToTabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));
     }
