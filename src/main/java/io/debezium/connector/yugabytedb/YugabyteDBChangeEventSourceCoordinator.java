@@ -6,6 +6,9 @@
 package io.debezium.connector.yugabytedb;
 
 import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.kafka.connect.source.SourceConnector;
 import org.slf4j.Logger;
@@ -13,6 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import io.debezium.DebeziumException;
 import io.debezium.config.CommonConnectorConfig;
+import io.debezium.connector.common.CdcSourceTaskContext;
 import io.debezium.connector.yugabytedb.spi.SlotState;
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.pipeline.ChangeEventSourceCoordinator;
@@ -23,11 +27,15 @@ import io.debezium.pipeline.source.spi.ChangeEventSource;
 import io.debezium.pipeline.source.spi.ChangeEventSource.ChangeEventSourceContext;
 import io.debezium.pipeline.source.spi.SnapshotChangeEventSource;
 import io.debezium.pipeline.spi.Offsets;
+import io.debezium.pipeline.spi.SnapshotResult;
 import io.debezium.schema.DatabaseSchema;
+import io.debezium.util.LoggingContext.PreviousContext;
 
 /**
  * Coordinates one or more {@link ChangeEventSource}s and executes them in order. Extends the base
  * {@link ChangeEventSourceCoordinator} to support a pre-snapshot catch up streaming phase.
+ * 
+ * @author Suranjan Kumar, Rajat Venkatesh, Vaibhav Kushwaha
  */
 public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoordinator<YBPartition, YugabyteDBOffsetContext> {
 
@@ -73,11 +81,59 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
         return new CatchUpStreamingResult(false);
     }
 
+    @Override
+    protected void executeChangeEventSources(CdcSourceTaskContext taskContext,
+      SnapshotChangeEventSource<YBPartition, YugabyteDBOffsetContext> snapshotSource,
+      Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets,
+      AtomicReference<PreviousContext> previousLogContext, ChangeEventSourceContext context)
+      throws InterruptedException {
+        Offsets<YBPartition, YugabyteDBOffsetContext> streamingOffsets =
+            Offsets.of(new HashMap<>());
+
+        for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry :
+                 previousOffsets.getOffsets().entrySet()) {
+            YBPartition partition = entry.getKey();
+            YugabyteDBOffsetContext previousOffset = entry.getValue();
+
+            LOGGER.debug("YBPartition is {} and YugabyteDBOffsetContext for the same is {}",
+                        partition, previousOffset);
+
+            previousLogContext.set(taskContext.configureLoggingContext("snapshot", partition));
+            SnapshotResult<YugabyteDBOffsetContext> snapshotResult =
+                doSnapshot(snapshotSource, context, partition, previousOffset);
+
+            if (snapshotResult.isCompletedOrSkipped()) {
+                streamingOffsets.getOffsets().put(partition, snapshotResult.getOffset());
+            }
+        }
+
+        previousLogContext.set(taskContext.configureLoggingContext("streaming"));
+
+        for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry :
+                streamingOffsets.getOffsets().entrySet()) {
+            initStreamEvents(entry.getKey(), entry.getValue());
+        }
+
+        LOGGER.info("Starting streaming now");
+
+        while (context.isRunning()) {
+            for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry :
+                     streamingOffsets.getOffsets().entrySet()) {
+                YBPartition partition = entry.getKey();
+                YugabyteDBOffsetContext previousOffset = entry.getValue();
+
+                previousLogContext.set(taskContext.configureLoggingContext("streaming", partition));
+
+                if (context.isRunning()) {
+                    streamEvents(context, partition, previousOffset);
+                }
+            }
+        }
+    }
+
     private void setSnapshotStartLsn(YugabyteDBSnapshotChangeEventSource snapshotSource,
                                      YugabyteDBOffsetContext offsetContext)
             throws SQLException {
-        // snapshotSource.createSnapshotConnection();
-        // snapshotSource.setSnapshotTransactionIsolationLevel();
         snapshotSource.updateOffsetForPreSnapshotCatchUpStreaming(offsetContext);
     }
 

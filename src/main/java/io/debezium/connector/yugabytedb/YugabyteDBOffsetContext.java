@@ -23,6 +23,7 @@ import io.debezium.connector.yugabytedb.spi.OffsetState;
 import io.debezium.pipeline.source.snapshot.incremental.IncrementalSnapshotContext;
 import io.debezium.pipeline.source.snapshot.incremental.SignalBasedIncrementalSnapshotContext;
 import io.debezium.pipeline.spi.OffsetContext;
+import io.debezium.pipeline.spi.Offsets;
 import io.debezium.pipeline.txmetadata.TransactionContext;
 import io.debezium.relational.TableId;
 import io.debezium.schema.DataCollectionId;
@@ -72,13 +73,14 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         this.incrementalSnapshotContext = incrementalSnapshotContext;
     }
 
-    public YugabyteDBOffsetContext(Map<YBPartition, YugabyteDBOffsetContext> previousOffsets,
+    public YugabyteDBOffsetContext(Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets,
                                    YugabyteDBConnectorConfig config) {
         this.tabletSourceInfo = new ConcurrentHashMap();
         this.sourceInfo = new SourceInfo(config);
         this.sourceInfoSchema = sourceInfo.schema();
 
-        for (Map.Entry<YBPartition, YugabyteDBOffsetContext> context : previousOffsets.entrySet()) {
+        for (Map.Entry<YBPartition, YugabyteDBOffsetContext> context :
+                previousOffsets.getOffsets().entrySet()) {
             YugabyteDBOffsetContext c = context.getValue();
             if (c != null) {
                 this.lastCompletelyProcessedLsn = c.lastCompletelyProcessedLsn;
