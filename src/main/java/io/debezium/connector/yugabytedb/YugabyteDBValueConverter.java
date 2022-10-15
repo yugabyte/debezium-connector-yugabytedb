@@ -203,7 +203,7 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
             case PgOid.NUM_RANGE_OID:
             case PgOid.INT8RANGE_OID:
             case PgOid.ENUM_OID:
-            case PgOid.UDT_OID:
+            case PgOid.RECORD_OID:
                 return SchemaBuilder.string();
             case PgOid.UUID:
                 return Uuid.builder();
@@ -394,7 +394,7 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
             case PgOid.NUM_RANGE_OID:
             case PgOid.INT8RANGE_OID:
             case PgOid.ENUM_OID:
-            case PgOid.UDT_OID:
+            case PgOid.RECORD_OID:
                 return data -> convertString(column, fieldDefn, data);
             case PgOid.POINT:
                 return data -> convertPoint(column, fieldDefn, data);
