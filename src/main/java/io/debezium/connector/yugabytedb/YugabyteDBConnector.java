@@ -305,12 +305,10 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             throw new DebeziumException("The tables provided in table.include.list do not exist");
         }
 
-        // todo Vaibhav: add the relevant changes to use the new APIs to fetch the tablet IDs
         this.tabletIds = new ArrayList<>();
         try {
             for (String tableId : tableIds) {
                 YBTable table = ybClient.openTableByUUID(tableId);
-                // Vaibhav --> these are the relevant changes talked about in the above mentioned todo
                 GetTabletListToPollForCDCResponse resp = ybClient.getTabletListToPollForCdc(
                     table, this.yugabyteDBConnectorConfig.streamId(), tableId);
                 for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {

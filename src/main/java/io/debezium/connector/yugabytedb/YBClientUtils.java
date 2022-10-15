@@ -21,6 +21,7 @@ import org.yb.client.YBTable;
 import org.yb.master.MasterDdlOuterClass;
 
 import io.debezium.DebeziumException;
+import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.relational.TableId;
 
 import org.yb.master.MasterReplicationOuterClass;
@@ -191,6 +192,22 @@ public class YBClientUtils {
       }
     }
 
+    return null;
+  }
+
+  public static OpId getOpIdFromGetTabletListResponse(GetTabletListToPollForCDCResponse resp, String tabletId) {
+    List<TabletCheckpointPair> tabletCheckpointPairs = resp.getTabletCheckpointPairList();
+    for (TabletCheckpointPair p : tabletCheckpointPairs) {
+      if (p.getTabletId().toStringUtf8().equals(tabletId)) {
+        return new OpId((long) p.getCdcSdkCheckpoint().getTerm(),
+                        (long) p.getCdcSdkCheckpoint().getIndex(),
+                        p.getCdcSdkCheckpoint().getKey().toByteArray(),
+                        p.getCdcSdkCheckpoint().getWriteId(),
+                        p.getCdcSdkCheckpoint().getSnapshotTime());
+      }
+    }
+
+    // Return null if no match is found, ideally this shouldn't happen in any case
     return null;
   }
 }

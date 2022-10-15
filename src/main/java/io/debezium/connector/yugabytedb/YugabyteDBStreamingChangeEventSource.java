@@ -240,6 +240,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
 
         Map<String, YBTable> tableIdToTable = new HashMap<>();
+        Map<String, GetTabletListToPollForCDCResponse> tabletListResponse = new HashMap<>();
         String streamId = connectorConfig.streamId();
 
         LOGGER.info("Using DB stream ID: " + streamId);
@@ -249,6 +250,10 @@ public class YugabyteDBStreamingChangeEventSource implements
             LOGGER.debug("Table UUID: " + tIds);
             YBTable table = this.syncClient.openTableByUUID(tId);
             tableIdToTable.put(tId, table);
+
+            GetTabletListToPollForCDCResponse resp = 
+                this.syncClient.getTabletListToPollForCdc(table, streamId, tId);
+            tabletListResponse.put(tId, resp);
         }
 
         LOGGER.debug("The init tabletSourceInfo before updating is " + offsetContext.getTabletSourceInfo());
@@ -257,7 +262,9 @@ public class YugabyteDBStreamingChangeEventSource implements
         Map<String, Boolean> schemaNeeded = new HashMap<>();
         for (Pair<String, String> entry : tabletPairList) {
             // entry.getValue() will give the tabletId
-            offsetContext.initSourceInfo(entry.getValue(), this.connectorConfig);
+            OpId opId = YBClientUtils.getOpIdFromGetTabletListResponse(
+                            tabletListResponse.get(entry.getKey()), entry.getValue());
+            offsetContext.initSourceInfo(entry.getValue(), this.connectorConfig, opId);
             schemaNeeded.put(entry.getValue(), Boolean.TRUE);
         }
 
@@ -451,16 +458,9 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                     maybeWarnAboutGrowingWalBacklog(dispatched);
                                 }
-                            }
-                            // todo Vaibhav: change this IOException to the exact exception for handling tablet split once the code lands
-                            catch (CDCErrorException cdcException) {
-                                // This will cause the connector to restart
-                                errorHandler.setProducerThrowable(cdcException);
-                            }
-                            catch (InterruptedException ie) {
+                            } catch (InterruptedException ie) {
                                 ie.printStackTrace();
-                            }
-                            catch (SQLException se) {
+                            } catch (SQLException se) {
                                 se.printStackTrace();
                             }
                         }
@@ -489,8 +489,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // has succeeded
                     retryCount = 0;
                 }
-            }
-            catch (Exception e) {
+            } catch (CDCErrorException cdcException) {
+                // This will cause the connector to restart
+                LOGGER.info("Encountered CDCErrorException, possibly indicating a tablet split", cdcException);
+                errorHandler.setProducerThrowable(cdcException);
+            } catch (Exception e) {
                 ++retryCount;
                 // If the retry limit is exceeded, log an error with a description and throw the exception.
                 if (retryCount > connectorConfig.maxConnectorRetries()) {
