@@ -286,6 +286,14 @@ public class YugabyteDBStreamingChangeEventSource implements
             bootstrapTabletWithRetry(tabletPairList);
         }
 
+        // Launch a thread to poll for the tables.
+        // TODO: Find a different place to launch this thread, otherwise we will end up with
+        // as many threads as the number of tasks.
+        Thread tablePollerThread = new Thread(new YugabyteDBTablePoller(this.connectorConfig,
+                                                                        this.errorHandler,
+                                                                        this.syncClient));
+        tablePollerThread.run();
+
         short retryCount = 0;
         while (context.isRunning() && retryCount <= connectorConfig.maxConnectorRetries()) {
             try {
@@ -309,7 +317,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                       YBTable table = tableIdToTable.get(entry.getKey());
 
-                      LOGGER.debug("Going to fetch for tablet " + tabletId + " from OpId " + cp + " " +
+                      LOGGER.info("Going to fetch for tablet " + tabletId + " from OpId " + cp + " " +
                         "table " + table.getName() + " Running:" + context.isRunning());
 
                       // Check again if the thread has been interrupted.
