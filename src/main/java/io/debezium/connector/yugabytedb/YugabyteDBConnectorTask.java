@@ -31,6 +31,7 @@ import io.debezium.connector.common.OffsetReader;
 import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection.YugabyteDBValueConverterBuilder;
+import io.debezium.connector.yugabytedb.metrics.YugabyteDBMetricsFactory;
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.pipeline.ChangeEventSourceCoordinator;
 import io.debezium.pipeline.DataChangeEvent;
@@ -226,7 +227,7 @@ public class YugabyteDBConnectorTask
                             null/* slotCreatedInfo */,
                             null/* slotInfo */,
                             queue),
-                    new DefaultChangeEventSourceMetricsFactory(),
+                    new YugabyteDBMetricsFactory(previousOffsets.getPartitions()),
                     dispatcher,
                     schema,
                     snapshotter,
