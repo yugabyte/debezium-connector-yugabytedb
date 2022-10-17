@@ -190,7 +190,7 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                         }
                     }
 
-                    while (!merger.isEmpty()) {
+                    while (merger.peek().isPresent()) {
                         LOGGER.info("Merger has records");
                         Message message = merger.poll();
                         CdcService.RowMessage m = message.record.getRowMessage();
