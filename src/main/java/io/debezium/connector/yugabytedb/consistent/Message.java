@@ -49,6 +49,7 @@ public class Message implements Comparable<Message> {
                 ", recordTime=" + recordTime +
                 ", snapShotTime=" + snapShotTime +
                 ", sequence=" + sequence +
+                ", op=" + this.record.getRowMessage().getOp().name() +
                 '}';
     }
 
