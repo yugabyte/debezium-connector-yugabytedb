@@ -21,12 +21,12 @@ import org.yb.master.MasterReplicationOuterClass.GetCDCDBStreamInfoResponsePB.Ta
 public class YugabyteDBTablePoller extends Thread {
   private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBTablePoller.class);
   private final short MAX_RETRY_COUNT = 5;
-  private final long pollMs = 5000L;
 
   private final YugabyteDBConnectorConfig connectorConfig;
   private final ConnectorContext connectorContext;
   private final YBClient ybClient;
   private final CountDownLatch shutdownLatch;
+  private final long pollMs;
 
   private short retryCount = 0;
   
@@ -39,6 +39,7 @@ public class YugabyteDBTablePoller extends Thread {
     this.connectorContext = connectorContext;
     this.ybClient = YBClientUtils.getYbClient(connectorConfig);
     this.shutdownLatch = new CountDownLatch(1);
+    this.pollMs = connectorConfig.newTablePollIntervalMs();
   }
 
   @Override

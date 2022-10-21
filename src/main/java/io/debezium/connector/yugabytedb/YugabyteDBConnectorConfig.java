@@ -511,6 +511,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final int DEFAULT_MAX_CONNECTOR_RETRIES = 5;
     protected static final long DEFAULT_CONNECTOR_RETRY_DELAY_MS = 60000;
     protected static final boolean DEFAULT_LIMIT_ONE_POLL_PER_ITERATION = false;
+    protected static final long DEFAULT_NEW_TABLE_POLL_INTERVAL_MS = 5000L;
 
     @Override
     public JdbcConfiguration getJdbcConfig() {
@@ -859,6 +860,14 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withValidation(Field::isBoolean)
             .withDescription("Whether or not to automatically fetch and add new tables to the connector.");
 
+    public static final Field NEW_TABLE_POLL_INTERVAL_MS = Field.create("new.table.poll.interval.ms")
+            .withDisplayName("New table poll interval ms")
+            .withImportance(Importance.MEDIUM)
+            .withType(Type.LONG)
+            .withDefault(DEFAULT_NEW_TABLE_POLL_INTERVAL_MS)
+            .withValidation(Field::isNonNegativeLong)
+            .withDescription("Interval at which the poller thread should poll to check if there are any new tables added to the stream");
+
     public static final Field SNAPSHOT_MODE_CLASS = Field.create("snapshot.custom.class")
             .withDisplayName("Snapshot Mode Custom Class")
             .withType(Type.STRING)
@@ -1166,6 +1175,10 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return getConfig().getBoolean(AUTO_ADD_NEW_TABLES);
     }
 
+    protected long newTablePollIntervalMs() {
+        return getConfig().getLong(NEW_TABLE_POLL_INTERVAL_MS);
+    }
+
     /*
      * protected Duration xminFetchInterval() {
      * return Duration.ofMillis(getConfig().getLong(PostgresConnectorConfig.XMIN_FETCH_INTERVAL));
@@ -1209,7 +1222,8 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     STATUS_UPDATE_INTERVAL_MS,
                     TCP_KEEPALIVE,
                     MAX_NUM_TABLETS,
-                    AUTO_ADD_NEW_TABLES)
+                    AUTO_ADD_NEW_TABLES,
+                    NEW_TABLE_POLL_INTERVAL_MS)
             .events(
                     INCLUDE_UNKNOWN_DATATYPES)
             .connector(
