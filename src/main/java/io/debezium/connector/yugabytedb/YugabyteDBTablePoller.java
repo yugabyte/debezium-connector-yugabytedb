@@ -2,6 +2,7 @@ package io.debezium.connector.yugabytedb;
 
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.kafka.connect.connector.ConnectorContext;
 import org.apache.kafka.connect.errors.ConnectException;
@@ -20,6 +21,7 @@ import org.yb.master.MasterReplicationOuterClass.GetCDCDBStreamInfoResponsePB.Ta
 public class YugabyteDBTablePoller extends Thread {
   private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBTablePoller.class);
   private final short MAX_RETRY_COUNT = 5;
+  private final long pollMs = 5000L;
 
   private final YugabyteDBConnectorConfig connectorConfig;
   private final ConnectorContext connectorContext;
@@ -45,6 +47,16 @@ public class YugabyteDBTablePoller extends Thread {
     while (shutdownLatch.getCount() > 0) {
       if (areThereNewTablesInStream()) {
         this.connectorContext.requestTaskReconfiguration();
+      }
+
+      try {
+        LOGGER.debug("Waiting for {} ms to poll again for new tables", pollMs);
+        boolean shuttingDown = shutdownLatch.await(pollMs, TimeUnit.MILLISECONDS);
+        if (shuttingDown) {
+          return;
+        }
+      } catch (InterruptedException ie) {
+        LOGGER.error("Unexpected interrupted exception, ignoring", ie);
       }
     }
   }
