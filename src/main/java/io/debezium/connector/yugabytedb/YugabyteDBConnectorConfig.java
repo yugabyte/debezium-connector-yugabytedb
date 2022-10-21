@@ -851,6 +851,13 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     + "'exported' deprecated, use 'initial' instead; "
                     + "'custom' to specify a custom class with 'snapshot.custom_class' which will be loaded and used to determine the snapshot, see docs for more details.");
 
+    public static final Field AUTO_ADD_NEW_TABLES = Field.create("auto.add.new.tables")
+            .withDisplayName("Auto add new tables")
+            .withImportance(Importance.LOW)
+            .withType(Type.BOOLEAN)
+            .withDefault(true)
+            .withValidation(Field::isBoolean)
+            .withDescription("Whether or not to automatically fetch and add new tables to the connector.");
 
     public static final Field SNAPSHOT_MODE_CLASS = Field.create("snapshot.custom.class")
             .withDisplayName("Snapshot Mode Custom Class")
@@ -1155,6 +1162,10 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return this.databaseFilter;
     }
 
+    protected boolean autoAddNewTables() {
+        return getConfig().getBoolean(AUTO_ADD_NEW_TABLES);
+    }
+
     /*
      * protected Duration xminFetchInterval() {
      * return Duration.ofMillis(getConfig().getLong(PostgresConnectorConfig.XMIN_FETCH_INTERVAL));
@@ -1197,7 +1208,8 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     SSL_SOCKET_FACTORY,
                     STATUS_UPDATE_INTERVAL_MS,
                     TCP_KEEPALIVE,
-                    MAX_NUM_TABLETS)
+                    MAX_NUM_TABLETS,
+                    AUTO_ADD_NEW_TABLES)
             .events(
                     INCLUDE_UNKNOWN_DATATYPES)
             .connector(

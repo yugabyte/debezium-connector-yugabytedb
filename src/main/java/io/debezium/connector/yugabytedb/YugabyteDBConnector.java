@@ -43,12 +43,16 @@ import io.debezium.relational.RelationalDatabaseConnectorConfig;
 public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBConnector.class);
+    private static final long MAX_TIMEOUT = 10000L;
+
     private Map<String, String> props;
     private YBClient ybClient;
     private volatile YugabyteDBConnection connection;
     private Set<String> tableIds;
     private List<Pair<String, String>> tabletIds;
     private YugabyteDBConnectorConfig yugabyteDBConnectorConfig;
+
+    private YugabyteDBTablePoller tableMonitorThread;
 
     public YugabyteDBConnector() {
     }
@@ -69,6 +73,11 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         LOGGER.debug("Props " + props);
         Configuration config = Configuration.from(this.props);
         this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
+        
+        tableMonitorThread = new YugabyteDBTablePoller(yugabyteDBConnectorConfig, context);
+        if (this.yugabyteDBConnectorConfig.autoAddNewTables()) {
+            tableMonitorThread.start();
+        }
     }
 
     @Override
@@ -195,6 +204,14 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
     @Override
     public void stop() {
+        LOGGER.info("Stopping table monitoring thread");
+        tableMonitorThread.shutdown();
+        try {
+            tableMonitorThread.join(MAX_TIMEOUT);
+        } catch (InterruptedException ie) {
+            // Ignore, shouldn't be interrupted.
+        }
+
         this.props = null;
         if (this.ybClient != null) {
           try {

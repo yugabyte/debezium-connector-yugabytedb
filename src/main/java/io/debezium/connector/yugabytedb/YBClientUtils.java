@@ -12,6 +12,7 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.AsyncYBClient;
 import org.yb.client.GetDBStreamInfoResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
@@ -185,5 +186,22 @@ public class YBClientUtils {
     }
 
     return null;
+  }
+
+  /**
+   * Get a {@link YBClient} instance to perform client operations on YugabyteDB server
+   * @param connectorConfig configuration for the connector
+   * @return a YBClient instance
+   */
+  public static YBClient getYbClient(YugabyteDBConnectorConfig connectorConfig) {
+    AsyncYBClient asyncClient = new AsyncYBClient.AsyncYBClientBuilder(connectorConfig.masterAddresses())
+                                  .defaultAdminOperationTimeoutMs(connectorConfig.adminOperationTimeoutMs())
+                                  .defaultOperationTimeoutMs(connectorConfig.operationTimeoutMs())
+                                  .defaultSocketReadTimeoutMs(connectorConfig.socketReadTimeoutMs())
+                                  .numTablets(connectorConfig.maxNumTablets())
+                                  .sslCertFile(connectorConfig.sslRootCert())
+                                  .sslClientCertFiles(connectorConfig.sslClientCert(), connectorConfig.sslClientKey())
+                                  .build();
+    return new YBClient(asyncClient);
   }
 }
