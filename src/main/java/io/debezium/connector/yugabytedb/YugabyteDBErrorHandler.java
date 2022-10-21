@@ -33,13 +33,6 @@ public class YugabyteDBErrorHandler extends ErrorHandler {
             return true;
         }
 
-        // This condition will be hit when the poller thread indicates that a new table has been
-        // found to be associated with the provided stream ID.
-        if (throwable instanceof NewTableFoundException) {
-            LOGGER.info("Received a throwable of type NewTableFoundException, connector will be restarted");
-            return true;
-        }
-
         return false;
     }
 }
