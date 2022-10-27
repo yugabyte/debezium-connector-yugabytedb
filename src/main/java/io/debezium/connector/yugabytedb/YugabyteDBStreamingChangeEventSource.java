@@ -19,11 +19,15 @@ import io.debezium.util.Clock;
 import io.debezium.util.DelayStrategy;
 import io.debezium.util.ElapsedTimeStrategy;
 import io.debezium.util.Metronome;
+
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.postgresql.core.BaseConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
+import org.yb.cdc.CdcService.TabletCheckpointPair;
+import org.yb.cdc.CdcService.CDCErrorPB.Code;
 import org.yb.client.*;
 
 import java.io.IOException;
@@ -324,9 +328,26 @@ public class YugabyteDBStreamingChangeEventSource implements
                         LOGGER.info("Connector has been stopped");
                         break;
                       }
-                        GetChangesResponse response = this.syncClient.getChangesCDCSDK(
-                                table, streamId, tabletId,
-                                cp.getTerm(), cp.getIndex(), cp.getKey(), cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId));
+                      
+                      GetChangesResponse response = null;
+                      try {
+                        response = this.syncClient.getChangesCDCSDK(
+                            table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
+                            cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId));
+                      } catch (CDCErrorException cdcException) {
+                        // Check if exception indicates a tablet split.
+                        if (cdcException.getCDCError().getCode() == Code.TABLET_SPLIT) {
+                            LOGGER.info("Encountered a tablet split, handling it gracefully");
+                            if (LOGGER.isDebugEnabled()) {
+                                cdcException.printStackTrace();
+                            }
+
+                            handleTabletSplit(cdcException, tabletPairList, offsetContext, streamId, schemaNeeded);
+                            continue;
+                        } else {
+                            throw cdcException;
+                        }
+                      }
 
                         LOGGER.debug("Processing {} records from getChanges call",
                                 response.getResp().getCdcSdkProtoRecordsList().size());
@@ -489,10 +510,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // has succeeded
                     retryCount = 0;
                 }
-            } catch (CDCErrorException cdcException) {
-                // This will cause the connector to restart
-                LOGGER.info("Encountered CDCErrorException, possibly indicating a tablet split", cdcException);
-                errorHandler.setProducerThrowable(cdcException);
             } catch (Exception e) {
                 ++retryCount;
                 // If the retry limit is exceeded, log an error with a description and throw the exception.
@@ -642,5 +659,125 @@ public class YugabyteDBStreamingChangeEventSource implements
     @FunctionalInterface
     public static interface PgConnectionSupplier {
         BaseConnection get() throws SQLException;
+    }
+
+    /**
+     * Get the entry from the tablet pair list corresponding to the given tablet ID. This function
+     * is helpful at the time of tablet split where we know the tablet ID of the tablet which has
+     * been split and now we want to remove the corresponding pair from the polling list of
+     * table-tablet pairs.
+     * @param tabletPairList list of table-tablet pair to poll from
+     * @param tabletId the tablet ID to match with
+     * @return a pair of table-tablet IDs which matches the provided tablet ID
+     */
+    private Pair<String, String> getEntryToDelete(List<Pair<String,String>> tabletPairList, String tabletId) {
+        for (Pair<String, String> entry : tabletPairList) {
+            if (entry.getValue().equals(tabletId)) {
+                return entry;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Parse the message from the {@link CDCErrorException} to obtain the tablet ID of the tablet.
+     * which has been split
+     * @param message the exception message to parse
+     * @return the tablet UUID of the tablet which has been split
+     */
+    private String getTabletIdFromSplitMessage(String message) {
+        // Note that the message is of the form: Tablet Split detected on <tablet-ID>
+        // So the last element is the tablet ID to be split.
+        String[] splitWords = message.split("\\s+");
+        return splitWords[splitWords.length - 1];
+    }
+
+    /**
+     * Add the tablet from the provided tablet checkpoint pair to the list of tablets to poll from
+     * if it is not present there
+     * @param tabletPairList the list of tablets to poll from - list having Pair<tableId, tabletId>
+     * @param pair the tablet checkpoint pair
+     * @param tableId table UUID of the table to which the tablet belongs
+     * @param offsetContext the offset context having the lsn info
+     * @param schemaNeeded map of flags indicating whether we need the schema for a tablet or not
+     * @return true if the tablet is added to the list of tablets to poll from, false otherwise
+     */
+    private boolean addTabletIfNotPresent(List<Pair<String,String>> tabletPairList,
+                                          TabletCheckpointPair pair,
+                                          String tableId,
+                                          YugabyteDBOffsetContext offsetContext,
+                                          Map<String, Boolean> schemaNeeded) {
+        String tabletId = pair.getTabletId().toStringUtf8();
+        ImmutablePair<String, String> p =
+          new ImmutablePair<String, String>(tableId, tabletId);
+
+        if (!tabletPairList.contains(p)) {
+            tabletPairList.add(p);
+
+            offsetContext.initSourceInfo(tabletId,
+                                         this.connectorConfig,
+                                         OpId.from(pair.getCdcSdkCheckpoint()));
+
+            LOGGER.info("Initialized offset context for tablet {} with OpId {}", tabletId, OpId.from(pair.getCdcSdkCheckpoint()));
+            
+            // Add the flag to indicate that we do not need the schema from this tablet again.
+            schemaNeeded.put(tabletId, Boolean.FALSE);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private void handleTabletSplit(CDCErrorException cdcErrorException,
+                                   List<Pair<String,String>> tabletPairList,
+                                   YugabyteDBOffsetContext offsetContext,
+                                   String streamId,
+                                   Map<String, Boolean> schemaNeeded) throws Exception {
+        // Obtain the tablet ID of the splitted tablet from the message.
+        String splitTabletId = getTabletIdFromSplitMessage(cdcErrorException.getMessage());
+        LOGGER.info("Removing the tablet {} from the list to get the changes since it has been split", splitTabletId);
+
+        Pair<String, String> entryToBeDeleted = getEntryToDelete(tabletPairList, splitTabletId);
+        Objects.requireNonNull(entryToBeDeleted);
+        
+        String tableId = entryToBeDeleted.getKey();
+
+        // Remove the entry with the tablet which has been split.
+        boolean removeSuccessful = tabletPairList.remove(entryToBeDeleted);
+
+        // Remove the corresponding entry to indicate that we don't need the schema now.
+        schemaNeeded.remove(entryToBeDeleted.getValue());
+        
+        // Log a warning if the element cannot be removed from the list.
+        if (!removeSuccessful) {
+            LOGGER.warn("Failed to remove the entry table {} - tablet {} from tablet pair list after split, will try once again", entryToBeDeleted.getKey(), entryToBeDeleted.getValue());
+
+            if (!tabletPairList.remove(entryToBeDeleted)) {
+                String exceptionMessageFormat = "Failed to remove the entry table {} - tablet {} from the tablet pair list after split";
+                throw new RuntimeException(String.format(exceptionMessageFormat, entryToBeDeleted.getKey(), entryToBeDeleted.getValue()));
+            }
+        }
+
+        // Add the new tablets to the tablet pair list.
+        GetTabletListToPollForCDCResponse getTabletListResponse =
+          this.syncClient.getTabletListToPollForCdc(
+              this.syncClient.openTableByUUID(tableId),
+              streamId,
+              tableId);
+
+        // TODO: Currently there is no API to check and receive only the child tablets of a given
+        // tablet, but if in future we have something available, change the below loop logic to use
+        // that one instead.
+        for (TabletCheckpointPair pair : getTabletListResponse.getTabletCheckpointPairList()) {
+            boolean isAdditionSuccessful = addTabletIfNotPresent(tabletPairList, pair, tableId, offsetContext, schemaNeeded);
+
+            if (!isAdditionSuccessful) {
+                LOGGER.info("Unable to add the pair table {} - tablet {} to the list, the data from this tablet will be missed", tableId, pair.getTabletId().toStringUtf8());
+            } else {
+                LOGGER.debug("Successfully added new pair with table {} - tablet {} to the list", tableId, pair.getTabletId().toStringUtf8());
+            }
+        }
     }
 }

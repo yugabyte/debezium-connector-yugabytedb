@@ -3,6 +3,8 @@ package io.debezium.connector.yugabytedb.connection;
 import java.util.Arrays;
 import java.util.Base64;
 
+import org.yb.cdc.CdcService.CDCSDKCheckpointPB;
+
 import com.google.common.base.Objects;
 
 public class OpId implements Comparable<OpId> {
@@ -112,5 +114,11 @@ public class OpId implements Comparable<OpId> {
 
     public static OpId from(long term, long index) {
         return new OpId(term, index, "".getBytes(), 0, 0);
+    }
+
+    public static OpId from(CDCSDKCheckpointPB checkpoint) {
+        return new OpId(checkpoint.getTerm(), checkpoint.getIndex(),
+                        checkpoint.getKey().toByteArray(), checkpoint.getWriteId(),
+                        checkpoint.getSnapshotTime());
     }
 }

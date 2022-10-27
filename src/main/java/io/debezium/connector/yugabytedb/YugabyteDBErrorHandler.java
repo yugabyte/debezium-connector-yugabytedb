@@ -24,15 +24,6 @@ public class YugabyteDBErrorHandler extends ErrorHandler {
 
     @Override
     protected boolean isRetriable(Throwable throwable) {
-        // Error throwable class indicating tablet split
-        if (throwable instanceof CDCErrorException) {
-            CDCErrorException errorException = (CDCErrorException) throwable;
-            if (errorException.getCDCError().getCode().equals(
-                    org.yb.cdc.CdcService.CDCErrorPB.Code.TABLET_SPLIT)) {
-                return true;
-            }
-        }
-
         if (throwable instanceof PSQLException
                 && (throwable.getMessage().contains("Database connection failed when writing to copy")
                         || throwable.getMessage().contains("Database connection failed when reading from copy"))
