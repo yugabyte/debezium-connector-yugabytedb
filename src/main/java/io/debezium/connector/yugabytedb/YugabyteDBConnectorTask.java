@@ -148,8 +148,9 @@ public class YugabyteDBConnectorTask
         this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector);
         // get the tablet ids and load the offsets
 
-        final Map<YBPartition, YugabyteDBOffsetContext> previousOffsets = getPreviousOffsetss(
-                new YugabyteDBPartition.Provider(connectorConfig),
+        final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets = 
+            getPreviousOffsetsFromProviderAndLoader(
+                new YBPartition.Provider(connectorConfig),
                 new YugabyteDBOffsetContext.Loader(connectorConfig));
         final Clock clock = Clock.system();
 
@@ -208,7 +209,7 @@ public class YugabyteDBConnectorTask
                     jdbcConnection);
 
             YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
-                    Offsets.of(new YBPartition(), context) ,
+                    previousOffsets,
                     errorHandler,
                     YugabyteDBConnector.class,
                     connectorConfig,
@@ -253,6 +254,34 @@ public class YugabyteDBConnectorTask
         boolean found = false;
         for (YBPartition partition : partitions) {
             YugabyteDBOffsetContext offset = offsets.get(partition);
+
+            if (offset != null) {
+                found = true;
+                LOGGER.info("Found previous partition offset {}: {}", partition, offset);
+            }
+        }
+
+        if (!found) {
+            LOGGER.info("No previous offsets found");
+        }
+
+        return offsets;
+    }
+
+    Offsets<YBPartition, YugabyteDBOffsetContext> getPreviousOffsetsFromProviderAndLoader(
+        Partition.Provider<YBPartition> provider,
+        OffsetContext.Loader<YugabyteDBOffsetContext> loader) {
+        Set<YBPartition> partitions = provider.getPartitions();
+        LOGGER.debug("The size of partitions is " + partitions.size());
+        OffsetReader<YBPartition, YugabyteDBOffsetContext,
+                     OffsetContext.Loader<YugabyteDBOffsetContext>> reader = new OffsetReader<>(
+                        context.offsetStorageReader(), loader);
+        Offsets<YBPartition, YugabyteDBOffsetContext> offsets =
+            Offsets.of(reader.offsets(partitions));
+
+        boolean found = false;
+        for (YBPartition partition : partitions) {
+            YugabyteDBOffsetContext offset = offsets.getOffsets().get(partition); //offsets.get(partition);
 
             if (offset != null) {
                 found = true;
