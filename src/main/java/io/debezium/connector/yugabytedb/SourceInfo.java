@@ -95,7 +95,6 @@ public final class SourceInfo extends BaseSourceInfo {
     private String tableName;
     private String tabletId;
 
-    // todo Vaibhav: maybe add another constructor in order to initialize the SourceContext properly
     protected SourceInfo(YugabyteDBConnectorConfig connectorConfig) {
         super(connectorConfig);
         this.dbName = connectorConfig.databaseName();
