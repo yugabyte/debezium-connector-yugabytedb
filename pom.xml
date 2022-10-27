@@ -46,8 +46,7 @@
         <version.kafka>3.2.1</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
-        <!-- <version.ybclient>0.8.21-20220715.193438-1</version.ybclient> -->
-        <version.ybclient>0.8.28-SNAPSHOT</version.ybclient>
+        <version.ybclient>0.8.32-20221024.104302-1</version.ybclient>
 
         <!--
           Specify the properties that will be used for setting up the integration tests' Docker container.
