@@ -28,7 +28,7 @@ public class Merger {
         }
         queue.add(message);
         mergeSlots.get(message.tablet).add(message);
-        LOGGER.info("Add message {}", message);
+        LOGGER.debug("Add message {}", message);
     }
 
     public Long streamSafeTime() {
@@ -41,17 +41,21 @@ public class Merger {
         Optional<Message> peeked = message != null && message.commitTime < this.streamSafeTime()
                 ? Optional.of(message) : Optional.empty();
 
-        LOGGER.info("Stream Safe Time {}, Top message is {} ", this.streamSafeTime(), peeked);
+        if (message != null && message.commitTime < this.streamSafeTime()) {
+            LOGGER.debug("Stream Safe Time {}, Top message is {} ", this.streamSafeTime(), peeked);
+        }
 
         return peeked;
     }
 
     public Message poll() {
         Message message = Objects.requireNonNull(queue.poll());
-        LOGGER.info("Message is: {}", message);
-        LOGGER.info("Records for tablet: {}", mergeSlots.get(message.tablet).size());
-        mergeSlots.get(message.tablet).removeIf(item -> item.compareTo(message) == 0);
-        LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(message.tablet).size());
+        if (message.record.getRowMessage().getOp() != CdcService.RowMessage.Op.DDL) {
+            LOGGER.info("Message is: {}", message);
+            LOGGER.info("Records for tablet: {}", mergeSlots.get(message.tablet).size());
+            mergeSlots.get(message.tablet).removeIf(item -> item.compareTo(message) == 0);
+            LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(message.tablet).size());
+        }
         return message;
     }
 
