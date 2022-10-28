@@ -341,7 +341,6 @@ public final class TestHelper {
     }
 
     protected static YugabyteYSQLContainer getYbContainer() {
-        // Waiting for the image for 2.14.4 or 2.14.5 to be published on DockerHub
         YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:2.14.4.0-b26");
         container.withPassword("yugabyte");
         container.withUsername("yugabyte");
