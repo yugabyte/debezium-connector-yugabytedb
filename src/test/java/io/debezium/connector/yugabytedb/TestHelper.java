@@ -35,6 +35,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.JdbcDatabaseContainer;
 import org.testcontainers.containers.YugabyteYSQLContainer;
+import org.testcontainers.utility.DockerImageName;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
@@ -340,7 +341,7 @@ public final class TestHelper {
     }
 
     protected static YugabyteYSQLContainer getYbContainer() {
-        YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:2.12.7.0-b27");
+        YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:2.14.4.0-b26");
         container.withPassword("yugabyte");
         container.withUsername("yugabyte");
         container.withDatabaseName("yugabyte");
@@ -368,7 +369,7 @@ public final class TestHelper {
         return new YBClient(asyncClient);
     }
 
-    protected static YBTable getTableUUID(YBClient syncClient, String tableName) throws Exception {
+    protected static YBTable getYbTable(YBClient syncClient, String tableName) throws Exception {
         ListTablesResponse resp = syncClient.getTablesList();
 
         for (TableInfo tableInfo : resp.getTableInfoList()) {
@@ -384,7 +385,7 @@ public final class TestHelper {
     public static String getNewDbStreamId(String namespaceName, String tableName) throws Exception {
         YBClient syncClient = getYbClient(MASTER_ADDRESS);
 
-        YBTable placeholderTable = getTableUUID(syncClient, tableName);
+        YBTable placeholderTable = getYbTable(syncClient, tableName);
 
         if (placeholderTable == null) {
             throw new NullPointerException("No table found with the name " + tableName);
@@ -545,5 +546,15 @@ public final class TestHelper {
                 config.hStoreHandlingMode(),
                 config.binaryHandlingMode(),
                 config.intervalHandlingMode());
+    }
+
+    // Function to introduce dummy wait conditions in tests
+    protected static void waitFor(Duration duration) {
+        Awaitility.await()
+            .pollDelay(duration)
+            .atMost(duration.plusSeconds(1))
+            .until(() -> {
+                return true;
+            });
     }
 }
