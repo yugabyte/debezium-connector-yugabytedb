@@ -342,7 +342,7 @@ public final class TestHelper {
 
     protected static YugabyteYSQLContainer getYbContainer() {
         // Waiting for the image for 2.14.4 or 2.14.5 to be published on DockerHub
-        YugabyteYSQLContainer container = new YugabyteYSQLContainer(DockerImageName.parse("quay.io/yugabyte/yugabyte:2.17.1.0-b87").asCompatibleSubstituteFor("yugabytedb/yugabyte"));
+        YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:2.14.4.0-b26");
         container.withPassword("yugabyte");
         container.withUsername("yugabyte");
         container.withDatabaseName("yugabyte");
@@ -370,7 +370,7 @@ public final class TestHelper {
         return new YBClient(asyncClient);
     }
 
-    protected static YBTable getTableUUID(YBClient syncClient, String tableName) throws Exception {
+    protected static YBTable getYbTable(YBClient syncClient, String tableName) throws Exception {
         ListTablesResponse resp = syncClient.getTablesList();
 
         for (TableInfo tableInfo : resp.getTableInfoList()) {
@@ -386,7 +386,7 @@ public final class TestHelper {
     public static String getNewDbStreamId(String namespaceName, String tableName) throws Exception {
         YBClient syncClient = getYbClient(MASTER_ADDRESS);
 
-        YBTable placeholderTable = getTableUUID(syncClient, tableName);
+        YBTable placeholderTable = getYbTable(syncClient, tableName);
 
         if (placeholderTable == null) {
             throw new NullPointerException("No table found with the name " + tableName);
@@ -547,5 +547,15 @@ public final class TestHelper {
                 config.hStoreHandlingMode(),
                 config.binaryHandlingMode(),
                 config.intervalHandlingMode());
+    }
+
+    // Function to introduce dummy wait conditions in tests
+    protected static void waitFor(Duration duration) {
+        Awaitility.await()
+            .pollDelay(duration)
+            .atMost(duration.plusSeconds(1))
+            .until(() -> {
+                return true;
+            });
     }
 }

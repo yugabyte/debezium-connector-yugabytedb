@@ -343,7 +343,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                             }
 
                             handleTabletSplit(cdcException, tabletPairList, offsetContext, streamId, schemaNeeded);
-                            continue;
+
+                            // Break out of the loop so that the iteration can start afresh on the modified list.
+                            break;
                         } else {
                             throw cdcException;
                         }
@@ -701,9 +703,8 @@ public class YugabyteDBStreamingChangeEventSource implements
      * @param tableId table UUID of the table to which the tablet belongs
      * @param offsetContext the offset context having the lsn info
      * @param schemaNeeded map of flags indicating whether we need the schema for a tablet or not
-     * @return true if the tablet is added to the list of tablets to poll from, false otherwise
      */
-    private boolean addTabletIfNotPresent(List<Pair<String,String>> tabletPairList,
+    private void addTabletIfNotPresent(List<Pair<String,String>> tabletPairList,
                                           TabletCheckpointPair pair,
                                           String tableId,
                                           YugabyteDBOffsetContext offsetContext,
@@ -723,11 +724,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             
             // Add the flag to indicate that we do not need the schema from this tablet again.
             schemaNeeded.put(tabletId, Boolean.FALSE);
-
-            return true;
         }
-
-        return false;
     }
 
     private void handleTabletSplit(CDCErrorException cdcErrorException,
@@ -771,13 +768,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         // tablet, but if in future we have something available, change the below loop logic to use
         // that one instead.
         for (TabletCheckpointPair pair : getTabletListResponse.getTabletCheckpointPairList()) {
-            boolean isAdditionSuccessful = addTabletIfNotPresent(tabletPairList, pair, tableId, offsetContext, schemaNeeded);
-
-            if (!isAdditionSuccessful) {
-                LOGGER.info("Unable to add the pair table {} - tablet {} to the list, the data from this tablet will be missed", tableId, pair.getTabletId().toStringUtf8());
-            } else {
-                LOGGER.debug("Successfully added new pair with table {} - tablet {} to the list", tableId, pair.getTabletId().toStringUtf8());
-            }
+            addTabletIfNotPresent(tabletPairList, pair, tableId, offsetContext, schemaNeeded);
         }
     }
 }
