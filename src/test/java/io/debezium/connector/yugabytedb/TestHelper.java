@@ -35,6 +35,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.JdbcDatabaseContainer;
 import org.testcontainers.containers.YugabyteYSQLContainer;
+import org.testcontainers.utility.DockerImageName;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
@@ -340,7 +341,8 @@ public final class TestHelper {
     }
 
     protected static YugabyteYSQLContainer getYbContainer() {
-        YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:2.12.7.0-b27");
+        // Waiting for the image for 2.14.4 or 2.14.5 to be published on DockerHub
+        YugabyteYSQLContainer container = new YugabyteYSQLContainer(DockerImageName.parse("quay.io/yugabyte/yugabyte:2.17.1.0-b87").asCompatibleSubstituteFor("yugabytedb/yugabyte"));
         container.withPassword("yugabyte");
         container.withUsername("yugabyte");
         container.withDatabaseName("yugabyte");

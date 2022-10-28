@@ -6,7 +6,6 @@
 package io.debezium.connector.yugabytedb;
 
 import org.postgresql.util.PSQLException;
-import org.yb.client.CDCErrorException;
 
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.ErrorHandler;
