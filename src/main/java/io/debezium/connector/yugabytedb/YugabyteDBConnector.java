@@ -20,6 +20,7 @@ import org.apache.kafka.connect.connector.Task;
 import org.apache.kafka.connect.util.ConnectorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.cdc.CdcService.TabletCheckpointPair;
 import org.yb.client.*;
 
 import com.google.common.net.HostAndPort;
@@ -308,9 +309,12 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         try {
             for (String tableId : tableIds) {
                 YBTable table = ybClient.openTableByUUID(tableId);
-                this.tabletIds.addAll(ybClient.getTabletUUIDs(table).stream()
-                        .map(tabletId -> new ImmutablePair<String, String>(tableId, tabletId))
-                        .collect(Collectors.toList()));
+                GetTabletListToPollForCDCResponse resp = ybClient.getTabletListToPollForCdc(
+                    table, this.yugabyteDBConnectorConfig.streamId(), tableId);
+                for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
+                    this.tabletIds.add(
+                        new ImmutablePair<String,String>(tableId, pair.getTabletId().toStringUtf8()));
+                }
             }
             Collections.sort(this.tabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));
         }
