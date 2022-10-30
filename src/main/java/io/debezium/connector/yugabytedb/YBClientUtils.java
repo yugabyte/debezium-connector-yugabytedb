@@ -211,7 +211,8 @@ public class YBClientUtils {
                                   .sslClientCertFiles(connectorConfig.sslClientCert(), connectorConfig.sslClientKey())
                                   .build();
     return new YBClient(asyncClient);
-
+  }
+  
   public static OpId getOpIdFromGetTabletListResponse(GetTabletListToPollForCDCResponse resp, String tabletId) {
     List<TabletCheckpointPair> tabletCheckpointPairs = resp.getTabletCheckpointPairList();
     for (TabletCheckpointPair p : tabletCheckpointPairs) {

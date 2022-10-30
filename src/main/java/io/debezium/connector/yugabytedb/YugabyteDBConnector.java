@@ -210,7 +210,11 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         try {
             tableMonitorThread.join(MAX_TIMEOUT);
         } catch (InterruptedException ie) {
-            // Ignore, shouldn't be interrupted.
+            // Ignore after a warning, shouldn't be interrupted.
+            LOGGER.warn("Table monitor thread interrupted by exception: {}", ie.getMessage());
+            if (LOGGER.isDebugEnabled()) {
+                ie.printStackTrace();
+            }
         }
 
         this.props = null;

@@ -1,8 +1,10 @@
 package io.debezium.connector.yugabytedb;
 
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import org.apache.kafka.connect.connector.ConnectorContext;
 import org.apache.kafka.connect.errors.ConnectException;
@@ -30,7 +32,7 @@ public class YugabyteDBTablePoller extends Thread {
 
   private short retryCount = 0;
   
-  private List<TableInfo> cachedTableInfoList = null;
+  private Set<TableInfo> cachedTableInfoSet = null;
 
   public YugabyteDBTablePoller(YugabyteDBConnectorConfig connectorConfig,
                                ConnectorContext connectorContext) {
@@ -75,20 +77,43 @@ public class YugabyteDBTablePoller extends Thread {
       // Reset the retry counter.
       retryCount = 0;
 
-      if (cachedTableInfoList == null) {
+      if (cachedTableInfoSet == null) {
         LOGGER.debug("Cached table list in the poller thread is null, initializing it now");
-        cachedTableInfoList = resp.getTableInfoList();
+        cachedTableInfoSet = resp.getTableInfoList().stream().collect(Collectors.toSet());
       } else {
-        if (cachedTableInfoList.size() != resp.getTableInfoList().size()) {
+        if (cachedTableInfoSet.size() != resp.getTableInfoList().size()) {
           // TODO: We can also check for a condition whether the new added tables are a part of the
           // include list (if they satisfy the regex criteria), if they don't satisfy then we
           // should not restart.
 
           String message = "Found {} new table(s), signalling context reconfiguration";
-          LOGGER.info(message, resp.getTableInfoList().size() - cachedTableInfoList.size());
+          LOGGER.info(message, resp.getTableInfoList().size() - cachedTableInfoSet.size());
+
+          Set<TableInfo> tableInfoSetFromResponse =
+            resp.getTableInfoList().stream().collect(Collectors.toSet());
+
+          if (LOGGER.isDebugEnabled()) {
+            Set<TableInfo> cachedSet = new HashSet<>(cachedTableInfoSet);
+            Set<TableInfo> responseSet = new HashSet<>(tableInfoSetFromResponse);
+
+            LOGGER.debug("Common tables between the cached table info set and the set received "
+                         + "from GetDBStreamInfoResponse:");
+            Set<TableInfo> intersection = new HashSet<>(cachedSet);
+            intersection.retainAll(responseSet);
+            intersection.forEach(tableInfo -> {
+              LOGGER.debug(tableInfo.getTableId().toStringUtf8());
+            });
+
+            LOGGER.debug("New tables as received in the GetDBStreamInfoResponse: ");
+            Set<TableInfo> difference = new HashSet<>(responseSet);
+            difference.removeAll(cachedSet);
+            difference.forEach(tableInfo -> {
+              LOGGER.debug(tableInfo.getTableId().toStringUtf8());
+            });
+          }
           
           // Update the cached table list.
-          cachedTableInfoList = resp.getTableInfoList();
+          cachedTableInfoSet = tableInfoSetFromResponse;
           
           return true;
         }
