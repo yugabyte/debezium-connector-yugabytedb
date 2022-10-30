@@ -12,11 +12,8 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-<<<<<<< HEAD
 import org.yb.client.AsyncYBClient;
-=======
 import org.yb.cdc.CdcService.TabletCheckpointPair;
->>>>>>> main
 import org.yb.client.GetDBStreamInfoResponse;
 import org.yb.client.GetTabletListToPollForCDCResponse;
 import org.yb.client.ListTablesResponse;
