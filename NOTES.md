@@ -23,6 +23,6 @@ This will use the `debezium/postgres:9.6` image to start a new container where t
 ## Release Process
 
 
-   mvn release:clean
-   mvn release:prepare -DignoreSnapshots=True -Darguments="-DskipTests -Ddocker.skip=True -Dmaven.javadoc.skip=true"
-   mvn release:perform -DignoreSnapshots=True -Darguments="-DskipTests -Ddocker.skip=True -Dmaven.javadoc.skip=true"
+    mvn release:clean
+    mvn release:prepare -DignoreSnapshots=True -Darguments="-DskipTests -Ddocker.skip=True -Dmaven.javadoc.skip=true"
+    mvn release:perform -DignoreSnapshots=True -Darguments="-DskipTests -Ddocker.skip=True -Dmaven.javadoc.skip=true"
