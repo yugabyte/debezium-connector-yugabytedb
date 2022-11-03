@@ -117,23 +117,18 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
 
     @Override
     protected Object[] getOldColumnValues() {
-
         try {
             switch (getOperation()) {
                 case CREATE:
                     return null;
-                case UPDATE:
-                    return null;
                 case READ:
                     return null;
-                // return columnValues(message.getOldTupleList(), tableId, true,
-                // message.hasTypeMetadata(), true, true);
+                case UPDATE:
                 default:
                     return columnValues(message.getOldTupleList(), tableId, true,
                             message.hasTypeMetadata(), false, true);
             }
-        }
-        catch (SQLException e) {
+        } catch (SQLException e) {
             throw new ConnectException(e);
         }
     }
@@ -145,8 +140,6 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
                 case CREATE:
                     return columnValues(message.getNewTupleList(), tableId, true, message.hasTypeMetadata(), false, false);
                 case UPDATE:
-                    // todo vaibhav: add scenario for the case of multiple columns being updated
-                    // return columnValues(message.getNewTupleList(), tableId, true, message.hasTypeMetadata(), false, false);
                     return updatedColumnValues(message.getNewTupleList(), tableId, true, message.hasTypeMetadata(), false, false);
                 case READ:
                     return columnValues(message.getNewTupleList(), tableId, true, message.hasTypeMetadata(), false, false);
@@ -207,7 +200,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         final Set<String> undeliveredToastableColumns = new HashSet<>(schema
                 .getToastableColumnsForTableId(table.id()));
         for (ReplicationMessage.Column column : columns) {
-            // DBZ-298 Quoted column names will be sent like that in messages,
+            // Quoted column names will be sent like that in messages,
             // but stored unquoted in the column names
             final String columnName = Strings.unquoteIdentifierPart(column.getName());
             undeliveredToastableColumns.remove(columnName);
