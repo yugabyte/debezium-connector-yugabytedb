@@ -12,13 +12,17 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.AsyncYBClient;
+import org.yb.cdc.CdcService.TabletCheckpointPair;
 import org.yb.client.GetDBStreamInfoResponse;
+import org.yb.client.GetTabletListToPollForCDCResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 import org.yb.master.MasterDdlOuterClass;
 
 import io.debezium.DebeziumException;
+import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.relational.TableId;
 
 import org.yb.master.MasterReplicationOuterClass;
@@ -125,17 +129,22 @@ public class YBClientUtils {
    * list in which each element is a pair like Pair<tableID, tabletId>
    * @param ybClient {@link YBClient} instance
    * @param tableIds set of table UUIDs for which to find the tablet UUIDs
+   * @param dbStreamId the stream ID for which we need to read the tablets
    * @return a list containing the pairs where tableID is mapped to tabletIDs
    */
   public static List<Pair<String, String>> getTabletListMappedToTableIds(YBClient ybClient, 
-                                                                         Set<String> tableIds) {
+                                                                         Set<String> tableIds,
+                                                                         String dbStreamId) {
     List<Pair<String, String>> tableToTabletIds = new ArrayList<>();
     try {
       for (String tableId : tableIds) {
           YBTable table = ybClient.openTableByUUID(tableId);
-          tableToTabletIds.addAll(ybClient.getTabletUUIDs(table).stream()
-                  .map(tabletId -> new ImmutablePair<String, String>(tableId, tabletId))
-                  .collect(Collectors.toList()));
+          GetTabletListToPollForCDCResponse resp = ybClient.getTabletListToPollForCdc(
+              table, dbStreamId, tableId);
+          for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
+            tableToTabletIds.add(
+                new ImmutablePair<String,String>(tableId, pair.getTabletId().toStringUtf8()));
+          }
       }
       Collections.sort(tableToTabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));
     }
@@ -184,6 +193,39 @@ public class YBClientUtils {
       }
     }
 
+    return null;
+  }
+
+  /**
+   * Get a {@link YBClient} instance to perform client operations on YugabyteDB server
+   * @param connectorConfig configuration for the connector
+   * @return a YBClient instance
+   */
+  public static YBClient getYbClient(YugabyteDBConnectorConfig connectorConfig) {
+    AsyncYBClient asyncClient = new AsyncYBClient.AsyncYBClientBuilder(connectorConfig.masterAddresses())
+                                  .defaultAdminOperationTimeoutMs(connectorConfig.adminOperationTimeoutMs())
+                                  .defaultOperationTimeoutMs(connectorConfig.operationTimeoutMs())
+                                  .defaultSocketReadTimeoutMs(connectorConfig.socketReadTimeoutMs())
+                                  .numTablets(connectorConfig.maxNumTablets())
+                                  .sslCertFile(connectorConfig.sslRootCert())
+                                  .sslClientCertFiles(connectorConfig.sslClientCert(), connectorConfig.sslClientKey())
+                                  .build();
+    return new YBClient(asyncClient);
+  }
+  
+  public static OpId getOpIdFromGetTabletListResponse(GetTabletListToPollForCDCResponse resp, String tabletId) {
+    List<TabletCheckpointPair> tabletCheckpointPairs = resp.getTabletCheckpointPairList();
+    for (TabletCheckpointPair p : tabletCheckpointPairs) {
+      if (p.getTabletId().toStringUtf8().equals(tabletId)) {
+        return new OpId((long) p.getCdcSdkCheckpoint().getTerm(),
+                        (long) p.getCdcSdkCheckpoint().getIndex(),
+                        p.getCdcSdkCheckpoint().getKey().toByteArray(),
+                        p.getCdcSdkCheckpoint().getWriteId(),
+                        p.getCdcSdkCheckpoint().getSnapshotTime());
+      }
+    }
+
+    // Return null if no match is found, ideally this shouldn't happen in any case
     return null;
   }
 }
