@@ -209,6 +209,8 @@ public class YugabyteDBConnectorTask
                     schemaNameAdjuster,
                     jdbcConnection);
 
+
+            String taskId = config.getString(YugabyteDBConnectorConfig.TASK_ID.toString());
             YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
                     previousOffsets,
                     errorHandler,
@@ -227,7 +229,7 @@ public class YugabyteDBConnectorTask
                             null/* slotCreatedInfo */,
                             null/* slotInfo */,
                             queue),
-                    new YugabyteDBMetricsFactory(previousOffsets.getPartitions()),
+                    new YugabyteDBMetricsFactory(previousOffsets.getPartitions(), connectorConfig, taskId),
                     dispatcher,
                     schema,
                     snapshotter,

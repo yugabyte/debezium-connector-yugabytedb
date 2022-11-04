@@ -10,6 +10,7 @@ import java.util.Collection;
 import io.debezium.connector.base.ChangeEventQueueMetrics;
 import io.debezium.connector.common.CdcSourceTaskContext;
 import io.debezium.connector.yugabytedb.YBPartition;
+import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import io.debezium.pipeline.metrics.SnapshotChangeEventSourceMetrics;
 import io.debezium.pipeline.metrics.StreamingChangeEventSourceMetrics;
 import io.debezium.pipeline.metrics.spi.ChangeEventSourceMetricsFactory;
@@ -21,9 +22,15 @@ import io.debezium.pipeline.source.spi.EventMetadataProvider;
 public class YugabyteDBMetricsFactory implements ChangeEventSourceMetricsFactory<YBPartition> {
 
     private final Collection<YBPartition> partitions;
+    private final YugabyteDBConnectorConfig connectorConfig;
+    private final String taskId;
 
-    public YugabyteDBMetricsFactory(Collection<YBPartition> partitions) {
+    public YugabyteDBMetricsFactory(Collection<YBPartition> partitions,
+                                    YugabyteDBConnectorConfig connectorConfig,
+                                    String taskId) {
         this.partitions = partitions;
+        this.connectorConfig = connectorConfig;
+        this.taskId = taskId;
     }
 
     @Override
@@ -31,7 +38,8 @@ public class YugabyteDBMetricsFactory implements ChangeEventSourceMetricsFactory
                                                                                                              ChangeEventQueueMetrics changeEventQueueMetrics,
                                                                                                              EventMetadataProvider eventMetadataProvider) {
         return new YugabyteDBSnapshotTaskMetrics(taskContext, changeEventQueueMetrics,
-                                                 eventMetadataProvider, partitions);
+                                                 eventMetadataProvider, partitions, connectorConfig,
+                                                 taskId);
     }
 
     @Override
@@ -39,6 +47,7 @@ public class YugabyteDBMetricsFactory implements ChangeEventSourceMetricsFactory
                                                                                                                ChangeEventQueueMetrics changeEventQueueMetrics,
                                                                                                                EventMetadataProvider eventMetadataProvider) {
         return new YugabyteDBStreamingTaskMetrics(taskContext, changeEventQueueMetrics,
-                                                  eventMetadataProvider, partitions);
+                                                  eventMetadataProvider, partitions, connectorConfig,
+                                                  taskId);
     }
 }

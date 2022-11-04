@@ -10,8 +10,8 @@ import java.util.Map;
 import org.apache.kafka.connect.data.Struct;
 
 import io.debezium.connector.common.CdcSourceTaskContext;
+import io.debezium.connector.yugabytedb.YugabyteDBTaskContext;
 import io.debezium.data.Envelope.Operation;
-import io.debezium.metrics.Metrics;
 import io.debezium.pipeline.ConnectorEvent;
 import io.debezium.pipeline.meters.CommonEventMeter;
 import io.debezium.pipeline.source.spi.EventMetadataProvider;
@@ -23,7 +23,7 @@ import io.debezium.schema.DataCollectionId;
  * 
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-abstract public class AbstractYugabyteDBPartitionMetrics extends Metrics implements YugabyteDBPartitionMetricsMXBean {
+abstract public class AbstractYugabyteDBPartitionMetrics extends YugabyteDBMetrics implements YugabyteDBPartitionMetricsMXBean {
 
     private final CommonEventMeter commonEventMeter;
 

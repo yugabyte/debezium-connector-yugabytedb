@@ -10,6 +10,7 @@ import java.util.Collection;
 import io.debezium.connector.base.ChangeEventQueueMetrics;
 import io.debezium.connector.common.CdcSourceTaskContext;
 import io.debezium.connector.yugabytedb.YBPartition;
+import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import io.debezium.pipeline.metrics.SnapshotChangeEventSourceMetrics;
 import io.debezium.pipeline.source.spi.EventMetadataProvider;
 import io.debezium.relational.TableId;
@@ -21,19 +22,20 @@ import io.debezium.util.Collect;
  */
 public class YugabyteDBSnapshotTaskMetrics extends AbstractYugabyteDBTaskMetrics<YugabyteDBSnapshotPartitionMetrics>
         implements SnapshotChangeEventSourceMetrics<YBPartition> {
-
     public YugabyteDBSnapshotTaskMetrics(CdcSourceTaskContext taskContext,
                                          ChangeEventQueueMetrics changeEventQueueMetrics,
                                          EventMetadataProvider metadataProvider,
-                                         Collection<YBPartition> partitions) {
+                                         Collection<YBPartition> partitions,
+                                         YugabyteDBConnectorConfig connectorConfig,
+                                         String taskId) {
         super(taskContext, "snapshot", changeEventQueueMetrics, partitions,
                 (YBPartition partition) -> new YugabyteDBSnapshotPartitionMetrics(taskContext,
                         Collect.linkMapOf(
                                 "server", taskContext.getConnectorName(),
-                                "task", taskContext.getTaskId(),
+                                "task", taskId,
                                 "context", "snapshot",
                                 "tablet", partition.getTabletId()),
-                        metadataProvider));
+                        metadataProvider), connectorConfig, taskId);
     }
 
     @Override

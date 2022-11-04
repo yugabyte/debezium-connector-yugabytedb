@@ -91,6 +91,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
             Offsets.of(new HashMap<>());
 
         LOGGER.info("Performing the snapshot process now");
+        LOGGER.info("VKVK task Id in YugabyteDBChangeEventSourceCoordinator: {}", taskContext.getTaskId());
         for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry :
                  previousOffsets.getOffsets().entrySet()) {
             YBPartition partition = entry.getKey();

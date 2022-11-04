@@ -36,8 +36,7 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
 
     protected YugabyteDBTaskContext(YugabyteDBConnectorConfig config, YugabyteDBSchema schema,
                                     TopicSelector<TableId> topicSelector) {
-        super(config.getContextName(), config.getLogicalName(), Collections::emptySet);
-
+        super(config.getContextName(), config.getLogicalName(), config.getTaskId(), Collections::emptySet);
         this.config = config;
         this.topicSelector = topicSelector;
         assert schema != null;

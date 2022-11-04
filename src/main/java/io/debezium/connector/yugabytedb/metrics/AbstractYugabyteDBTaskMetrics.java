@@ -16,20 +16,19 @@ import org.apache.kafka.connect.data.Struct;
 import io.debezium.connector.base.ChangeEventQueueMetrics;
 import io.debezium.connector.common.CdcSourceTaskContext;
 import io.debezium.connector.yugabytedb.YBPartition;
+import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import io.debezium.data.Envelope.Operation;
-import io.debezium.metrics.Metrics;
 import io.debezium.pipeline.ConnectorEvent;
 import io.debezium.pipeline.metrics.ChangeEventSourceMetrics;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.schema.DataCollectionId;
-import io.debezium.util.Collect;
 
 /**
  * Base implementation of task-scoped multi-partition SQL Server connector metrics.
  * 
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-abstract class AbstractYugabyteDBTaskMetrics<B extends AbstractYugabyteDBPartitionMetrics> extends Metrics
+abstract class AbstractYugabyteDBTaskMetrics<B extends AbstractYugabyteDBPartitionMetrics> extends YugabyteDBMetrics
         implements ChangeEventSourceMetrics<YBPartition>, YugabyteDBTaskMetricsMXBean {
 
     private final ChangeEventQueueMetrics changeEventQueueMetrics;
@@ -39,11 +38,10 @@ abstract class AbstractYugabyteDBTaskMetrics<B extends AbstractYugabyteDBPartiti
                                          String contextName,
                                          ChangeEventQueueMetrics changeEventQueueMetrics,
                                          Collection<YBPartition> partitions,
-                                         Function<YBPartition, B> beanFactory) {
-        super(taskContext, Collect.linkMapOf(
-            "server", taskContext.getConnectorName(),
-            "task", taskContext.getTaskId(),
-            "context", contextName));
+                                         Function<YBPartition, B> beanFactory,
+                                         YugabyteDBConnectorConfig connectorConfig,
+                                         String taskId) {
+        super(taskId, connectorConfig, contextName, true /* multipartition mode */);
         this.changeEventQueueMetrics = changeEventQueueMetrics;
 
         for (YBPartition partition : partitions) {
@@ -54,12 +52,12 @@ abstract class AbstractYugabyteDBTaskMetrics<B extends AbstractYugabyteDBPartiti
     @Override
     public synchronized void register() {
         super.register();
-        beans.values().forEach(Metrics::register);
+        beans.values().forEach(YugabyteDBMetrics::register);
     }
 
     @Override
     public synchronized void unregister() {
-        beans.values().forEach(Metrics::unregister);
+        beans.values().forEach(YugabyteDBMetrics::unregister);
         super.unregister();
     }
 
