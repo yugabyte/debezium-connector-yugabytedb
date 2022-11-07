@@ -136,8 +136,8 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         try {
             getChanges2(context, partition, offsetContext, hasStartLsnStoredInContext);
-        }
-        catch (Throwable e) {
+        } catch (Throwable e) {
+            Objects.requireNonNull(e);
             errorHandler.setProducerThrowable(e);
         }
         finally {
@@ -146,20 +146,18 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // Need to see in CDCSDK what can be done.
             }
             if (asyncYBClient != null) {
-                try {
-                    asyncYBClient.close();
-                }
-                catch (Exception e) {
-                    e.printStackTrace();
-                }
+              try {
+                asyncYBClient.close();
+              } catch (Exception e) {
+                e.printStackTrace();
+              }
             }
             if (syncClient != null) {
-                try {
-                    syncClient.close();
-                }
-                catch (Exception e) {
-                    e.printStackTrace();
-                }
+              try {
+                syncClient.close();
+              } catch (Exception e) {
+                e.printStackTrace();
+              }
             }
         }
     }
@@ -235,12 +233,9 @@ public class YugabyteDBStreamingChangeEventSource implements
         try {
             tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
             LOGGER.debug("The tablet list is " + tabletPairList);
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
-        catch (ClassNotFoundException e) {
-            e.printStackTrace();
+        } catch (IOException | ClassNotFoundException e) {
+            LOGGER.error("Exception while deserializing tablet pair list", e);
+            throw new RuntimeException(e);
         }
 
         Map<String, YBTable> tableIdToTable = new HashMap<>();

@@ -11,9 +11,9 @@ import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.ErrorHandler;
 
 /**
- * Error handler for Postgres.
+ * Error handler for YugabyteDB.
  *
- * @author Gunnar Morling
+ * @author Suranjan Kumar, Vaibhav Kushwaha
  */
 public class YugabyteDBErrorHandler extends ErrorHandler {
 
