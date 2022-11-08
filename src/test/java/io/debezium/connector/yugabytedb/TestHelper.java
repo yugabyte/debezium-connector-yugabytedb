@@ -596,14 +596,4 @@ public final class TestHelper {
                 config.binaryHandlingMode(),
                 config.intervalHandlingMode());
     }
-
-    // Function to introduce dummy wait conditions in tests
-    protected static void waitFor(Duration duration) {
-        Awaitility.await()
-            .pollDelay(duration)
-            .atMost(duration.plusSeconds(1))
-            .until(() -> {
-                return true;
-            });
-    }
 }
