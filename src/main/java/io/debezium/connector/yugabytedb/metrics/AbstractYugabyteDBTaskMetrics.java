@@ -12,6 +12,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 import org.apache.kafka.connect.data.Struct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.base.ChangeEventQueueMetrics;
 import io.debezium.connector.common.CdcSourceTaskContext;
@@ -30,8 +32,9 @@ import io.debezium.schema.DataCollectionId;
  */
 abstract class AbstractYugabyteDBTaskMetrics<B extends AbstractYugabyteDBPartitionMetrics> extends YugabyteDBMetrics
         implements ChangeEventSourceMetrics<YBPartition>, YugabyteDBTaskMetricsMXBean {
-
+    private static final Logger LOGGER = LoggerFactory.getLogger(AbstractYugabyteDBTaskMetrics.class);
     private final ChangeEventQueueMetrics changeEventQueueMetrics;
+    private final Function<YBPartition, B> beanFactory;
     private final Map<YBPartition, B> beans = new HashMap<>();
 
     public AbstractYugabyteDBTaskMetrics(CdcSourceTaskContext taskContext,
@@ -43,6 +46,7 @@ abstract class AbstractYugabyteDBTaskMetrics<B extends AbstractYugabyteDBPartiti
                                          String taskId) {
         super(taskId, connectorConfig, contextName, true /* multipartition mode */);
         this.changeEventQueueMetrics = changeEventQueueMetrics;
+        this.beanFactory = beanFactory;
 
         for (YBPartition partition : partitions) {
             beans.put(partition, beanFactory.apply(partition));
@@ -120,7 +124,11 @@ abstract class AbstractYugabyteDBTaskMetrics<B extends AbstractYugabyteDBPartiti
     protected void onPartitionEvent(YBPartition partition, Consumer<B> handler) {
         B bean = beans.get(partition);
         if (bean == null) {
-            throw new IllegalArgumentException("MBean for partition " + partition + " are not registered");
+            LOGGER.info("MBean for partition {} are not registered, registering them now", partition);
+            beans.put(partition, beanFactory.apply(partition));
+            bean = beans.get(partition);
+            bean.register();
+            // throw new IllegalArgumentException("MBean for partition " + partition + " are not registered");
         }
         handler.accept(bean);
     }

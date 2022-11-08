@@ -203,8 +203,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                     }
 
                     // If there are retries left, perform them after the specified delay.
-                    LOGGER.warn("Error while trying to bootstrap tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
-                            entry.getValue(), retryCountForBootstrapping, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
+                    LOGGER.warn("Error while trying to bootstrap tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
+                            entry.getValue(), retryCountForBootstrapping, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e);
 
                     try {
                         retryMetronome.pause();
@@ -323,7 +323,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                       LOGGER.debug("Going to fetch for tablet " + tabletId + " from OpId " + cp + " " +
                         "table " + table.getName() + " Running:" + context.isRunning());
 
-                      // Check again if the thread has been interrupted.
+                      // Check again if the thread has been interrupted. C1->C2->B->C
                       if (!context.isRunning()) {
                         LOGGER.info("Connector has been stopped");
                         break;
@@ -342,7 +342,29 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 cdcException.printStackTrace();
                             }
 
+                            LOGGER.info("VKVK tablets before split:");
+                            for (Pair<String, String> e : tabletPairList) {
+                                LOGGER.info("Tablet: {}", e.getValue());
+                            }
+
+                            LOGGER.info("VKVK tablets from older API before split:");
+                            Set<String> tSet = this.syncClient.getTabletUUIDs(tableIdToTable.get(entry.getKey()));
+                            for (String tabltId : tSet) {
+                                LOGGER.info("Tablet: {}", tabltId);
+                            }
+
                             handleTabletSplit(cdcException, tabletPairList, offsetContext, streamId, schemaNeeded);
+
+                            LOGGER.info("VKVK tablets after split:");
+                            for (Pair<String, String> e : tabletPairList) {
+                                LOGGER.info("Tablet: {}", e.getValue());
+                            }
+
+                            LOGGER.info("VKVK tablets from older API after split:");
+                            Set<String> tSetAfterSplit = this.syncClient.getTabletUUIDs(tableIdToTable.get(entry.getKey()));
+                            for (String tabltId : tSetAfterSplit) {
+                                LOGGER.info("Tablet: {}", tabltId);
+                            }
 
                             // Break out of the loop so that the iteration can start afresh on the modified list.
                             break;
@@ -392,7 +414,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                             if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                                 if (recordsInTransactionalBlock.get(tabletId) == 0) {
-                                                    LOGGER.warn("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                    LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                                                 message.getTransactionId(), lsn, tabletId);
                                                 } else {
                                                     LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
@@ -423,7 +445,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                         if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                             if (recordsInTransactionalBlock.get(tabletId) == 0) {
-                                                LOGGER.warn("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                                             message.getTransactionId(), lsn, tabletId);
                                             } else {
                                                 LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
