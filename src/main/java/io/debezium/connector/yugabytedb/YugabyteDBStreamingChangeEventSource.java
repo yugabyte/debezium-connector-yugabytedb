@@ -282,6 +282,13 @@ public class YugabyteDBStreamingChangeEventSource implements
         // a BEGIN block is encountered.
         Map<String, Integer> recordsInTransactionalBlock = new HashMap<>();
 
+        // This will contain the tablet ID mapped to the number of begin records observed for
+        // a tablet. Consider the scenario for a colocated tablet with two tables, it is possible
+        // that we can encounter BEGIN-BEGIN-COMMIT-COMMIT. To handle this scenario, we need the
+        // count for the BEGIN records so that we can verify that we have equal COMMIT records
+        // in the stream as well.
+        Map<String, Integer> beginCountForTablet = new HashMap<>();
+
         LOGGER.debug("The init tabletSourceInfo after updating is " + offsetContext.getTabletSourceInfo());
 
         final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
@@ -405,6 +412,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             LOGGER.debug("LSN in case of BEGIN is " + lsn);
 
                                             recordsInTransactionalBlock.put(tabletId, 0);
+                                            beginCountForTablet.merge(tabletId, 1, Integer::sum);
                                         }
                                         if (message.getOperation() == Operation.COMMIT) {
                                             LOGGER.debug("LSN in case of COMMIT is " + lsn);
@@ -420,11 +428,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                     LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
                                                                  message.getTransactionId(), lsn, tabletId, recordsInTransactionalBlock.get(tabletId));
                                                 }
-                                            } else {
+                                            } else if (beginCountForTablet.get(tabletId).intValue() == 0) {
                                                 throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");
                                             }
 
                                             recordsInTransactionalBlock.remove(tabletId);
+                                            beginCountForTablet.merge(tabletId, -1, Integer::sum);
                                         }
                                         continue;
                                     }
@@ -435,6 +444,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                 message.getTransactionId(), offsetContext);
 
                                         recordsInTransactionalBlock.put(tabletId, 0);
+                                        beginCountForTablet.merge(tabletId, 1, Integer::sum);
                                     }
                                     else if (message.getOperation() == Operation.COMMIT) {
                                         LOGGER.debug("LSN in case of COMMIT is " + lsn);
@@ -451,11 +461,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                 LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
                                                              message.getTransactionId(), lsn, tabletId, recordsInTransactionalBlock.get(tabletId));
                                             }
-                                        } else {
+                                        } else if (beginCountForTablet.get(tabletId).intValue() == 0) {
                                             throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");
                                         }
 
                                         recordsInTransactionalBlock.remove(tabletId);
+                                        beginCountForTablet.merge(tabletId, -1, Integer::sum);
                                     }
                                     maybeWarnAboutGrowingWalBacklog(true);
                                 }
