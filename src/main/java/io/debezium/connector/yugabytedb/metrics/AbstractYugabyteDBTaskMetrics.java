@@ -123,13 +123,14 @@ abstract class AbstractYugabyteDBTaskMetrics<B extends AbstractYugabyteDBPartiti
 
     protected void onPartitionEvent(YBPartition partition, Consumer<B> handler) {
         B bean = beans.get(partition);
+        
         if (bean == null) {
             LOGGER.info("MBean for partition {} are not registered, registering them now", partition);
             beans.put(partition, beanFactory.apply(partition));
             bean = beans.get(partition);
             bean.register();
-            // throw new IllegalArgumentException("MBean for partition " + partition + " are not registered");
         }
+
         handler.accept(bean);
     }
 }

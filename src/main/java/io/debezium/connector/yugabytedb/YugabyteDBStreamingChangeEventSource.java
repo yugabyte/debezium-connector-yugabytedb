@@ -349,29 +349,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 cdcException.printStackTrace();
                             }
 
-                            LOGGER.info("VKVK tablets before split:");
-                            for (Pair<String, String> e : tabletPairList) {
-                                LOGGER.info("Tablet: {}", e.getValue());
-                            }
-
-                            LOGGER.info("VKVK tablets from older API before split:");
-                            Set<String> tSet = this.syncClient.getTabletUUIDs(tableIdToTable.get(entry.getKey()));
-                            for (String tabltId : tSet) {
-                                LOGGER.info("Tablet: {}", tabltId);
-                            }
-
                             handleTabletSplit(cdcException, tabletPairList, offsetContext, streamId, schemaNeeded);
-
-                            LOGGER.info("VKVK tablets after split:");
-                            for (Pair<String, String> e : tabletPairList) {
-                                LOGGER.info("Tablet: {}", e.getValue());
-                            }
-
-                            LOGGER.info("VKVK tablets from older API after split:");
-                            Set<String> tSetAfterSplit = this.syncClient.getTabletUUIDs(tableIdToTable.get(entry.getKey()));
-                            for (String tabltId : tSetAfterSplit) {
-                                LOGGER.info("Tablet: {}", tabltId);
-                            }
 
                             // Break out of the loop so that the iteration can start afresh on the modified list.
                             break;
