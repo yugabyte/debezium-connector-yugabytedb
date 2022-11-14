@@ -203,8 +203,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                     }
 
                     // If there are retries left, perform them after the specified delay.
-                    LOGGER.warn("Error while trying to bootstrap tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
-                            entry.getValue(), retryCountForBootstrapping, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e);
+                    LOGGER.warn("Error while trying to bootstrap tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
+                            entry.getValue(), retryCountForBootstrapping, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
 
                     try {
                         retryMetronome.pause();
@@ -400,7 +400,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                             if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                                 if (recordsInTransactionalBlock.get(tabletId) == 0) {
-                                                    LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                    LOGGER.warn("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                                                 message.getTransactionId(), lsn, tabletId);
                                                 } else {
                                                     LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
@@ -433,7 +433,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                         if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                             if (recordsInTransactionalBlock.get(tabletId) == 0) {
-                                                LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                LOGGER.warn("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                                             message.getTransactionId(), lsn, tabletId);
                                             } else {
                                                 LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
