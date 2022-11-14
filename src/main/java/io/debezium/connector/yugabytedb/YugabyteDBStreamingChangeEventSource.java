@@ -330,7 +330,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                       LOGGER.debug("Going to fetch for tablet " + tabletId + " from OpId " + cp + " " +
                         "table " + table.getName() + " Running:" + context.isRunning());
 
-                      // Check again if the thread has been interrupted. C1->C2->B->C
+                      // Check again if the thread has been interrupted.
                       if (!context.isRunning()) {
                         LOGGER.info("Connector has been stopped");
                         break;
