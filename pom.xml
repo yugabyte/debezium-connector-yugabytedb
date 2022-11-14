@@ -42,7 +42,7 @@
 
         <!-- Dependency Versions -->
         <version.postgresql.driver>42.4.2</version.postgresql.driver>
-        <version.com.google.protobuf>3.21.5</version.com.google.protobuf>
+        <version.com.google.protobuf>3.21.7</version.com.google.protobuf>
         <version.kafka>3.2.1</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
