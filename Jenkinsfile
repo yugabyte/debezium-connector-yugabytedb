@@ -15,6 +15,20 @@ pipeline {
         RELEASE_BUCKET_PATH = "s3://releases.yugabyte.com/debezium-connector-yugabytedb"
     }
     stages {
+        stage("Setup environment") {
+            steps {
+                script{
+                    sh './.github/scripts/install_prerequisites.sh'
+                }
+            }
+        }
+        stage("Cache Dependencies") {
+            steps {
+                cache (path: "$HOME/.m2/repository", key: "debezium-connector-${hashFiles('pom.xml')}") {
+                    sh 'mvn verify --fail-never -DskipTests -DskipITs'
+                }
+            }
+        }
         stage('Build and Test') {
             steps {
                 script{
@@ -27,7 +41,7 @@ pipeline {
         stage('Publish artifacts'){
             steps {
                 script {
-                    if (env.PUBLISH_TO_S3) {
+                    if (params.PUBLISH_TO_S3) {
                         sh '''
                         SHORT_COMMIT=$(git rev-parse --short HEAD)
                         mv target/${ARTIFACT_ID}-${PKG_VERSION}.jar target/${ARTIFACT_ID}-${PKG_VERSION}-${SHORT_COMMIT}.jar
@@ -42,6 +56,27 @@ pipeline {
         always {
             archiveArtifacts artifacts: '**/*Test.txt', fingerprint: true
             cleanWs()
+        }
+        success {
+            slackSend(
+                color: "good",
+                channel: "#cdc-jenkins-runs",
+                message: "Debezium connector daily master test Job Passed - ${BUILD_URL}."
+            )
+        }
+        aborted {
+            slackSend(
+                color: "danger",
+                channel: "#cdc-jenkins-runs",
+                message: "Debezium connector daily master test Job Aborted - ${BUILD_URL}."
+            )
+        }
+        failure {
+            slackSend(
+                color: "danger",
+                channel: "#cdc-jenkins-runs",
+                message: "Debezium connector daily master test Job Failed - ${BUILD_URL}."
+            )
         }
     }
 }
