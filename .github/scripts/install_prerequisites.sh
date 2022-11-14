@@ -23,3 +23,6 @@ else
   echo "OS not supported"
   exit 1
 fi
+
+# Set docker permissions
+sudo chmod 666 /var/run/docker.sock
