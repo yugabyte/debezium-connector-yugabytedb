@@ -11,6 +11,9 @@ pipeline {
      agent {
         node { label 'cdcsdk-docker-agent' }
     }
+    options {
+        timeout(time: 2, unit: 'HOURS')
+    }
     environment {
         RELEASE_BUCKET_PATH = "s3://releases.yugabyte.com/debezium-connector-yugabytedb"
     }
