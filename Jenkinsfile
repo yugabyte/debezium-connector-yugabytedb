@@ -9,7 +9,7 @@ properties([
 
 pipeline {
      agent {
-        node { label 'ybc-docker-agent' }
+        node { label 'cdcsdk-docker-agent' }
     }
     environment {
         RELEASE_BUCKET_PATH = "s3://releases.yugabyte.com/debezium-connector-yugabytedb"
@@ -19,6 +19,14 @@ pipeline {
             steps {
                 script{
                     sh './.github/scripts/install_prerequisites.sh'
+                }
+            }
+        }
+        stage("Check environment") {
+            steps {
+                script{
+                    sh 'java -version'
+                    sh 'mvn -version'
                 }
             }
         }
