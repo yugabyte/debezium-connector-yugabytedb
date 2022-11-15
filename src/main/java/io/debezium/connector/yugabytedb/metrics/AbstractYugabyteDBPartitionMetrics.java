@@ -8,6 +8,8 @@ package io.debezium.connector.yugabytedb.metrics;
 import java.util.Map;
 
 import org.apache.kafka.connect.data.Struct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.common.CdcSourceTaskContext;
 import io.debezium.data.Envelope.Operation;
@@ -24,12 +26,13 @@ import io.debezium.schema.DataCollectionId;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 abstract public class AbstractYugabyteDBPartitionMetrics extends Metrics implements YugabyteDBPartitionMetricsMXBean {
-
+    private final static Logger LOGGER = LoggerFactory.getLogger(AbstractYugabyteDBPartitionMetrics.class);
     private final CommonEventMeter commonEventMeter;
 
     public AbstractYugabyteDBPartitionMetrics(CdcSourceTaskContext taskContext, Map<String, String> tags,
                                               EventMetadataProvider metadataProvider) {
         super(taskContext, tags);
+        LOGGER.info("VKVK tags: {}", tags.toString());
         this.commonEventMeter = new CommonEventMeter(taskContext.getClock(), metadataProvider);
     }
 

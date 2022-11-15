@@ -10,7 +10,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
+import org.apache.kafka.common.utils.Sanitizer;
 import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,11 +48,21 @@ abstract class AbstractYugabyteDBTaskMetrics<B extends AbstractYugabyteDBPartiti
                                          Function<YBPartition, B> beanFactory) {
         // super(taskId, connectorConfig, contextName, true /* multipartition mode */);
         super(taskContext, Collect.linkMapOf(
+            "context", contextName,
             "server", taskContext.getConnectorName(),
-            "task", taskContext.getTaskId(),
-            "context", contextName));
+            "task", taskContext.getTaskId()));
         this.changeEventQueueMetrics = changeEventQueueMetrics;
         this.beanFactory = beanFactory;
+
+        Map<String, String> tags = Collect.linkMapOf(
+            "server", taskContext.getConnectorName(),
+            "task", taskContext.getTaskId(),
+            "context", contextName);
+        final String metricName = "debezium." + taskContext.getConnectorType().toLowerCase() + ":type=connector-metrics,"
+                + tags.entrySet().stream()
+                        .map(e -> e.getKey() + "=" + Sanitizer.jmxSanitize(e.getValue()))
+                        .collect(Collectors.joining(","));
+        System.out.println("VKVK metric name: " + metricName);
 
         System.out.println("Task ID while registering abstract metric " + taskContext.getTaskId());
 
@@ -136,6 +148,8 @@ abstract class AbstractYugabyteDBTaskMetrics<B extends AbstractYugabyteDBPartiti
             bean = beans.get(partition);
             bean.register();
         }
+
+        LOGGER.info("Handling partitionEvent for partition {}", partition);
 
         handler.accept(bean);
     }
