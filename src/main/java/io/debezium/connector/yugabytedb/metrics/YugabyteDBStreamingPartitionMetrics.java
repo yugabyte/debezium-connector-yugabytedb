@@ -34,6 +34,7 @@ public class YugabyteDBStreamingPartitionMetrics extends AbstractYugabyteDBParti
     @Override
     void onEvent(DataCollectionId source, OffsetContext offset, Object key, Struct value, Envelope.Operation operation) {
         super.onEvent(source, offset, key, value, operation);
+        // System.out.println("Called streaming meter onevent with source " + source + " offset " + offset + " value " + value);
         streamingMeter.onEvent(source, offset, key, value);
     }
 

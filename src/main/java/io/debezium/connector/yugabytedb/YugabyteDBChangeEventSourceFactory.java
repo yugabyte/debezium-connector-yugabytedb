@@ -13,6 +13,7 @@ import io.debezium.connector.yugabytedb.spi.SlotCreationResult;
 import io.debezium.connector.yugabytedb.spi.SlotState;
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.pipeline.ErrorHandler;
+import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.source.snapshot.incremental.IncrementalSnapshotChangeEventSource;
 import io.debezium.pipeline.source.snapshot.incremental.SignalBasedIncrementalSnapshotChangeEventSource;
 import io.debezium.pipeline.source.spi.ChangeEventSourceFactory;
@@ -31,7 +32,7 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
     private final YugabyteDBConnectorConfig configuration;
     private final YugabyteDBConnection jdbcConnection;
     private final ErrorHandler errorHandler;
-    private final YugabyteDBEventDispatcher<TableId> dispatcher;
+    private final EventDispatcher<YBPartition, TableId> dispatcher;
     private final Clock clock;
     private final YugabyteDBSchema schema;
     private final YugabyteDBTaskContext taskContext;
@@ -45,7 +46,7 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
                                               Snapshotter snapshotter,
                                               YugabyteDBConnection jdbcConnection,
                                               ErrorHandler errorHandler,
-                                              YugabyteDBEventDispatcher<TableId> dispatcher,
+                                              EventDispatcher<YBPartition, TableId> dispatcher,
                                               Clock clock, YugabyteDBSchema schema,
                                               YugabyteDBTaskContext taskContext,
                                               ReplicationConnection replicationConnection,

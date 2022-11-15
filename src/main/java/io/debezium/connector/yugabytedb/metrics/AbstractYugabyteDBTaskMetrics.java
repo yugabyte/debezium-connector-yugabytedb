@@ -55,9 +55,9 @@ abstract class AbstractYugabyteDBTaskMetrics<B extends AbstractYugabyteDBPartiti
         this.beanFactory = beanFactory;
 
         Map<String, String> tags = Collect.linkMapOf(
+            "context", contextName,
             "server", taskContext.getConnectorName(),
-            "task", taskContext.getTaskId(),
-            "context", contextName);
+            "task", taskContext.getTaskId());
         final String metricName = "debezium." + taskContext.getConnectorType().toLowerCase() + ":type=connector-metrics,"
                 + tags.entrySet().stream()
                         .map(e -> e.getKey() + "=" + Sanitizer.jmxSanitize(e.getValue()))

@@ -32,7 +32,7 @@ abstract public class AbstractYugabyteDBPartitionMetrics extends Metrics impleme
     public AbstractYugabyteDBPartitionMetrics(CdcSourceTaskContext taskContext, Map<String, String> tags,
                                               EventMetadataProvider metadataProvider) {
         super(taskContext, tags);
-        LOGGER.info("VKVK tags: {}", tags.toString());
+        LOGGER.info("VKVK clock: {} tags: {}", taskContext.getClock(), tags.toString());
         this.commonEventMeter = new CommonEventMeter(taskContext.getClock(), metadataProvider);
     }
 
@@ -48,6 +48,7 @@ abstract public class AbstractYugabyteDBPartitionMetrics extends Metrics impleme
 
     @Override
     public long getTotalNumberOfEventsSeen() {
+        LOGGER.info("Total number of events seen: {}", commonEventMeter.getTotalNumberOfEventsSeen());
         return commonEventMeter.getTotalNumberOfEventsSeen();
     }
 

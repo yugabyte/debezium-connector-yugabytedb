@@ -12,6 +12,7 @@ import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoReplicationMes
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.heartbeat.Heartbeat;
 import io.debezium.pipeline.ErrorHandler;
+import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.source.spi.StreamingChangeEventSource;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
@@ -62,7 +63,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     private static final int THROTTLE_NO_MESSAGE_BEFORE_PAUSE = 5;
 
     private final YugabyteDBConnection connection;
-    private final YugabyteDBEventDispatcher<TableId> dispatcher;
+    private final EventDispatcher<YBPartition, TableId> dispatcher;
     private final ErrorHandler errorHandler;
     private final Clock clock;
     private final YugabyteDBSchema schema;
@@ -87,7 +88,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     private final ChangeEventQueue<DataChangeEvent> queue;
 
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
-                                                YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
+                                                YugabyteDBConnection connection, EventDispatcher<YBPartition, TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
                                                 YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection,
                                                 ChangeEventQueue<DataChangeEvent> queue) {
         this.connectorConfig = connectorConfig;
