@@ -22,15 +22,9 @@ import io.debezium.pipeline.source.spi.EventMetadataProvider;
 public class YugabyteDBMetricsFactory implements ChangeEventSourceMetricsFactory<YBPartition> {
 
     private final Collection<YBPartition> partitions;
-    private final YugabyteDBConnectorConfig connectorConfig;
-    private final String taskId;
 
-    public YugabyteDBMetricsFactory(Collection<YBPartition> partitions,
-                                    YugabyteDBConnectorConfig connectorConfig,
-                                    String taskId) {
+    public YugabyteDBMetricsFactory(Collection<YBPartition> partitions) {
         this.partitions = partitions;
-        this.connectorConfig = connectorConfig;
-        this.taskId = taskId;
     }
 
     @Override
@@ -38,8 +32,7 @@ public class YugabyteDBMetricsFactory implements ChangeEventSourceMetricsFactory
                                                                                                              ChangeEventQueueMetrics changeEventQueueMetrics,
                                                                                                              EventMetadataProvider eventMetadataProvider) {
         return new YugabyteDBSnapshotTaskMetrics(taskContext, changeEventQueueMetrics,
-                                                 eventMetadataProvider, partitions, connectorConfig,
-                                                 taskId);
+                                                 eventMetadataProvider, partitions);
     }
 
     @Override
@@ -47,7 +40,6 @@ public class YugabyteDBMetricsFactory implements ChangeEventSourceMetricsFactory
                                                                                                                ChangeEventQueueMetrics changeEventQueueMetrics,
                                                                                                                EventMetadataProvider eventMetadataProvider) {
         return new YugabyteDBStreamingTaskMetrics(taskContext, changeEventQueueMetrics,
-                                                  eventMetadataProvider, partitions, connectorConfig,
-                                                  taskId);
+                                                  eventMetadataProvider, partitions);
     }
 }

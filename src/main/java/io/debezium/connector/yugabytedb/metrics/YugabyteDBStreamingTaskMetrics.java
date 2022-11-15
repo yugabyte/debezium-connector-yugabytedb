@@ -27,17 +27,15 @@ public class YugabyteDBStreamingTaskMetrics extends AbstractYugabyteDBTaskMetric
     public YugabyteDBStreamingTaskMetrics(CdcSourceTaskContext taskContext,
                                           ChangeEventQueueMetrics changeEventQueueMetrics,
                                           EventMetadataProvider metadataProvider,
-                                          Collection<YBPartition> partitions,
-                                          YugabyteDBConnectorConfig connectorConfig,
-                                          String taskId) {
+                                          Collection<YBPartition> partitions) {
         super(taskContext, "streaming", changeEventQueueMetrics, partitions,
                 (YBPartition partition) -> new YugabyteDBStreamingPartitionMetrics(taskContext,
                     Collect.linkMapOf(
                         "server", taskContext.getConnectorName(),
-                        "task", taskId,
+                        "task", taskContext.getTaskId(),
                         "context", "streaming",
                         "tablet", partition.getTabletId()),
-                    metadataProvider), connectorConfig, taskId);
+                    metadataProvider));
         connectionMeter = new ConnectionMeter();
     }
 
