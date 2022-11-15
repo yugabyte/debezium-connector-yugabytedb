@@ -78,12 +78,9 @@ public class YugabyteDBConnectorTask
         try {
             tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
             LOGGER.debug("The tablet list is " + tabletPairList);
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
-        catch (ClassNotFoundException e) {
-            e.printStackTrace();
+        } catch (IOException | ClassNotFoundException e) {
+            LOGGER.error("Error while deserializing tablet list", e);
+            throw new RuntimeException(e);
         }
 
         if (snapshotter == null) {
@@ -103,22 +100,16 @@ public class YugabyteDBConnectorTask
         try {
             nameToType = (Map<String, YugabyteDBType>) ObjectUtil
                     .deserializeObjectFromString(nameToTypeStr);
+        } catch (IOException | ClassNotFoundException e) {
+            LOGGER.error("Error while deserializing name to type string", e);
+            throw new RuntimeException(e);
         }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
-        catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
+
         try {
             oidToType = (Map<Integer, YugabyteDBType>) ObjectUtil
                     .deserializeObjectFromString(oidToTypeStr);
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
-        catch (ClassNotFoundException e) {
-            e.printStackTrace();
+        } catch (IOException | ClassNotFoundException e) {
+            LOGGER.error("Error while deserializing object to type string", e);
         }
 
         YugabyteDBTaskConnection taskConnection = new YugabyteDBTaskConnection(encoding);
@@ -129,28 +120,25 @@ public class YugabyteDBConnectorTask
 
         // Global JDBC connection used both for snapshotting and streaming.
         // Must be able to resolve datatypes.
-        // connection = new YugabyteDBConnection(connectorConfig.getJdbcConfig());
         jdbcConnection = new YugabyteDBConnection(connectorConfig.getJdbcConfig(), valueConverterBuilder, YugabyteDBConnection.CONNECTION_GENERAL);
-        // try {
-        // jdbcConnection.setAutoCommit(false);
-        // }
-        // catch (SQLException e) {
-        // throw new DebeziumException(e);
-        // }
 
         // CDCSDK We can just build the type registry on the co-ordinator and then send the
         // map of Postgres Type and Oid to the Task using Config
-        final YugabyteDBTypeRegistry yugabyteDBTypeRegistry = new YugabyteDBTypeRegistry(taskConnection,
-                nameToType, oidToType);
-        // jdbcConnection.getTypeRegistry();
+        final YugabyteDBTypeRegistry yugabyteDBTypeRegistry =
+            new YugabyteDBTypeRegistry(taskConnection, nameToType, oidToType);
 
         schema = new YugabyteDBSchema(connectorConfig, yugabyteDBTypeRegistry, topicSelector,
                 valueConverterBuilder.build(yugabyteDBTypeRegistry));
+<<<<<<< HEAD
 
         String taskId = config.getString(YugabyteDBConnectorConfig.TASK_ID.toString());
         this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, taskId, topicSelector);
         // get the tablet ids and load the offsets
+=======
+        this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector);
+>>>>>>> main
 
+        // Get the tablet ids and load the offsets
         final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets = 
             getPreviousOffsetsFromProviderAndLoader(
                 new YBPartition.Provider(connectorConfig),
@@ -211,6 +199,8 @@ public class YugabyteDBConnectorTask
                     schemaNameAdjuster,
                     jdbcConnection);
 
+
+            String taskId = config.getString(YugabyteDBConnectorConfig.TASK_ID.toString());
             YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
                     previousOffsets,
                     errorHandler,
