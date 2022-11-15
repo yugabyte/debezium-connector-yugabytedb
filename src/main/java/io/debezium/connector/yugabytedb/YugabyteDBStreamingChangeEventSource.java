@@ -299,6 +299,11 @@ public class YugabyteDBStreamingChangeEventSource implements
             bootstrapTabletWithRetry(tabletPairList);
         }
 
+        // This log while indicate that the connector has either bootstrapped the tablets or skipped
+        // it so that streaming can begin now. This is added to indicate the tests or pipelines
+        // waiting for the bootstrapping to finish so that they can start inserting data now.
+        LOGGER.info("Beginning to poll the changes from the server");
+
         short retryCount = 0;
         while (context.isRunning() && retryCount <= connectorConfig.maxConnectorRetries()) {
             try {
