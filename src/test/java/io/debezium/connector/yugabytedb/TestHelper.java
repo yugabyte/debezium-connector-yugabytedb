@@ -376,7 +376,17 @@ public final class TestHelper {
     }
 
     protected static YugabyteYSQLContainer getYbContainer() {
-        YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:2.17.1.0-b128");
+        String dockerImageName = System.getenv("YB_DOCKER_IMAGE");
+        
+        if (dockerImageName == null || dockerImageName.isEmpty()) {
+            dockerImageName = "yugabytedb/yugabyte:latest";
+        }
+
+        LOGGER.info("Using docker image in test: {}", dockerImageName);
+        
+        YugabyteYSQLContainer container = new YugabyteYSQLContainer(
+            DockerImageName.parse(dockerImageName)
+            .asCompatibleSubstituteFor("yugabytedb/yugabyte"));
         container.withPassword("yugabyte");
         container.withUsername("yugabyte");
         container.withDatabaseName("yugabyte");
@@ -426,7 +436,12 @@ public final class TestHelper {
             throw new NullPointerException("No table found with the name " + tableName);
         }
 
-        return syncClient.createCDCStream(placeholderTable, namespaceName, "PROTO", "IMPLICIT").getStreamId();
+        String dbStreamId = syncClient.createCDCStream(placeholderTable, namespaceName,
+                                                       "PROTO", "IMPLICIT").getStreamId();
+        
+        syncClient.close();
+
+        return dbStreamId;
     }
 
     public static JdbcConfiguration.Builder defaultJdbcConfigBuilder() {
@@ -564,6 +579,23 @@ public final class TestHelper {
             .until(() -> {
                 return true;
             });
+    }
+
+
+    /**
+     * Fail the test if the time exceeds more than 5 minutes to wait for the values.
+     * @param startTime the start time of the verification in milliseconds
+     * @param secondsToWait total duration to wait before failing the test
+     */
+    protected static void failTestIfTimeExceeds(long startTime, long secondsToWait) {
+        if (System.currentTimeMillis() - startTime > (secondsToWait * 1000)) {
+            fail("Failed test because the verify time exceeded limit of "
+                 + secondsToWait + " seconds");
+        }
+    }
+
+    protected static void failTestIfTimeExceeds(long startTime) {
+        failTestIfTimeExceeds(startTime, 300);
     }
 
     private static List<String> getOpenIdleTransactions(YugabyteDBConnection connection) throws SQLException {

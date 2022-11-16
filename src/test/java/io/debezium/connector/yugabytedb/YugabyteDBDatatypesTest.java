@@ -19,6 +19,7 @@ import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.jupiter.api.Disabled;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
@@ -126,6 +127,8 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
                 totalConsumedRecords += consumed;
                 LOGGER.debug("Consumed " + totalConsumedRecords + " records");
             }
+
+            TestHelper.failTestIfTimeExceeds(start);
         }
         LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
 
@@ -154,6 +157,8 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
                 totalConsumedRecords += consumed;
                 LOGGER.debug("Consumed " + totalConsumedRecords + " records");
             }
+
+            TestHelper.failTestIfTimeExceeds(start);
         }
         LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
 
@@ -174,6 +179,8 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
                 totalConsumedRecords += consumed;
                 LOGGER.debug("Consumed " + totalConsumedRecords + " records");
             }
+
+            TestHelper.failTestIfTimeExceeds(start);
         }
         LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
 
@@ -191,23 +198,8 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
                 totalConsumedRecords += consumed;
                 LOGGER.debug("Consumed " + totalConsumedRecords + " records");
             }
-        }
-        LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
 
-        assertEquals(recordsCount, totalConsumedRecords);
-    }
-
-    private void func(long recordsCount, long milliSecondsToWait) {
-        int totalConsumedRecords = 0;
-        long start = System.currentTimeMillis();
-        while (totalConsumedRecords < recordsCount && ((System.currentTimeMillis() - start) < milliSecondsToWait)) {
-            int consumed = super.consumeAvailableRecords(record -> {
-                LOGGER.debug("The record being consumed is " + record);
-            });
-            if (consumed > 0) {
-                totalConsumedRecords += consumed;
-                LOGGER.debug("Consumed " + totalConsumedRecords + " records");
-            }
+            TestHelper.failTestIfTimeExceeds(start);
         }
         LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
 
@@ -227,6 +219,8 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
                 totalConsumedRecords += consumed;
                 LOGGER.debug("Consumed " + totalConsumedRecords + " records");
             }
+
+            TestHelper.failTestIfTimeExceeds(start);
         }
         LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
 
@@ -256,6 +250,8 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         totalConsumedRecords += consumed;
         LOGGER.debug("Consumed " + totalConsumedRecords + " records");
       }
+
+      TestHelper.failTestIfTimeExceeds(start);
     }
     LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
     String[] enum_val = {"ZERO", "ONE", "TWO"};
