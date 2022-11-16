@@ -49,7 +49,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
                                                   Class<? extends SourceConnector> connectorType,
                                                   CommonConnectorConfig connectorConfig,
                                                   YugabyteDBChangeEventSourceFactory changeEventSourceFactory,
-                                                  ChangeEventSourceMetricsFactory changeEventSourceMetricsFactory,
+                                                  ChangeEventSourceMetricsFactory<YBPartition> changeEventSourceMetricsFactory,
                                                   EventDispatcher<YBPartition, ?> eventDispatcher, DatabaseSchema<?> schema,
                                                   Snapshotter snapshotter, SlotState slotInfo) {
         super(previousOffsets, errorHandler, connectorType, connectorConfig, changeEventSourceFactory,

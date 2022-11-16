@@ -28,7 +28,7 @@ import io.debezium.schema.DataCollectionId;
  */
 abstract public class AbstractYugabyteDBPartitionMetrics extends Metrics implements YugabyteDBPartitionMetricsMXBean {
     private final static Logger LOGGER = LoggerFactory.getLogger(AbstractYugabyteDBPartitionMetrics.class);
-    private final CommonEventMeter commonEventMeter;
+    private final YugabyteDBCommonEventMeter commonEventMeter;
 
     public AbstractYugabyteDBPartitionMetrics(CdcSourceTaskContext taskContext, Map<String, String> tags,
                                               EventMetadataProvider metadataProvider) {

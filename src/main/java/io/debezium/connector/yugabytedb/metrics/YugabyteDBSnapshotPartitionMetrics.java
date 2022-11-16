@@ -19,7 +19,7 @@ public class YugabyteDBSnapshotPartitionMetrics extends AbstractYugabyteDBPartit
 
     private final SnapshotMeter snapshotMeter;
 
-    YugabyteDBSnapshotPartitionMetrics(CdcSourceTaskContext taskContext, Map<String, String> tags,
+    public YugabyteDBSnapshotPartitionMetrics(CdcSourceTaskContext taskContext, Map<String, String> tags,
                                        EventMetadataProvider metadataProvider) {
         super(taskContext, tags, metadataProvider);
         snapshotMeter = new SnapshotMeter(taskContext.getClock());

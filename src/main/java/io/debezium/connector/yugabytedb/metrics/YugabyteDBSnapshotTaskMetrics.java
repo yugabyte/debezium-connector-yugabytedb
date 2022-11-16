@@ -29,9 +29,9 @@ public class YugabyteDBSnapshotTaskMetrics extends AbstractYugabyteDBTaskMetrics
         super(taskContext, "snapshot", changeEventQueueMetrics, partitions,
                 (YBPartition partition) -> new YugabyteDBSnapshotPartitionMetrics(taskContext,
                         Collect.linkMapOf(
+                                "context", "snapshot",
                                 "server", taskContext.getConnectorName(),
                                 "task", taskContext.getTaskId(),
-                                "context", "snapshot",
                                 "tablet", partition.getTabletId()),
                         metadataProvider));
     }
