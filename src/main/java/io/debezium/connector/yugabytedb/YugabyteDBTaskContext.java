@@ -36,11 +36,6 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
 
     protected YugabyteDBTaskContext(YugabyteDBConnectorConfig config, YugabyteDBSchema schema,
                                     TopicSelector<TableId> topicSelector) {
-        // This super() function will initialize a taskContext with taskId as 0, this could cause
-        // issues in future refactoring if changes are made without keeping this in mind.
-        // The resolution is to use config.taskId() to get the task Id from the connector
-        // configuration instance - but note that currently the taskId() from that instance
-        // is coming out as null - beware of NullPointerExceptions ;)
         super(config.getContextName(), config.getLogicalName(), Collections::emptySet);
         this.config = config;
         this.topicSelector = topicSelector;
@@ -48,6 +43,11 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
         this.schema = schema;
     }
 
+    // Initialize the task context with the proper task ID otherwise the default constructor will
+    // initialize it with task ID 0, and one side effect of that was that everything (metrics) will
+    // start getting attributed to only task 0, and other tasks may either overwrite it or
+    // will fail to write saying that there's a naming conflict. In short, do not let the other
+    // tasks feel lonely or left out.
     protected YugabyteDBTaskContext(YugabyteDBConnectorConfig config, YugabyteDBSchema schema,
                                     String taskId, TopicSelector<TableId> topicSelector) {
         super(config.getContextName(), config.getLogicalName(), taskId, Collections::emptySet);
