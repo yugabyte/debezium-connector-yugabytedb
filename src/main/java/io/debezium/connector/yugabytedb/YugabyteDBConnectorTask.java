@@ -132,7 +132,6 @@ public class YugabyteDBConnectorTask
 
         String taskId = config.getString(YugabyteDBConnectorConfig.TASK_ID.toString());
         this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, taskId, topicSelector);
-        // get the tablet ids and load the offsets
 
         // Get the tablet ids and load the offsets
         final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets = 
