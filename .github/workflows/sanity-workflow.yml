@@ -26,7 +26,7 @@ jobs:
         uses: docker/login-action@v2
         with:
           registry: quay.io
-          username: yugabyte+cdcsdk_server_bot
+          username: ${{ secrets.QUAY_BOT_USERNAME }}
           password: ${{ secrets.QUAY_BOT_TOKEN }}
       - name: Pull docker image
         env:
