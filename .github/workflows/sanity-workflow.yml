@@ -22,8 +22,9 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-      - name: Sanity Test that code compiles and tests pass.
+      - name: Pull docker image
         env:
           YB_DOCKER_IMAGE: ${{ secrets.YB_DOCKER_IMAGE }}
         run: docker pull $YB_DOCKER_IMAGE
+      - name: Sanity Test that code compiles and tests pass.
         run: mvn clean test
