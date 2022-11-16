@@ -10,7 +10,6 @@ import java.util.Collection;
 import io.debezium.connector.base.ChangeEventQueueMetrics;
 import io.debezium.connector.common.CdcSourceTaskContext;
 import io.debezium.connector.yugabytedb.YBPartition;
-import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import io.debezium.pipeline.meters.ConnectionMeter;
 import io.debezium.pipeline.metrics.StreamingChangeEventSourceMetrics;
 import io.debezium.pipeline.source.spi.EventMetadataProvider;
