@@ -10,9 +10,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 
-import org.apache.kafka.common.utils.Sanitizer;
 import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,7 +18,6 @@ import org.slf4j.LoggerFactory;
 import io.debezium.connector.base.ChangeEventQueueMetrics;
 import io.debezium.connector.common.CdcSourceTaskContext;
 import io.debezium.connector.yugabytedb.YBPartition;
-import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import io.debezium.data.Envelope.Operation;
 import io.debezium.metrics.Metrics;
 import io.debezium.pipeline.ConnectorEvent;
@@ -46,25 +43,12 @@ abstract class AbstractYugabyteDBTaskMetrics<B extends AbstractYugabyteDBPartiti
                                          ChangeEventQueueMetrics changeEventQueueMetrics,
                                          Collection<YBPartition> partitions,
                                          Function<YBPartition, B> beanFactory) {
-        // super(taskId, connectorConfig, contextName, true /* multipartition mode */);
         super(taskContext, Collect.linkMapOf(
             "context", contextName,
             "server", taskContext.getConnectorName(),
             "task", taskContext.getTaskId()));
         this.changeEventQueueMetrics = changeEventQueueMetrics;
         this.beanFactory = beanFactory;
-
-        Map<String, String> tags = Collect.linkMapOf(
-            "context", contextName,
-            "server", taskContext.getConnectorName(),
-            "task", taskContext.getTaskId());
-        final String metricName = "debezium." + taskContext.getConnectorType().toLowerCase() + ":type=connector-metrics,"
-                + tags.entrySet().stream()
-                        .map(e -> e.getKey() + "=" + Sanitizer.jmxSanitize(e.getValue()))
-                        .collect(Collectors.joining(","));
-        System.out.println("VKVK metric name: " + metricName);
-
-        System.out.println("Task ID while registering abstract metric " + taskContext.getTaskId());
 
         for (YBPartition partition : partitions) {
             beans.put(partition, beanFactory.apply(partition));
@@ -91,7 +75,6 @@ abstract class AbstractYugabyteDBTaskMetrics<B extends AbstractYugabyteDBPartiti
     @Override
     public void onEvent(YBPartition partition, DataCollectionId source, OffsetContext offset, Object key,
                         Struct value, Operation operation) {
-        LOGGER.info("Inside onEvent for partition {} AbstractYugabyteDBTaskMetrics", partition);
         onPartitionEvent(partition, bean -> bean.onEvent(source, offset, key, value, operation));
     }
 
@@ -144,13 +127,11 @@ abstract class AbstractYugabyteDBTaskMetrics<B extends AbstractYugabyteDBPartiti
         B bean = beans.get(partition);
         
         if (bean == null) {
-            LOGGER.info("MBean for partition {} are not registered, registering them now", partition);
+            LOGGER.info("MBean for partition {} is not registered, registering it now", partition);
             beans.put(partition, beanFactory.apply(partition));
             bean = beans.get(partition);
             bean.register();
         }
-
-        LOGGER.info("Handling partitionEvent for partition {}", partition);
 
         handler.accept(bean);
     }

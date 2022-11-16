@@ -8,8 +8,6 @@ package io.debezium.connector.yugabytedb.metrics;
 import java.util.Map;
 
 import org.apache.kafka.connect.data.Struct;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.common.CdcSourceTaskContext;
 import io.debezium.data.Envelope.Operation;
@@ -26,15 +24,12 @@ import io.debezium.schema.DataCollectionId;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 abstract public class AbstractYugabyteDBPartitionMetrics extends Metrics implements YugabyteDBPartitionMetricsMXBean {
-    private final static Logger LOGGER = LoggerFactory.getLogger(AbstractYugabyteDBPartitionMetrics.class);
     private final CommonEventMeter commonEventMeter;
 
     public AbstractYugabyteDBPartitionMetrics(CdcSourceTaskContext taskContext, Map<String, String> tags,
                                               EventMetadataProvider metadataProvider) {
         super(taskContext, tags);
-        LOGGER.info("VKVK clock: {} tags: {}", taskContext.getClock(), tags.toString());
         this.commonEventMeter = new CommonEventMeter(taskContext.getClock(), metadataProvider);
-        LOGGER.info("init common event meter with clock {} and metadataProvider {}", taskContext.getClock(), metadataProvider);
     }
 
     @Override
@@ -49,37 +44,31 @@ abstract public class AbstractYugabyteDBPartitionMetrics extends Metrics impleme
 
     @Override
     public long getTotalNumberOfEventsSeen() {
-        LOGGER.info("Total number of events seen: {}", commonEventMeter.getTotalNumberOfEventsSeen());
         return commonEventMeter.getTotalNumberOfEventsSeen();
     }
 
     @Override
     public long getTotalNumberOfCreateEventsSeen() {
-        LOGGER.info("Total number of create events seen: {}", commonEventMeter.getTotalNumberOfCreateEventsSeen());
         return commonEventMeter.getTotalNumberOfCreateEventsSeen();
     }
 
     @Override
     public long getTotalNumberOfUpdateEventsSeen() {
-        LOGGER.info("Total number of update events seen: {}", commonEventMeter.getTotalNumberOfUpdateEventsSeen());
         return commonEventMeter.getTotalNumberOfUpdateEventsSeen();
     }
 
     @Override
     public long getTotalNumberOfDeleteEventsSeen() {
-        LOGGER.info("Total number of delete events seen: {}", commonEventMeter.getTotalNumberOfDeleteEventsSeen());
         return commonEventMeter.getTotalNumberOfDeleteEventsSeen();
     }
 
     @Override
     public long getNumberOfEventsFiltered() {
-        LOGGER.info("Total number of events filtered: {}", commonEventMeter.getNumberOfEventsFiltered());
         return commonEventMeter.getNumberOfEventsFiltered();
     }
 
     @Override
     public long getNumberOfErroneousEvents() {
-        LOGGER.info("Total number of erroneous events seen: {}", commonEventMeter.getNumberOfErroneousEvents());
         return commonEventMeter.getNumberOfErroneousEvents();
     }
 
@@ -87,18 +76,13 @@ abstract public class AbstractYugabyteDBPartitionMetrics extends Metrics impleme
      * Invoked if an event is processed for a captured table.
      */
     void onEvent(DataCollectionId source, OffsetContext offset, Object key, Struct value, Operation operation) {
-        LOGGER.info("onEvent called in AbstractYugabyteDBPartitionMetrics with operation {}", operation.code());
-        LOGGER.info("get number of total events seen: {}", commonEventMeter.getTotalNumberOfEventsSeen());
-        // LOGGER.info("offset {} key {} value {} operation {}", offset, key, value, operation);
         commonEventMeter.onEvent(source, offset, key, value, operation);
-        LOGGER.info("After commonEventMeter on event");
     }
 
     /**
      * Invoked for events pertaining to non-captured tables.
      */
     void onFilteredEvent(String event) {
-        LOGGER.info("onFilteredEvent({}) called in AbstractYugabyteDBPartitionMetrics", event);
         commonEventMeter.onFilteredEvent();
     }
 
@@ -106,7 +90,6 @@ abstract public class AbstractYugabyteDBPartitionMetrics extends Metrics impleme
      * Invoked for events pertaining to non-captured tables.
      */
     void onFilteredEvent(String event, Operation operation) {
-        LOGGER.info("onFilteredEvent({}, {}) called in AbstractYugabyteDBPartitionMetrics", event, operation.code());
         commonEventMeter.onFilteredEvent(operation);
     }
 
@@ -128,12 +111,10 @@ abstract public class AbstractYugabyteDBPartitionMetrics extends Metrics impleme
      * Invoked for events that represent a connector event.
      */
     void onConnectorEvent(ConnectorEvent event) {
-        LOGGER.info("onConnectorEvent called in AbstractYugabyteDBPartitionMetrics");
     }
 
     @Override
     public void reset() {
-        LOGGER.info("Calling reset in AbstractYugabyteDBPartitionMetrics");
         commonEventMeter.reset();
     }
 }
