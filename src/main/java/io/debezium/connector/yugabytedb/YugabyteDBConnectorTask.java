@@ -182,22 +182,11 @@ public class YugabyteDBConnectorTask
                         }
                     });
 
-            final EventDispatcher<YBPartition, TableId> dispatcher = new EventDispatcher<YBPartition, TableId>(
-                connectorConfig, topicSelector, schema, queue,
-                connectorConfig.getTableFilters().dataCollectionFilter(), DataChangeEvent::new,
-                metadataProvider, heartbeatFactory, schemaNameAdjuster);
-            // final YugabyteDBEventDispatcher<TableId> dispatcher = new YugabyteDBEventDispatcher<>(
-            //         connectorConfig,
-            //         topicSelector,
-            //         schema,
-            //         queue,
-            //         connectorConfig.getTableFilters().dataCollectionFilter(),
-            //         DataChangeEvent::new,
-            //         YugabyteDBChangeRecordEmitter::updateSchema,
-            //         metadataProvider,
-            //         heartbeatFactory,
-            //         schemaNameAdjuster,
-            //         jdbcConnection);
+            final EventDispatcher<YBPartition, TableId> dispatcher =
+                new EventDispatcher<YBPartition, TableId>(
+                    connectorConfig, topicSelector, schema, queue,
+                    connectorConfig.getTableFilters().dataCollectionFilter(), DataChangeEvent::new,
+                    metadataProvider, heartbeatFactory, schemaNameAdjuster);
 
             ChangeEventSourceCoordinator<YBPartition, YugabyteDBOffsetContext> coordinator = new YugabyteDBChangeEventSourceCoordinator(
                     previousOffsets,
