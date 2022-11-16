@@ -12,7 +12,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.common.CdcSourceTaskContext;
-import io.debezium.connector.yugabytedb.metrics.meters.YugabyteDBCommonEventMeter;
 import io.debezium.data.Envelope.Operation;
 import io.debezium.metrics.Metrics;
 import io.debezium.pipeline.ConnectorEvent;
@@ -28,13 +27,13 @@ import io.debezium.schema.DataCollectionId;
  */
 abstract public class AbstractYugabyteDBPartitionMetrics extends Metrics implements YugabyteDBPartitionMetricsMXBean {
     private final static Logger LOGGER = LoggerFactory.getLogger(AbstractYugabyteDBPartitionMetrics.class);
-    private final YugabyteDBCommonEventMeter commonEventMeter;
+    private final CommonEventMeter commonEventMeter;
 
     public AbstractYugabyteDBPartitionMetrics(CdcSourceTaskContext taskContext, Map<String, String> tags,
                                               EventMetadataProvider metadataProvider) {
         super(taskContext, tags);
         LOGGER.info("VKVK clock: {} tags: {}", taskContext.getClock(), tags.toString());
-        this.commonEventMeter = new YugabyteDBCommonEventMeter(taskContext.getClock(), metadataProvider);
+        this.commonEventMeter = new CommonEventMeter(taskContext.getClock(), metadataProvider);
         LOGGER.info("init common event meter with clock {} and metadataProvider {}", taskContext.getClock(), metadataProvider);
     }
 
