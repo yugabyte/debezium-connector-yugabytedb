@@ -91,6 +91,7 @@ abstract class AbstractYugabyteDBTaskMetrics<B extends AbstractYugabyteDBPartiti
     @Override
     public void onEvent(YBPartition partition, DataCollectionId source, OffsetContext offset, Object key,
                         Struct value, Operation operation) {
+        LOGGER.info("Inside onEvent for partition {} AbstractYugabyteDBTaskMetrics", partition);
         onPartitionEvent(partition, bean -> bean.onEvent(source, offset, key, value, operation));
     }
 
