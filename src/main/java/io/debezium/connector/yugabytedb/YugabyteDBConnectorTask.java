@@ -36,7 +36,6 @@ import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.pipeline.ChangeEventSourceCoordinator;
 import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.pipeline.ErrorHandler;
-import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Offsets;
 import io.debezium.pipeline.spi.Partition;
@@ -162,7 +161,7 @@ public class YugabyteDBConnectorTask
             final YugabyteDBEventMetadataProvider metadataProvider = new YugabyteDBEventMetadataProvider();
 
             Configuration configuration = connectorConfig.getConfig();
-            HeartbeatFactory<TableId> heartbeatFactory = new HeartbeatFactory<>(
+            HeartbeatFactory heartbeatFactory = new HeartbeatFactory<>(
                     connectorConfig,
                     topicSelector,
                     schemaNameAdjuster,
@@ -181,13 +180,20 @@ public class YugabyteDBConnectorTask
                         }
                     });
 
-            final EventDispatcher<YBPartition, TableId> dispatcher =
-                new EventDispatcher<YBPartition, TableId>(
-                    connectorConfig, topicSelector, schema, queue,
-                    connectorConfig.getTableFilters().dataCollectionFilter(), DataChangeEvent::new,
-                    metadataProvider, heartbeatFactory, schemaNameAdjuster);
+            final YugabyteDBEventDispatcher<TableId> dispatcher = new YugabyteDBEventDispatcher<>(
+                    connectorConfig,
+                    topicSelector,
+                    schema,
+                    queue,
+                    connectorConfig.getTableFilters().dataCollectionFilter(),
+                    DataChangeEvent::new,
+                    YugabyteDBChangeRecordEmitter::updateSchema,
+                    metadataProvider,
+                    heartbeatFactory,
+                    schemaNameAdjuster,
+                    jdbcConnection);
 
-            ChangeEventSourceCoordinator<YBPartition, YugabyteDBOffsetContext> coordinator = new YugabyteDBChangeEventSourceCoordinator(
+            YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
                     previousOffsets,
                     errorHandler,
                     YugabyteDBConnector.class,

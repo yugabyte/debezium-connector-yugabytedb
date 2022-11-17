@@ -32,7 +32,7 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
     private final YugabyteDBConnectorConfig configuration;
     private final YugabyteDBConnection jdbcConnection;
     private final ErrorHandler errorHandler;
-    private final EventDispatcher<YBPartition, TableId> dispatcher;
+    private final YugabyteDBEventDispatcher<TableId> dispatcher;
     private final Clock clock;
     private final YugabyteDBSchema schema;
     private final YugabyteDBTaskContext taskContext;
@@ -46,7 +46,7 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
                                               Snapshotter snapshotter,
                                               YugabyteDBConnection jdbcConnection,
                                               ErrorHandler errorHandler,
-                                              EventDispatcher<YBPartition, TableId> dispatcher,
+                                              YugabyteDBEventDispatcher<TableId> dispatcher,
                                               Clock clock, YugabyteDBSchema schema,
                                               YugabyteDBTaskContext taskContext,
                                               ReplicationConnection replicationConnection,
