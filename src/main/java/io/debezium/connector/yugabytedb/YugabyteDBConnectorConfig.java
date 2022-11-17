@@ -511,7 +511,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final int DEFAULT_MAX_CONNECTOR_RETRIES = 5;
     protected static final long DEFAULT_CONNECTOR_RETRY_DELAY_MS = 60000;
     protected static final boolean DEFAULT_LIMIT_ONE_POLL_PER_ITERATION = false;
-    protected static final long DEFAULT_NEW_TABLE_POLL_INTERVAL_MS = 5 * 60 * 1000L;
+    protected static final long DEFAULT_NEW_TABLE_POLL_INTERVAL_MS = 5000L;
 
     @Override
     public JdbcConfiguration getJdbcConfig() {
