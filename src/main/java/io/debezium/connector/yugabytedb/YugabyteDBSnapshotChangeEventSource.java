@@ -604,22 +604,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     protected void complete(SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext) {
         snapshotter.snapshotCompleted();
 
-        // Close the YBClient instances now
-        if (asyncClient != null) {
-          try {
-            asyncClient.close();
-          } catch (Exception e) {
-            LOGGER.warn("Error while closing async YBClient", e);
-          }
-        }
-
-        if (syncClient != null) {
-          try {
-            syncClient.close();
-          } catch (Exception e) {
-            LOGGER.warn("Error while closing YBClient", e);
-          }
-        }
+        // Todo Vaibhav: Close the YBClient instances now
+        // See if it can be closed anywhere else for the snapshotting tasks.
     }
 
     /**

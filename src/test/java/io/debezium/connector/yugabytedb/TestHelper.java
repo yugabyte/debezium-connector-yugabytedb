@@ -581,23 +581,6 @@ public final class TestHelper {
             });
     }
 
-
-    /**
-     * Fail the test if the time exceeds more than 5 minutes to wait for the values.
-     * @param startTime the start time of the verification in milliseconds
-     * @param secondsToWait total duration to wait before failing the test
-     */
-    protected static void failTestIfTimeExceeds(long startTime, long secondsToWait) {
-        if (System.currentTimeMillis() - startTime > (secondsToWait * 1000)) {
-            fail("Failed test because the verify time exceeded limit of "
-                 + secondsToWait + " seconds");
-        }
-    }
-
-    protected static void failTestIfTimeExceeds(long startTime) {
-        failTestIfTimeExceeds(startTime, 300);
-    }
-
     private static List<String> getOpenIdleTransactions(YugabyteDBConnection connection) throws SQLException {
         int connectionPID = ((PgConnection) connection.connection()).getBackendPID();
         return connection.queryAndMap(

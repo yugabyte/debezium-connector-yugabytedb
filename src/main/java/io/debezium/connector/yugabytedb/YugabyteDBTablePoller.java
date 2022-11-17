@@ -140,6 +140,16 @@ public class YugabyteDBTablePoller extends Thread {
    */
   public void shutdown() {
     LOGGER.info("Shutting down the poller thread to monitor tables");
+
+    // Close YBClient instance
+    if (this.ybClient != null) {
+      try {
+        this.ybClient.close();
+      } catch (Exception e) {
+        LOGGER.warn("Exception while closing YBClient instance", e);
+      }
+    }
+
     shutdownLatch.countDown();
   }
 
