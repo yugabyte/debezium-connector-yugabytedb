@@ -436,10 +436,13 @@ public final class TestHelper {
             throw new NullPointerException("No table found with the name " + tableName);
         }
 
-        String dbStreamId = syncClient.createCDCStream(placeholderTable, namespaceName,
-                                                       "PROTO", "IMPLICIT").getStreamId();
-        
-        syncClient.close();
+        String dbStreamId;
+        try {
+            dbStreamId = syncClient.createCDCStream(placeholderTable, namespaceName,
+                                                           "PROTO", "IMPLICIT").getStreamId();
+        } finally {
+            syncClient.close();
+        }
 
         return dbStreamId;
     }
