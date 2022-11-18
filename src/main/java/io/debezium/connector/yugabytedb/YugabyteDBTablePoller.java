@@ -11,8 +11,12 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.GetDBStreamInfoResponse;
+import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
+import org.yb.client.YBTable;
 import org.yb.master.MasterReplicationOuterClass.GetCDCDBStreamInfoResponsePB.TableInfo;
+
+import io.debezium.relational.TableId;
 
 /**
  * Poller thread which extends {@link Thread} to keep polling for new tables on YugabyteDB
@@ -72,6 +76,7 @@ public class YugabyteDBTablePoller extends Thread {
    */
   private boolean areThereNewTablesInStream() {
     try {
+      boolean shouldRestart = false;
       GetDBStreamInfoResponse resp = this.ybClient.getDBStreamInfo(this.connectorConfig.streamId());
 
       // Reset the retry counter.
@@ -82,44 +87,45 @@ public class YugabyteDBTablePoller extends Thread {
         cachedTableInfoSet = resp.getTableInfoList().stream().collect(Collectors.toSet());
       } else {
         if (cachedTableInfoSet.size() != resp.getTableInfoList().size()) {
-          // TODO: We can also check for a condition whether the new added tables are a part of the
-          // include list (if they satisfy the regex criteria), if they don't satisfy then we
-          // should not restart.
-
-          String message = "Found {} new table(s), signalling context reconfiguration";
-          LOGGER.info(message, resp.getTableInfoList().size() - cachedTableInfoSet.size());
-
           Set<TableInfo> tableInfoSetFromResponse =
             resp.getTableInfoList().stream().collect(Collectors.toSet());
 
-          if (LOGGER.isDebugEnabled()) {
-            Set<TableInfo> cachedSet = new HashSet<>(cachedTableInfoSet);
-            Set<TableInfo> responseSet = new HashSet<>(tableInfoSetFromResponse);
+          Set<TableInfo> cachedSet = new HashSet<>(cachedTableInfoSet);
+          Set<TableInfo> responseSet = new HashSet<>(tableInfoSetFromResponse);
 
+          Set<TableInfo> intersection = new HashSet<>(cachedSet);
+          intersection.retainAll(responseSet);
+
+          Set<TableInfo> difference = new HashSet<>(responseSet);
+          difference.removeAll(cachedSet);
+          
+          if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("Common tables between the cached table info set and the set received "
-                         + "from GetDBStreamInfoResponse:");
-            Set<TableInfo> intersection = new HashSet<>(cachedSet);
-            intersection.retainAll(responseSet);
+                        + "from GetDBStreamInfoResponse:");
             intersection.forEach(tableInfo -> {
               LOGGER.debug(tableInfo.getTableId().toStringUtf8());
             });
 
             LOGGER.debug("New tables as received in the GetDBStreamInfoResponse: ");
-            Set<TableInfo> difference = new HashSet<>(responseSet);
-            difference.removeAll(cachedSet);
             difference.forEach(tableInfo -> {
               LOGGER.debug(tableInfo.getTableId().toStringUtf8());
             });
           }
+
+          for (TableInfo tableInfo : difference) {
+            if (isTableIncludedForStreaming(tableInfo.getTableId().toStringUtf8())) {
+              String message = "Found {} new table(s), signalling context reconfiguration";
+              LOGGER.info(message, difference.size());
+              shouldRestart = true;
+            }
+          }
           
           // Update the cached table list.
           cachedTableInfoSet = tableInfoSetFromResponse;
-          
-          return true;
         }
       }
 
-      return false;
+      return shouldRestart;
     } catch (Exception e) {
       ++retryCount;
 
@@ -133,6 +139,34 @@ public class YugabyteDBTablePoller extends Thread {
                 + "will retry again", e);
       return false;
     }
+  }
+
+  /**
+   * Check whether the table with the given table UUID is included for streaming.
+   * @param tableUUID the UUID of the table
+   * @return true if it is included in the `table.include.list`, false otherwise
+   * @throws Exception
+   */
+  public boolean isTableIncludedForStreaming(String tableUUID) throws Exception {
+    YBTable ybTable = this.ybClient.openTableByUUID(tableUUID);
+
+    ListTablesResponse resp = this.ybClient.getTablesList(ybTable.getName(),
+                                                          true, null);
+
+    for (org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo :
+            resp.getTableInfoList()) {
+      String fqlTableName = tableInfo.getNamespace().getName() + "."
+                            + tableInfo.getPgschemaName() + "."
+                            + tableInfo.getName();
+      TableId tableId = YugabyteDBSchema.parseWithSchema(fqlTableName, tableInfo.getPgschemaName());
+
+      if (connectorConfig.getTableFilters().dataCollectionFilter().isIncluded(tableId)
+            && connectorConfig.databaseFilter().isIncluded(tableId)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
