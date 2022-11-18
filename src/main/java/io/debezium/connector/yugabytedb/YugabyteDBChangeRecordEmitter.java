@@ -122,12 +122,11 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
             switch (getOperation()) {
                 case CREATE:
                     return null;
-                case UPDATE:
-                    return null;
                 case READ:
                     return null;
                 // return columnValues(message.getOldTupleList(), tableId, true,
                 // message.hasTypeMetadata(), true, true);
+                case UPDATE:
                 default:
                     return columnValues(message.getOldTupleList(), tableId, true,
                             message.hasTypeMetadata(), false, true);
