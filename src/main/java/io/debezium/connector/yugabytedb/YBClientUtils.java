@@ -143,7 +143,8 @@ public class YBClientUtils {
               table, dbStreamId, tableId);
           for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
             tableToTabletIds.add(
-                new ImmutablePair<String,String>(tableId, pair.getTabletId().toStringUtf8()));
+                new ImmutablePair<String,String>(
+                  tableId, pair.getTabletLocations().getTableId().toStringUtf8()));
           }
       }
       Collections.sort(tableToTabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));
@@ -216,7 +217,7 @@ public class YBClientUtils {
   public static OpId getOpIdFromGetTabletListResponse(GetTabletListToPollForCDCResponse resp, String tabletId) {
     List<TabletCheckpointPair> tabletCheckpointPairs = resp.getTabletCheckpointPairList();
     for (TabletCheckpointPair p : tabletCheckpointPairs) {
-      if (p.getTabletId().toStringUtf8().equals(tabletId)) {
+      if (p.getTabletLocations().getTabletId().toStringUtf8().equals(tabletId)) {
         return new OpId((long) p.getCdcSdkCheckpoint().getTerm(),
                         (long) p.getCdcSdkCheckpoint().getIndex(),
                         p.getCdcSdkCheckpoint().getKey().toByteArray(),
