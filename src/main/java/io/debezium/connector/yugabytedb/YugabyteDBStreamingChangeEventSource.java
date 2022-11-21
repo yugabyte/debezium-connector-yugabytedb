@@ -136,8 +136,8 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         try {
             getChanges2(context, partition, offsetContext, hasStartLsnStoredInContext);
-        }
-        catch (Throwable e) {
+        } catch (Throwable e) {
+            Objects.requireNonNull(e);
             errorHandler.setProducerThrowable(e);
         }
         finally {
@@ -146,20 +146,18 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // Need to see in CDCSDK what can be done.
             }
             if (asyncYBClient != null) {
-                try {
-                    asyncYBClient.close();
-                }
-                catch (Exception e) {
-                    e.printStackTrace();
-                }
+              try {
+                asyncYBClient.close();
+              } catch (Exception e) {
+                e.printStackTrace();
+              }
             }
             if (syncClient != null) {
-                try {
-                    syncClient.close();
-                }
-                catch (Exception e) {
-                    e.printStackTrace();
-                }
+              try {
+                syncClient.close();
+              } catch (Exception e) {
+                e.printStackTrace();
+              }
             }
         }
     }
@@ -235,12 +233,9 @@ public class YugabyteDBStreamingChangeEventSource implements
         try {
             tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
             LOGGER.debug("The tablet list is " + tabletPairList);
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
-        catch (ClassNotFoundException e) {
-            e.printStackTrace();
+        } catch (IOException | ClassNotFoundException e) {
+            LOGGER.error("Exception while deserializing tablet pair list", e);
+            throw new RuntimeException(e);
         }
 
         Map<String, YBTable> tableIdToTable = new HashMap<>();
@@ -303,6 +298,11 @@ public class YugabyteDBStreamingChangeEventSource implements
         } else {
             bootstrapTabletWithRetry(tabletPairList);
         }
+
+        // This log while indicate that the connector has either bootstrapped the tablets or skipped
+        // it so that streaming can begin now. This is added to indicate the tests or pipelines
+        // waiting for the bootstrapping to finish so that they can start inserting data now.
+        LOGGER.info("Beginning to poll the changes from the server");
 
         short retryCount = 0;
         while (context.isRunning() && retryCount <= connectorConfig.maxConnectorRetries()) {
@@ -400,7 +400,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                             if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                                 if (recordsInTransactionalBlock.get(tabletId) == 0) {
-                                                    LOGGER.warn("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                    LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                                                 message.getTransactionId(), lsn, tabletId);
                                                 } else {
                                                     LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
@@ -433,7 +433,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                         if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                             if (recordsInTransactionalBlock.get(tabletId) == 0) {
-                                                LOGGER.warn("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                                             message.getTransactionId(), lsn, tabletId);
                                             } else {
                                                 LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",

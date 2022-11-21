@@ -1,6 +1,7 @@
 package io.debezium.connector.yugabytedb;
 
 import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.sql.SQLException;
 import java.time.Duration;
@@ -9,16 +10,19 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.log4j.Logger;
 import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionTimeoutException;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.jupiter.api.Disabled;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
@@ -114,22 +118,12 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
     }
 
     private void verifyDeletedFieldPresentInValue(long recordsCount, YBExtractNewRecordState<SourceRecord> transformation) {
-        int totalConsumedRecords = 0;
-        long start = System.currentTimeMillis();
         List<SourceRecord> records = new ArrayList<>();
-        while (totalConsumedRecords < recordsCount) {
-            int consumed = super.consumeAvailableRecords(record -> {
-                LOGGER.debug("The record being consumed is " + record);
-                records.add(record);
-            });
-            if (consumed > 0) {
-                totalConsumedRecords += consumed;
-                LOGGER.debug("Consumed " + totalConsumedRecords + " records");
-            }
-        }
-        LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
+        waitAndFailIfCannotConsume(records, recordsCount);
 
-        for (int i = 0; i < recordsCount; ++i) {
+        // According to the test, we are expecting that the last record is going to be a tombstone
+        // record whose value part is null, so do not assert that record.
+        for (int i = 0; i < recordsCount - 1; ++i) {
             SourceRecord transformedRecrod = transformation.apply(records.get(i));
             Struct transformedRecrodValue = (Struct) transformedRecrod.value();
             Object deleteFieldValue = transformedRecrodValue.get("__deleted");
@@ -141,21 +135,46 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         }
     }
 
-    private void verifyPrimaryKeyOnly(long recordsCount) {
-        int totalConsumedRecords = 0;
-        long start = System.currentTimeMillis();
-        List<SourceRecord> records = new ArrayList<>();
-        while (totalConsumedRecords < recordsCount) {
-            int consumed = super.consumeAvailableRecords(record -> {
-                LOGGER.debug("The record being consumed is " + record);
-                records.add(record);
-            });
-            if (consumed > 0) {
-                totalConsumedRecords += consumed;
-                LOGGER.debug("Consumed " + totalConsumedRecords + " records");
-            }
+    /**
+     * Consume the records available and add them to a list for further assertion purposes.
+     * @param records list to which we need to add the records we consume, pass a
+     * {@code new ArrayList<>()} if you do not need assertions on the consumed values
+     * @param recordsCount total number of records which should be consumed
+     * @param milliSecondsToWait duration in milliseconds to wait for while consuming
+     */
+    private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
+                                            long milliSecondsToWait) {
+        AtomicLong totalConsumedRecords = new AtomicLong();
+        long seconds = milliSecondsToWait / 1000;
+        try {
+            Awaitility.await()
+                .atMost(Duration.ofSeconds(seconds))
+                .until(() -> {
+                    int consumed = super.consumeAvailableRecords(record -> {
+                        LOGGER.debug("The record being consumed is " + record);
+                        records.add(record);
+                    });
+                    if (consumed > 0) {
+                        totalConsumedRecords.addAndGet(consumed);
+                        LOGGER.debug("Consumed " + totalConsumedRecords + " records");
+                    }
+
+                    return totalConsumedRecords.get() == recordsCount;
+                });
+        } catch (ConditionTimeoutException exception) {
+            fail("Failed to consume " + recordsCount + " in " + seconds + " seconds", exception);
         }
-        LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
+
+        assertEquals(recordsCount, totalConsumedRecords.get());
+    }
+
+    private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
+        waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
+    }
+
+    private void verifyPrimaryKeyOnly(long recordsCount) {
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, recordsCount);
 
         for (int i = 0; i < records.size(); ++i) {
             // verify the records
@@ -164,71 +183,16 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
     }
 
     private void verifyRecordCount(long recordsCount) {
-        int totalConsumedRecords = 0;
-        long start = System.currentTimeMillis();
-        while (totalConsumedRecords < recordsCount) {
-            int consumed = super.consumeAvailableRecords(record -> {
-                LOGGER.debug("The record being consumed is " + record);
-            });
-            if (consumed > 0) {
-                totalConsumedRecords += consumed;
-                LOGGER.debug("Consumed " + totalConsumedRecords + " records");
-            }
-        }
-        LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
-
-        assertEquals(recordsCount, totalConsumedRecords);
+        waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
     }
 
     private void verifyRecordCountUntilTimeExpires(long recordsCount, long milliSecondsToWait) {
-        int totalConsumedRecords = 0;
-        long start = System.currentTimeMillis();
-        while (totalConsumedRecords < recordsCount && ((System.currentTimeMillis() - start) < milliSecondsToWait)) {
-            int consumed = super.consumeAvailableRecords(record -> {
-                LOGGER.debug("The record being consumed is " + record);
-            });
-            if (consumed > 0) {
-                totalConsumedRecords += consumed;
-                LOGGER.debug("Consumed " + totalConsumedRecords + " records");
-            }
-        }
-        LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
-
-        assertEquals(recordsCount, totalConsumedRecords);
-    }
-
-    private void func(long recordsCount, long milliSecondsToWait) {
-        int totalConsumedRecords = 0;
-        long start = System.currentTimeMillis();
-        while (totalConsumedRecords < recordsCount && ((System.currentTimeMillis() - start) < milliSecondsToWait)) {
-            int consumed = super.consumeAvailableRecords(record -> {
-                LOGGER.debug("The record being consumed is " + record);
-            });
-            if (consumed > 0) {
-                totalConsumedRecords += consumed;
-                LOGGER.debug("Consumed " + totalConsumedRecords + " records");
-            }
-        }
-        LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
-
-        assertEquals(recordsCount, totalConsumedRecords);
+        waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount, milliSecondsToWait);
     }
 
     private void verifyValue(long recordsCount) {
-        int totalConsumedRecords = 0;
-        long start = System.currentTimeMillis();
         List<SourceRecord> records = new ArrayList<>();
-        while (totalConsumedRecords < recordsCount) {
-            int consumed = super.consumeAvailableRecords(record -> {
-                LOGGER.debug("The record being consumed is " + record);
-                records.add(record);
-            });
-            if (consumed > 0) {
-                totalConsumedRecords += consumed;
-                LOGGER.debug("Consumed " + totalConsumedRecords + " records");
-            }
-        }
-        LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
+        waitAndFailIfCannotConsume(records, recordsCount);
 
         try {
             for (int i = 0; i < records.size(); ++i) {
@@ -244,20 +208,9 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
     }
 
   private void verifyEnumValue(long recordsCount) {
-    int totalConsumedRecords = 0;
-    long start = System.currentTimeMillis();
     List<SourceRecord> records = new ArrayList<>();
-    while (totalConsumedRecords < recordsCount) {
-      int consumed = super.consumeAvailableRecords(record -> {
-        LOGGER.debug("The record being consumed is " + record);
-        records.add(record);
-      });
-      if (consumed > 0) {
-        totalConsumedRecords += consumed;
-        LOGGER.debug("Consumed " + totalConsumedRecords + " records");
-      }
-    }
-    LOGGER.info("Total duration to consume " + recordsCount + " records: " + Strings.duration(System.currentTimeMillis() - start));
+    waitAndFailIfCannotConsume(records, recordsCount);
+    
     String[] enum_val = {"ZERO", "ONE", "TWO"};
 
     try {
@@ -379,8 +332,10 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         // delete rows in the table t1 where id is <some-pk>
         deleteRecords(rowsCount);
 
-        // We have called 'insert', 'update' and 'delete' on each row. Thus we expect (rowsCount * 3) number of recrods
-        final long recordsCount = rowsCount * 3;
+        // We have called 'insert', 'update' and 'delete' on each row. Thus we expect
+        // (rowsCount * 3) number of recrods, additionaly, with a delete record, we will see
+        // a tombstone record so we will 1 record for that as well.
+        final long recordsCount = 1 /* insert */ + 1 /* update */ + 1 /* delete */ + 1 /* tombstone */;
         CompletableFuture.runAsync(() -> verifyDeletedFieldPresentInValue(recordsCount, transformation))
                 .exceptionally(throwable -> {
                     throw new RuntimeException(throwable);
@@ -498,13 +453,8 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
 
         awaitUntilConnectorIsReady();
 
-        // Dummy wait condition to wait for another 10 seconds
-        Awaitility.await()
-            .pollDelay(Duration.ofSeconds(10))
-            .atMost(Duration.ofSeconds(15))
-            .until(() -> {
-                return true;
-            });   
+        // Dummy wait condition to wait for another 15 seconds
+        TestHelper.waitFor(Duration.ofSeconds(15)); 
         
         SourceRecords records = consumeRecordsByTopic(recordCountT1);
 

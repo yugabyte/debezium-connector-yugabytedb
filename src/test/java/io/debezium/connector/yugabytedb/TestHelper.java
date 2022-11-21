@@ -376,7 +376,17 @@ public final class TestHelper {
     }
 
     protected static YugabyteYSQLContainer getYbContainer() {
-        YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:2.14.4.0-b26");
+        String dockerImageName = System.getenv("YB_DOCKER_IMAGE");
+        
+        if (dockerImageName == null || dockerImageName.isEmpty()) {
+            dockerImageName = "yugabytedb/yugabyte:latest";
+        }
+
+        LOGGER.info("Using docker image in test: {}", dockerImageName);
+        
+        YugabyteYSQLContainer container = new YugabyteYSQLContainer(
+            DockerImageName.parse(dockerImageName)
+            .asCompatibleSubstituteFor("yugabytedb/yugabyte"));
         container.withPassword("yugabyte");
         container.withUsername("yugabyte");
         container.withDatabaseName("yugabyte");
@@ -426,7 +436,15 @@ public final class TestHelper {
             throw new NullPointerException("No table found with the name " + tableName);
         }
 
-        return syncClient.createCDCStream(placeholderTable, namespaceName, "PROTO", "IMPLICIT").getStreamId();
+        String dbStreamId;
+        try {
+            dbStreamId = syncClient.createCDCStream(placeholderTable, namespaceName,
+                                                           "PROTO", "IMPLICIT").getStreamId();
+        } finally {
+            syncClient.close();
+        }
+
+        return dbStreamId;
     }
 
     public static JdbcConfiguration.Builder defaultJdbcConfigBuilder() {
