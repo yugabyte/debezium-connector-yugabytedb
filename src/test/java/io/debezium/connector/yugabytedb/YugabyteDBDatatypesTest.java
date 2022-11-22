@@ -22,12 +22,14 @@ import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.jupiter.api.Disabled;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
 import io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState;
 import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
+import io.debezium.util.Strings;
 
 /**
  * Basic unit tests to check the behaviour with YugabyteDB datatypes
