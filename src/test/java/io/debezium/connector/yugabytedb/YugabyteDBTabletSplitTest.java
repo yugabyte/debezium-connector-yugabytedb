@@ -5,14 +5,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
+import org.apache.kafka.connect.data.Struct;
 import org.awaitility.Awaitility;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.junit.jupiter.api.Order;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.YugabyteYSQLContainer;
@@ -61,6 +68,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBTestBase {
       ybContainer.stop();
   }
 
+  @Order(1)
   @Test
   public void shouldConsumeDataAfterTabletSplit() throws Exception {
     TestHelper.dropAllSchemas();
@@ -107,12 +115,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBTestBase {
     ybClient.splitTablet(tablets.iterator().next());
 
     // Wait till there are 2 tablets for the table.
-    Awaitility.await()
-      .pollDelay(Duration.ofSeconds(2))
-      .atMost(Duration.ofSeconds(20))
-      .until(() -> {
-        return ybClient.getTabletUUIDs(table).size() == 2;
-      });
+    waitForTablets(ybClient, table, 2);
 
     // Insert more records
     for (int i = recordsCount; i < 100; ++i) {
@@ -131,5 +134,117 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBTestBase {
       ybClient.getTabletListToPollForCdc(table, dbStreamId, table.getTableId());
 
     assertEquals(2, getTabletResponse2.getTabletCheckpointPairListSize());
+  }
+
+  @Order(2)
+  @Test
+  public void reproduceSplitWhileTransactionIsNotFinishedWithAutomaticSplitting() throws Exception {
+    // Stop, if ybContainer already running.
+    if (ybContainer.isRunning()) {
+      ybContainer.stop();
+      // Wait till the container stops
+      Awaitility.await().atMost(Duration.ofSeconds(30)).until(() -> {
+        return !ybContainer.isRunning();
+      });
+    }
+
+    // Get ybContainer with required master and tserver flags.
+    String masterFlags = "enable_automatic_tablet_splitting=true,"
+                         + "tablet_split_high_phase_shard_count_per_node=10000,"
+                         + "tablet_split_high_phase_size_threshold_bytes=52428880,"
+                         + "tablet_split_low_phase_size_threshold_bytes=5242888,"
+                         + "tablet_split_low_phase_shard_count_per_node=16";
+    String tserverFlags = "enable_automatic_tablet_splitting=true";
+    ybContainer = TestHelper.getYbContainer(masterFlags, tserverFlags);
+    ybContainer.start();
+
+    TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
+    TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+    
+    TestHelper.dropAllSchemas();
+    String generatedColumns = "";
+    
+    for (int i = 1; i <= 99; ++i) {
+      generatedColumns += "v" + i
+                          + " varchar(400) default "
+                          + "'123456789012345678901234567890123456789012345678901234567890"
+                          + "123456789012345678901234567890123456789012345678901234567890"
+                          + "123456789012345678901234567890123456789012345678901234567890"
+                          + "123456789012345678901234567890123456789012345678901234567890"
+                          + "1234567890123456789012345678901234567890123456789012345', ";
+    }
+
+    TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT, "
+                       + generatedColumns
+                       + "v100 varchar(400) default '1234567890123456789012345678901234567890"
+                       + "1234567890123456789012345678901234567890123456789012345')"
+                       + " SPLIT INTO 1 TABLETS;");
+
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+
+    start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+      assertTrue(success);
+    });
+
+    awaitUntilConnectorIsReady();
+
+    int recordsCount = 20000;
+
+    String insertFormat = "INSERT INTO t1(id, name) VALUES (%d, 'value for split table');";
+
+    int beginKey = 0;
+    int endKey = beginKey + 100;
+    for (int i = 0; i < 200; ++i) {
+      TestHelper.executeBulkWithRange(insertFormat, beginKey, endKey);
+      beginKey = endKey;
+      endKey = beginKey + 100;
+    }
+
+    // Wait for splitting here
+    TestHelper.waitFor(Duration.ofSeconds(15));
+
+    CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount))
+                .exceptionally(throwable -> {
+                    throw new RuntimeException(throwable);
+                }).get();
+  }
+
+  private void verifyRecordCount(long recordsCount) {
+    Set<Integer> recordKeySet = new HashSet<>();
+    int failureCounter = 0;
+    while (recordKeySet.size() < recordsCount) {
+        int consumed = super.consumeAvailableRecords(record -> {
+            Struct s = (Struct) record.key();
+            int value = s.getStruct("id").getInt32("value");
+            recordKeySet.add(value);
+        });
+        if (consumed > 0) {
+            failureCounter = 0;
+        } else {
+          ++failureCounter;
+          TestHelper.waitFor(Duration.ofSeconds(2));
+        }
+
+        if (failureCounter == 100) {
+          LOGGER.error("Breaking becauase failure counter hit limit");
+          break;
+        }
+    }
+
+    LOGGER.debug("Record key set size: " + recordKeySet.size());
+    List<Integer> rList = recordKeySet.stream().collect(Collectors.toList());
+    Collections.sort(rList);
+    
+    assertEquals(recordsCount, recordKeySet.size());
+  }
+
+  private void waitForTablets(YBClient ybClient, YBTable table, int tabletCount) {
+    Awaitility.await()
+      .pollDelay(Duration.ofSeconds(2))
+      .atMost(Duration.ofSeconds(20))
+      .until(() -> {
+        return ybClient.getTabletUUIDs(table).size() == tabletCount;
+      });
   }
 }
