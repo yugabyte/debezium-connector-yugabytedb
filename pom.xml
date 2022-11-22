@@ -50,7 +50,7 @@
         <!-- <version.ybclient>0.8.32-20221024.104302-1</version.ybclient> -->
         <version.ybclient>0.8.33-SNAPSHOT</version.ybclient>
         <version.gson>2.8.9</version.gson>
-        
+ 
         <!--
           Specify the properties that will be used for setting up the integration tests' Docker container.
           Note that the `dockerhost.ip` property is computed from the IP address of DOCKER_HOST, which will
