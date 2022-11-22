@@ -125,7 +125,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
         try {
             snapshotProgressListener.snapshotStarted(partition);
-            Set<YBPartition> partitions = new YugabyteDBPartition.Provider(connectorConfig).getPartitions();
+            Set<YBPartition> partitions = new YBPartition.Provider(connectorConfig).getPartitions();
 
             LOGGER.info("Setting offsetContext/previousOffset for snapshot...");
             previousOffset = YugabyteDBOffsetContext.initialContextForSnapshot(this.connectorConfig, connection, clock, partitions);
@@ -604,13 +604,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     protected void complete(SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext) {
         snapshotter.snapshotCompleted();
 
-        // Close the YbClient instances
-        try {
-          this.syncClient.close();
-          this.asyncClient.close();
-        } catch (Exception e) {
-          throw new DebeziumException("Cannot shutdown the yb-client instances", e);
-        }
+        // Todo Vaibhav: Close the YBClient instances now
+        // See if it can be closed anywhere else for the snapshotting tasks.
     }
 
     /**

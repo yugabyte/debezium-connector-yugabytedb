@@ -19,11 +19,15 @@ import io.debezium.util.Clock;
 import io.debezium.util.DelayStrategy;
 import io.debezium.util.ElapsedTimeStrategy;
 import io.debezium.util.Metronome;
+
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.postgresql.core.BaseConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
+import org.yb.cdc.CdcService.TabletCheckpointPair;
+import org.yb.cdc.CdcService.CDCErrorPB.Code;
 import org.yb.client.*;
 
 import java.io.IOException;
@@ -120,7 +124,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             return;
         }
 
-        Set<YBPartition> partitions = new YugabyteDBPartition.Provider(connectorConfig).getPartitions();
+        Set<YBPartition> partitions = new YBPartition.Provider(connectorConfig).getPartitions();
         boolean hasStartLsnStoredInContext = offsetContext != null && !offsetContext.getTabletSourceInfo().isEmpty();
 
         LOGGER.info("Starting the change streaming process now");
@@ -132,8 +136,8 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         try {
             getChanges2(context, partition, offsetContext, hasStartLsnStoredInContext);
-        }
-        catch (Throwable e) {
+        } catch (Throwable e) {
+            Objects.requireNonNull(e);
             errorHandler.setProducerThrowable(e);
         }
         finally {
@@ -142,20 +146,18 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // Need to see in CDCSDK what can be done.
             }
             if (asyncYBClient != null) {
-                try {
-                    asyncYBClient.close();
-                }
-                catch (Exception e) {
-                    e.printStackTrace();
-                }
+              try {
+                asyncYBClient.close();
+              } catch (Exception e) {
+                e.printStackTrace();
+              }
             }
             if (syncClient != null) {
-                try {
-                    syncClient.close();
-                }
-                catch (Exception e) {
-                    e.printStackTrace();
-                }
+              try {
+                syncClient.close();
+              } catch (Exception e) {
+                e.printStackTrace();
+              }
             }
         }
     }
@@ -231,15 +233,13 @@ public class YugabyteDBStreamingChangeEventSource implements
         try {
             tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
             LOGGER.debug("The tablet list is " + tabletPairList);
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
-        catch (ClassNotFoundException e) {
-            e.printStackTrace();
+        } catch (IOException | ClassNotFoundException e) {
+            LOGGER.error("Exception while deserializing tablet pair list", e);
+            throw new RuntimeException(e);
         }
 
         Map<String, YBTable> tableIdToTable = new HashMap<>();
+        Map<String, GetTabletListToPollForCDCResponse> tabletListResponse = new HashMap<>();
         String streamId = connectorConfig.streamId();
 
         LOGGER.info("Using DB stream ID: " + streamId);
@@ -249,6 +249,10 @@ public class YugabyteDBStreamingChangeEventSource implements
             LOGGER.debug("Table UUID: " + tIds);
             YBTable table = this.syncClient.openTableByUUID(tId);
             tableIdToTable.put(tId, table);
+
+            GetTabletListToPollForCDCResponse resp = 
+                this.syncClient.getTabletListToPollForCdc(table, streamId, tId);
+            tabletListResponse.put(tId, resp);
         }
 
         LOGGER.debug("The init tabletSourceInfo before updating is " + offsetContext.getTabletSourceInfo());
@@ -257,7 +261,9 @@ public class YugabyteDBStreamingChangeEventSource implements
         Map<String, Boolean> schemaNeeded = new HashMap<>();
         for (Pair<String, String> entry : tabletPairList) {
             // entry.getValue() will give the tabletId
-            offsetContext.initSourceInfo(entry.getValue(), this.connectorConfig);
+            OpId opId = YBClientUtils.getOpIdFromGetTabletListResponse(
+                            tabletListResponse.get(entry.getKey()), entry.getValue());
+            offsetContext.initSourceInfo(entry.getValue(), this.connectorConfig, opId);
             schemaNeeded.put(entry.getValue(), Boolean.TRUE);
         }
 
@@ -270,6 +276,13 @@ public class YugabyteDBStreamingChangeEventSource implements
         // in the transactional block. Note that the entry will be created only when 
         // a BEGIN block is encountered.
         Map<String, Integer> recordsInTransactionalBlock = new HashMap<>();
+
+        // This will contain the tablet ID mapped to the number of begin records observed for
+        // a tablet. Consider the scenario for a colocated tablet with two tables, it is possible
+        // that we can encounter BEGIN-BEGIN-COMMIT-COMMIT. To handle this scenario, we need the
+        // count for the BEGIN records so that we can verify that we have equal COMMIT records
+        // in the stream as well.
+        Map<String, Integer> beginCountForTablet = new HashMap<>();
 
         LOGGER.debug("The init tabletSourceInfo after updating is " + offsetContext.getTabletSourceInfo());
 
@@ -285,6 +298,11 @@ public class YugabyteDBStreamingChangeEventSource implements
         } else {
             bootstrapTabletWithRetry(tabletPairList);
         }
+
+        // This log while indicate that the connector has either bootstrapped the tablets or skipped
+        // it so that streaming can begin now. This is added to indicate the tests or pipelines
+        // waiting for the bootstrapping to finish so that they can start inserting data now.
+        LOGGER.info("Beginning to poll the changes from the server");
 
         short retryCount = 0;
         while (context.isRunning() && retryCount <= connectorConfig.maxConnectorRetries()) {
@@ -317,9 +335,28 @@ public class YugabyteDBStreamingChangeEventSource implements
                         LOGGER.info("Connector has been stopped");
                         break;
                       }
-                        GetChangesResponse response = this.syncClient.getChangesCDCSDK(
-                                table, streamId, tabletId,
-                                cp.getTerm(), cp.getIndex(), cp.getKey(), cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId));
+                      
+                      GetChangesResponse response = null;
+                      try {
+                        response = this.syncClient.getChangesCDCSDK(
+                            table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
+                            cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId));
+                      } catch (CDCErrorException cdcException) {
+                        // Check if exception indicates a tablet split.
+                        if (cdcException.getCDCError().getCode() == Code.TABLET_SPLIT) {
+                            LOGGER.info("Encountered a tablet split, handling it gracefully");
+                            if (LOGGER.isDebugEnabled()) {
+                                cdcException.printStackTrace();
+                            }
+
+                            handleTabletSplit(cdcException, tabletPairList, offsetContext, streamId, schemaNeeded);
+
+                            // Break out of the loop so that the iteration can start afresh on the modified list.
+                            break;
+                        } else {
+                            throw cdcException;
+                        }
+                      }
 
                         LOGGER.debug("Processing {} records from getChanges call",
                                 response.getResp().getCdcSdkProtoRecordsList().size());
@@ -353,6 +390,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             LOGGER.debug("LSN in case of BEGIN is " + lsn);
 
                                             recordsInTransactionalBlock.put(tabletId, 0);
+                                            beginCountForTablet.merge(tabletId, 1, Integer::sum);
                                         }
                                         if (message.getOperation() == Operation.COMMIT) {
                                             LOGGER.debug("LSN in case of COMMIT is " + lsn);
@@ -362,17 +400,18 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                             if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                                 if (recordsInTransactionalBlock.get(tabletId) == 0) {
-                                                    LOGGER.warn("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                    LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                                                 message.getTransactionId(), lsn, tabletId);
                                                 } else {
                                                     LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
                                                                  message.getTransactionId(), lsn, tabletId, recordsInTransactionalBlock.get(tabletId));
                                                 }
-                                            } else {
+                                            } else if (beginCountForTablet.get(tabletId).intValue() == 0) {
                                                 throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");
                                             }
 
                                             recordsInTransactionalBlock.remove(tabletId);
+                                            beginCountForTablet.merge(tabletId, -1, Integer::sum);
                                         }
                                         continue;
                                     }
@@ -383,6 +422,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                 message.getTransactionId(), offsetContext);
 
                                         recordsInTransactionalBlock.put(tabletId, 0);
+                                        beginCountForTablet.merge(tabletId, 1, Integer::sum);
                                     }
                                     else if (message.getOperation() == Operation.COMMIT) {
                                         LOGGER.debug("LSN in case of COMMIT is " + lsn);
@@ -393,17 +433,18 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                         if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                             if (recordsInTransactionalBlock.get(tabletId) == 0) {
-                                                LOGGER.warn("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                                             message.getTransactionId(), lsn, tabletId);
                                             } else {
                                                 LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
                                                              message.getTransactionId(), lsn, tabletId, recordsInTransactionalBlock.get(tabletId));
                                             }
-                                        } else {
+                                        } else if (beginCountForTablet.get(tabletId).intValue() == 0) {
                                             throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");
                                         }
 
                                         recordsInTransactionalBlock.remove(tabletId);
+                                        beginCountForTablet.merge(tabletId, -1, Integer::sum);
                                     }
                                     maybeWarnAboutGrowingWalBacklog(true);
                                 }
@@ -451,11 +492,9 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                     maybeWarnAboutGrowingWalBacklog(dispatched);
                                 }
-                            }
-                            catch (InterruptedException ie) {
+                            } catch (InterruptedException ie) {
                                 ie.printStackTrace();
-                            }
-                            catch (SQLException se) {
+                            } catch (SQLException se) {
                                 se.printStackTrace();
                             }
                         }
@@ -484,8 +523,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // has succeeded
                     retryCount = 0;
                 }
-            }
-            catch (Exception e) {
+            } catch (Exception e) {
                 ++retryCount;
                 // If the retry limit is exceeded, log an error with a description and throw the exception.
                 if (retryCount > connectorConfig.maxConnectorRetries()) {
@@ -634,5 +672,117 @@ public class YugabyteDBStreamingChangeEventSource implements
     @FunctionalInterface
     public static interface PgConnectionSupplier {
         BaseConnection get() throws SQLException;
+    }
+
+    /**
+     * Get the entry from the tablet pair list corresponding to the given tablet ID. This function
+     * is helpful at the time of tablet split where we know the tablet ID of the tablet which has
+     * been split and now we want to remove the corresponding pair from the polling list of
+     * table-tablet pairs.
+     * @param tabletPairList list of table-tablet pair to poll from
+     * @param tabletId the tablet ID to match with
+     * @return a pair of table-tablet IDs which matches the provided tablet ID
+     */
+    private Pair<String, String> getEntryToDelete(List<Pair<String,String>> tabletPairList, String tabletId) {
+        for (Pair<String, String> entry : tabletPairList) {
+            if (entry.getValue().equals(tabletId)) {
+                return entry;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Parse the message from the {@link CDCErrorException} to obtain the tablet ID of the tablet.
+     * which has been split
+     * @param message the exception message to parse
+     * @return the tablet UUID of the tablet which has been split
+     */
+    private String getTabletIdFromSplitMessage(String message) {
+        // Note that the message is of the form: Tablet Split detected on <tablet-ID>
+        // So the last element is the tablet ID to be split.
+        String[] splitWords = message.split("\\s+");
+        return splitWords[splitWords.length - 1];
+    }
+
+    /**
+     * Add the tablet from the provided tablet checkpoint pair to the list of tablets to poll from
+     * if it is not present there
+     * @param tabletPairList the list of tablets to poll from - list having Pair<tableId, tabletId>
+     * @param pair the tablet checkpoint pair
+     * @param tableId table UUID of the table to which the tablet belongs
+     * @param offsetContext the offset context having the lsn info
+     * @param schemaNeeded map of flags indicating whether we need the schema for a tablet or not
+     */
+    private void addTabletIfNotPresent(List<Pair<String,String>> tabletPairList,
+                                       TabletCheckpointPair pair,
+                                       String tableId,
+                                       YugabyteDBOffsetContext offsetContext,
+                                       Map<String, Boolean> schemaNeeded) {
+        String tabletId = pair.getTabletLocations().getTabletId().toStringUtf8();
+        ImmutablePair<String, String> p =
+          new ImmutablePair<String, String>(tableId, tabletId);
+
+        if (!tabletPairList.contains(p)) {
+            tabletPairList.add(p);
+
+            offsetContext.initSourceInfo(tabletId,
+                                         this.connectorConfig,
+                                         OpId.from(pair.getCdcSdkCheckpoint()));
+
+            LOGGER.info("Initialized offset context for tablet {} with OpId {}", tabletId, OpId.from(pair.getCdcSdkCheckpoint()));
+            
+            // Add the flag to indicate that we do not need the schema from this tablet again.
+            schemaNeeded.put(tabletId, Boolean.FALSE);
+        }
+    }
+
+    private void handleTabletSplit(CDCErrorException cdcErrorException,
+                                   List<Pair<String,String>> tabletPairList,
+                                   YugabyteDBOffsetContext offsetContext,
+                                   String streamId,
+                                   Map<String, Boolean> schemaNeeded) throws Exception {
+        // Obtain the tablet ID of the splitted tablet from the message.
+        String splitTabletId = getTabletIdFromSplitMessage(cdcErrorException.getMessage());
+        LOGGER.info("Removing the tablet {} from the list to get the changes since it has been split", splitTabletId);
+
+        Pair<String, String> entryToBeDeleted = getEntryToDelete(tabletPairList, splitTabletId);
+        Objects.requireNonNull(entryToBeDeleted);
+        
+        String tableId = entryToBeDeleted.getKey();
+
+        // Remove the entry with the tablet which has been split.
+        boolean removeSuccessful = tabletPairList.remove(entryToBeDeleted);
+
+        // Remove the corresponding entry to indicate that we don't need the schema now.
+        schemaNeeded.remove(entryToBeDeleted.getValue());
+        
+        // Log a warning if the element cannot be removed from the list.
+        if (!removeSuccessful) {
+            LOGGER.warn("Failed to remove the entry table {} - tablet {} from tablet pair list after split, will try once again", entryToBeDeleted.getKey(), entryToBeDeleted.getValue());
+
+            if (!tabletPairList.remove(entryToBeDeleted)) {
+                String exceptionMessageFormat = "Failed to remove the entry table {} - tablet {} from the tablet pair list after split";
+                throw new RuntimeException(String.format(exceptionMessageFormat, entryToBeDeleted.getKey(), entryToBeDeleted.getValue()));
+            }
+        }
+
+        // Get the child tablets and add them to the polling list.
+        GetTabletListToPollForCDCResponse getTabletListResponse =
+          this.syncClient.getTabletListToPollForCdc(
+              this.syncClient.openTableByUUID(tableId),
+              streamId,
+              tableId,
+              splitTabletId);
+        
+        if (getTabletListResponse.getTabletCheckpointPairListSize() > 2) {
+            LOGGER.warn("Found more than 2 tablets (got {}) for the parent tablet {}",
+                        getTabletListResponse.getTabletCheckpointPairListSize(), splitTabletId);
+        }
+
+        for (TabletCheckpointPair pair : getTabletListResponse.getTabletCheckpointPairList()) {
+            addTabletIfNotPresent(tabletPairList, pair, tableId, offsetContext, schemaNeeded);
+        }
     }
 }

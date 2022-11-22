@@ -31,6 +31,7 @@ import io.debezium.connector.common.OffsetReader;
 import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection.YugabyteDBValueConverterBuilder;
+import io.debezium.connector.yugabytedb.metrics.YugabyteDBMetricsFactory;
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.pipeline.ChangeEventSourceCoordinator;
 import io.debezium.pipeline.DataChangeEvent;
@@ -77,12 +78,9 @@ public class YugabyteDBConnectorTask
         try {
             tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
             LOGGER.debug("The tablet list is " + tabletPairList);
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
-        catch (ClassNotFoundException e) {
-            e.printStackTrace();
+        } catch (IOException | ClassNotFoundException e) {
+            LOGGER.error("Error while deserializing tablet list", e);
+            throw new RuntimeException(e);
         }
 
         if (snapshotter == null) {
@@ -102,22 +100,16 @@ public class YugabyteDBConnectorTask
         try {
             nameToType = (Map<String, YugabyteDBType>) ObjectUtil
                     .deserializeObjectFromString(nameToTypeStr);
+        } catch (IOException | ClassNotFoundException e) {
+            LOGGER.error("Error while deserializing name to type string", e);
+            throw new RuntimeException(e);
         }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
-        catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
+
         try {
             oidToType = (Map<Integer, YugabyteDBType>) ObjectUtil
                     .deserializeObjectFromString(oidToTypeStr);
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
-        catch (ClassNotFoundException e) {
-            e.printStackTrace();
+        } catch (IOException | ClassNotFoundException e) {
+            LOGGER.error("Error while deserializing object to type string", e);
         }
 
         YugabyteDBTaskConnection taskConnection = new YugabyteDBTaskConnection(encoding);
@@ -128,28 +120,21 @@ public class YugabyteDBConnectorTask
 
         // Global JDBC connection used both for snapshotting and streaming.
         // Must be able to resolve datatypes.
-        // connection = new YugabyteDBConnection(connectorConfig.getJdbcConfig());
         jdbcConnection = new YugabyteDBConnection(connectorConfig.getJdbcConfig(), valueConverterBuilder, YugabyteDBConnection.CONNECTION_GENERAL);
-        // try {
-        // jdbcConnection.setAutoCommit(false);
-        // }
-        // catch (SQLException e) {
-        // throw new DebeziumException(e);
-        // }
 
         // CDCSDK We can just build the type registry on the co-ordinator and then send the
         // map of Postgres Type and Oid to the Task using Config
-        final YugabyteDBTypeRegistry yugabyteDBTypeRegistry = new YugabyteDBTypeRegistry(taskConnection,
-                nameToType, oidToType);
-        // jdbcConnection.getTypeRegistry();
+        final YugabyteDBTypeRegistry yugabyteDBTypeRegistry =
+            new YugabyteDBTypeRegistry(taskConnection, nameToType, oidToType);
 
         schema = new YugabyteDBSchema(connectorConfig, yugabyteDBTypeRegistry, topicSelector,
                 valueConverterBuilder.build(yugabyteDBTypeRegistry));
         this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector);
-        // get the tablet ids and load the offsets
 
-        final Map<YBPartition, YugabyteDBOffsetContext> previousOffsets = getPreviousOffsetss(
-                new YugabyteDBPartition.Provider(connectorConfig),
+        // Get the tablet ids and load the offsets
+        final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets = 
+            getPreviousOffsetsFromProviderAndLoader(
+                new YBPartition.Provider(connectorConfig),
                 new YugabyteDBOffsetContext.Loader(connectorConfig));
         final Clock clock = Clock.system();
 
@@ -207,8 +192,10 @@ public class YugabyteDBConnectorTask
                     schemaNameAdjuster,
                     jdbcConnection);
 
+
+            String taskId = config.getString(YugabyteDBConnectorConfig.TASK_ID.toString());
             YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
-                    Offsets.of(new YBPartition(), context) ,
+                    previousOffsets,
                     errorHandler,
                     YugabyteDBConnector.class,
                     connectorConfig,
@@ -225,7 +212,7 @@ public class YugabyteDBConnectorTask
                             null/* slotCreatedInfo */,
                             null/* slotInfo */,
                             queue),
-                    new DefaultChangeEventSourceMetricsFactory(),
+                    new YugabyteDBMetricsFactory(previousOffsets.getPartitions(), connectorConfig, taskId),
                     dispatcher,
                     schema,
                     snapshotter,
@@ -253,6 +240,34 @@ public class YugabyteDBConnectorTask
         boolean found = false;
         for (YBPartition partition : partitions) {
             YugabyteDBOffsetContext offset = offsets.get(partition);
+
+            if (offset != null) {
+                found = true;
+                LOGGER.info("Found previous partition offset {}: {}", partition, offset);
+            }
+        }
+
+        if (!found) {
+            LOGGER.info("No previous offsets found");
+        }
+
+        return offsets;
+    }
+
+    Offsets<YBPartition, YugabyteDBOffsetContext> getPreviousOffsetsFromProviderAndLoader(
+        Partition.Provider<YBPartition> provider,
+        OffsetContext.Loader<YugabyteDBOffsetContext> loader) {
+        Set<YBPartition> partitions = provider.getPartitions();
+        LOGGER.debug("The size of partitions is " + partitions.size());
+        OffsetReader<YBPartition, YugabyteDBOffsetContext,
+                     OffsetContext.Loader<YugabyteDBOffsetContext>> reader = new OffsetReader<>(
+                        context.offsetStorageReader(), loader);
+        Offsets<YBPartition, YugabyteDBOffsetContext> offsets =
+            Offsets.of(reader.offsets(partitions));
+
+        boolean found = false;
+        for (YBPartition partition : partitions) {
+            YugabyteDBOffsetContext offset = offsets.getOffsets().get(partition); //offsets.get(partition);
 
             if (offset != null) {
                 found = true;

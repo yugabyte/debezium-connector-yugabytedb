@@ -22,5 +22,15 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+      - name: Login to Quay.io
+        uses: docker/login-action@v2
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_BOT_USERNAME }}
+          password: ${{ secrets.QUAY_BOT_TOKEN }}
+      - name: Pull docker image
+        env:
+          YB_DOCKER_IMAGE: ${{ secrets.YB_DOCKER_IMAGE }}
+        run: docker pull $YB_DOCKER_IMAGE
       - name: Sanity Test that code compiles and tests pass.
         run: mvn clean test

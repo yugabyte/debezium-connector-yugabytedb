@@ -57,10 +57,10 @@ import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
 
 /**
- * A utility for integration test cases to connect the PostgreSQL server running in the Docker container created by this module's
- * build.
+ * A utility for integration test cases to connect the YugabyteDB instance running in the Docker 
+ * container created by this module's build.
  *
- * @author Horia Chiorean
+ * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public final class TestHelper {
 
@@ -78,6 +78,7 @@ public final class TestHelper {
     private static int CONTAINER_YSQL_PORT = 5433;
     private static String CONTAINER_MASTER_PORT = "7100";
     private static String MASTER_ADDRESS = "";
+    private static String DEFAULT_DATABASE_NAME = "yugabyte";
 
     /**
      * Key for schema parameter used to store DECIMAL/NUMERIC columns' precision.
@@ -153,12 +154,10 @@ public final class TestHelper {
     /**
      * Obtain a default DB connection.
      *
-     * @return the PostgresConnection instance; never null
+     * @return the YugabyteDBConnection instance; never null
      */
-    // TODO: remove this function at the end of test development
     public static YugabyteDBConnection create() {
 
-        // return new YugabyteDBConnection(defaultJdbcConfig());
         return new YugabyteDBConnection(defaultJdbcConfig(CONTAINER_YSQL_HOST, CONTAINER_YSQL_PORT), YugabyteDBConnection.CONNECTION_GENERAL);
     }
 
@@ -191,7 +190,7 @@ public final class TestHelper {
     }
 
     /**
-     * Executes a JDBC statement using the default jdbc config without autocommitting the connection
+     * Executes a JDBC statement using the default jdbc config
      *
      * @param statement A SQL statement
      * @param furtherStatements Further SQL statement(s)
@@ -204,15 +203,7 @@ public final class TestHelper {
         }
 
         try (YugabyteDBConnection connection = create()) {
-            connection.setAutoCommit(false);
-            connection.executeWithoutCommitting(statement);
-            Connection jdbcConn = connection.connection();
-            if (!statement.endsWith("ROLLBACK;")) {
-                jdbcConn.commit();
-            }
-            else {
-                jdbcConn.rollback();
-            }
+            connection.execute(statement);
         }
         catch (RuntimeException e) {
             throw e;
@@ -222,21 +213,65 @@ public final class TestHelper {
         }
     }
 
-  public static void executeBulk(String statement, int numRecords) {
-    try (YugabyteDBConnection connection = create()) {
-      connection.setAutoCommit(false); // setting auto-commit to true
-      for (int i = 0; i < numRecords; i++) {
-          connection.executeWithoutCommitting(String.format(statement, i));
-      }
-      connection.commit();
+    /**
+     * Execute a JDBC statement on a database
+     * @param statement A SQL statement
+     * @param databaseName The database to execute the statement onto
+     */
+    public static void executeInDatabase(String statement, String databaseName) {
+        try (YugabyteDBConnection connection = createConnectionTo(databaseName)) {
+            connection.execute(statement);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
-    catch (RuntimeException e) {
-      throw e;
+
+    public static void executeBulk(String statement, int numRecords) {
+        executeBulk(statement, numRecords, "yugabyte");
     }
-    catch (Exception e) {
-      throw new RuntimeException(e);
+
+    public static void executeBulk(String statement, int numRecords, String databaseName) {
+        try (YugabyteDBConnection connection = createConnectionTo(databaseName)) {
+            connection.setAutoCommit(false); // setting auto-commit to true
+            for (int i = 0; i < numRecords; i++) {
+                connection.executeWithoutCommitting(String.format(statement, i));
+            }
+            connection.commit();
+        }
+        catch (RuntimeException e) {
+            throw e;
+        }
+        catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
-  }
+
+    /**
+     * Executes the statement with the key range as [beginKey, endKey)
+     * @param statement the format string of the statement to be executed
+     * @param beginKey key to start inserting, included in the range
+     * @param endKey key to end insertion at, excluded in the range
+     * @param databaseName the database to create the connection onto
+     */
+    public static void executeBulkWithRange(String statement, int beginKey, int endKey,
+                                            String databaseName) {
+        try (YugabyteDBConnection connection = createConnectionTo(databaseName)) {
+            connection.setAutoCommit(false); // setting auto-commit to true
+            for (int i = beginKey; i < endKey; i++) {
+                connection.executeWithoutCommitting(String.format(statement, i));
+            }
+            connection.commit();
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void executeBulkWithRange(String statement, int beginKey, int endKey) {
+        executeBulkWithRange(statement, beginKey, endKey, "yugabyte");
+    }
+
     /**
      * Drops all the public non system schemas from the DB.
      *
@@ -340,10 +375,39 @@ public final class TestHelper {
         CONTAINER_MASTER_PORT = String.valueOf(masterPort);
     }
 
-    protected static YugabyteYSQLContainer getYbContainer() {
+    /**
+     * Return a TestContainer for YugabyteDB with the given master and tserver flags
+     * @param masterFlags comma separated value of master flags in form flag1=val1,flag2=val2
+     * @param tserverFlags comma separated value of tserver flags in form flag1=val2,flag2=val2
+     * @return a {@link YugabyteYSQLContainer}
+     */
+    protected static YugabyteYSQLContainer getYbContainer(String masterFlags, String tserverFlags) {
+        String dockerImageName = System.getenv("YB_DOCKER_IMAGE");
+        
+        if (dockerImageName == null || dockerImageName.isEmpty()) {
+            dockerImageName = "yugabytedb/yugabyte:latest";
+        }
+
+        LOGGER.info("Using docker image in test: {}", dockerImageName);
+
+        if (tserverFlags == null || tserverFlags.isEmpty()) {
+            tserverFlags = "";
+        } else {
+            tserverFlags = " --tserver_flags=" + tserverFlags;
+        }
+
+        if (masterFlags == null || masterFlags.isEmpty()) {
+            masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0";
+        } else {
+            masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0," + masterFlags;
+        }
+
+        LOGGER.info("tserver flags: {}", tserverFlags);
+        LOGGER.info("master flags: {}", masterFlags);
+        
         YugabyteYSQLContainer container = new YugabyteYSQLContainer(
-                                            DockerImageName.parse("quay.io/yugabyte/yugabyte:2.17.1.0-b25")
-                                                .asCompatibleSubstituteFor("yugabytedb/yugabyte"));
+            DockerImageName.parse(dockerImageName)
+            .asCompatibleSubstituteFor("yugabytedb/yugabyte"));
         container.withPassword("yugabyte");
         container.withUsername("yugabyte");
         container.withDatabaseName("yugabyte");
@@ -356,8 +420,14 @@ public final class TestHelper {
                 add(new PortBinding(Ports.Binding.bindPort(9042), new ExposedPort(9042)));
             }
         }));
-        container.withCommand("bin/yugabyted start --listen=0.0.0.0 --master_flags=rpc_bind_addresses=0.0.0.0 --daemon=false");
+        String startupCommand = "bin/yugabyted start --listen=0.0.0.0 " + masterFlags + tserverFlags + " --daemon=false";
+        LOGGER.info("Container startup command: {}", startupCommand);
+        container.withCommand(startupCommand);
         return container;
+    }
+
+    protected static YugabyteYSQLContainer getYbContainer() {
+        return getYbContainer(null, null);
     }
 
     protected static YBClient getYbClient(String masterAddresses) throws Exception {
@@ -371,7 +441,7 @@ public final class TestHelper {
         return new YBClient(asyncClient);
     }
 
-    protected static YBTable getTableUUID(YBClient syncClient, String tableName) throws Exception {
+    protected static YBTable getYbTable(YBClient syncClient, String tableName) throws Exception {
         ListTablesResponse resp = syncClient.getTablesList();
 
         for (TableInfo tableInfo : resp.getTableInfoList()) {
@@ -387,13 +457,21 @@ public final class TestHelper {
     public static String getNewDbStreamId(String namespaceName, String tableName) throws Exception {
         YBClient syncClient = getYbClient(MASTER_ADDRESS);
 
-        YBTable placeholderTable = getTableUUID(syncClient, tableName);
+        YBTable placeholderTable = getYbTable(syncClient, tableName);
 
         if (placeholderTable == null) {
             throw new NullPointerException("No table found with the name " + tableName);
         }
 
-        return syncClient.createCDCStream(placeholderTable, namespaceName, "PROTO", "IMPLICIT").getStreamId();
+        String dbStreamId;
+        try {
+            dbStreamId = syncClient.createCDCStream(placeholderTable, namespaceName,
+                                                           "PROTO", "IMPLICIT").getStreamId();
+        } finally {
+            syncClient.close();
+        }
+
+        return dbStreamId;
     }
 
     public static JdbcConfiguration.Builder defaultJdbcConfigBuilder() {
@@ -462,12 +540,16 @@ public final class TestHelper {
     }
 
     protected static void executeDDL(String ddlFile) throws Exception {
+        executeDDL(ddlFile, "yugabyte");
+    }
+
+    protected static void executeDDL(String ddlFile, String databaseName) throws Exception {
         URL ddlTestFile = TestHelper.class.getClassLoader().getResource(ddlFile);
         assertNotNull("Cannot locate " + ddlFile, ddlTestFile);
         String statements = Files.readAllLines(Paths.get(ddlTestFile.toURI()))
                 .stream()
                 .collect(Collectors.joining(System.lineSeparator()));
-        try (YugabyteDBConnection connection = create()) {
+        try (YugabyteDBConnection connection = createConnectionTo(databaseName)) {
             connection.execute(statements);
         }
     }
@@ -517,6 +599,16 @@ public final class TestHelper {
                 fail("Expected no open transactions but there was at least one.");
             }
         }
+    }
+
+    // Function to introduce dummy wait conditions in tests
+    protected static void waitFor(Duration duration) {
+        Awaitility.await()
+            .pollDelay(duration)
+            .atMost(duration.plusSeconds(1))
+            .until(() -> {
+                return true;
+            });
     }
 
     private static List<String> getOpenIdleTransactions(YugabyteDBConnection connection) throws SQLException {
