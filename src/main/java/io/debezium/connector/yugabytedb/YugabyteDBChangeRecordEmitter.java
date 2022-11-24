@@ -22,6 +22,7 @@ import org.postgresql.core.BaseConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.debezium.DebeziumException;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.data.Envelope.Operation;
@@ -272,14 +273,15 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
 
         if (tableColumn == null) {
             LOGGER.warn(
-                    "Internal schema is out-of-sync with incoming decoder events; column {} will be omitted from the change event.",
+                    "Internal schema (null) is out-of-sync with incoming decoder events; column {} will be omitted from the change event.",
                     columnName);
-            return -1;
+            throw new DebeziumException("Internal schema is out-of-sync with incoming events");
+            // return -1;
         }
         int position = tableColumn.position() - 1;
         if (position < 0 || position >= values.length) {
             LOGGER.warn(
-                    "Internal schema is out-of-sync with incoming decoder events; column {} will be omitted from the change event.",
+                    "Internal schema (null) is out-of-sync with incoming decoder events; column {} will be omitted from the change event.",
                     columnName);
             return -1;
         }
