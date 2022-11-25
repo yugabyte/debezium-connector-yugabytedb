@@ -333,7 +333,8 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                     table, this.yugabyteDBConnectorConfig.streamId(), tableId);
                 for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
                     this.tabletIds.add(
-                        new ImmutablePair<String,String>(tableId, pair.getTabletId().toStringUtf8()));
+                        new ImmutablePair<String,String>(
+                            tableId, pair.getTabletLocations().getTabletId().toStringUtf8()));
                 }
             }
             Collections.sort(this.tabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));

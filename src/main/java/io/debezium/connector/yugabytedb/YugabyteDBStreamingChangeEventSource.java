@@ -716,11 +716,11 @@ public class YugabyteDBStreamingChangeEventSource implements
      * @param schemaNeeded map of flags indicating whether we need the schema for a tablet or not
      */
     private void addTabletIfNotPresent(List<Pair<String,String>> tabletPairList,
-                                          TabletCheckpointPair pair,
-                                          String tableId,
-                                          YugabyteDBOffsetContext offsetContext,
-                                          Map<String, Boolean> schemaNeeded) {
-        String tabletId = pair.getTabletId().toStringUtf8();
+                                       TabletCheckpointPair pair,
+                                       String tableId,
+                                       YugabyteDBOffsetContext offsetContext,
+                                       Map<String, Boolean> schemaNeeded) {
+        String tabletId = pair.getTabletLocations().getTabletId().toStringUtf8();
         ImmutablePair<String, String> p =
           new ImmutablePair<String, String>(tableId, tabletId);
 
@@ -768,16 +768,19 @@ public class YugabyteDBStreamingChangeEventSource implements
             }
         }
 
-        // Add the new tablets to the tablet pair list.
+        // Get the child tablets and add them to the polling list.
         GetTabletListToPollForCDCResponse getTabletListResponse =
           this.syncClient.getTabletListToPollForCdc(
               this.syncClient.openTableByUUID(tableId),
               streamId,
-              tableId);
+              tableId,
+              splitTabletId);
+        
+        if (getTabletListResponse.getTabletCheckpointPairListSize() > 2) {
+            LOGGER.warn("Found more than 2 tablets (got {}) for the parent tablet {}",
+                        getTabletListResponse.getTabletCheckpointPairListSize(), splitTabletId);
+        }
 
-        // TODO: Currently there is no API to check and receive only the child tablets of a given
-        // tablet, but if in future we have something available, change the below loop logic to use
-        // that one instead.
         for (TabletCheckpointPair pair : getTabletListResponse.getTabletCheckpointPairList()) {
             addTabletIfNotPresent(tabletPairList, pair, tableId, offsetContext, schemaNeeded);
         }
