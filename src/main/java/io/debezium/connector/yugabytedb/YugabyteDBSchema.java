@@ -467,7 +467,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     protected void refreshSchemasWithTabletId(TableId tableId, String tabletId) {
         removeSchema(tableId);
 
-        tableIds().forEach(this::refreshSchemaWithTablet);
+//        tableIds().forEach(this::refreshSchemaWithTablet);
     }
 
     protected void refreshSchemaWithTablet(TableId id, String tabletId) {
@@ -480,10 +480,10 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     protected void buildAndRegisterSchemaForTablet(TableId id, String tabletId) {
-        if (tableFilter.isIncluded(table.id())) {
-            TableSchema schema = schemaBuilder.create(schemaPrefix, getEnvelopeSchemaName(table), table, columnFilter, columnMappers, customKeysMapper);
-            schemasByTableId.put(table.id(), schema);
-        }
+//        if (tableFilter.isIncluded(table.id())) {
+//            TableSchema schema = schemaBuilder.create(schemaPrefix, getEnvelopeSchemaName(table), table, columnFilter, columnMappers, customKeysMapper);
+//            schemasByTableId.put(table.id(), schema);
+//        }
     }
 
     protected void refreshSchemas() {
