@@ -298,11 +298,11 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         final TableSchema tableSchema = schema.schemaForTablet(tabletId);
 
         if (tableSchema == null) {
-            LOGGER.warn("cannot load schema for table '{}'", tableId);
+            LOGGER.info("cannot load schema for table '{}'", tableId);
             return Optional.empty();
         }
         else {
-            LOGGER.debug("refreshed DB schema to include table '{}'", tableId);
+            LOGGER.info("refreshed DB schema to include table '{}'", tableId);
             return Optional.of(tableSchema);
         }
     }
@@ -311,6 +311,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         try {
             // Using another implementation of refresh() to take into picture the schema information too.
             // schema.refresh(connection, tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData());
+            LOGGER.info("refreshing schema from table in database");
             schema.refresh(connection, tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData(), schema.getSchemaPB());
         }
         catch (SQLException e) {
