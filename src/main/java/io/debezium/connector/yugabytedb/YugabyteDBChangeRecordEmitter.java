@@ -50,6 +50,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     private final TableId tableId;
 
     private final String pgSchemaName;
+    private String tabletId;
 
     public YugabyteDBChangeRecordEmitter(YBPartition partition, OffsetContext offset, Clock clock,
                                          YugabyteDBConnectorConfig connectorConfig,
@@ -71,7 +72,8 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     public YugabyteDBChangeRecordEmitter(YBPartition partition, OffsetContext offset, Clock clock,
                                          YugabyteDBConnectorConfig connectorConfig,
                                          YugabyteDBSchema schema, YugabyteDBConnection connection,
-                                         TableId tableId, ReplicationMessage message, String pgSchemaName) {
+                                         TableId tableId, ReplicationMessage message, String pgSchemaName,
+                                         String tabletId) {
         super(partition, offset, clock);
 
         this.schema = schema;
@@ -80,6 +82,8 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         this.connection = connection;
 
         this.pgSchemaName = pgSchemaName;
+
+        this.tabletId = tabletId;
 
         this.tableId = tableId;
         Objects.requireNonNull(this.tableId);
@@ -106,7 +110,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     @Override
     public void emitChangeRecords(DataCollectionSchema schema, Receiver receiver) throws InterruptedException {
         schema = synchronizeTableSchema(schema);
-        LOGGER.debug("The schema of the table is " + schema);
+        LOGGER.info("The schema of the table for tablet {} is {}", tabletId, schema);
         super.emitChangeRecords(schema, receiver);
     }
 
@@ -179,7 +183,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         // schema.refresh(tableFromFromMessage(columns, schema.tableFor(tableId)));
         // }
         // }
-        return schema.schemaFor(tableId);
+        return schema.schemaForTablet(tabletId);
     }
 
     private Object[] columnValues(List<ReplicationMessage.Column> columns, TableId tableId,
@@ -231,7 +235,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         if (columns == null || columns.isEmpty()) {
             return null;
         }
-        final Table table = schema.tableFor(tableId);
+        final Table table = schema.tableForTablet(tabletId);
         if (table == null) {
             schema.dumpTableId();
         }

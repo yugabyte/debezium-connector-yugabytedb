@@ -443,7 +443,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                               new YugabyteDBChangeRecordEmitter(part, previousOffset, clock, 
                                                                 this.connectorConfig, schema, 
                                                                 connection, tId, message, 
-                                                                pgSchemaName));
+                                                                pgSchemaName, tabletId));
 
                       LOGGER.debug("Dispatched snapshot record successfully");
                     }

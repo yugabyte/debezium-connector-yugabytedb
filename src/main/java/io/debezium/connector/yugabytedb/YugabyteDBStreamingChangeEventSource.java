@@ -466,7 +466,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     if (t == null) {
                                         // If we fail to achieve the table, that means we have not specified correct schema information,
                                         // now try to refresh the schema.
-                                        schema.refreshWithSchema(tableId, message.getSchema(), pgSchemaNameInRecord);
+                                        schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
                                     }
                                 }
                                 // DML event
@@ -484,7 +484,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                     boolean dispatched = message.getOperation() != Operation.NOOP
                                             && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
-                                                    schema, connection, tableId, message, pgSchemaNameInRecord));
+                                                    schema, connection, tableId, message, pgSchemaNameInRecord, tabletId));
 
                                     if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                         recordsInTransactionalBlock.merge(tabletId, 1, Integer::sum);

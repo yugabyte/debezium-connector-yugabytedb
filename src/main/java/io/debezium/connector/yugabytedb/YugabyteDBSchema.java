@@ -9,6 +9,8 @@ package io.debezium.connector.yugabytedb;
 import java.sql.SQLException;
 import java.util.*;
 
+import io.debezium.data.Envelope;
+import io.debezium.relational.mapping.ColumnMappers;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;
@@ -48,6 +50,12 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     private CdcService.CDCSDKSchemaPB cdcsdkSchemaPB;
 
     private Map<String, CdcService.CDCSDKSchemaPB> tabletToCdcsdkSchemaPB = new HashMap<>();
+    private Map<String, Table> tabletIdToTable = new HashMap<>();
+    private Map<String, TableSchema> tabletIdToTableSchema = new HashMap<>();
+
+    private YugabyteDBConnectorConfig config;
+    private YugabyteDBValueConverter valueConverter;
+    private TopicSelector<TableId> topicSelector;
 
     /**
      * Create a schema component given the supplied {@link YugabyteDBConnectorConfig Postgres connector configuration}.
@@ -64,6 +72,10 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         this.tableIdToToastableColumns = new HashMap<>();
         this.relationIdToTableId = new HashMap<>();
         this.readToastableColumns = config.skipRefreshSchemaOnMissingToastableData();
+
+        this.config = config;
+        this.valueConverter = valueConverter;
+        this.topicSelector = topicSelector;
     }
 
     private static TableSchemaBuilder getTableSchemaBuilder(YugabyteDBConnectorConfig config,
@@ -140,10 +152,10 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         // refreshSchemas();
         if (cdcsdkSchemaPB == null) {
             tabletToCdcsdkSchemaPB.put(tabletId, schemaPB);
-            // cdcsdkSchemaPB = schemaPB;
+//             cdcsdkSchemaPB = schemaPB;
         }
 
-        readSchema(tables(), null, schemaName,
+        readSchemaWithTablet(tables(), null, schemaName,
                 getTableFilter(), null, true, schemaPB, tableId, tabletId);
         refreshSchemas(tableId);
         return this;
@@ -218,10 +230,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                            TableId tableId, String tabletId) {
         // Before we make any changes, get the copy of the set of table IDs ...
         Set<TableId> tableIdsBefore = new HashSet<>(tables.tableIds());
-        // final String catalogName = "yugabyte";
-        // final String schemaName = "public";
-        // final String tableName = "t1";
-        // TableId tableId = new TableId(null, schemaName, tableName);
 
         Map<TableId, List<Column>> columnsByTable = new HashMap<>();
 
@@ -248,7 +256,14 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             List<Column> columns = tableEntry.getValue();
             Collections.sort(columns);
             String defaultCharsetName = null; // JDBC does not expose character sets
-            tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, defaultCharsetName);
+            Table updatedTable = Table.editor()
+              .tableId(tableId)
+              .addColumns(columns)
+              .setPrimaryKeyNames(pkColumnNames)
+              .setDefaultCharsetName(null)
+              .create();
+            tabletIdToTable.put(tabletId, updatedTable);
+//            tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, defaultCharsetName);
         }
 
         if (removeTablesNotFoundInJdbc) {
@@ -256,6 +271,10 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             // tableIdsBefore.removeAll(columnsByTable.keySet());
             // tableIdsBefore.forEach(tables::removeTable);
         }
+    }
+
+    protected Table getTableForTablet(String tabletId) {
+        return tabletIdToTable.get(tabletId);
     }
 
     protected List<String> readPrimaryKeyOrUniqueIndexNames(CdcService.CDCSDKSchemaPB schemaPB,
@@ -465,9 +484,9 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     protected void refreshSchemasWithTabletId(TableId tableId, String tabletId) {
-        removeSchema(tableId);
+        tabletIdToTableSchema.remove(tabletId);
 
-//        tableIds().forEach(this::refreshSchemaWithTablet);
+        refreshSchemaWithTablet(tableId, tabletId);
     }
 
     protected void refreshSchemaWithTablet(TableId id, String tabletId) {
@@ -479,11 +498,49 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         buildAndRegisterSchemaForTablet(id, tabletId);
     }
 
+//    protected void refreshSchema(TableId id) {
+////        if (LOG.isDebugEnabled()) {
+////            LOG.debug("refreshing DB schema for table '{}'", id);
+////        }
+//        Table table = tableFor(id);
+//
+//        buildAndRegisterSchema(table);
+//    }
+
     protected void buildAndRegisterSchemaForTablet(TableId id, String tabletId) {
-//        if (tableFilter.isIncluded(table.id())) {
-//            TableSchema schema = schemaBuilder.create(schemaPrefix, getEnvelopeSchemaName(table), table, columnFilter, columnMappers, customKeysMapper);
-//            schemasByTableId.put(table.id(), schema);
-//        }
+        LOGGER.info("Refreshing DB schema for table {} and tablet {}", id, tabletId);
+
+        Table table = tabletIdToTable.get(tabletId);
+        TableSchemaBuilder schemaBuilder = getTableSchemaBuilder(config, valueConverter);
+        TableSchema schema = schemaBuilder.create(getSchemaPrefix(config.getLogicalName()), getEnvelopeSchemaName(table), table, config.getColumnFilter(), ColumnMappers.create(config), config.getKeyMapper());
+
+        if (new Filters(config).tableFilter().isIncluded(table.id())) {
+            tabletIdToTableSchema.put(tabletId, schema);
+        }
+
+    }
+
+//    @Override
+//    public TableSchema schemaFor(TableId id) {
+//        return super.schemaFor(id);
+//    }
+
+    public TableSchema schemaForTablet(String tabletId) {
+        return tabletIdToTableSchema.get(tabletId);
+    }
+
+    private String getEnvelopeSchemaName(Table table) {
+        return Envelope.schemaName(topicSelector.topicNameFor(table.id()));
+    }
+
+    private static String getSchemaPrefix(String serverName) {
+        if (serverName == null) {
+            return "";
+        }
+        else {
+            serverName = serverName.trim();
+            return serverName.endsWith(".") || serverName.isEmpty() ? serverName : serverName + ".";
+        }
     }
 
     protected void refreshSchemas() {
@@ -605,6 +662,11 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         }
         LOGGER.debug("Relation '{}' resolved to table '{}'", relationId, tableId);
         return tableFor(tableId);
+    }
+
+    public Table tableForTablet(String tabletId) {
+        Table table = tabletIdToTable.get(tabletId);
+        return new Filters(config).tableFilter().isIncluded(table.id()) ? table : null;
     }
 
     @Override
