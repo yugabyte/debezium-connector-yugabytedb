@@ -295,7 +295,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     private Optional<DataCollectionSchema> newTable(TableId tableId) {
         LOGGER.info("Schema for table '{}' is missing", tableId);
         refreshTableFromDatabase(tableId);
-        final TableSchema tableSchema = schema.schemaFor(tableId);
+        final TableSchema tableSchema = schema.schemaForTablet(tabletId);
 
         if (tableSchema == null) {
             LOGGER.warn("cannot load schema for table '{}'", tableId);
