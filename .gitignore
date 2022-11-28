@@ -28,4 +28,5 @@ generated-sources
 .classpath
 .project
 .settings
+.factorypath
 .idea/
