@@ -312,7 +312,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
             // Using another implementation of refresh() to take into picture the schema information too.
             // schema.refresh(connection, tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData());
             LOGGER.info("refreshing schema from table in database");
-            schema.refresh(connection, tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData(), schema.getSchemaPB());
+            schema.refresh(connection, tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData(), schema.getSchemaPB(), tabletId);
         }
         catch (SQLException e) {
             throw new ConnectException("Database error while refresing table schema", e);

@@ -157,7 +157,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
         readSchemaWithTablet(tables(), null, schemaName,
                 getTableFilter(), null, true, schemaPB, tableId, tabletId);
-        refreshSchemas(tableId);
+        refreshSchemasWithTabletId(tableId, tabletId);
         return this;
     }
 
@@ -447,11 +447,11 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     protected void refresh(YugabyteDBConnection connection, TableId tableId,
-                           boolean refreshToastableColumns, CdcService.CDCSDKSchemaPB schemaPB)
+                           boolean refreshToastableColumns, CdcService.CDCSDKSchemaPB schemaPB, String tabletId)
             throws SQLException {
         Tables temp = new Tables();
-        readSchema(temp, null, tableId.schema(), tableId::equals,
-                null, true, schemaPB, tableId);
+        readSchemaWithTablet(temp, null, tableId.schema(), tableId::equals,
+                null, true, schemaPB, tableId, tabletId);
 
         // the table could be deleted before the event was processed
         if (temp.size() == 0) {
@@ -460,6 +460,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         }
         // overwrite (add or update) or views of the tables
         tables().overwriteTable(temp.forTable(tableId));
+//        tabletIdToTableSchema.put(tabletId, temp.forTable(tableId).)
         // refresh the schema
         refreshSchema(tableId);
 
