@@ -459,8 +459,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             return;
         }
         // overwrite (add or update) or views of the tables
-        tables().overwriteTable(temp.forTable(tableId));
-//        tabletIdToTableSchema.put(tabletId, temp.forTable(tableId).)
+//        tables().overwriteTable(temp.forTable(tableId));
+        tabletIdToTable.put(tabletId, temp.forTable(tableId));
         // refresh the schema
         refreshSchema(tableId);
 
