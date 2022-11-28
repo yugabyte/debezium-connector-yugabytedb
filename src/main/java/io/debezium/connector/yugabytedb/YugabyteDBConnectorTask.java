@@ -129,7 +129,9 @@ public class YugabyteDBConnectorTask
 
         schema = new YugabyteDBSchema(connectorConfig, yugabyteDBTypeRegistry, topicSelector,
                 valueConverterBuilder.build(yugabyteDBTypeRegistry));
-        this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector);
+
+        String taskId = config.getString(YugabyteDBConnectorConfig.TASK_ID.toString());
+        this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector, taskId);
 
         // Get the tablet ids and load the offsets
         final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets = 
@@ -192,8 +194,6 @@ public class YugabyteDBConnectorTask
                     schemaNameAdjuster,
                     jdbcConnection);
 
-
-            String taskId = config.getString(YugabyteDBConnectorConfig.TASK_ID.toString());
             YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
                     previousOffsets,
                     errorHandler,
