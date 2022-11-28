@@ -47,6 +47,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
     private CdcService.CDCSDKSchemaPB cdcsdkSchemaPB;
 
+    private Map<String, CdcService.CDCSDKSchemaPB> tabletToCdcsdkSchemaPB = new HashMap<>();
+
     /**
      * Create a schema component given the supplied {@link YugabyteDBConnectorConfig Postgres connector configuration}.
      *
@@ -130,6 +132,23 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         return this;
     }
 
+    protected YugabyteDBSchema refreshSchemaWithTabletId(TableId tableId,
+                                                         CdcService.CDCSDKSchemaPB schemaPB,
+                                                         String schemaName,
+                                                         String tabletId) {
+        // and then refresh the schemas
+        // refreshSchemas();
+        if (cdcsdkSchemaPB == null) {
+            tabletToCdcsdkSchemaPB.put(tabletId, schemaPB);
+            // cdcsdkSchemaPB = schemaPB;
+        }
+
+        readSchema(tables(), null, schemaName,
+                getTableFilter(), null, true, schemaPB, tableId, tabletId);
+        refreshSchemas(tableId);
+        return this;
+    }
+
     protected CdcService.CDCSDKSchemaPB getSchemaPB() {
         return this.cdcsdkSchemaPB;
     }
@@ -150,6 +169,53 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                            boolean removeTablesNotFoundInJdbc,
                            CdcService.CDCSDKSchemaPB schemaPB,
                            TableId tableId) {
+        // Before we make any changes, get the copy of the set of table IDs ...
+        Set<TableId> tableIdsBefore = new HashSet<>(tables.tableIds());
+        // final String catalogName = "yugabyte";
+        // final String schemaName = "public";
+        // final String tableName = "t1";
+        // TableId tableId = new TableId(null, schemaName, tableName);
+
+        Map<TableId, List<Column>> columnsByTable = new HashMap<>();
+
+        // Find regular and materialized views as they cannot be snapshotted
+        final Set<TableId> tableIds = new HashSet<>();
+        if (tableFilter == null || tableFilter.isIncluded(tableId)) {
+            tableIds.add(tableId);
+        }
+        int totalTables = 0;
+
+        for (TableId includeTable : tableIds) {
+            Map<TableId, List<Column>> cols = getColumnsDetailsWithSchema(databaseCatalog, schemaNamePattern,
+                    includeTable.table(), tableFilter,
+                    columnFilter, schemaPB, schemaNamePattern);
+            columnsByTable.putAll(cols);
+        }
+
+        // Read the metadata for the primary keys ...
+        for (Map.Entry<TableId, List<Column>> tableEntry : columnsByTable.entrySet()) {
+            // First get the primary key information, which must be done for *each* table ...
+            List<String> pkColumnNames = readPrimaryKeyOrUniqueIndexNames(schemaPB, tableEntry.getKey());
+
+            // Then define the table ...
+            List<Column> columns = tableEntry.getValue();
+            Collections.sort(columns);
+            String defaultCharsetName = null; // JDBC does not expose character sets
+            tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, defaultCharsetName);
+        }
+
+        if (removeTablesNotFoundInJdbc) {
+            // Remove any definitions for tables that were not found in the database metadata ...
+            // tableIdsBefore.removeAll(columnsByTable.keySet());
+            // tableIdsBefore.forEach(tables::removeTable);
+        }
+    }
+
+    public void readSchemaWithTablet(Tables tables, String databaseCatalog, String schemaNamePattern,
+                           Tables.TableFilter tableFilter, Tables.ColumnNameFilter columnFilter,
+                           boolean removeTablesNotFoundInJdbc,
+                           CdcService.CDCSDKSchemaPB schemaPB,
+                           TableId tableId, String tabletId) {
         // Before we make any changes, get the copy of the set of table IDs ...
         Set<TableId> tableIdsBefore = new HashSet<>(tables.tableIds());
         // final String catalogName = "yugabyte";
@@ -396,6 +462,28 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         removeSchema(id);
         // Create TableSchema instances for any existing table ...
         tableIds().forEach(this::refreshSchema);
+    }
+
+    protected void refreshSchemasWithTabletId(TableId tableId, String tabletId) {
+        removeSchema(tableId);
+
+        tableIds().forEach(this::refreshSchemaWithTablet);
+    }
+
+    protected void refreshSchemaWithTablet(TableId id, String tabletId) {
+        // if (LOG.isDebugEnabled()) {
+        //     LOG.debug("refreshing DB schema for table '{}'", id);
+        // }
+        Table table = null; //tableFor(id);
+
+        buildAndRegisterSchemaForTablet(id, tabletId);
+    }
+
+    protected void buildAndRegisterSchemaForTablet(TableId id, String tabletId) {
+        if (tableFilter.isIncluded(table.id())) {
+            TableSchema schema = schemaBuilder.create(schemaPrefix, getEnvelopeSchemaName(table), table, columnFilter, columnMappers, customKeysMapper);
+            schemasByTableId.put(table.id(), schema);
+        }
     }
 
     protected void refreshSchemas() {

@@ -109,6 +109,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
     // Now by the time connector is consuming all these records, execute an ALTER COMMAND and
     // insert records in the tablet with lesser data.
     TestHelper.execute("ALTER TABLE t1 ADD COLUMN new_column VARCHAR(128) DEFAULT 'new_val';");
+    // TestHelper.execute("ALTER TABLE t1 DROP COLUMN new_column;");
     TestHelper.execute(String.format(insertFormatString, "2"));
 
     // Consume the records now.
