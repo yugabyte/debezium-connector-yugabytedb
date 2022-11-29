@@ -461,9 +461,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         Objects.requireNonNull(tableId);
                                     }
                                     // Getting the table with the help of the schema.
-                                    Table t = schema.tableFor(tableId);
+                                    Table t = schema.tableForTablet(tabletId);
                                     LOGGER.debug("The schema is already registered {}", t);
-                                    if (t == null) {
+                                    if (t == null || t.columns().size() != message.getSchema().getColumnInfoCount()) {
                                         // If we fail to achieve the table, that means we have not specified correct schema information,
                                         // now try to refresh the schema.
                                         schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
@@ -534,7 +534,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // If there are retries left, perform them after the specified delay.
                 LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
                         retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
-                LOGGER.debug("Stacktrace", e);
+                LOGGER.warn("Stacktrace", e);
 
                 try {
                     retryMetronome.pause();

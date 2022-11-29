@@ -49,7 +49,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
     private CdcService.CDCSDKSchemaPB cdcsdkSchemaPB;
 
-    private Map<String, CdcService.CDCSDKSchemaPB> tabletToCdcsdkSchemaPB = new HashMap<>();
+    private Map<String, CdcService.CDCSDKSchemaPB> tabletIdToCdcsdkSchemaPB = new HashMap<>();
     private Map<String, Table> tabletIdToTable = new HashMap<>();
     private Map<String, TableSchema> tabletIdToTableSchema = new HashMap<>();
 
@@ -148,11 +148,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                                                          CdcService.CDCSDKSchemaPB schemaPB,
                                                          String schemaName,
                                                          String tabletId) {
-        // and then refresh the schemas
-        // refreshSchemas();
         if (cdcsdkSchemaPB == null) {
-            tabletToCdcsdkSchemaPB.put(tabletId, schemaPB);
-//             cdcsdkSchemaPB = schemaPB;
+            tabletIdToCdcsdkSchemaPB.put(tabletId, schemaPB);
         }
 
         readSchemaWithTablet(tables(), null, schemaName,
@@ -163,6 +160,10 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
     protected CdcService.CDCSDKSchemaPB getSchemaPB() {
         return this.cdcsdkSchemaPB;
+    }
+
+    protected CdcService.CDCSDKSchemaPB getSchemaPBForTablet(String tabletId) {
+        return tabletIdToCdcsdkSchemaPB.get(tabletId);
     }
 
     private void printReplicaIdentityInfo(YugabyteDBConnection connection, TableId tableId) {
@@ -260,9 +261,13 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
               .tableId(tableId)
               .addColumns(columns)
               .setPrimaryKeyNames(pkColumnNames)
-              .setDefaultCharsetName(null)
+              .setDefaultCharsetName(defaultCharsetName)
               .create();
+            LOGGER.info("Putting updated table to tablet {}: {}: {}", tabletId, updatedTable.id(), updatedTable.columns());
             tabletIdToTable.put(tabletId, updatedTable);
+
+            // Set dummy flag to tables object so as to make sure it is not accessed anywhere else.
+            tables = null;
 //            tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, defaultCharsetName);
         }
 
@@ -415,36 +420,36 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         return getTypeRegistry().get(nativeType).getRootType().getJdbcId();
     }
 
-    /**
-     * Refreshes this schema's content for a particular table
-     *
-     * @param connection              a {@link JdbcConnection} instance, never {@code null}
-     * @param tableId                 the table identifier; may not be null
-     * @param refreshToastableColumns refreshes the cache of toastable columns for `tableId`, if {@code true}
-     * @throws SQLException if there is a problem refreshing the schema from the database server
-     */
-    protected void refresh(YugabyteDBConnection connection, TableId tableId,
-                           boolean refreshToastableColumns)
-            throws SQLException {
-        Tables temp = new Tables();
-        readSchema(temp, null, tableId.schema(), tableId::equals,
-                null, true, null, tableId);
+    // /**
+    //  * Refreshes this schema's content for a particular table
+    //  *
+    //  * @param connection              a {@link JdbcConnection} instance, never {@code null}
+    //  * @param tableId                 the table identifier; may not be null
+    //  * @param refreshToastableColumns refreshes the cache of toastable columns for `tableId`, if {@code true}
+    //  * @throws SQLException if there is a problem refreshing the schema from the database server
+    //  */
+    // protected void refresh(YugabyteDBConnection connection, TableId tableId,
+    //                        boolean refreshToastableColumns)
+    //         throws SQLException {
+    //     Tables temp = new Tables();
+    //     readSchema(temp, null, tableId.schema(), tableId::equals,
+    //             null, true, null, tableId);
 
-        // the table could be deleted before the event was processed
-        if (temp.size() == 0) {
-            LOGGER.warn("Refresh of {} was requested but the table no longer exists", tableId);
-            return;
-        }
-        // overwrite (add or update) or views of the tables
-        tables().overwriteTable(temp.forTable(tableId));
-        // refresh the schema
-        refreshSchema(tableId);
+    //     // the table could be deleted before the event was processed
+    //     if (temp.size() == 0) {
+    //         LOGGER.warn("Refresh of {} was requested but the table no longer exists", tableId);
+    //         return;
+    //     }
+    //     // overwrite (add or update) or views of the tables
+    //     tables().overwriteTable(temp.forTable(tableId));
+    //     // refresh the schema
+    //     refreshSchema(tableId);
 
-        if (refreshToastableColumns) {
-            // and refresh toastable columns info
-            refreshToastableColumnsMap(connection, tableId);
-        }
-    }
+    //     if (refreshToastableColumns) {
+    //         // and refresh toastable columns info
+    //         refreshToastableColumnsMap(connection, tableId);
+    //     }
+    // }
 
     protected void refresh(YugabyteDBConnection connection, TableId tableId,
                            boolean refreshToastableColumns, CdcService.CDCSDKSchemaPB schemaPB, String tabletId)
@@ -454,7 +459,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                 null, true, schemaPB, tableId, tabletId);
 
         // the table could be deleted before the event was processed
-        if (temp.size() == 0) {
+        if (temp != null && temp.size() == 0) {
             LOGGER.warn("Refresh of {} was requested but the table no longer exists", tableId);
             return;
         }
@@ -462,7 +467,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 //        tables().overwriteTable(temp.forTable(tableId));
         tabletIdToTable.put(tabletId, temp.forTable(tableId));
         // refresh the schema
-        refreshSchema(tableId);
+        refreshSchemaWithTablet(tableId, tabletId);
 
         if (refreshToastableColumns) {
             // and refresh toastable columns info
@@ -666,6 +671,10 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     public Table tableForTablet(String tabletId) {
+        if (!tabletIdToTable.containsKey(tabletId)) {
+            return null;
+        }
+
         Table table = tabletIdToTable.get(tabletId);
         return new Filters(config).tableFilter().isIncluded(table.id()) ? table : null;
     }

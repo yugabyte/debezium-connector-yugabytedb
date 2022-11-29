@@ -193,10 +193,12 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         if (columns == null || columns.isEmpty()) {
             return null;
         }
-        final Table table = schema.tableFor(tableId);
+        final Table table = schema.tableForTablet(tabletId);
         if (table == null) {
             schema.dumpTableId();
         }
+        LOGGER.info("Schema in column Values for tablet {}: {}", tabletId, table.columns().size());
+        
         Objects.requireNonNull(table);
 
         // based on the schema columns, create the values on the same position as the columns
@@ -216,7 +218,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
             // but stored unquoted in the column names
             final String columnName = Strings.unquoteIdentifierPart(column.getName());
             undeliveredToastableColumns.remove(columnName);
-
+            LOGGER.info("Getting position for columnName: {}, table: {}", columnName, table.id());
             int position = getPosition(columnName, table, values);
             if (position != -1) {
                 Object value = column.getValue(() -> (BaseConnection) connection.connection(),
@@ -236,6 +238,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
             return null;
         }
         final Table table = schema.tableForTablet(tabletId);
+        LOGGER.info("After getting table for tablet {}: size: {}, columns: {}", tabletId, table.columns().size(), table.columns());
         if (table == null) {
             schema.dumpTableId();
         }
@@ -261,6 +264,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
             final String columnName = Strings.unquoteIdentifierPart(column.getName());
             undeliveredToastableColumns.remove(columnName);
 
+            LOGGER.info("Getting (updatedColumnValues) position for columnName: {}, table: {}", columnName, table.id());
             int position = getPosition(columnName, table, values);
             if (position != -1) {
                 Object value = column.getValue(() -> (BaseConnection) connection.connection(),
@@ -312,7 +316,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
             // Using another implementation of refresh() to take into picture the schema information too.
             // schema.refresh(connection, tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData());
             LOGGER.info("refreshing schema from table in database");
-            schema.refresh(connection, tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData(), schema.getSchemaPB(), tabletId);
+            schema.refresh(connection, tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData(), schema.getSchemaPBForTablet(tabletId), tabletId);
         }
         catch (SQLException e) {
             throw new ConnectException("Database error while refresing table schema", e);
