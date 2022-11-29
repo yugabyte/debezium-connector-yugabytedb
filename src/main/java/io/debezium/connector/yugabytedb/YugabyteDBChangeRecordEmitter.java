@@ -38,7 +38,7 @@ import io.debezium.util.Strings;
 /**
  * Emits change data based on a logical decoding event coming as protobuf or JSON message.
  *
- * @author Horia Chiorean (hchiorea@redhat.com), Jiri Pechanec
+ * @author Suranjan Kumar, Vaibhav Kushwaha
  */
 public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter<YBPartition> {
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBChangeRecordEmitter.class);
@@ -197,7 +197,8 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         if (table == null) {
             schema.dumpTableId();
         }
-        LOGGER.info("Schema in column Values for tablet {}: {}", tabletId, table.columns().size());
+
+        LOGGER.debug("Column count in schema for tablet {}: {}", tabletId, table.columns().size());
         
         Objects.requireNonNull(table);
 
@@ -218,7 +219,6 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
             // but stored unquoted in the column names
             final String columnName = Strings.unquoteIdentifierPart(column.getName());
             undeliveredToastableColumns.remove(columnName);
-            LOGGER.info("Getting position for columnName: {}, table: {}", columnName, table.id());
             int position = getPosition(columnName, table, values);
             if (position != -1) {
                 Object value = column.getValue(() -> (BaseConnection) connection.connection(),
@@ -314,9 +314,10 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     private void refreshTableFromDatabase(TableId tableId) {
         try {
             // Using another implementation of refresh() to take into picture the schema information too.
-            // schema.refresh(connection, tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData());
-            LOGGER.info("refreshing schema from table in database");
-            schema.refresh(connection, tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData(), schema.getSchemaPBForTablet(tableId, tabletId), tabletId);
+            LOGGER.debug("Refreshing schema for the table {}", tableId);
+            schema.refresh(connection, tableId,
+                           connectorConfig.skipRefreshSchemaOnMissingToastableData(),
+                           schema.getSchemaPBForTablet(tableId, tabletId), tabletId);
         }
         catch (SQLException e) {
             throw new ConnectException("Database error while refresing table schema", e);
