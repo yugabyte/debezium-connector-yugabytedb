@@ -45,7 +45,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     private final Map<TableId, List<String>> tableIdToToastableColumns;
     private final Map<Integer, TableId> relationIdToTableId;
     private final boolean readToastableColumns;
-    private Map<TableId, List<String>> cachedTableSchema;
 
     private CdcService.CDCSDKSchemaPB cdcsdkSchemaPB;
 
@@ -148,8 +147,9 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                                                          CdcService.CDCSDKSchemaPB schemaPB,
                                                          String schemaName,
                                                          String tabletId) {
-        if (cdcsdkSchemaPB == null) {
-            tabletIdToCdcsdkSchemaPB.put(tabletId, schemaPB);
+        String lookupKey = getLookupKey(tableId, tabletId);
+        if (cdcsdkSchemaPB == null /*!tabletIdToCdcsdkSchemaPB.containsKey(lookupKey)*/) {
+            tabletIdToCdcsdkSchemaPB.put(lookupKey, schemaPB);
         }
 
         readSchemaWithTablet(tables(), null, schemaName,
@@ -162,8 +162,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         return this.cdcsdkSchemaPB;
     }
 
-    protected CdcService.CDCSDKSchemaPB getSchemaPBForTablet(String tabletId) {
-        return tabletIdToCdcsdkSchemaPB.get(tabletId);
+    protected CdcService.CDCSDKSchemaPB getSchemaPBForTablet(TableId tableId, String tabletId) {
+        return tabletIdToCdcsdkSchemaPB.get(getLookupKey(tableId, tabletId));
     }
 
     private void printReplicaIdentityInfo(YugabyteDBConnection connection, TableId tableId) {
@@ -264,7 +264,10 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
               .setDefaultCharsetName(defaultCharsetName)
               .create();
             LOGGER.info("Putting updated table to tablet {}: {}: {}", tabletId, updatedTable.id(), updatedTable.columns());
-            tabletIdToTable.put(tabletId, updatedTable);
+
+            String lookupKey = getLookupKey(tableId, tabletId);
+            LOGGER.debug("Updating table with lookup key {}", lookupKey);
+            tabletIdToTable.put(lookupKey, updatedTable);
 
             // Set dummy flag to tables object so as to make sure it is not accessed anywhere else.
             tables = null;
@@ -278,8 +281,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         }
     }
 
-    protected Table getTableForTablet(String tabletId) {
-        return tabletIdToTable.get(tabletId);
+    protected Table getTableForTablet(TableId tableId, String tabletId) {
+        return tabletIdToTable.get(getLookupKey(tableId, tabletId));
     }
 
     protected List<String> readPrimaryKeyOrUniqueIndexNames(CdcService.CDCSDKSchemaPB schemaPB,
@@ -464,7 +467,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             return;
         }
         // overwrite (add or update) or views of the tables
-//        tables().overwriteTable(temp.forTable(tableId));
         tabletIdToTable.put(tabletId, temp.forTable(tableId));
         // refresh the schema
         refreshSchemaWithTablet(tableId, tabletId);
@@ -490,7 +492,9 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     protected void refreshSchemasWithTabletId(TableId tableId, String tabletId) {
-        tabletIdToTableSchema.remove(tabletId);
+        String lookupKey = getLookupKey(tableId, tabletId);
+        
+        tabletIdToTableSchema.remove(lookupKey);
 
         refreshSchemaWithTablet(tableId, tabletId);
     }
@@ -515,24 +519,19 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
     protected void buildAndRegisterSchemaForTablet(TableId id, String tabletId) {
         LOGGER.info("Refreshing DB schema for table {} and tablet {}", id, tabletId);
-
-        Table table = tabletIdToTable.get(tabletId);
+        String lookupKey = getLookupKey(id, tabletId);
+        Table table = tabletIdToTable.get(lookupKey);
         TableSchemaBuilder schemaBuilder = getTableSchemaBuilder(config, valueConverter);
         TableSchema schema = schemaBuilder.create(getSchemaPrefix(config.getLogicalName()), getEnvelopeSchemaName(table), table, config.getColumnFilter(), ColumnMappers.create(config), config.getKeyMapper());
 
         if (new Filters(config).tableFilter().isIncluded(table.id())) {
-            tabletIdToTableSchema.put(tabletId, schema);
+            LOGGER.debug("Updating table schema with lookup key {}", lookupKey);
+            tabletIdToTableSchema.put(lookupKey, schema);
         }
-
     }
 
-//    @Override
-//    public TableSchema schemaFor(TableId id) {
-//        return super.schemaFor(id);
-//    }
-
-    public TableSchema schemaForTablet(String tabletId) {
-        return tabletIdToTableSchema.get(tabletId);
+    public TableSchema schemaForTablet(TableId tableId, String tabletId) {
+        return tabletIdToTableSchema.get(getLookupKey(tableId, tabletId));
     }
 
     private String getEnvelopeSchemaName(Table table) {
@@ -670,12 +669,15 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         return tableFor(tableId);
     }
 
-    public Table tableForTablet(String tabletId) {
-        if (!tabletIdToTable.containsKey(tabletId)) {
+    public Table tableForTablet(TableId tableId, String tabletId) {
+        String lookupKey = getLookupKey(tableId, tabletId);
+        if (!tabletIdToTable.containsKey(lookupKey)) {
             return null;
         }
 
-        Table table = tabletIdToTable.get(tabletId);
+        Table table = tabletIdToTable.get(lookupKey);
+        
+        LOGGER.debug("Getting a table with lookup key {}", lookupKey);
         return new Filters(config).tableFilter().isIncluded(table.id()) ? table : null;
     }
 
@@ -687,5 +689,12 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
     public void dumpTableId() {
         LOGGER.info("The relationid to tableid in YugabyteDBSchema is " + this.relationIdToTableId);
+    }
+
+    public String getLookupKey(TableId tableId, String tabletId) {
+        String key = config.databaseName() + "." + tableId.schema() + "." + tableId.table()
+                        + "." + tabletId;
+        LOGGER.info("Lookup key retrieved: {}", key);
+        return key;
     }
 }

@@ -369,6 +369,12 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                             String pgSchemaNameInRecord = m.getPgschemaName();
 
+                            // This is a hack to skip tables in case of colocated tables
+                            TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                            if (!new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
+                                continue;
+                            }
+
                             final OpId lsn = new OpId(record.getCdcSdkOpId().getTerm(),
                                     record.getCdcSdkOpId().getIndex(),
                                     record.getCdcSdkOpId().getWriteIdKey().toByteArray(),
@@ -461,7 +467,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         Objects.requireNonNull(tableId);
                                     }
                                     // Getting the table with the help of the schema.
-                                    Table t = schema.tableForTablet(tabletId);
+                                    Table t = schema.tableForTablet(tableId, tabletId);
                                     LOGGER.debug("The schema is already registered {}", t);
                                     if (t == null || t.columns().size() != message.getSchema().getColumnInfoCount()) {
                                         // If we fail to achieve the table, that means we have not specified correct schema information,

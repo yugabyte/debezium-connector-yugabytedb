@@ -183,7 +183,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         // schema.refresh(tableFromFromMessage(columns, schema.tableFor(tableId)));
         // }
         // }
-        return schema.schemaForTablet(tabletId);
+        return schema.schemaForTablet(tableId, tabletId);
     }
 
     private Object[] columnValues(List<ReplicationMessage.Column> columns, TableId tableId,
@@ -193,7 +193,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         if (columns == null || columns.isEmpty()) {
             return null;
         }
-        final Table table = schema.tableForTablet(tabletId);
+        final Table table = schema.tableForTablet(tableId, tabletId);
         if (table == null) {
             schema.dumpTableId();
         }
@@ -237,7 +237,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         if (columns == null || columns.isEmpty()) {
             return null;
         }
-        final Table table = schema.tableForTablet(tabletId);
+        final Table table = schema.tableForTablet(tableId, tabletId);
         LOGGER.info("After getting table for tablet {}: size: {}, columns: {}", tabletId, table.columns().size(), table.columns());
         if (table == null) {
             schema.dumpTableId();
@@ -299,7 +299,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     private Optional<DataCollectionSchema> newTable(TableId tableId) {
         LOGGER.info("Schema for table '{}' is missing", tableId);
         refreshTableFromDatabase(tableId);
-        final TableSchema tableSchema = schema.schemaForTablet(tabletId);
+        final TableSchema tableSchema = schema.schemaForTablet(tableId, tabletId);
 
         if (tableSchema == null) {
             LOGGER.info("cannot load schema for table '{}'", tableId);
@@ -316,7 +316,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
             // Using another implementation of refresh() to take into picture the schema information too.
             // schema.refresh(connection, tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData());
             LOGGER.info("refreshing schema from table in database");
-            schema.refresh(connection, tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData(), schema.getSchemaPBForTablet(tabletId), tabletId);
+            schema.refresh(connection, tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData(), schema.getSchemaPBForTablet(tableId, tabletId), tabletId);
         }
         catch (SQLException e) {
             throw new ConnectException("Database error while refresing table schema", e);

@@ -415,12 +415,12 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                         Objects.requireNonNull(tId);
                       }
                       // Getting the table with the help of the schema.
-                      Table t = schema.tableFor(tId);
+                      Table t = schema.tableForTablet(tId, tabletId);
                       LOGGER.debug("The schema is already registered {}", t);
-                      if (t == null) {
+                      if (t == null || t.columns().size() != message.getSchema().getColumnInfoCount()) {
                         // If we fail to achieve the table, that means we have not specified 
                         // correct schema information. Now try to refresh the schema.
-                        schema.refreshWithSchema(tId, message.getSchema(), pgSchemaName);
+                        schema.refreshSchemaWithTabletId(tId, message.getSchema(), pgSchemaName, tabletId);
                       }
                     } else {
                       // DML event

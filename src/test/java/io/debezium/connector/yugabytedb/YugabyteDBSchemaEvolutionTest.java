@@ -78,7 +78,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
       ybContainer.stop();
   }
 
-  // @Test
+  @Test
   public void shouldHandleSchemaChangesGracefully() throws Exception {
     /**
      * 1. Create 2 tablets with range sharding
