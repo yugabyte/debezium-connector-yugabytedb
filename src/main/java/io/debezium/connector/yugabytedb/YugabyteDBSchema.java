@@ -232,9 +232,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                            boolean removeTablesNotFoundInJdbc,
                            CdcService.CDCSDKSchemaPB schemaPB,
                            TableId tableId, String tabletId) {
-        // Before we make any changes, get the copy of the set of table IDs ...
-        Set<TableId> tableIdsBefore = new HashSet<>(tables.tableIds());
-
         Map<TableId, List<Column>> columnsByTable = new HashMap<>();
 
         // Find regular and materialized views as they cannot be snapshotted
@@ -242,7 +239,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         if (tableFilter == null || tableFilter.isIncluded(tableId)) {
             tableIds.add(tableId);
         }
-        int totalTables = 0;
 
         for (TableId includeTable : tableIds) {
             Map<TableId, List<Column>> cols = getColumnsDetailsWithSchema(databaseCatalog, schemaNamePattern,
@@ -273,12 +269,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
             // Set dummy flag to tables object so as to make sure it is not accessed anywhere else.
             tables = null;
-        }
-
-        if (removeTablesNotFoundInJdbc) {
-            // Remove any definitions for tables that were not found in the database metadata ...
-            // tableIdsBefore.removeAll(columnsByTable.keySet());
-            // tableIdsBefore.forEach(tables::removeTable);
         }
     }
 
@@ -445,7 +435,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     protected void buildAndRegisterSchemaForTablet(TableId id, String tabletId) {
-        LOGGER.info("Refreshing DB schema for table {} and tablet {}", id, tabletId);
         String lookupKey = getLookupKey(id, tabletId);
         Table table = tabletIdToTable.get(lookupKey);
         TableSchemaBuilder schemaBuilder = getTableSchemaBuilder(config, valueConverter);
@@ -468,8 +457,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     private static String getSchemaPrefix(String serverName) {
         if (serverName == null) {
             return "";
-        }
-        else {
+        } else {
             serverName = serverName.trim();
             return serverName.endsWith(".") || serverName.isEmpty() ? serverName : serverName + ".";
         }
@@ -632,9 +620,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
      * @return lookup key in the form databaseName.schemaName.tableName.tabletId
      */
     public String getLookupKey(TableId tableId, String tabletId) {
-        String key = config.databaseName() + "." + tableId.schema() + "." + tableId.table()
-                        + "." + tabletId;
-        LOGGER.info("Lookup key retrieved: {}", key);
-        return key;
+        return config.databaseName() + "." + tableId.schema() + "." + tableId.table()
+                + "." + tabletId;
     }
 }

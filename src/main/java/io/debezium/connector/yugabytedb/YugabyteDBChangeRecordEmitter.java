@@ -22,14 +22,12 @@ import org.postgresql.core.BaseConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.debezium.DebeziumException;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.data.Envelope.Operation;
 import io.debezium.function.Predicates;
 import io.debezium.pipeline.spi.ChangeRecordEmitter;
 import io.debezium.pipeline.spi.OffsetContext;
-import io.debezium.pipeline.spi.Partition;
 import io.debezium.relational.*;
 import io.debezium.schema.DataCollectionSchema;
 import io.debezium.util.Clock;
@@ -110,7 +108,6 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     @Override
     public void emitChangeRecords(DataCollectionSchema schema, Receiver receiver) throws InterruptedException {
         schema = synchronizeTableSchema(schema);
-        LOGGER.info("The schema of the table for tablet {} is {}", tabletId, schema);
         super.emitChangeRecords(schema, receiver);
     }
 
@@ -238,7 +235,6 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
             return null;
         }
         final Table table = schema.tableForTablet(tableId, tabletId);
-        LOGGER.info("After getting table for tablet {}: size: {}, columns: {}", tabletId, table.columns().size(), table.columns());
         if (table == null) {
             schema.dumpTableId();
         }
@@ -264,7 +260,6 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
             final String columnName = Strings.unquoteIdentifierPart(column.getName());
             undeliveredToastableColumns.remove(columnName);
 
-            LOGGER.info("Getting (updatedColumnValues) position for columnName: {}, table: {}", columnName, table.id());
             int position = getPosition(columnName, table, values);
             if (position != -1) {
                 Object value = column.getValue(() -> (BaseConnection) connection.connection(),
@@ -281,15 +276,14 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
 
         if (tableColumn == null) {
             LOGGER.warn(
-                    "Internal schema (null) is out-of-sync with incoming decoder events; column {} will be omitted from the change event.",
+                    "Internal schema is out-of-sync with incoming decoder events; column {} will be omitted from the change event.",
                     columnName);
-            throw new DebeziumException("Internal schema is out-of-sync with incoming events");
-            // return -1;
+            return -1;
         }
         int position = tableColumn.position() - 1;
         if (position < 0 || position >= values.length) {
             LOGGER.warn(
-                    "Internal schema (null) is out-of-sync with incoming decoder events; column {} will be omitted from the change event.",
+                    "Internal schema is out-of-sync with incoming decoder events; column {} will be omitted from the change event.",
                     columnName);
             return -1;
         }
@@ -302,11 +296,11 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         final TableSchema tableSchema = schema.schemaForTablet(tableId, tabletId);
 
         if (tableSchema == null) {
-            LOGGER.info("cannot load schema for table '{}'", tableId);
+            LOGGER.warn("cannot load schema for table '{}'", tableId);
             return Optional.empty();
         }
         else {
-            LOGGER.info("refreshed DB schema to include table '{}'", tableId);
+            LOGGER.debug("refreshed DB schema to include table '{}'", tableId);
             return Optional.of(tableSchema);
         }
     }
