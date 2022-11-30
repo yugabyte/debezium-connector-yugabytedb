@@ -21,9 +21,9 @@ pipeline {
     stages {
         stage("Setup environment") {
             steps {
-                withCredentials([file(credentialsId: 'cdcsdk-server-quay-auth', variable: 'cdcsdk_quay_auth')]) {
+                withCredentials([file(credentialsId: 'debezium-quay-auth', variable: 'debezium_quay_auth')]) {
                     sh 'mkdir -p $HOME/.docker'
-                    sh 'cp ${cdcsdk_quay_auth} $HOME/.docker/config.json'
+                    sh 'cp ${debezium_quay_auth} $HOME/.docker/config.json'
                     sh 'chmod 600 $HOME/.docker/config.json'
                 }
                 script{
