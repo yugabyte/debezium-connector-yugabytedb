@@ -7,15 +7,11 @@ import static org.junit.jupiter.api.Assertions.fail;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
 
-import org.apache.kafka.connect.data.Struct;
+import org.apache.http.client.utils.Punycode;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
@@ -24,13 +20,9 @@ import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.junit.jupiter.api.Order;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.YugabyteYSQLContainer;
-import org.yb.client.GetTabletListToPollForCDCResponse;
-import org.yb.client.YBClient;
-import org.yb.client.YBTable;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
@@ -47,7 +39,6 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
   private final String insertFormatString = "INSERT INTO t1 VALUES (%s, 'name_value');";
   
   private static YugabyteYSQLContainer ybContainer;
-  private static String masterAddresses;
 
   @BeforeClass
   public static void beforeClass() throws SQLException {
@@ -57,7 +48,6 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
 
       TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
       TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
-      masterAddresses = ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100);
 
       TestHelper.dropAllSchemas();
   }
@@ -87,7 +77,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
      * 3. Execute an ALTER command
      * 4. Now when the connector will try to poll the records for the tablet with less data, it will
      *    also try to get the schema and since the schema has changed by this time in the records,
-     *    the connector should throw an error.
+     *    the connector should get the older schema for that tablet and keep working.
      */
     TestHelper.dropAllSchemas();
     TestHelper.execute("CREATE TABLE t1 (id INT, name TEXT, PRIMARY KEY(id ASC)) SPLIT AT VALUES ((30000));");
@@ -109,18 +99,79 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
     // Now by the time connector is consuming all these records, execute an ALTER COMMAND and
     // insert records in the tablet with lesser data.
     TestHelper.execute("ALTER TABLE t1 ADD COLUMN new_column VARCHAR(128) DEFAULT 'new_val';");
-    // TestHelper.execute("ALTER TABLE t1 DROP COLUMN new_column;");
+
     TestHelper.execute(String.format(insertFormatString, "2"));
 
     // Consume the records now.
-    CompletableFuture.runAsync(() -> verifyRecordCount(5000 + 2))
+    CompletableFuture.runAsync(() -> verifyRecordCount(new ArrayList<>() /* dummy list */, 5000 + 2))
       .exceptionally(throwable -> {
         throw new RuntimeException(throwable);
       }).get();
   }
 
-  private void verifyRecordCount(long recordsCount) {
-    waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount, 10 * 60 * 1000);
+  @Test
+  public void shouldHandleDropColumn() {
+    /**
+     * 1. Instead of adding, we will be dropping column this time.
+     */
+  }
+
+  @Test
+  public void shouldHandleSchemaChangesForHighTabletCount() throws Exception {
+    /**
+     * 1. Create a table having 40 columns (+1 for primary key) with 40 tablets
+     * 2. Start the CDC pipeline and keep inserting data
+     * 3. Execute ALTER TABLE...DROP commands randomly.
+     */
+    
+    TestHelper.dropAllSchemas();
+
+    int sum = 0;
+    String createTableStatement = "CREATE TABLE t1 (id INT PRIMARY KEY";
+    for (int i = 1; i <= 40; ++i) {
+      createTableStatement += ", col_" + i + " INT DEFAULT 404";
+      sum += i;
+    }
+    createTableStatement += ");";
+    final int totalExpectedRecords = sum;
+    LOGGER.info("Creating table: {}", createTableStatement);
+    
+    TestHelper.execute(createTableStatement);
+
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 5_000);
+    configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
+
+    start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+      assertTrue(success);
+    });
+
+    awaitUntilConnectorIsReady();
+
+    Thread executorThread = new Thread(new ExecutorClass());
+    executorThread.start();
+
+    // Wait for the thread to finish.
+    executorThread.join();
+    LOGGER.info("Expected record count after thread finish: {}", totalExpectedRecords);
+
+    // Verify the record count now
+    List<SourceRecord> records = new ArrayList<>();
+    CompletableFuture.runAsync(() -> verifyRecordCount(records, totalExpectedRecords))
+      .exceptionally(throwable -> {
+        throw new RuntimeException(throwable);
+      }).get();
+    
+    // TODO Vaibhav: How do we assert that we are getting the reduced schema after drops?
+    LOGGER.info("Key schema field count: {} value schema field count: {}", records.get(0).keySchema().fields().size(), records.get(0).valueSchema().fields().size());
+    for (int i = 0; i < records.size(); ++i) {
+      // Maybe some way we can order them? Based on the key?
+    }
+  }
+
+  private void verifyRecordCount(List<SourceRecord> records, long recordsCount) {
+    waitAndFailIfCannotConsume(records, recordsCount, 10 * 60 * 1000);
   }
 
   private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
@@ -148,4 +199,23 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
 
       assertEquals(recordsCount, totalConsumedRecords.get());
     }
+
+    protected class ExecutorClass implements Runnable {
+      private final String generateSeries = "INSERT INTO t1 VALUES (generate_series(%d, %d));";
+
+      @Override
+      public void run() {
+        int startKey = 1;
+        for (int i = 1; i <= 40; ++i) {
+          // Pick a random index from the list and drop the column.
+          int colToDrop = i;
+
+          // Drop the column and then insert some records
+          TestHelper.execute("ALTER TABLE t1 DROP COLUMN col_" + colToDrop + ";");
+
+          TestHelper.execute(String.format(generateSeries, startKey, startKey + colToDrop - 1));
+          startKey += colToDrop;
+      }
+    }
+  }
 }
