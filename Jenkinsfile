@@ -51,7 +51,9 @@ pipeline {
                 script{
                     env.PKG_VERSION = sh(script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout", returnStdout: true).trim()
                     env.ARTIFACT_ID = sh(script: "mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout", returnStdout: true).trim()
-                    sh 'mvn clean test package'
+                    sh '''mvn clean test package \
+                    -Dtest=!YugabyteDBColocatedTablesTest.shouldWorkWithMixOfColocatedAndNonColocatedTables,!YugabyteDBDatatypesTest.testEnumValue
+                    '''
                 }
             }
         }
