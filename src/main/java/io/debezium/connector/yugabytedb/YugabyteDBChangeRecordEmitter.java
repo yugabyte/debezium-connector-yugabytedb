@@ -291,6 +291,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     }
 
     private Optional<DataCollectionSchema> newTable(TableId tableId) {
+        // TODO Vaibhav: Remove or change the log level for this log, it is not helpful
         LOGGER.info("Schema for table '{}' is missing", tableId);
         refreshTableFromDatabase(tableId);
         final TableSchema tableSchema = schema.schemaForTablet(tableId, tabletId);
