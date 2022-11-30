@@ -16,6 +16,7 @@ pipeline {
     // }
     environment {
         RELEASE_BUCKET_PATH = "s3://releases.yugabyte.com/debezium-connector-yugabytedb"
+        YB_DOCKER_IMAGE = "quay.io/yugabyte/yugabyte:2.16.0.0-b66"
     }
     stages {
         stage("Setup environment") {
