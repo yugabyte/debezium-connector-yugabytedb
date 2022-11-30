@@ -165,21 +165,9 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         if (getOperation() == Operation.DELETE || !message.shouldSchemaBeSynchronized()) {
             return tableSchema;
         }
-        final boolean metadataInMessage = message.hasTypeMetadata();
+
         final TableId tableId = (TableId) tableSchema.id();
-        final Table table = schema.tableFor(tableId);
-        final List<ReplicationMessage.Column> columns = message.getNewTupleList();
-        // CDCSDK we don't need to, as we will get DDL as part of change stream
-        // keep updating that.
-        // check if we need to refresh our local schema due to DB schema changes for this table
-        // if (schemaChanged(columns, table, metadataInMessage)) {
-        // // Refresh the schema so we get information about primary keys
-        // refreshTableFromDatabase(tableId);
-        // // Update the schema with metadata coming from decoder message
-        // if (metadataInMessage) {
-        // schema.refresh(tableFromFromMessage(columns, schema.tableFor(tableId)));
-        // }
-        // }
+
         return schema.schemaForTablet(tableId, tabletId);
     }
 
@@ -291,8 +279,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     }
 
     private Optional<DataCollectionSchema> newTable(TableId tableId) {
-        // TODO Vaibhav: Remove or change the log level for this log, it is not helpful
-        LOGGER.info("Schema for table '{}' is missing", tableId);
+        LOGGER.debug("Creating a new schema entry for table: {} and tablet {}", tableId, tabletId);
         refreshTableFromDatabase(tableId);
         final TableSchema tableSchema = schema.schemaForTablet(tableId, tabletId);
 

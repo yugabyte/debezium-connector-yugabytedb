@@ -8,6 +8,7 @@ package io.debezium.connector.yugabytedb;
 
 import java.sql.SQLException;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import io.debezium.data.Envelope;
 import io.debezium.relational.mapping.ColumnMappers;
@@ -16,6 +17,8 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
+import org.yb.cdc.CdcService.CDCSDKColumnInfoPB;
+import org.yb.cdc.CdcService.CDCSDKSchemaPB;
 
 import io.debezium.annotation.NotThreadSafe;
 import io.debezium.connector.yugabytedb.connection.ServerInfo;
@@ -227,6 +230,48 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         }
     }
 
+    /**
+     * Check whether we should refresh the cached schema in the connector. The idea is to not
+     * refresh if the same schema already exists in the connector. This function will be called
+     * whenever we receive a DDL record.
+     * @param table the table object cached in the connector
+     * @param schemaPB the {@link CDCSDKSchemaPB} schema object received in DDL message
+     * @return true if a schema refresh is needed, false otherwise
+     */
+    public static boolean shouldRefreshSchema(Table table, CDCSDKSchemaPB schemaPB) {
+        if (table == null) {
+            // Precheck to indicate that we need to refresh the schema if table is null indicating
+            // that is has not been registered in cache.
+            return true;
+        }
+
+        List<String> columnNamesInTable = new ArrayList<>();
+        List<String> columnNamesInSchema = new ArrayList<>();
+
+        for (Column column : table.columns()) {
+            columnNamesInTable.add(column.name());
+        }
+
+        for (CDCSDKColumnInfoPB columnInfoPB : schemaPB.getColumnInfoList()) {
+            columnNamesInSchema.add(columnInfoPB.getName());
+        }
+
+        columnNamesInTable = columnNamesInTable.stream().sorted().collect(Collectors.toList());
+        columnNamesInSchema = columnNamesInSchema.stream().sorted().collect(Collectors.toList());
+
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Columns in existing table: {}", columnNamesInTable);
+            LOGGER.debug("Columns in schemaPB received: {}", columnNamesInSchema);
+        }
+
+        if (!((columnNamesInTable.size() == columnNamesInSchema.size()) && (columnNamesInTable.equals(columnNamesInSchema)))) {
+            // We should refresh schema if either the column count doesn't match or the names of the columns have changed
+            return true;
+        }
+
+        return false;
+    }
+
     public void readSchemaWithTablet(Tables tables, String databaseCatalog, String schemaNamePattern,
                            Tables.TableFilter tableFilter, Tables.ColumnNameFilter columnFilter,
                            boolean removeTablesNotFoundInJdbc,
@@ -266,10 +311,10 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             String lookupKey = getLookupKey(tableId, tabletId);
             LOGGER.debug("Updating table with lookup key {} and columns {}", lookupKey, updatedTable.columns());
             tabletIdToTable.put(lookupKey, updatedTable);
-
-            // Set dummy flag to tables object so as to make sure it is not accessed anywhere else.
-            tables = null;
         }
+
+        // Set dummy flag to tables object so as to make sure it is not accessed anywhere else.
+        tables = null;
     }
 
     protected Table getTableForTablet(TableId tableId, String tabletId) {
@@ -387,19 +432,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     protected void refresh(YugabyteDBConnection connection, TableId tableId,
                            boolean refreshToastableColumns, CdcService.CDCSDKSchemaPB schemaPB, String tabletId)
             throws SQLException {
-        Tables temp = new Tables();
-        readSchemaWithTablet(temp, null, tableId.schema(), tableId::equals,
-                null, true, schemaPB, tableId, tabletId);
-
-        // the table could be deleted before the event was processed
-        if (temp != null && temp.size() == 0) {
-            LOGGER.warn("Refresh of {} was requested but the table no longer exists", tableId);
-            return;
-        }
-        // overwrite (add or update) or views of the tables
-        tabletIdToTable.put(tabletId, temp.forTable(tableId));
-        // refresh the schema
-        refreshSchemaWithTablet(tableId, tabletId);
+        readSchemaWithTablet(null /* dummy object */, null, tableId.schema(), tableId::equals,
+                             null, true, schemaPB, tableId, tabletId);
 
         if (refreshToastableColumns) {
             // and refresh toastable columns info

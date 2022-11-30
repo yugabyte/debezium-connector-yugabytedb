@@ -468,10 +468,14 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     }
                                     // Getting the table with the help of the schema.
                                     Table t = schema.tableForTablet(tableId, tabletId);
-                                    LOGGER.debug("The schema is already registered {}", t);
-                                    if (t == null || t.columns().size() != message.getSchema().getColumnInfoCount()) {
+                                    if (YugabyteDBSchema.shouldRefreshSchema(t, message.getSchema())) {
                                         // If we fail to achieve the table, that means we have not specified correct schema information,
                                         // now try to refresh the schema.
+                                        if (t == null) {
+                                            LOGGER.info("Registering the schema for tablet {} since it was not registered already", tabletId);
+                                        } else {
+                                            LOGGER.info("Refreshing the schema for tablet {} because of mismatch in cached schema and received schema", tabletId);
+                                        }
                                         schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
                                     }
                                 }

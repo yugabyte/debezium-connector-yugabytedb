@@ -416,8 +416,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       }
                       // Getting the table with the help of the schema.
                       Table t = schema.tableForTablet(tId, tabletId);
-                      LOGGER.debug("The schema is already registered {}", t);
-                      if (t == null || t.columns().size() != message.getSchema().getColumnInfoCount()) {
+                      if (YugabyteDBSchema.shouldRefreshSchema(t, message.getSchema())) {
                         // If we fail to achieve the table, that means we have not specified 
                         // correct schema information. Now try to refresh the schema.
                         schema.refreshSchemaWithTabletId(tId, message.getSchema(), pgSchemaName, tabletId);
