@@ -1,7 +1,7 @@
 # On your terminal, run the following to build the image:
 #  - mvn clean package -Dquick
 
-# The base image is derived from debezium/connect:1.7 and contains the following drivers 
+# The base image is derived from debezium/connect:1.7 and contains the following drivers
 # and connectors prepopulated:
 #  - JDBC Sink Connector v10.2.5
 #  - YugabyteDB JDBC Driver v42.3.5-yb-1
@@ -18,3 +18,7 @@ COPY target/debezium-connector-yugabytedb-*.jar $KAFKA_CONNECT_YB_DIR/
 
 # Set the TLS version to be used by Kafka processes
 ENV KAFKA_OPTS="-Djdk.tls.client.protocols=TLSv1.2"
+
+# Add Jmx agent and metrics pattern file to expose the metrics info
+RUN mkdir /kafka/etc && cd /kafka/etc && curl -so jmx_prometheus_javaagent-0.9.jar https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.9/jmx_prometheus_javaagent-0.9.jar
+ADD metrics.yml /etc/jmx-exporter/
