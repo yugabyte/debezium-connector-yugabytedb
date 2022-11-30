@@ -385,6 +385,7 @@ public final class TestHelper {
         String dockerImageName = System.getenv("YB_DOCKER_IMAGE");
         
         if (dockerImageName == null || dockerImageName.isEmpty()) {
+            LOGGER.info("Environment variable YB_DOCKER_IMAGE is empty, defaulting to image from Dockerhub.");
             dockerImageName = "yugabytedb/yugabyte:latest";
         }
 
