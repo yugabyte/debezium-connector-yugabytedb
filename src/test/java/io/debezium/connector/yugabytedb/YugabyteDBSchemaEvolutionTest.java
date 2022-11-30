@@ -110,29 +110,22 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
   }
 
   @Test
-  public void shouldHandleDropColumn() {
+  public void shouldHandleDropColumnWithSingleTablet() throws Exception {
     /**
-     * 1. Instead of adding, we will be dropping column this time.
-     */
-  }
-
-  @Test
-  public void shouldHandleSchemaChangesForHighTabletCount() throws Exception {
-    /**
-     * 1. Create a table having 40 columns (+1 for primary key) with 40 tablets
+     * 1. Create a table having 10 columns (+1 for primary key)
      * 2. Start the CDC pipeline and keep inserting data
      * 3. Execute ALTER TABLE...DROP commands randomly.
      */
-    
+    int columnCount = 10;
     TestHelper.dropAllSchemas();
 
     int sum = 0;
     String createTableStatement = "CREATE TABLE t1 (id INT PRIMARY KEY";
-    for (int i = 1; i <= 40; ++i) {
+    for (int i = 1; i <= columnCount; ++i) {
       createTableStatement += ", col_" + i + " INT DEFAULT 404";
       sum += i;
     }
-    createTableStatement += ");";
+    createTableStatement += ") SPLIT INTO 1 TABLETS;";
     final int totalExpectedRecords = sum;
     LOGGER.info("Creating table: {}", createTableStatement);
     
@@ -149,7 +142,65 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
 
     awaitUntilConnectorIsReady();
 
-    Thread executorThread = new Thread(new ExecutorClass());
+    Thread executorThread = new Thread(new Executor(columnCount));
+    executorThread.start();
+
+    // Wait for the thread to finish.
+    executorThread.join();
+
+    // Verify the record count now
+    List<SourceRecord> records = new ArrayList<>();
+    CompletableFuture.runAsync(() -> verifyRecordCount(records, totalExpectedRecords))
+      .exceptionally(throwable -> {
+        throw new RuntimeException(throwable);
+      }).get();
+    
+    // Assuming that since this is a single tablet, the records will be in order.
+    LOGGER.info("Key schema field count: {} value schema field count: {}", records.get(0).keySchema().fields().size(), records.get(0).valueSchema().fields().size());
+    int recordsExpected = 1;
+    for (int i = 0; i < records.size(); ) {
+      // Maybe some way we can order them? Based on the key?
+      while (/* some j variable less than recordsExpected */) {
+        // This will verify that the coming records have value schema with that much count
+      }
+      i += recordsExpected;
+    }
+  }
+
+  @Test
+  public void shouldHandleSchemaChangesForHighTabletCount() throws Exception {
+    /**
+     * 1. Create a table having 40 columns (+1 for primary key) with 40 tablets
+     * 2. Start the CDC pipeline and keep inserting data
+     * 3. Execute ALTER TABLE...DROP commands randomly.
+     */
+    int columnCount = 40;
+    TestHelper.dropAllSchemas();
+
+    int sum = 0;
+    String createTableStatement = "CREATE TABLE t1 (id INT PRIMARY KEY";
+    for (int i = 1; i <= 40; ++i) {
+      createTableStatement += ", col_" + i + " INT DEFAULT 404";
+      sum += i;
+    }
+    createTableStatement += ") SPLIT INTO 40 TABLETS;";
+    final int totalExpectedRecords = sum;
+    LOGGER.info("Creating table: {}", createTableStatement);
+    
+    TestHelper.execute(createTableStatement);
+
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 5_000);
+    configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
+
+    start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+      assertTrue(success);
+    });
+
+    awaitUntilConnectorIsReady();
+
+    Thread executorThread = new Thread(new Executor(columnCount));
     executorThread.start();
 
     // Wait for the thread to finish.
@@ -200,13 +251,17 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
       assertEquals(recordsCount, totalConsumedRecords.get());
     }
 
-    protected class ExecutorClass implements Runnable {
+    protected class Executor implements Runnable {
       private final String generateSeries = "INSERT INTO t1 VALUES (generate_series(%d, %d));";
+      private final int columnCount;
+      public Executor(int columnCount) {
+        this.columnCount = columnCount;
+      }
 
       @Override
       public void run() {
         int startKey = 1;
-        for (int i = 1; i <= 40; ++i) {
+        for (int i = 1; i <= columnCount; ++i) {
           // Pick a random index from the list and drop the column.
           int colToDrop = i;
 
