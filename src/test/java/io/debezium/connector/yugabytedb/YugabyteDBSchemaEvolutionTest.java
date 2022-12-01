@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.http.client.utils.Punycode;
+import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
@@ -154,17 +154,6 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
       .exceptionally(throwable -> {
         throw new RuntimeException(throwable);
       }).get();
-    
-    // Assuming that since this is a single tablet, the records will be in order.
-    LOGGER.info("Key schema field count: {} value schema field count: {}", records.get(0).keySchema().fields().size(), records.get(0).valueSchema().fields().size());
-    int recordsExpected = 1;
-    for (int i = 0; i < records.size(); ) {
-      // Maybe some way we can order them? Based on the key?
-      while (/* some j variable less than recordsExpected */) {
-        // This will verify that the coming records have value schema with that much count
-      }
-      i += recordsExpected;
-    }
   }
 
   @Test
@@ -213,12 +202,6 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
       .exceptionally(throwable -> {
         throw new RuntimeException(throwable);
       }).get();
-    
-    // TODO Vaibhav: How do we assert that we are getting the reduced schema after drops?
-    LOGGER.info("Key schema field count: {} value schema field count: {}", records.get(0).keySchema().fields().size(), records.get(0).valueSchema().fields().size());
-    for (int i = 0; i < records.size(); ++i) {
-      // Maybe some way we can order them? Based on the key?
-    }
   }
 
   private void verifyRecordCount(List<SourceRecord> records, long recordsCount) {
