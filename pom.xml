@@ -49,7 +49,7 @@
         <version.logback>1.4.0</version.logback>
         <version.ybclient>0.8.34-20221128.060633-1</version.ybclient>
         <version.gson>2.8.9</version.gson>
- 
+
         <!--
           Specify the properties that will be used for setting up the integration tests' Docker container.
           Note that the `dockerhost.ip` property is computed from the IP address of DOCKER_HOST, which will
@@ -332,6 +332,17 @@
                     <descriptorRefs>
                         <descriptorRef>jar-with-dependencies</descriptorRef>
                     </descriptorRefs> -->
+                    <!-- <minimizeJar>true</minimizeJar> -->
+                    <!-- <filters>
+                        <filter>
+                            <artifact>*:*</artifact>
+                            <excludes>
+                                <exclude>META-INF/*.SF</exclude>
+                                <exclude>META-INF/*.DSA</exclude>
+                                <exclude>META-INF/*.RSA</exclude>
+                            </excludes>
+                        </filter>
+                    </filters> -->
                     <relocations>
                         <relocation>
                             <pattern>commons-lang</pattern>
@@ -370,17 +381,28 @@
                             <shadedPattern>com.shaded.google.code.findbugs</shadedPattern>
                         </relocation>
                         <relocation>
-                            <pattern>javax</pattern>
-                            <shadedPattern>javax.shaded</shadedPattern>
+                            <pattern>javax.enterprise</pattern>
+                            <shadedPattern>javax.shaded.enterprise</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>javax.annotation</pattern>
+                            <shadedPattern>javax.shaded.annotation</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>javax.inject</pattern>
+                            <shadedPattern>javax.shaded.inject</shadedPattern>
                         </relocation>
                         <relocation>
                             <pattern>aopalliance</pattern>
                             <shadedPattern>aopalliance.shaded</shadedPattern>
                         </relocation>
-                        <relocation>
+                        <!-- <relocation>
                             <pattern>org</pattern>
                             <shadedPattern>org.shaded</shadedPattern>
-                        </relocation>
+                            <excludes>
+                                <exclude>org.apache.*</exclude>
+                            </excludes>
+                        </relocation> -->
                         <relocation>
                             <pattern>oro</pattern>
                             <shadedPattern>oro.shaded</shadedPattern>
@@ -437,6 +459,13 @@
                             <pattern>joda-time</pattern>
                             <shadedPattern>joda-time.shaded</shadedPattern>
                         </relocation>
+                        <!-- <relocation>
+                            <pattern>io.debezium</pattern>
+                            <shadedPattern>io.shaded.debezium</shadedPattern>
+                            <excludes>
+                                <exclude>io.debezium.connector.yugabytedb.*</exclude>
+                            </excludes>
+                        </relocation> -->
                     </relocations>
                 </configuration>
                 <executions>
@@ -446,6 +475,19 @@
                         <goals>
                             <goal>shade</goal>
                         </goals>
+                        <configuration>
+                            <minimizeJar>true</minimizeJar>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

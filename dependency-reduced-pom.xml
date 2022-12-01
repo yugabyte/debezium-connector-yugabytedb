@@ -49,6 +49,19 @@
             <goals>
               <goal>shade</goal>
             </goals>
+            <configuration>
+              <minimizeJar>true</minimizeJar>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+            </configuration>
           </execution>
         </executions>
         <configuration>
@@ -90,16 +103,20 @@
               <shadedPattern>com.shaded.google.code.findbugs</shadedPattern>
             </relocation>
             <relocation>
-              <pattern>javax</pattern>
-              <shadedPattern>javax.shaded</shadedPattern>
+              <pattern>javax.enterprise</pattern>
+              <shadedPattern>javax.shaded.enterprise</shadedPattern>
+            </relocation>
+            <relocation>
+              <pattern>javax.annotation</pattern>
+              <shadedPattern>javax.shaded.annotation</shadedPattern>
+            </relocation>
+            <relocation>
+              <pattern>javax.inject</pattern>
+              <shadedPattern>javax.shaded.inject</shadedPattern>
             </relocation>
             <relocation>
               <pattern>aopalliance</pattern>
               <shadedPattern>aopalliance.shaded</shadedPattern>
-            </relocation>
-            <relocation>
-              <pattern>org</pattern>
-              <shadedPattern>org.shaded</shadedPattern>
             </relocation>
             <relocation>
               <pattern>oro</pattern>
