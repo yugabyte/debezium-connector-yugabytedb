@@ -328,21 +328,6 @@
                 <artifactId>maven-shade-plugin</artifactId>
                 <version>${version.shade.plugin}</version>
                 <configuration>
-                    <!-- <appendAssemblyId>false</appendAssemblyId>
-                    <descriptorRefs>
-                        <descriptorRef>jar-with-dependencies</descriptorRef>
-                    </descriptorRefs> -->
-                    <!-- <minimizeJar>true</minimizeJar> -->
-                    <!-- <filters>
-                        <filter>
-                            <artifact>*:*</artifact>
-                            <excludes>
-                                <exclude>META-INF/*.SF</exclude>
-                                <exclude>META-INF/*.DSA</exclude>
-                                <exclude>META-INF/*.RSA</exclude>
-                            </excludes>
-                        </filter>
-                    </filters> -->
                     <relocations>
                         <relocation>
                             <pattern>commons-lang</pattern>
@@ -396,13 +381,6 @@
                             <pattern>aopalliance</pattern>
                             <shadedPattern>aopalliance.shaded</shadedPattern>
                         </relocation>
-                        <!-- <relocation>
-                            <pattern>org</pattern>
-                            <shadedPattern>org.shaded</shadedPattern>
-                            <excludes>
-                                <exclude>org.apache.*</exclude>
-                            </excludes>
-                        </relocation> -->
                         <relocation>
                             <pattern>oro</pattern>
                             <shadedPattern>oro.shaded</shadedPattern>
@@ -459,13 +437,6 @@
                             <pattern>joda-time</pattern>
                             <shadedPattern>joda-time.shaded</shadedPattern>
                         </relocation>
-                        <!-- <relocation>
-                            <pattern>io.debezium</pattern>
-                            <shadedPattern>io.shaded.debezium</shadedPattern>
-                            <excludes>
-                                <exclude>io.debezium.connector.yugabytedb.*</exclude>
-                            </excludes>
-                        </relocation> -->
                     </relocations>
                 </configuration>
                 <executions>
