@@ -328,6 +328,7 @@
                 <artifactId>maven-shade-plugin</artifactId>
                 <version>${version.shade.plugin}</version>
                 <configuration>
+                    <createDependencyReducedPom>false</createDependencyReducedPom>
                     <relocations>
                         <relocation>
                             <pattern>commons-lang</pattern>
