@@ -29,3 +29,4 @@ generated-sources
 .project
 .settings
 .idea/
+dependency-reduced-pom.xml
