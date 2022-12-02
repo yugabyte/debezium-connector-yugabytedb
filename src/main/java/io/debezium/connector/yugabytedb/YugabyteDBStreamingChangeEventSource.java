@@ -334,8 +334,6 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                       // Check again if the thread has been interrupted.
                       if (!context.isRunning()) {
-                        LOGGER.warn("Error while trying to get the changes from the server for tablet: {}",
-                        tabletId);
                         LOGGER.info("Connector has been stopped");
                         break;
                       }
@@ -535,7 +533,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 }
 
                 // If there are retries left, perform them after the specified delay.
-                LOGGER.warn("Error while trying to get the changes from the server fir tablet: {}; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
+                LOGGER.warn("Error while trying to get the changes from the server for tablet: {}; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
                         curTabletId, retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
                 LOGGER.debug("Stacktrace", e);
 
