@@ -5,7 +5,7 @@
     <groupId>io.debezium</groupId>
     <artifactId>debezium-connector-yugabytedb</artifactId>
     <name>Debezium Connector for YugabyteDB</name>
-    <version>1.9.5.y.3-SNAPSHOT</version>
+    <version>1.9.5.y.7-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <scm>
@@ -24,7 +24,7 @@
         <version.surefire.plugin>3.0.0-M7</version.surefire.plugin>
         <version.failsafe.plugin>${version.surefire.plugin}</version.failsafe.plugin>
         <version.compiler.plugin>3.8.1</version.compiler.plugin>
-        <version.assembly.plugin>3.4.1</version.assembly.plugin>
+        <version.shade.plugin>3.4.1</version.shade.plugin>
         <version.release.plugin>3.0.0-M5</version.release.plugin>
         <version.site.plugin>3.7.1</version.site.plugin>
         <version.resources.plugin>3.1.0</version.resources.plugin>
@@ -47,10 +47,9 @@
         <version.kafka>3.3.1</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
-        <!-- <version.ybclient>0.8.32-20221024.104302-1</version.ybclient> -->
-        <version.ybclient>0.8.33-SNAPSHOT</version.ybclient>
+        <version.ybclient>0.8.34-20221128.060633-1</version.ybclient>
         <version.gson>2.8.9</version.gson>
-        
+
         <!--
           Specify the properties that will be used for setting up the integration tests' Docker container.
           Note that the `dockerhost.ip` property is computed from the IP address of DOCKER_HOST, which will
@@ -326,21 +325,141 @@
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-assembly-plugin</artifactId>
-                <version>${version.assembly.plugin}</version>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>${version.shade.plugin}</version>
                 <configuration>
-                    <appendAssemblyId>false</appendAssemblyId>
-                    <descriptorRefs>
-                        <descriptorRef>jar-with-dependencies</descriptorRef>
-                    </descriptorRefs>
+                    <createDependencyReducedPom>false</createDependencyReducedPom>
+                    <relocations>
+                        <relocation>
+                            <pattern>commons-lang</pattern>
+                            <shadedPattern>commons-lang.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>xmlunit</pattern>
+                            <shadedPattern>xmlunit.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>commons-beanutils</pattern>
+                            <shadedPattern>commons-beanutils.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>com.google.code.gson</pattern>
+                            <shadedPattern>com.shaded.google.code.gson</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>commons-digester</pattern>
+                            <shadedPattern>commons-digester.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>commons-chain</pattern>
+                            <shadedPattern>commons-chain.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>commons-validator</pattern>
+                            <shadedPattern>commons-validator.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>dom4j</pattern>
+                            <shadedPattern>dom4j.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>com.google.code.findbugs</pattern>
+                            <shadedPattern>com.shaded.google.code.findbugs</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>javax.enterprise</pattern>
+                            <shadedPattern>javax.shaded.enterprise</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>javax.annotation</pattern>
+                            <shadedPattern>javax.shaded.annotation</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>javax.inject</pattern>
+                            <shadedPattern>javax.shaded.inject</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>aopalliance</pattern>
+                            <shadedPattern>aopalliance.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>oro</pattern>
+                            <shadedPattern>oro.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>sslext</pattern>
+                            <shadedPattern>sslext.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>antlr</pattern>
+                            <shadedPattern>antlr.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>commons-collections</pattern>
+                            <shadedPattern>commons-collections.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>jdiff</pattern>
+                            <shadedPattern>jdiff.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>xerces</pattern>
+                            <shadedPattern>xerces.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>xml-apis</pattern>
+                            <shadedPattern>xml-apis.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>commons-logging</pattern>
+                            <shadedPattern>commons-logging.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>commons-codec</pattern>
+                            <shadedPattern>commons-codec.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>com.google</pattern>
+                            <shadedPattern>com.shaded.google</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>net</pattern>
+                            <shadedPattern>net.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>ch.qos.logback</pattern>
+                            <shadedPattern>ch.qos.logback.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>commons-io</pattern>
+                            <shadedPattern>commons-io.shaded</shadedPattern>
+                        </relocation>
+                        <relocation>
+                            <pattern>joda-time</pattern>
+                            <shadedPattern>joda-time.shaded</shadedPattern>
+                        </relocation>
+                    </relocations>
                 </configuration>
                 <executions>
                     <execution>
                         <id>make-assembly</id>
                         <phase>package</phase>
                         <goals>
-                            <goal>single</goal>
+                            <goal>shade</goal>
                         </goals>
+                        <configuration>
+                            <minimizeJar>true</minimizeJar>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
