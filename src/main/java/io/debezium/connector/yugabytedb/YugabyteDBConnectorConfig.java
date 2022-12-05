@@ -21,6 +21,7 @@ import org.apache.kafka.common.config.ConfigValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.debezium.DebeziumException;
 import io.debezium.config.ConfigDefinition;
 import io.debezium.config.Configuration;
 import io.debezium.config.EnumeratedValue;
@@ -52,6 +53,8 @@ import io.debezium.util.Strings;
 public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBConnectorConfig.class);
+
+    private Boolean sendBeforeImage = null;
 
     /**
      * The set of predefined HStoreHandlingMode options or aliases

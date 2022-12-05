@@ -48,6 +48,8 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     private final YugabyteDBConnection connection;
     private final TableId tableId;
 
+    private boolean shouldSendBeforeImage = false;
+
     private final String pgSchemaName;
 
     public YugabyteDBChangeRecordEmitter(YBPartition partition, OffsetContext offset, Clock clock,
@@ -82,6 +84,26 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
 
         this.tableId = tableId;
         Objects.requireNonNull(this.tableId);
+    }
+
+    public YugabyteDBChangeRecordEmitter(YBPartition partition, OffsetContext offset, Clock clock,
+                                         YugabyteDBConnectorConfig connectorConfig,
+                                         YugabyteDBSchema schema, YugabyteDBConnection connection,
+                                         TableId tableId, ReplicationMessage message, String pgSchemaName,
+                                         boolean shouldSendBeforeImage) {
+        super(partition, offset, clock);
+
+        this.schema = schema;
+        this.message = message;
+        this.connectorConfig = connectorConfig;
+        this.connection = connection;
+
+        this.pgSchemaName = pgSchemaName;
+
+        this.tableId = tableId;
+        Objects.requireNonNull(this.tableId);
+
+        this.shouldSendBeforeImage = shouldSendBeforeImage;
     }
 
     @Override
@@ -127,6 +149,9 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
                 // return columnValues(message.getOldTupleList(), tableId, true,
                 // message.hasTypeMetadata(), true, true);
                 case UPDATE:
+                    if (!shouldSendBeforeImage) {
+                        return null;
+                    }
                 default:
                     return columnValues(message.getOldTupleList(), tableId, true,
                             message.hasTypeMetadata(), false, true);
@@ -187,6 +212,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         if (columns == null || columns.isEmpty()) {
             return null;
         }
+
         final Table table = schema.tableFor(tableId);
         if (table == null) {
             schema.dumpTableId();

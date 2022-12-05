@@ -244,6 +244,9 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         LOGGER.info("Using DB stream ID: " + streamId);
 
+        boolean shouldSendBeforeImage = YBClientUtils.isBeforeImageEnabled(connectorConfig);
+        LOGGER.info("Before image enabled for task {}: {}", taskContext.getTaskId(), shouldSendBeforeImage);
+
         Set<String> tIds = tabletPairList.stream().map(pair -> pair.getLeft()).collect(Collectors.toSet());
         for (String tId : tIds) {
             LOGGER.debug("Table UUID: " + tIds);
@@ -484,7 +487,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                     boolean dispatched = message.getOperation() != Operation.NOOP
                                             && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
-                                                    schema, connection, tableId, message, pgSchemaNameInRecord));
+                                                    schema, connection, tableId, message, pgSchemaNameInRecord, shouldSendBeforeImage));
 
                                     if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                         recordsInTransactionalBlock.merge(tabletId, 1, Integer::sum);
