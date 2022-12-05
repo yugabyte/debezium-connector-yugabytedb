@@ -503,7 +503,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final int DEFAULT_MAX_RETRIES = 6;
     protected static final int DEFAULT_MASTER_PORT = 7100;
     protected static final String DEFAULT_MASTER_ADDRESS = "127.0.0.1:7100";
-    protected static final int DEFAULT_MAX_NUM_TABLETS = 100;
+    protected static final int DEFAULT_MAX_NUM_TABLETS = 300;
     protected static final long DEFAULT_ADMIN_OPERATION_TIMEOUT_MS = 60000;
     protected static final long DEFAULT_OPERATION_TIMEOUT_MS = 60000;
     protected static final long DEFAULT_SOCKET_READ_TIMEOUT_MS = 60000;

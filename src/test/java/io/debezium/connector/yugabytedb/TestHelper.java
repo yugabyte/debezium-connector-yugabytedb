@@ -375,14 +375,36 @@ public final class TestHelper {
         CONTAINER_MASTER_PORT = String.valueOf(masterPort);
     }
 
-    protected static YugabyteYSQLContainer getYbContainer() {
+    /**
+     * Return a TestContainer for YugabyteDB with the given master and tserver flags
+     * @param masterFlags comma separated value of master flags in form flag1=val1,flag2=val2
+     * @param tserverFlags comma separated value of tserver flags in form flag1=val2,flag2=val2
+     * @return a {@link YugabyteYSQLContainer}
+     */
+    protected static YugabyteYSQLContainer getYbContainer(String masterFlags, String tserverFlags) {
         String dockerImageName = System.getenv("YB_DOCKER_IMAGE");
         
         if (dockerImageName == null || dockerImageName.isEmpty()) {
+            LOGGER.info("Environment variable YB_DOCKER_IMAGE is empty, defaulting to image from Dockerhub.");
             dockerImageName = "yugabytedb/yugabyte:latest";
         }
 
         LOGGER.info("Using docker image in test: {}", dockerImageName);
+
+        if (tserverFlags == null || tserverFlags.isEmpty()) {
+            tserverFlags = "";
+        } else {
+            tserverFlags = " --tserver_flags=" + tserverFlags;
+        }
+
+        if (masterFlags == null || masterFlags.isEmpty()) {
+            masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0";
+        } else {
+            masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0," + masterFlags;
+        }
+
+        LOGGER.info("tserver flags: {}", tserverFlags);
+        LOGGER.info("master flags: {}", masterFlags);
         
         YugabyteYSQLContainer container = new YugabyteYSQLContainer(
             DockerImageName.parse(dockerImageName)
@@ -399,8 +421,14 @@ public final class TestHelper {
                 add(new PortBinding(Ports.Binding.bindPort(9042), new ExposedPort(9042)));
             }
         }));
-        container.withCommand("bin/yugabyted start --listen=0.0.0.0 --master_flags=rpc_bind_addresses=0.0.0.0 --daemon=false");
+        String startupCommand = "bin/yugabyted start --listen=0.0.0.0 " + masterFlags + tserverFlags + " --daemon=false";
+        LOGGER.info("Container startup command: {}", startupCommand);
+        container.withCommand(startupCommand);
         return container;
+    }
+
+    protected static YugabyteYSQLContainer getYbContainer() {
+        return getYbContainer(null, null);
     }
 
     protected static YBClient getYbClient(String masterAddresses) throws Exception {
