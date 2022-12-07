@@ -542,6 +542,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withValidation(Field::isInteger)
             .withInvisibleRecommender();
 
+    protected static final Field SEND_BEFORE_IMAGE = Field.create("yugabytedb.send.before.image")
+            .withDescription("Internal use only")
+            .withValidation(Field::isBoolean)
+            .withInvisibleRecommender();
+
     public static final Field TABLET_LIST = Field.create(TASK_CONFIG_PREFIX + "tabletlist")
             .withDisplayName("YugabyteDB Tablet LIST for a Task")
             .withType(ConfigDef.Type.STRING)
