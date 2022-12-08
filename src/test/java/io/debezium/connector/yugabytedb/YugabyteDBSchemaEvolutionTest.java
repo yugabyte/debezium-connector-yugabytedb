@@ -244,6 +244,21 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
       .exceptionally(throwable -> {
         throw new RuntimeException(throwable);
       }).get();
+
+    // Filter records which have 2 <= id and id <= 10 so as to verify that they are being published
+    // with the new column name.
+    List<SourceRecord> filteredRecords = new ArrayList<>();
+    for (int i = 0; i < records.size(); ++i) {
+      Struct record = (Struct) records.get(i).value();
+      int value = record.getStruct("after").getStruct("id").getInt32("value");
+      if (value >= 2 && value <= 10) {
+        filteredRecords.add(records.get(i));
+      }
+    }
+
+    for (int i = 0; i < filteredRecords.size(); ++i) {
+      assertValueField(filteredRecords.get(i), "after/full_name/value", "name_value");
+    }
   }
 
   private void verifyRecordCount(List<SourceRecord> records, long recordsCount) {
