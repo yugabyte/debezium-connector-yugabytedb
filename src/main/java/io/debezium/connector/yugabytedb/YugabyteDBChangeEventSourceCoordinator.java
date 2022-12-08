@@ -99,7 +99,8 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
             LOGGER.info("YBPartition is {} and YugabyteDBOffsetContext while snapshot is {}",
                         partition, previousOffset);
 
-            previousLogContext.set(taskContext.configureLoggingContext("snapshot", partition));
+            previousLogContext.set(taskContext.configureLoggingContext(
+                String.format("snapshot|%s", taskContext.getTaskId()), partition));
             SnapshotResult<YugabyteDBOffsetContext> snapshotResult =
                 doSnapshot(snapshotSource, context, partition, previousOffset);
 
@@ -108,7 +109,8 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
             }
         }
 
-        previousLogContext.set(taskContext.configureLoggingContext("streaming"));
+        previousLogContext.set(taskContext.configureLoggingContext(
+            String.format("streaming|%s", taskContext.getTaskId())));
 
         for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry :
                 streamingOffsets.getOffsets().entrySet()) {
@@ -126,7 +128,8 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
                 LOGGER.info("YBPartition is {} and YugabyteDBOffsetContext while streaming is {}",
                             partition, previousOffset);
 
-                previousLogContext.set(taskContext.configureLoggingContext("streaming", partition));
+                previousLogContext.set(taskContext.configureLoggingContext(
+                    String.format("streaming|%s", taskContext.getTaskId()), partition));
 
                 if (context.isRunning()) {
                     streamEvents(context, partition, previousOffset);
