@@ -204,6 +204,48 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
       }).get();
   }
 
+  @Test
+  public void shouldWorkWithColumnRenaming() throws Exception {
+    /**
+     * 1. Create tablets with range sharding
+     * 2. Start the CDC pipeline and insert data
+     * 3. Execute an ALTER command to rename a column
+     * 4. Now when the connector will try to poll the records for the tablet with less data, it will
+     *    also try to get the schema and since the schema has changed by this time in the records,
+     *    the connector should get the older schema for that tablet and keep working.
+     */
+    TestHelper.dropAllSchemas();
+    TestHelper.execute("CREATE TABLE t1 (id INT, name TEXT, PRIMARY KEY(id ASC)) SPLIT AT VALUES ((30000));");
+
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 10_000);
+    configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
+
+    start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+      assertTrue(success);
+    });
+
+    awaitUntilConnectorIsReady();
+
+    TestHelper.execute(String.format(insertFormatString, "1"));
+    TestHelper.execute(String.format(insertFormatString, "generate_series(40001,42000)"));
+
+    // Now by the time connector is consuming all these records, execute an ALTER COMMAND and
+    // insert records in the tablet with lesser data.
+    TestHelper.execute("ALTER TABLE t1 RENAME COLUMN name TO full_name;");
+
+    TestHelper.execute(String.format(insertFormatString, "generate_series(2, 10)"));
+
+    List<SourceRecord> records = new ArrayList<>();
+
+    // Consume the records now.
+    CompletableFuture.runAsync(() -> verifyRecordCount(records, 2000 + 1 + 9))
+      .exceptionally(throwable -> {
+        throw new RuntimeException(throwable);
+      }).get();
+  }
+
   private void verifyRecordCount(List<SourceRecord> records, long recordsCount) {
     waitAndFailIfCannotConsume(records, recordsCount, 10 * 60 * 1000);
   }
