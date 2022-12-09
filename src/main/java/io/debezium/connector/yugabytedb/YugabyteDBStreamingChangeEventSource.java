@@ -179,7 +179,6 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     private void bootstrapTabletWithRetry(List<Pair<String,String>> tabletPairList) throws Exception {
         short retryCountForBootstrapping = 0;
-        final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
         for (Pair<String, String> entry : tabletPairList) {
             // entry is a Pair<tableId, tabletId>
             boolean shouldRetry = true;
@@ -205,6 +204,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             entry.getValue(), retryCountForBootstrapping, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
 
                     try {
+                        final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
                         retryMetronome.pause();
                     } catch (InterruptedException ie) {
                         LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
@@ -286,9 +286,6 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         LOGGER.debug("The init tabletSourceInfo after updating is " + offsetContext.getTabletSourceInfo());
 
-        final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
-        final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-
         // Only bootstrap if no snapshot has been enabled - if snapshot is enabled then
         // the assumption is that there will already be some checkpoints for the tablet in
         // the cdc_state table. Avoiding additional bootstrap call in that case will also help
@@ -316,6 +313,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                         (lastCompletelyProcessedLsn.compareTo(offsetContext.getStreamingStoppingLsn()) < 0))) {
                     // Pause for the specified duration before asking for a new set of changes from the server
                     LOGGER.debug("Pausing for {} milliseconds before polling further", connectorConfig.cdcPollIntervalms());
+                    final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
                     pollIntervalMetronome.pause();
 
                     if (this.connectorConfig.cdcLimitPollPerIteration()
@@ -546,6 +544,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 LOGGER.debug("Stacktrace", e);
 
                 try {
+                    final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
                     retryMetronome.pause();
                 }
                 catch (InterruptedException ie) {
