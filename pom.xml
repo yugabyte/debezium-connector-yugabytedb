@@ -31,7 +31,7 @@
         <version.docker.maven.plugin>0.31.0</version.docker.maven.plugin>
         <version.protoc.maven.plugin>3.11.4</version.protoc.maven.plugin>
         <version.fabric8.plugin>0.40.2</version.fabric8.plugin>
-        <version.jackson>2.13.4</version.jackson>
+        <version.jackson>2.14.1</version.jackson>
 
         <!-- Compile -->
         <maven.compiler.source>11</maven.compiler.source>
@@ -42,12 +42,12 @@
         <jdk.min.version>11</jdk.min.version>
 
         <!-- Dependency Versions -->
-        <version.postgresql.driver>42.5.0</version.postgresql.driver>
+        <version.postgresql.driver>42.5.1</version.postgresql.driver>
         <version.com.google.protobuf>3.21.7</version.com.google.protobuf>
         <version.kafka>3.3.1</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
-        <version.ybclient>0.8.34-20221128.060633-1</version.ybclient>
+        <version.ybclient>0.8.36-20221209.100718-1</version.ybclient>
         <version.gson>2.8.9</version.gson>
 
         <!--
@@ -71,6 +71,10 @@
         <repository>
             <id>confluent</id>
             <url>https://packages.confluent.io/maven/</url>
+        </repository>
+        <repository>
+            <id>mvnrepository</id>
+            <url>https://mvnrepository.com/artifact/</url>
         </repository>
         <repository>
             <id>maven.yugabyte.repo</id>
