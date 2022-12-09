@@ -31,7 +31,7 @@
         <version.docker.maven.plugin>0.31.0</version.docker.maven.plugin>
         <version.protoc.maven.plugin>3.11.4</version.protoc.maven.plugin>
         <version.fabric8.plugin>0.40.2</version.fabric8.plugin>
-        <version.jackson>2.13.4</version.jackson>
+        <version.jackson>2.13.4.2</version.jackson>
 
         <!-- Compile -->
         <maven.compiler.source>11</maven.compiler.source>
@@ -42,7 +42,7 @@
         <jdk.min.version>11</jdk.min.version>
 
         <!-- Dependency Versions -->
-        <version.postgresql.driver>42.5.0</version.postgresql.driver>
+        <version.postgresql.driver>42.5.1</version.postgresql.driver>
         <version.com.google.protobuf>3.21.7</version.com.google.protobuf>
         <version.kafka>3.3.1</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
@@ -298,7 +298,7 @@
         <dependency>
             <groupId>org.jboss.netty</groupId>
             <artifactId>netty</artifactId>
-            <version>3.2.10.Final</version>
+            <version>3.10.6.Final</version>
         </dependency>
         <!-- https://mvnrepository.com/artifact/com.stumbleupon/async -->
         <dependency>
