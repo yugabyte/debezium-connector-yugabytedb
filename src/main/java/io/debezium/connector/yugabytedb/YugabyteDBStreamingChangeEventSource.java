@@ -495,7 +495,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     maybeWarnAboutGrowingWalBacklog(dispatched);
                                 }
                             } catch (InterruptedException ie) {
-                                ie.printStackTrace();
+                                LOGGER.error("Interrupted exception while processing change records", ie);
                                 Thread.currentThread().interrupt();
                             }
                         }

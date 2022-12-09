@@ -144,7 +144,7 @@ public class YugabyteDBConnectorTask
                                                                       connectorConfig);
 
         LoggingContext.PreviousContext previousContext = taskContext
-                .configureLoggingContext(CONTEXT_NAME + "_" + taskId);
+                .configureLoggingContext(CONTEXT_NAME + "|" + taskId);
         try {
             // Print out the server information
             // CDCSDK Get the table,
