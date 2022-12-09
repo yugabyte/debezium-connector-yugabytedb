@@ -305,6 +305,10 @@ public class YugabyteDBStreamingChangeEventSource implements
         LOGGER.info("Beginning to poll the changes from the server");
 
         short retryCount = 0;
+
+        // Helper internal variable to log GetChanges request at regular intervals.
+        long lastLoggedTimeForGetChanges = System.currentTimeMillis();
+
         String curTabletId = "";
         while (context.isRunning() && retryCount <= connectorConfig.maxConnectorRetries()) {
             try {
@@ -329,8 +333,12 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                       YBTable table = tableIdToTable.get(entry.getKey());
 
-                      LOGGER.debug("Going to fetch for tablet " + tabletId + " from OpId " + cp + " " +
-                        "table " + table.getName() + " Running:" + context.isRunning());
+                      if (LOGGER.isDebugEnabled()
+                          || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
+                        LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
+                                    tabletId, cp, table.getName());
+                        lastLoggedTimeForGetChanges = System.currentTimeMillis();
+                      }
 
                       // Check again if the thread has been interrupted.
                       if (!context.isRunning()) {
