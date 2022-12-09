@@ -322,6 +322,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       }
 
       short retryCount = 0;
+
+      // Helper internal variable to log GetChanges request at regular intervals.
+      long lastLoggedTimeForGetChanges = System.currentTimeMillis();
+
       while (context.isRunning() && retryCount <= this.connectorConfig.maxConnectorRetries()) {
         try {
             while (context.isRunning() && (previousOffset.getStreamingStoppingLsn() == null)) {
@@ -366,8 +370,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 OpId cp = previousOffset.snapshotLSN(tabletId);
 
-                LOGGER.debug("Going to fetch from checkpoint {} for tablet {} for table {}", 
-                            cp, tabletId, table.getName());
+                if (LOGGER.isDebugEnabled()|| System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + 300_000)) {
+                  LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
+                              tabletId, cp, table.getName());
+                  lastLoggedTimeForGetChanges = System.currentTimeMillis();
+                }
 
                 if (!context.isRunning()) {
                   LOGGER.info("Connector has been stopped");
