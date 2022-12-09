@@ -331,7 +331,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                       YBTable table = tableIdToTable.get(entry.getKey());
 
-                      if (LOGGER.isDebugEnabled()|| System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + 300_000)) {
+                      if (LOGGER.isDebugEnabled() || System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + 300_000)) {
                         LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
                                     tabletId, cp, table.getName());
                         lastLoggedTimeForGetChanges = System.currentTimeMillis();

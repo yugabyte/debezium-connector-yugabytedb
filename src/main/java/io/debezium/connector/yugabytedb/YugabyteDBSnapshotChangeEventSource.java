@@ -370,7 +370,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 OpId cp = previousOffset.snapshotLSN(tabletId);
 
-                if (LOGGER.isDebugEnabled()|| System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + 300_000)) {
+                if (LOGGER.isDebugEnabled() || System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + 300_000)) {
                   LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
                               tabletId, cp, table.getName());
                   lastLoggedTimeForGetChanges = System.currentTimeMillis();
