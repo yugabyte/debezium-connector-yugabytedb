@@ -128,6 +128,15 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             streamIdValue = results.get(YugabyteDBConnectorConfig.STREAM_ID.name()).value().toString();
         }
 
+        boolean sendBeforeImage = false;
+        try {
+            sendBeforeImage = YBClientUtils.isBeforeImageEnabled(this.yugabyteDBConnectorConfig);
+            LOGGER.info("Before image status: {}", sendBeforeImage);
+        } catch (Exception e) {
+            LOGGER.error("Error while trying to get before image status", e);
+            throw new DebeziumException(e);
+        }
+
         LOGGER.debug("The streamid being used is " + streamIdValue);
 
         int numGroups = Math.min(this.tabletIds.size(), maxTasks);
@@ -155,6 +164,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             taskProps.put(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString(), serializedNameToType);
             taskProps.put(YugabyteDBConnectorConfig.OID_TO_TYPE.toString(), serializedOidToType);
             taskProps.put(YugabyteDBConnectorConfig.STREAM_ID.toString(), streamIdValue);
+            taskProps.put(YugabyteDBConnectorConfig.SEND_BEFORE_IMAGE.toString(), String.valueOf(sendBeforeImage));
             taskConfigs.add(taskProps);
         }
 

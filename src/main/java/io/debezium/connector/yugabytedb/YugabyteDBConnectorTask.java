@@ -131,7 +131,8 @@ public class YugabyteDBConnectorTask
                 valueConverterBuilder.build(yugabyteDBTypeRegistry));
 
         String taskId = config.getString(YugabyteDBConnectorConfig.TASK_ID.toString());
-        this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector, taskId);
+        boolean sendBeforeImage = config.getBoolean(YugabyteDBConnectorConfig.SEND_BEFORE_IMAGE.toString());
+        this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector, taskId, sendBeforeImage);
 
         // Get the tablet ids and load the offsets
         final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets =
