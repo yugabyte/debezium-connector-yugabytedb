@@ -66,8 +66,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
     private YugabyteDBTypeRegistry yugabyteDbTypeRegistry;
 
-    private final Metronome retryMetronome;
-
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
                                                YugabyteDBTaskContext taskContext,
                                                Snapshotter snapshotter, YugabyteDBConnection connection,
@@ -93,9 +91,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             .build();
         
         this.syncClient = new YBClient(this.asyncClient);
-
-        this.retryMetronome = Metronome.parker(
-            Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
 
         this.yugabyteDbTypeRegistry = taskContext.schema().getTypeRegistry();
     }
@@ -244,7 +239,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         LOGGER.debug("Stacktrace: ", e);
 
         try {
-          this.retryMetronome.pause();
+          final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+          retryMetronome.pause();
         } catch (InterruptedException ie) {
           LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
           Thread.currentThread().interrupt();
@@ -330,6 +326,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         try {
             while (context.isRunning() && (previousOffset.getStreamingStoppingLsn() == null)) {
               for (Pair<String, String> tableIdToTabletId : tableToTabletForSnapshot) {
+                // Pause for the specified duration before asking for a new set of snapshot records from the server
+                LOGGER.debug("Pausing for {} milliseconds before polling further", connectorConfig.cdcPollIntervalms());
+                final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
+                pollIntervalMetronome.pause();
+
                 String tableId = tableIdToTabletId.getKey();
                 YBTable table = tableIdToTable.get(tableId);
 
@@ -505,6 +506,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           LOGGER.debug("Stacktrace: ", e);
 
           try {
+            final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
             retryMetronome.pause();
           } catch (InterruptedException ie) {
             LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
