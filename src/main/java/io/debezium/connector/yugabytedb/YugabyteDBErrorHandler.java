@@ -6,6 +6,8 @@
 package io.debezium.connector.yugabytedb;
 
 import org.postgresql.util.PSQLException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.ErrorHandler;
@@ -16,6 +18,7 @@ import io.debezium.pipeline.ErrorHandler;
  * @author Suranjan Kumar, Vaibhav Kushwaha
  */
 public class YugabyteDBErrorHandler extends ErrorHandler {
+    private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBErrorHandler.class);
 
     public YugabyteDBErrorHandler(YugabyteDBConnectorConfig connectorConfig, ChangeEventQueue<?> queue) {
         super(YugabyteDBConnector.class, connectorConfig, queue);
@@ -23,13 +26,16 @@ public class YugabyteDBErrorHandler extends ErrorHandler {
 
     @Override
     protected boolean isRetriable(Throwable throwable) {
-        if (throwable instanceof PSQLException
-                && (throwable.getMessage().contains("Database connection failed when writing to copy")
-                        || throwable.getMessage().contains("Database connection failed when reading from copy"))
-                || throwable.getMessage().contains("FATAL: terminating connection due to administrator command")) {
-            return true;
+        LOGGER.info("Received throwable to check for retry: {}", throwable);
+
+        if (throwable.getMessage() == null) {
+            LOGGER.warn("Exception message received in throwable is null");
         }
 
+        // We do not need to retry errors at this stage since the connector itself retries
+        // for a configurable number of times, if the flow reaches this point then it should simply
+        // stop so that the user gets the exception and restarts the connector manually.
+        LOGGER.warn("Returning false to indicate that the connector level task should not be retried");
         return false;
     }
 }
