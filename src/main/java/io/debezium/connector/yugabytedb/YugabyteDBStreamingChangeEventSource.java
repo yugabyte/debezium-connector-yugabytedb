@@ -136,9 +136,11 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         try {
             getChanges2(context, partition, offsetContext, hasStartLsnStoredInContext);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             Objects.requireNonNull(e);
-            errorHandler.setProducerThrowable(e);
+            // TODO Vaibhav: Since we are throwing the exception now, the error handler should not be needed
+            // errorHandler.setProducerThrowable(e);
+            throw new DebeziumException(e);
         }
         finally {
 

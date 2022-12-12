@@ -119,20 +119,23 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
 
         LOGGER.info("Performing the streaming process now");
 
-        while (context.isRunning()) {
-            for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry :
-                     streamingOffsets.getOffsets().entrySet()) {
-                YBPartition partition = entry.getKey();
-                YugabyteDBOffsetContext previousOffset = entry.getValue();
+        for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry :
+                    streamingOffsets.getOffsets().entrySet()) {
+            YBPartition partition = entry.getKey();
+            YugabyteDBOffsetContext previousOffset = entry.getValue();
 
-                LOGGER.info("YBPartition is {} and YugabyteDBOffsetContext while streaming is {}",
-                            partition, previousOffset);
+            LOGGER.info("YBPartition is {} and YugabyteDBOffsetContext while streaming is {}",
+                        partition, previousOffset);
 
-                previousLogContext.set(taskContext.configureLoggingContext(
-                    String.format("streaming|%s", taskContext.getTaskId()), partition));
+            previousLogContext.set(taskContext.configureLoggingContext(
+                String.format("streaming|%s", taskContext.getTaskId()), partition));
 
-                if (context.isRunning()) {
+            if (context.isRunning()) {
+                try {
                     streamEvents(context, partition, previousOffset);
+                } catch (DebeziumException de) {
+                    LOGGER.info("Stopping the connector because of exception", de);
+                    stop();
                 }
             }
         }
