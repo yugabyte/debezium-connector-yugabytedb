@@ -34,13 +34,17 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
     private final TopicSelector<TableId> topicSelector;
     private final YugabyteDBSchema schema;
 
+    private final boolean sendBeforeImage;
+
     protected YugabyteDBTaskContext(YugabyteDBConnectorConfig config, YugabyteDBSchema schema,
-                                    TopicSelector<TableId> topicSelector, String taskId) {
+                                    TopicSelector<TableId> topicSelector, String taskId,
+                                    boolean sendBeforeImage) {
         super(config.getContextName(), config.getLogicalName(), taskId, Collections::emptySet);
         this.config = config;
         this.topicSelector = topicSelector;
         assert schema != null;
         this.schema = schema;
+        this.sendBeforeImage = sendBeforeImage;
     }
 
     protected TopicSelector<TableId> topicSelector() {
@@ -53,6 +57,10 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
 
     protected YugabyteDBConnectorConfig config() {
         return config;
+    }
+
+    protected boolean isBeforeImageEnabled() {
+        return this.sendBeforeImage;
     }
 
     protected void refreshSchema(YugabyteDBConnection connection,

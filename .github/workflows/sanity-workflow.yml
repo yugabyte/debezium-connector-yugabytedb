@@ -33,4 +33,6 @@ jobs:
           YB_DOCKER_IMAGE: ${{ secrets.YB_DOCKER_IMAGE }}
         run: docker pull $YB_DOCKER_IMAGE
       - name: Sanity Test that code compiles and tests pass.
+        env:
+          YB_DOCKER_IMAGE: ${{ secrets.YB_DOCKER_IMAGE }}
         run: mvn clean test

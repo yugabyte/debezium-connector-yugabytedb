@@ -179,7 +179,6 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     private void bootstrapTabletWithRetry(List<Pair<String,String>> tabletPairList) throws Exception {
         short retryCountForBootstrapping = 0;
-        final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
         for (Pair<String, String> entry : tabletPairList) {
             // entry is a Pair<tableId, tabletId>
             boolean shouldRetry = true;
@@ -205,6 +204,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             entry.getValue(), retryCountForBootstrapping, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
 
                     try {
+                        final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
                         retryMetronome.pause();
                     } catch (InterruptedException ie) {
                         LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
@@ -250,13 +250,13 @@ public class YugabyteDBStreamingChangeEventSource implements
             YBTable table = this.syncClient.openTableByUUID(tId);
             tableIdToTable.put(tId, table);
 
-            GetTabletListToPollForCDCResponse resp = 
+            GetTabletListToPollForCDCResponse resp =
                 this.syncClient.getTabletListToPollForCdc(table, streamId, tId);
             tabletListResponse.put(tId, resp);
         }
 
         LOGGER.debug("The init tabletSourceInfo before updating is " + offsetContext.getTabletSourceInfo());
-        
+
         // Initialize the offsetContext and other supporting flags
         Map<String, Boolean> schemaNeeded = new HashMap<>();
         for (Pair<String, String> entry : tabletPairList) {
@@ -272,8 +272,8 @@ public class YugabyteDBStreamingChangeEventSource implements
             offsetContext.initSourceInfo(tabletId, this.connectorConfig);
         }
 
-        // This will contain the tablet ID mapped to the number of records it has seen 
-        // in the transactional block. Note that the entry will be created only when 
+        // This will contain the tablet ID mapped to the number of records it has seen
+        // in the transactional block. Note that the entry will be created only when
         // a BEGIN block is encountered.
         Map<String, Integer> recordsInTransactionalBlock = new HashMap<>();
 
@@ -285,9 +285,6 @@ public class YugabyteDBStreamingChangeEventSource implements
         Map<String, Integer> beginCountForTablet = new HashMap<>();
 
         LOGGER.debug("The init tabletSourceInfo after updating is " + offsetContext.getTabletSourceInfo());
-
-        final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
-        final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
 
         // Only bootstrap if no snapshot has been enabled - if snapshot is enabled then
         // the assumption is that there will already be some checkpoints for the tablet in
@@ -305,12 +302,18 @@ public class YugabyteDBStreamingChangeEventSource implements
         LOGGER.info("Beginning to poll the changes from the server");
 
         short retryCount = 0;
+
+        // Helper internal variable to log GetChanges request at regular intervals.
+        long lastLoggedTimeForGetChanges = System.currentTimeMillis();
+
+        String curTabletId = "";
         while (context.isRunning() && retryCount <= connectorConfig.maxConnectorRetries()) {
             try {
                 while (context.isRunning() && (offsetContext.getStreamingStoppingLsn() == null ||
                         (lastCompletelyProcessedLsn.compareTo(offsetContext.getStreamingStoppingLsn()) < 0))) {
                     // Pause for the specified duration before asking for a new set of changes from the server
                     LOGGER.debug("Pausing for {} milliseconds before polling further", connectorConfig.cdcPollIntervalms());
+                    final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
                     pollIntervalMetronome.pause();
 
                     if (this.connectorConfig.cdcLimitPollPerIteration()
@@ -321,21 +324,26 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                     for (Pair<String, String> entry : tabletPairList) {
                         final String tabletId = entry.getValue();
+                        curTabletId = entry.getValue();
                         YBPartition part = new YBPartition(tabletId);
 
                       OpId cp = offsetContext.lsn(tabletId);
 
                       YBTable table = tableIdToTable.get(entry.getKey());
 
-                      LOGGER.debug("Going to fetch for tablet " + tabletId + " from OpId " + cp + " " +
-                        "table " + table.getName() + " Running:" + context.isRunning());
+                      if (LOGGER.isDebugEnabled()
+                          || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
+                        LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
+                                    tabletId, cp, table.getName());
+                        lastLoggedTimeForGetChanges = System.currentTimeMillis();
+                      }
 
                       // Check again if the thread has been interrupted.
                       if (!context.isRunning()) {
                         LOGGER.info("Connector has been stopped");
                         break;
                       }
-                      
+
                       GetChangesResponse response = null;
                       try {
                         response = this.syncClient.getChangesCDCSDK(
@@ -484,7 +492,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                     boolean dispatched = message.getOperation() != Operation.NOOP
                                             && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
-                                                    schema, connection, tableId, message, pgSchemaNameInRecord));
+                                                    schema, connection, tableId, message, pgSchemaNameInRecord, taskContext.isBeforeImageEnabled()));
 
                                     if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                         recordsInTransactionalBlock.merge(tabletId, 1, Integer::sum);
@@ -493,9 +501,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     maybeWarnAboutGrowingWalBacklog(dispatched);
                                 }
                             } catch (InterruptedException ie) {
-                                ie.printStackTrace();
-                            } catch (SQLException se) {
-                                se.printStackTrace();
+                                LOGGER.error("Interrupted exception while processing change records", ie);
+                                Thread.currentThread().interrupt();
                             }
                         }
 
@@ -527,16 +534,17 @@ public class YugabyteDBStreamingChangeEventSource implements
                 ++retryCount;
                 // If the retry limit is exceeded, log an error with a description and throw the exception.
                 if (retryCount > connectorConfig.maxConnectorRetries()) {
-                    LOGGER.error("Too many errors while trying to get the changes from server. All {} retries failed.", connectorConfig.maxConnectorRetries());
+                    LOGGER.error("Too many errors while trying to get the changes from server for tablet: {}. All {} retries failed.", curTabletId, connectorConfig.maxConnectorRetries());
                     throw e;
                 }
 
                 // If there are retries left, perform them after the specified delay.
-                LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
-                        retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
+                LOGGER.warn("Error while trying to get the changes from the server for tablet: {}; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
+                        curTabletId, retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
                 LOGGER.debug("Stacktrace", e);
 
                 try {
+                    final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
                     retryMetronome.pause();
                 }
                 catch (InterruptedException ie) {
@@ -732,7 +740,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                          OpId.from(pair.getCdcSdkCheckpoint()));
 
             LOGGER.info("Initialized offset context for tablet {} with OpId {}", tabletId, OpId.from(pair.getCdcSdkCheckpoint()));
-            
+
             // Add the flag to indicate that we do not need the schema from this tablet again.
             schemaNeeded.put(tabletId, Boolean.FALSE);
         }
@@ -749,7 +757,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         Pair<String, String> entryToBeDeleted = getEntryToDelete(tabletPairList, splitTabletId);
         Objects.requireNonNull(entryToBeDeleted);
-        
+
         String tableId = entryToBeDeleted.getKey();
 
         // Remove the entry with the tablet which has been split.
@@ -757,7 +765,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         // Remove the corresponding entry to indicate that we don't need the schema now.
         schemaNeeded.remove(entryToBeDeleted.getValue());
-        
+
         // Log a warning if the element cannot be removed from the list.
         if (!removeSuccessful) {
             LOGGER.warn("Failed to remove the entry table {} - tablet {} from tablet pair list after split, will try once again", entryToBeDeleted.getKey(), entryToBeDeleted.getValue());
@@ -775,7 +783,7 @@ public class YugabyteDBStreamingChangeEventSource implements
               streamId,
               tableId,
               splitTabletId);
-        
+
         if (getTabletListResponse.getTabletCheckpointPairListSize() > 2) {
             LOGGER.warn("Found more than 2 tablets (got {}) for the parent tablet {}",
                         getTabletListResponse.getTabletCheckpointPairListSize(), splitTabletId);
