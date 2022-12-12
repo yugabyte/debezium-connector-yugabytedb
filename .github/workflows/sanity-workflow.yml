@@ -35,4 +35,12 @@ jobs:
       - name: Sanity Test that code compiles and tests pass.
         env:
           YB_DOCKER_IMAGE: ${{ secrets.YB_DOCKER_IMAGE }}
-        run: mvn clean test
+        run: mvn clean test -Dtest=!YugabyteDBColocatedTablesTest#shouldWorkWithMixOfColocatedAndNonColocatedTables,!YugabyteDBDatatypesTest#testEnumValue
+      - name: Flaky test i.e. YugabyteDBDatatypesTest#testEnumValue
+        env:
+          YB_DOCKER_IMAGE: ${{ secrets.YB_DOCKER_IMAGE }}
+        run: mvn clean test -Dtest=YugabyteDBDatatypesTest#testEnumValue
+      - name: Flaky test YugabyteDBColocatedTablesTest#shouldWorkWithMixOfColocatedAndNonColocatedTables
+        env:
+          YB_DOCKER_IMAGE: ${{ secrets.YB_DOCKER_IMAGE }}
+        run: mvn clean test -Dtest=YugabyteDBColocatedTablesTest#shouldWorkWithMixOfColocatedAndNonColocatedTables
