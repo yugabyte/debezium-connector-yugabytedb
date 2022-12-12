@@ -512,6 +512,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final long DEFAULT_CONNECTOR_RETRY_DELAY_MS = 60000;
     protected static final boolean DEFAULT_LIMIT_ONE_POLL_PER_ITERATION = false;
     protected static final long DEFAULT_NEW_TABLE_POLL_INTERVAL_MS = 5 * 60 * 1000L;
+    protected static final long DEFAULT_LOG_GET_CHANGES_INTERVAL_MS = 5 * 60 * 1000L;
 
     @Override
     public JdbcConfiguration getJdbcConfig() {
@@ -540,6 +541,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final Field TASK_ID = Field.create("yugabytedb.task.id")
             .withDescription("Internal use only")
             .withValidation(Field::isInteger)
+            .withInvisibleRecommender();
+
+    protected static final Field SEND_BEFORE_IMAGE = Field.create("yugabytedb.send.before.image")
+            .withDescription("Internal use only")
+            .withValidation(Field::isBoolean)
             .withInvisibleRecommender();
 
     public static final Field TABLET_LIST = Field.create(TASK_CONFIG_PREFIX + "tabletlist")
@@ -868,6 +874,21 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withValidation(Field::isNonNegativeLong)
             .withDescription("Interval at which the poller thread should poll to check if there are any new tables added to the stream");
 
+    public static final Field LOG_GET_CHANGES = Field.create("log.get.changes")
+            .withDisplayName("Whether to log GetChanges request at intervals")
+            .withImportance(Importance.LOW)
+            .withType(Type.BOOLEAN)
+            .withDefault(true)
+            .withValidation(Field::isBoolean)
+            .withDescription("Whether we want the connector to log at regular intervals that it is calling GetChanges RPC on the server side");
+
+    public static final Field LOG_GET_CHANGES_INTERVAL_MS = Field.create("log.get.changes.interval.ms")
+            .withDisplayName("Interval to log GetChanges request in milliseconds")
+            .withImportance(Importance.LOW)
+            .withType(Type.LONG)
+            .withDefault(DEFAULT_LOG_GET_CHANGES_INTERVAL_MS)
+            .withValidation(Field::isNonNegativeLong);
+
     public static final Field SNAPSHOT_MODE_CLASS = Field.create("snapshot.custom.class")
             .withDisplayName("Snapshot Mode Custom Class")
             .withType(Type.STRING)
@@ -1103,6 +1124,14 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return getConfig().getLong(CONNECTOR_RETRY_DELAY_MS);
     }
 
+    public boolean logGetChanges() {
+        return getConfig().getBoolean(LOG_GET_CHANGES);
+    }
+
+    public long logGetChangesIntervalMs() {
+        return getConfig().getLong(LOG_GET_CHANGES_INTERVAL_MS);
+    }
+
     public String sslRootCert() {
         return getConfig().getString(SSL_ROOT_CERT);
     }
@@ -1223,7 +1252,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     TCP_KEEPALIVE,
                     MAX_NUM_TABLETS,
                     AUTO_ADD_NEW_TABLES,
-                    NEW_TABLE_POLL_INTERVAL_MS)
+                    NEW_TABLE_POLL_INTERVAL_MS,
+                    LOG_GET_CHANGES,
+                    LOG_GET_CHANGES_INTERVAL_MS)
             .events(
                     INCLUDE_UNKNOWN_DATATYPES)
             .connector(
