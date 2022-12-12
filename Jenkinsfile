@@ -19,6 +19,13 @@ pipeline {
         YB_DOCKER_IMAGE = "quay.io/yugabyte/yugabyte:2.16.0.0-b66"
     }
     stages {
+        stage('Clone Project') {
+            steps {
+                dir("${CDCSDK_SERVER_HOME}") {
+                    git branch: '${SERVER_BRANCH}', url: 'https://github.com/yugabyte/debezium-connector-yugabytedb.git'
+                }
+            }
+        }
         stage("Setup environment") {
             steps {
                 withCredentials([file(credentialsId: 'debezium-quay-auth', variable: 'debezium_quay_auth')]) {
