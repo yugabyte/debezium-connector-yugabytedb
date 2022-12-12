@@ -26,20 +26,16 @@ public class YugabyteDBErrorHandler extends ErrorHandler {
 
     @Override
     protected boolean isRetriable(Throwable throwable) {
-        LOGGER.info("Checking if a retry is possible for retriable exception: {}", throwable);
+        LOGGER.info("Received throwable to check for retry: {}", throwable);
 
         if (throwable.getMessage() == null) {
-            LOGGER.warn("Exception message received is null");
+            LOGGER.warn("Exception message received in throwable is null");
         }
 
-        if (throwable instanceof PSQLException
-                && throwable.getMessage() != null
-                && (throwable.getMessage().contains("Database connection failed when writing to copy")
-                        || throwable.getMessage().contains("Database connection failed when reading from copy"))
-                || throwable.getMessage().contains("FATAL: terminating connection due to administrator command")) {
-            return true;
-        }
-
+        // We do not need to retry errors at this stage since the connector itself retries
+        // for a configurable number of times, if the flow reaches this point then it should simply
+        // stop so that the user gets the exception and restarts the connector manually.
+        LOGGER.warn("Returning false to indicate that the connector level task should not be retried");
         return false;
     }
 }

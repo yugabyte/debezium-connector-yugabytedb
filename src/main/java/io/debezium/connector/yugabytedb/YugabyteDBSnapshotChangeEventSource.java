@@ -66,8 +66,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
     private YugabyteDBTypeRegistry yugabyteDbTypeRegistry;
 
-    private final Metronome retryMetronome;
-
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
                                                YugabyteDBTaskContext taskContext,
                                                Snapshotter snapshotter, YugabyteDBConnection connection,
@@ -93,9 +91,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             .build();
         
         this.syncClient = new YBClient(this.asyncClient);
-
-        this.retryMetronome = Metronome.parker(
-            Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
 
         this.yugabyteDbTypeRegistry = taskContext.schema().getTypeRegistry();
     }
@@ -244,7 +239,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         LOGGER.debug("Stacktrace: ", e);
 
         try {
-          this.retryMetronome.pause();
+          final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+          retryMetronome.pause();
         } catch (InterruptedException ie) {
           LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
           Thread.currentThread().interrupt();
@@ -322,10 +318,19 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       }
 
       short retryCount = 0;
+
+      // Helper internal variable to log GetChanges request at regular intervals.
+      long lastLoggedTimeForGetChanges = System.currentTimeMillis();
+
       while (context.isRunning() && retryCount <= this.connectorConfig.maxConnectorRetries()) {
         try {
             while (context.isRunning() && (previousOffset.getStreamingStoppingLsn() == null)) {
               for (Pair<String, String> tableIdToTabletId : tableToTabletForSnapshot) {
+                // Pause for the specified duration before asking for a new set of snapshot records from the server
+                LOGGER.debug("Pausing for {} milliseconds before polling further", connectorConfig.cdcPollIntervalms());
+                final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
+                pollIntervalMetronome.pause();
+
                 String tableId = tableIdToTabletId.getKey();
                 YBTable table = tableIdToTable.get(tableId);
 
@@ -366,8 +371,12 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 OpId cp = previousOffset.snapshotLSN(tabletId);
 
-                LOGGER.debug("Going to fetch from checkpoint {} for tablet {} for table {}", 
-                            cp, tabletId, table.getName());
+                if (LOGGER.isDebugEnabled()
+                    || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
+                  LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
+                              tabletId, cp, table.getName());
+                  lastLoggedTimeForGetChanges = System.currentTimeMillis();
+                }
 
                 if (!context.isRunning()) {
                   LOGGER.info("Connector has been stopped");
@@ -496,6 +505,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           LOGGER.debug("Stacktrace: ", e);
 
           try {
+            final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
             retryMetronome.pause();
           } catch (InterruptedException ie) {
             LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
