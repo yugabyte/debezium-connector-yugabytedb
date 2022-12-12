@@ -21,9 +21,7 @@ pipeline {
     stages {
         stage('Clone Project') {
             steps {
-                dir("${CDCSDK_SERVER_HOME}") {
-                    git branch: '${BRANCH}', url: 'https://github.com/yugabyte/debezium-connector-yugabytedb.git'
-                }
+                git branch: '${BRANCH}', url: 'https://github.com/yugabyte/debezium-connector-yugabytedb.git'
             }
         }
         stage("Setup environment") {
