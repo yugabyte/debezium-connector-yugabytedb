@@ -37,7 +37,6 @@ import io.debezium.pipeline.spi.SnapshotResult;
 import io.debezium.relational.RelationalSnapshotChangeEventSource;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
-import io.debezium.schema.DataCollectionId;
 import io.debezium.util.Clock;
 import io.debezium.util.Metronome;
 import io.debezium.util.Strings;
@@ -451,7 +450,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                               new YugabyteDBChangeRecordEmitter(part, previousOffset, clock, 
                                                                 this.connectorConfig, schema, 
                                                                 connection, tId, message, 
-                                                                pgSchemaName, tabletId));
+                                                                pgSchemaName, tabletId,
+                                                                taskContext.isBeforeImageEnabled()));
 
                       LOGGER.debug("Dispatched snapshot record successfully");
                     }

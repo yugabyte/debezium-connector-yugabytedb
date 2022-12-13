@@ -502,7 +502,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                     boolean dispatched = message.getOperation() != Operation.NOOP
                                             && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
-                                                    schema, connection, tableId, message, pgSchemaNameInRecord, taskContext.isBeforeImageEnabled()));
+                                                    schema, connection, tableId, message, pgSchemaNameInRecord, tabletId, taskContext.isBeforeImageEnabled()));
 
                                     if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                         recordsInTransactionalBlock.merge(tabletId, 1, Integer::sum);

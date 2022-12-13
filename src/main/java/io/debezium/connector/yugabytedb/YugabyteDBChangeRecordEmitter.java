@@ -6,9 +6,7 @@
 package io.debezium.connector.yugabytedb;
 
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -50,30 +48,13 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     private boolean shouldSendBeforeImage = false;
 
     private final String pgSchemaName;
-    private String tabletId;
-
-    public YugabyteDBChangeRecordEmitter(YBPartition partition, OffsetContext offset, Clock clock,
-                                         YugabyteDBConnectorConfig connectorConfig,
-                                         YugabyteDBSchema schema, YugabyteDBConnection connection,
-                                         TableId tableId, ReplicationMessage message) {
-        super(partition, offset, clock);
-
-        this.schema = schema;
-        this.message = message;
-        this.connectorConfig = connectorConfig;
-        this.connection = connection;
-
-        this.tableId = tableId;
-        Objects.requireNonNull(this.tableId);
-
-        this.pgSchemaName = null;
-    }
+    private final String tabletId;
 
     public YugabyteDBChangeRecordEmitter(YBPartition partition, OffsetContext offset, Clock clock,
                                          YugabyteDBConnectorConfig connectorConfig,
                                          YugabyteDBSchema schema, YugabyteDBConnection connection,
                                          TableId tableId, ReplicationMessage message, String pgSchemaName,
-                                         String tabletId) {
+                                         String tabletId, boolean shouldSendBeforeImage) {
         super(partition, offset, clock);
 
         this.schema = schema;
@@ -82,29 +63,11 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         this.connection = connection;
 
         this.pgSchemaName = pgSchemaName;
+
+        this.tableId = tableId;
+        Objects.requireNonNull(this.tableId);
 
         this.tabletId = tabletId;
-
-        this.tableId = tableId;
-        Objects.requireNonNull(this.tableId);
-    }
-
-    public YugabyteDBChangeRecordEmitter(YBPartition partition, OffsetContext offset, Clock clock,
-                                         YugabyteDBConnectorConfig connectorConfig,
-                                         YugabyteDBSchema schema, YugabyteDBConnection connection,
-                                         TableId tableId, ReplicationMessage message, String pgSchemaName,
-                                         boolean shouldSendBeforeImage) {
-        super(partition, offset, clock);
-
-        this.schema = schema;
-        this.message = message;
-        this.connectorConfig = connectorConfig;
-        this.connection = connection;
-
-        this.pgSchemaName = pgSchemaName;
-
-        this.tableId = tableId;
-        Objects.requireNonNull(this.tableId);
 
         this.shouldSendBeforeImage = shouldSendBeforeImage;
     }
@@ -333,142 +296,6 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     static Optional<DataCollectionSchema> updateSchema(YBPartition partition, TableId tableId,
                                                        ChangeRecordEmitter changeRecordEmitter) {
         return ((YugabyteDBChangeRecordEmitter) changeRecordEmitter).newTable(tableId);
-    }
-
-    private boolean schemaChanged(List<ReplicationMessage.Column> columns, Table table,
-                                  boolean metadataInMessage) {
-        int tableColumnCount = table.columns().size();
-        int replicationColumnCount = columns.size();
-
-        boolean msgHasMissingColumns = tableColumnCount > replicationColumnCount;
-
-        if (msgHasMissingColumns && connectorConfig.skipRefreshSchemaOnMissingToastableData()) {
-            // if we are ignoring missing toastable data for the purpose of schema sync, we need to modify the
-            // hasMissingColumns boolean to account for this. If there are untoasted columns missing from the replication
-            // message, we'll still have missing columns and thus require a schema refresh. However, we can /possibly/
-            // avoid the refresh if there are only toastable columns missing from the message.
-            msgHasMissingColumns = hasMissingUntoastedColumns(table, columns);
-        }
-
-        boolean msgHasAdditionalColumns = tableColumnCount < replicationColumnCount;
-
-        if (msgHasMissingColumns || msgHasAdditionalColumns) {
-            // the table metadata has less or more columns than the event, which means the table structure has changed,
-            // so we need to trigger a refresh...
-            LOGGER.info("Different column count {} present in the server message as schema in memory contains {}; refreshing table schema",
-                    replicationColumnCount,
-                    tableColumnCount);
-            return true;
-        }
-
-        // go through the list of columns from the message to figure out if any of them are new or have changed their type based
-        // on what we have in the table metadata....
-        return columns.stream().anyMatch(message -> {
-            String columnName = message.getName();
-            Column column = table.columnWithName(columnName);
-            if (column == null) {
-                LOGGER.info("found new column '{}' present in the server message which is not part of the table metadata; refreshing table schema", columnName);
-                return true;
-            }
-            else {
-                final int localType = column.nativeType();
-                final int incomingType = message.getType().getOid();
-                if (localType != incomingType) {
-                    final int incomingRootType = message.getType().getRootType().getOid();
-                    if (localType != incomingRootType) {
-                        LOGGER.info("detected new type for column '{}', old type was {} ({}), new type is {} ({}); refreshing table schema", columnName, localType,
-                                column.typeName(),
-                                incomingType, message.getType().getName());
-                        return true;
-                    }
-                }
-                if (metadataInMessage) {
-                    final int localLength = column.length();
-                    final int incomingLength = message.getTypeMetadata().getLength();
-                    if (localLength != incomingLength) {
-                        LOGGER.info("detected new length for column '{}', old length was {}, new length is {}; refreshing table schema", columnName, localLength,
-                                incomingLength);
-                        return true;
-                    }
-                    final int localScale = column.scale().orElseGet(() -> 0);
-                    final int incomingScale = message.getTypeMetadata().getScale();
-                    if (localScale != incomingScale) {
-                        LOGGER.info("detected new scale for column '{}', old scale was {}, new scale is {}; refreshing table schema", columnName, localScale,
-                                incomingScale);
-                        return true;
-                    }
-                    final boolean localOptional = column.isOptional();
-                    final boolean incomingOptional = message.isOptional();
-                    if (localOptional != incomingOptional) {
-                        LOGGER.info("detected new optional status for column '{}', old value was {}, new value is {}; refreshing table schema", columnName, localOptional,
-                                incomingOptional);
-                        return true;
-                    }
-                }
-            }
-            return false;
-        });
-    }
-
-    private boolean hasMissingUntoastedColumns(Table table, List<ReplicationMessage.Column> columns) {
-        List<String> msgColumnNames = columns.stream()
-                .map(ReplicationMessage.Column::getName)
-                .collect(Collectors.toList());
-
-        // Compute list of table columns not present in the replication message
-        List<String> missingColumnNames = table.columns()
-                .stream()
-                .filter(c -> !msgColumnNames.contains(c.name()))
-                .map(Column::name)
-                .collect(Collectors.toList());
-
-        List<String> toastableColumns = schema.getToastableColumnsForTableId(table.id());
-
-        if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug("msg columns: '{}' --- missing columns: '{}' --- toastableColumns: '{}",
-                    String.join(",", msgColumnNames),
-                    String.join(",", missingColumnNames),
-                    String.join(",", toastableColumns));
-        }
-        // Return `true` if we have some columns not in the replication message that are not toastable or that we do
-        // not recognize
-        return !toastableColumns.containsAll(missingColumnNames);
-    }
-
-    private Table tableFromFromMessage(List<ReplicationMessage.Column> columns, Table table) {
-        final TableEditor combinedTable = table.edit()
-                .setColumns(columns.stream()
-                        .map(column -> {
-                            final YugabyteDBType type = column.getType();
-                            final ColumnEditor columnEditor = Column.editor()
-                                    .name(column.getName())
-                                    .jdbcType(type.getRootType().getJdbcId())
-                                    .type(type.getName())
-                                    .optional(column.isOptional())
-                                    .nativeType(type.getRootType().getOid());
-                            columnEditor.length(column.getTypeMetadata().getLength());
-                            columnEditor.scale(column.getTypeMetadata().getScale());
-
-                            // as long as default value is not added to the decoded message metadata, we must apply
-                            // the current default read from the database
-                            Optional.ofNullable(table.columnWithName(column.getName()))
-                                    .flatMap(Column::defaultValueExpression)
-                                    .ifPresent(columnEditor::defaultValueExpression);
-
-                            return columnEditor.create();
-                        })
-                        .collect(Collectors.toList()));
-        final List<String> pkCandidates = new ArrayList<>(table.primaryKeyColumnNames());
-        final Iterator<String> itPkCandidates = pkCandidates.iterator();
-        while (itPkCandidates.hasNext()) {
-            final String candidateName = itPkCandidates.next();
-            if (!combinedTable.hasUniqueValues() && combinedTable.columnWithName(candidateName) == null) {
-                LOGGER.error("Potentional inconsistency in key for message {}", columns);
-                itPkCandidates.remove();
-            }
-        }
-        combinedTable.setPrimaryKeyNames(pkCandidates);
-        return combinedTable.create();
     }
 
     @Override
