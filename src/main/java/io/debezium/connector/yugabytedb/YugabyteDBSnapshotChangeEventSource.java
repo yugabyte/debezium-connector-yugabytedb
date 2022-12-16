@@ -37,7 +37,6 @@ import io.debezium.pipeline.spi.SnapshotResult;
 import io.debezium.relational.RelationalSnapshotChangeEventSource;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
-import io.debezium.schema.DataCollectionId;
 import io.debezium.util.Clock;
 import io.debezium.util.Metronome;
 import io.debezium.util.Strings;
@@ -424,12 +423,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                         Objects.requireNonNull(tId);
                       }
                       // Getting the table with the help of the schema.
-                      Table t = schema.tableFor(tId);
-                      LOGGER.debug("The schema is already registered {}", t);
-                      if (t == null) {
+                      Table t = schema.tableForTablet(tId, tabletId);
+                      if (YugabyteDBSchema.shouldRefreshSchema(t, message.getSchema())) {
                         // If we fail to achieve the table, that means we have not specified 
                         // correct schema information. Now try to refresh the schema.
-                        schema.refreshWithSchema(tId, message.getSchema(), pgSchemaName);
+                        schema.refreshSchemaWithTabletId(tId, message.getSchema(), pgSchemaName, tabletId);
                       }
                     } else {
                       // DML event
@@ -452,7 +450,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                               new YugabyteDBChangeRecordEmitter(part, previousOffset, clock, 
                                                                 this.connectorConfig, schema, 
                                                                 connection, tId, message, 
-                                                                pgSchemaName));
+                                                                pgSchemaName, tabletId,
+                                                                taskContext.isBeforeImageEnabled()));
 
                       LOGGER.debug("Dispatched snapshot record successfully");
                     }
