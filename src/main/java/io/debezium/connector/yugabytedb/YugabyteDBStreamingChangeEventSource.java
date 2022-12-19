@@ -783,6 +783,10 @@ public class YugabyteDBStreamingChangeEventSource implements
         if (getTabletListResponse.getTabletCheckpointPairListSize() != 2) {
             LOGGER.warn("Found {} tablets for the parent tablet {}",
                         getTabletListResponse.getTabletCheckpointPairListSize(), splitTabletId);
+            throw new Exception("Found unexpected ("
+                                + getTabletListResponse.getTabletCheckpointPairListSize()
+                                + ") number of tablets while trying to fetch the children of parent "
+                                + splitTabletId);
         }
 
         // Remove the entry with the tablet which has been split.
