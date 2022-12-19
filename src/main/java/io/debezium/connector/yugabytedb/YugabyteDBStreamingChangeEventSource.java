@@ -22,6 +22,7 @@ import io.debezium.util.Metronome;
 
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
+import org.awaitility.Awaitility;
 import org.postgresql.core.BaseConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -313,8 +314,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                         (lastCompletelyProcessedLsn.compareTo(offsetContext.getStreamingStoppingLsn()) < 0))) {
                     // Pause for the specified duration before asking for a new set of changes from the server
                     LOGGER.debug("Pausing for {} milliseconds before polling further", connectorConfig.cdcPollIntervalms());
-                    final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
-                    pollIntervalMetronome.pause();
+                    YBClientUtils.pauseForMillis(connectorConfig.cdcPollIntervalms());
 
                     if (this.connectorConfig.cdcLimitPollPerIteration()
                             && queue.remainingCapacity() < queue.totalCapacity()) {
@@ -553,14 +553,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                         retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
                 LOGGER.warn("Stacktrace", e);
 
-                try {
-                    final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-                    retryMetronome.pause();
-                }
-                catch (InterruptedException ie) {
-                    LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-                    Thread.currentThread().interrupt();
-                }
+                YBClientUtils.pauseForMillis(connectorConfig.connectorRetryDelayMs());
             }
         }
     }

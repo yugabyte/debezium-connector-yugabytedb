@@ -1,5 +1,6 @@
 package io.debezium.connector.yugabytedb;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -10,6 +11,7 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
+import org.awaitility.Awaitility;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.AsyncYBClient;
@@ -282,4 +284,15 @@ public class YBClientUtils {
 
     return cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.ALL.name());
   }
+
+  /**
+   * @param millisecondsToPause milliseconds to pause for
+   * @throws InterruptedException when the sleep is interrupted
+   */
+  public static void pauseForMillis(long millisecondsToPause) throws InterruptedException {
+    Awaitility.await()
+        .pollDelay(Duration.ofMillis(millisecondsToPause))
+        .atMost(Duration.ofMillis(millisecondsToPause + 10))
+        .until(() -> { return true; });
+}
 }

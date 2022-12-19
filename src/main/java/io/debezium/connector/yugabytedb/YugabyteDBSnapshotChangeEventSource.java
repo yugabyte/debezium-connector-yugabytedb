@@ -44,7 +44,7 @@ import io.debezium.util.Strings;
 /**
  * Class to help processing the snapshot in YugabyteDB.
  *
- * @author Suranjan Kumar
+ * @author Suranjan Kumar, Vaibhav Kushwaha
  */
 
 public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
@@ -327,8 +327,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
               for (Pair<String, String> tableIdToTabletId : tableToTabletForSnapshot) {
                 // Pause for the specified duration before asking for a new set of snapshot records from the server
                 LOGGER.debug("Pausing for {} milliseconds before polling further", connectorConfig.cdcPollIntervalms());
-                final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
-                pollIntervalMetronome.pause();
+                YBClientUtils.pauseForMillis(connectorConfig.cdcPollIntervalms());
 
                 String tableId = tableIdToTabletId.getKey();
                 YBTable table = tableIdToTable.get(tableId);
@@ -504,13 +503,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                        this.connectorConfig.connectorRetryDelayMs(), e.getMessage());
           LOGGER.debug("Stacktrace: ", e);
 
-          try {
-            final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-            retryMetronome.pause();
-          } catch (InterruptedException ie) {
-            LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-            Thread.currentThread().interrupt();
-          }
+          YBClientUtils.pauseForMillis(this.connectorConfig.connectorRetryDelayMs());
         }
       }
     
