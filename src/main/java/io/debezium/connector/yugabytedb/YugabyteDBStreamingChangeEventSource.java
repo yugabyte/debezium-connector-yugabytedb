@@ -770,6 +770,21 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         String tableId = entryToBeDeleted.getKey();
 
+        // Get the child tablets and add them to the polling list.
+        GetTabletListToPollForCDCResponse getTabletListResponse =
+          this.syncClient.getTabletListToPollForCdc(
+              this.syncClient.openTableByUUID(tableId),
+              streamId,
+              tableId,
+              splitTabletId);
+        
+        Objects.requireNonNull(getTabletListResponse);
+
+        if (getTabletListResponse.getTabletCheckpointPairListSize() != 2) {
+            LOGGER.warn("Found {} tablets for the parent tablet {}",
+                        getTabletListResponse.getTabletCheckpointPairListSize(), splitTabletId);
+        }
+
         // Remove the entry with the tablet which has been split.
         boolean removeSuccessful = tabletPairList.remove(entryToBeDeleted);
 
@@ -784,19 +799,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                 String exceptionMessageFormat = "Failed to remove the entry table {} - tablet {} from the tablet pair list after split";
                 throw new RuntimeException(String.format(exceptionMessageFormat, entryToBeDeleted.getKey(), entryToBeDeleted.getValue()));
             }
-        }
-
-        // Get the child tablets and add them to the polling list.
-        GetTabletListToPollForCDCResponse getTabletListResponse =
-          this.syncClient.getTabletListToPollForCdc(
-              this.syncClient.openTableByUUID(tableId),
-              streamId,
-              tableId,
-              splitTabletId);
-
-        if (getTabletListResponse.getTabletCheckpointPairListSize() > 2) {
-            LOGGER.warn("Found more than 2 tablets (got {}) for the parent tablet {}",
-                        getTabletListResponse.getTabletCheckpointPairListSize(), splitTabletId);
         }
 
         for (TabletCheckpointPair pair : getTabletListResponse.getTabletCheckpointPairList()) {
