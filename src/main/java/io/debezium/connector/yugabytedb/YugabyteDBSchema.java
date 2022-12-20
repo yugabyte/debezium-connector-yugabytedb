@@ -369,6 +369,9 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     protected void refresh(YugabyteDBConnection connection, TableId tableId,
                            boolean refreshToastableColumns, CdcService.CDCSDKSchemaPB schemaPB,
                            String tabletId) throws SQLException {
+        if (schemaPB == null) {
+            LOGGER.info("Schema is null for tablet {}", tableId);
+        }
         readSchemaWithTablet(null /* dummy object */, null, tableId.schema(), tableId::equals,
                              null, true, schemaPB, tableId, tabletId);
 
