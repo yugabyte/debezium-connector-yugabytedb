@@ -120,7 +120,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                                              String schemaName,
                                              String tabletId) {
         String lookupKey = getLookupKey(tableId, tabletId);
-        if (tabletIdToCdcsdkSchemaPB.get(lookupKey) == null || cdcsdkSchemaPB == null) {
+        if (!tabletIdToCdcsdkSchemaPB.containsKey(lookupKey) || cdcsdkSchemaPB == null) {
             tabletIdToCdcsdkSchemaPB.put(lookupKey, schemaPB);
         }
 
