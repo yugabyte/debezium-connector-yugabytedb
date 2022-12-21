@@ -345,11 +345,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                       }
 
                       GetChangesResponse response = null;
-                      
+
                       if (schemaNeeded.get(tabletId)) {
                         LOGGER.info("Requesting schema for tablet: {}", tabletId);
                       }
-                      
+
                       try {
                         response = this.syncClient.getChangesCDCSDK(
                             table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
@@ -756,7 +756,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
             LOGGER.info("Initialized offset context for tablet {} with OpId {}", tabletId, OpId.from(pair.getCdcSdkCheckpoint()));
 
-            // Add the flag to indicate that we need the schema for the new tablets so that we can get it registered.
+            // Add the flag to indicate that we need the schema for the new tablets so that the schema can be registered.
             schemaNeeded.put(tabletId, Boolean.TRUE);
         }
     }

@@ -221,10 +221,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                            TableId tableId, String tabletId) {
         Map<TableId, List<Column>> columnsByTable = new HashMap<>();
 
-        if (schemaPB == null) {
-            LOGGER.info("schemaPB is null in readSchemaWithTablet for tablet {} at line 225", tabletId);
-        }
-
         // Find regular and materialized views as they cannot be snapshotted
         final Set<TableId> tableIds = new HashSet<>();
         if (tableFilter == null || tableFilter.isIncluded(tableId)) {
@@ -373,9 +369,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     protected void refresh(YugabyteDBConnection connection, TableId tableId,
                            boolean refreshToastableColumns, CdcService.CDCSDKSchemaPB schemaPB,
                            String tabletId) throws SQLException {
-        if (schemaPB == null) {
-            LOGGER.info("schemaPB is null for tablet {}", tableId);
-        }
         readSchemaWithTablet(null /* dummy object */, null, tableId.schema(), tableId::equals,
                              null, true, schemaPB, tableId, tabletId);
 
