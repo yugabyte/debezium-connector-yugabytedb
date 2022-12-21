@@ -377,6 +377,12 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                             String pgSchemaNameInRecord = m.getPgschemaName();
 
+                            // This is a hack to skip tables in case of colocated tables
+                            TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                            if (!new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
+                                continue;
+                            }
+
                             final OpId lsn = new OpId(record.getCdcSdkOpId().getTerm(),
                                     record.getCdcSdkOpId().getIndex(),
                                     record.getCdcSdkOpId().getWriteIdKey().toByteArray(),
@@ -469,12 +475,16 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         Objects.requireNonNull(tableId);
                                     }
                                     // Getting the table with the help of the schema.
-                                    Table t = schema.tableFor(tableId);
-                                    LOGGER.debug("The schema is already registered {}", t);
-                                    if (t == null) {
+                                    Table t = schema.tableForTablet(tableId, tabletId);
+                                    if (YugabyteDBSchema.shouldRefreshSchema(t, message.getSchema())) {
                                         // If we fail to achieve the table, that means we have not specified correct schema information,
                                         // now try to refresh the schema.
-                                        schema.refreshWithSchema(tableId, message.getSchema(), pgSchemaNameInRecord);
+                                        if (t == null) {
+                                            LOGGER.info("Registering the schema for tablet {} since it was not registered already", tabletId);
+                                        } else {
+                                            LOGGER.info("Refreshing the schema for tablet {} because of mismatch in cached schema and received schema", tabletId);
+                                        }
+                                        schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
                                     }
                                 }
                                 // DML event
@@ -492,7 +502,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                     boolean dispatched = message.getOperation() != Operation.NOOP
                                             && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
-                                                    schema, connection, tableId, message, pgSchemaNameInRecord, taskContext.isBeforeImageEnabled()));
+                                                    schema, connection, tableId, message, pgSchemaNameInRecord, tabletId, taskContext.isBeforeImageEnabled()));
 
                                     if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                         recordsInTransactionalBlock.merge(tabletId, 1, Integer::sum);
@@ -539,9 +549,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                 }
 
                 // If there are retries left, perform them after the specified delay.
-                LOGGER.warn("Error while trying to get the changes from the server for tablet: {}; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
-                        curTabletId, retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
-                LOGGER.debug("Stacktrace", e);
+                LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
+                        retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
+                LOGGER.warn("Stacktrace", e);
 
                 try {
                     final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
@@ -760,6 +770,25 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         String tableId = entryToBeDeleted.getKey();
 
+        // Get the child tablets and add them to the polling list.
+        GetTabletListToPollForCDCResponse getTabletListResponse =
+          this.syncClient.getTabletListToPollForCdc(
+              this.syncClient.openTableByUUID(tableId),
+              streamId,
+              tableId,
+              splitTabletId);
+        
+        Objects.requireNonNull(getTabletListResponse);
+
+        if (getTabletListResponse.getTabletCheckpointPairListSize() != 2) {
+            LOGGER.warn("Found {} tablets for the parent tablet {}",
+                        getTabletListResponse.getTabletCheckpointPairListSize(), splitTabletId);
+            throw new Exception("Found unexpected ("
+                                + getTabletListResponse.getTabletCheckpointPairListSize()
+                                + ") number of tablets while trying to fetch the children of parent "
+                                + splitTabletId);
+        }
+
         // Remove the entry with the tablet which has been split.
         boolean removeSuccessful = tabletPairList.remove(entryToBeDeleted);
 
@@ -774,19 +803,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                 String exceptionMessageFormat = "Failed to remove the entry table {} - tablet {} from the tablet pair list after split";
                 throw new RuntimeException(String.format(exceptionMessageFormat, entryToBeDeleted.getKey(), entryToBeDeleted.getValue()));
             }
-        }
-
-        // Get the child tablets and add them to the polling list.
-        GetTabletListToPollForCDCResponse getTabletListResponse =
-          this.syncClient.getTabletListToPollForCdc(
-              this.syncClient.openTableByUUID(tableId),
-              streamId,
-              tableId,
-              splitTabletId);
-
-        if (getTabletListResponse.getTabletCheckpointPairListSize() > 2) {
-            LOGGER.warn("Found more than 2 tablets (got {}) for the parent tablet {}",
-                        getTabletListResponse.getTabletCheckpointPairListSize(), splitTabletId);
         }
 
         for (TabletCheckpointPair pair : getTabletListResponse.getTabletCheckpointPairList()) {

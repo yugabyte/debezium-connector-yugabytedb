@@ -26,3 +26,6 @@ fi
 
 # Set docker permissions
 sudo chmod 666 /var/run/docker.sock
+if [[ -n ${YB_DOCKER_IMAGE:-} ]]; then
+  docker pull $YB_DOCKER_IMAGE
+fi
