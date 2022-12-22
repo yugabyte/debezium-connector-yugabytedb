@@ -20,5 +20,6 @@ COPY target/debezium-connector-yugabytedb-*.jar $KAFKA_CONNECT_YB_DIR/
 ENV KAFKA_OPTS="-Djdk.tls.client.protocols=TLSv1.2"
 
 # Add Jmx agent and metrics pattern file to expose the metrics info
-RUN mkdir /kafka/etc && cd /kafka/etc && curl -so jmx_prometheus_javaagent-0.9.jar https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.9/jmx_prometheus_javaagent-0.9.jar
+RUN mkdir /kafka/etc && cd /kafka/etc && curl -so jmx_prometheus_javaagent-0.17.2.jar https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.17.2/jmx_prometheus_javaagent-0.17.2.jar
+
 ADD metrics.yml /etc/jmx-exporter/
