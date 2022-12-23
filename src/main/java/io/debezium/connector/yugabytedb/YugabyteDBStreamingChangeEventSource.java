@@ -357,7 +357,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                       } catch (CDCErrorException cdcException) {
                         // Check if exception indicates a tablet split.
                         LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
-                        if (cdcException.getCDCError().getCode() == Code.TABLET_SPLIT) {
+                        if (cdcException.getCDCError().getCode() == Code.TABLET_SPLIT || cdcException.getCDCError().getCode() == Code.INVALID_REQUEST) {
                             LOGGER.info("Encountered a tablet split on tablet {}, handling it gracefully", tabletId);
                             if (LOGGER.isDebugEnabled()) {
                                 cdcException.printStackTrace();
