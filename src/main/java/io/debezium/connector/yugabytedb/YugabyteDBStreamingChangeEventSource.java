@@ -764,7 +764,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
-    private void handleTabletSplit(CDCErrorException cdcErrorException,
+    protected void handleTabletSplit(CDCErrorException cdcErrorException,
                                    List<Pair<String,String>> tabletPairList,
                                    YugabyteDBOffsetContext offsetContext,
                                    String streamId,
