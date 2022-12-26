@@ -36,6 +36,18 @@ public class Merger {
         return Collections.min(tabletSafeTime.values());
     }
 
+    public long totalQueueSize() {
+        return queue.size();
+    }
+
+    public int pendingMessagesInTablet(String tabletId) {
+        return mergeSlots.get(tabletId).size();
+    }
+
+    public long safeTimeForTablet(String tabletId) {
+        return tabletSafeTime.get(tabletId);
+    }
+
     public Optional<Message> peek() {
         Message message = queue.peek();
         Optional<Message> peeked = message != null && message.commitTime < this.streamSafeTime()
@@ -50,12 +62,12 @@ public class Merger {
 
     public Message poll() {
         Message message = Objects.requireNonNull(queue.poll());
-        if (message.record.getRowMessage().getOp() != CdcService.RowMessage.Op.DDL) {
+//        if (message.record.getRowMessage().getOp() != CdcService.RowMessage.Op.DDL) {
             LOGGER.info("Message is: {}", message);
             LOGGER.info("Records for tablet: {}", mergeSlots.get(message.tablet).size());
             mergeSlots.get(message.tablet).removeIf(item -> item.compareTo(message) == 0);
             LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(message.tablet).size());
-        }
+//        }
         return message;
     }
 

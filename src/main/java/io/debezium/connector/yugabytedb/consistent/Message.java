@@ -35,13 +35,19 @@ public class Message implements Comparable<Message> {
             return this.sequence < o.sequence ? -1 : 1;
         } else if (this.recordTime != o.recordTime) {
             return this.recordTime < o.recordTime ? -1 : 1;
-        } else if (this.record.getRowMessage().getOp() == CdcService.RowMessage.Op.BEGIN) {
+        } else if (this.record.getRowMessage().getOp() == CdcService.RowMessage.Op.BEGIN && o.record.getRowMessage().getOp() != CdcService.RowMessage.Op.BEGIN) {
             return -1;
-        } else if (this.record.getRowMessage().getOp() == CdcService.RowMessage.Op.COMMIT) {
+        } else if (this.record.getRowMessage().getOp() == CdcService.RowMessage.Op.COMMIT && o.record.getRowMessage().getOp() != CdcService.RowMessage.Op.COMMIT) {
             return 1;
         }
 
+//        else if (this.record.getRowMessage().getOp() == CdcService.RowMessage.Op.BEGIN) {
+//            return -1;
+//        } else if (this.record.getRowMessage().getOp() == CdcService.RowMessage.Op.COMMIT) {
+//            return 1;
+//        }
 
+        System.out.println("Returning 0 fro the compareTo function");
         return 0;
     }
 

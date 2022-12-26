@@ -32,6 +32,8 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
 
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDbConsistentStreaming.class);
 
+    private long totalMessagesSent = 0;
+
     public YugabyteDbConsistentStreaming(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter, YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock, YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection, ChangeEventQueue<DataChangeEvent> queue) {
         super(connectorConfig, snapshotter, connection, dispatcher, errorHandler, clock, schema, taskContext, replicationConnection, queue);
     }
@@ -200,6 +202,10 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                             for (CdcService.CDCSDKProtoRecordPB record : response
                                     .getResp()
                                     .getCdcSdkProtoRecordsList()) {
+                                CdcService.RowMessage.Op op = record.getRowMessage().getOp();
+                                if (op != CdcService.RowMessage.Op.INSERT) {
+                                    ++totalMessagesSent;
+                                }
                                 merger.addMessage(new Message.Builder()
                                         .setRecord(record)
                                         .setTabletId(tabletId)
@@ -215,6 +221,11 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                                         .updateLastCommit(finalOpid);
                                 LOGGER.debug("The final opid is " + finalOpid);
                             }
+                        } else {
+                            LOGGER.info("Remaining records available in merger: {}", merger.totalQueueSize());
+                            LOGGER.info("Records for tablet {} in merger: {}", tabletId, merger.pendingMessagesInTablet(tabletId));
+                            LOGGER.info("Safetime for tablet {}: {} with stream safe-time: {}", tabletId, merger.safeTimeForTablet(tabletId), merger.streamSafeTime());
+                            LOGGER.info("=========================================================");
                         }
 
                         probeConnectionIfNeeded();

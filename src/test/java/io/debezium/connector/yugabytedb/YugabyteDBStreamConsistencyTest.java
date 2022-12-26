@@ -65,6 +65,9 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
     @Before
     public void before() {
         initializeConnectorTestFramework();
+        if (Boolean.FALSE) {
+            LOGGER.info("Just printing inside false block");
+        }
     }
 
     @After
@@ -130,7 +133,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
         System.out.println("VKVK indices: " + indicesOfParentAdditions);
 
         // Dummy wait
-        TestHelper.waitFor(Duration.ofSeconds(50));
+        TestHelper.waitFor(Duration.ofSeconds(25));
 
         List<SourceRecord> records = new ArrayList<>();
 
@@ -142,15 +145,14 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
                     .until(() -> {
                         int consumed = super.consumeAvailableRecords(record -> {
                             LOGGER.debug("The record being consumed is " + record);
-                            System.out.println("The record being consumed is " + record);
                             records.add(record);
                         });
                         if (consumed > 0) {
                             totalConsumedRecords.addAndGet(consumed);
-                            LOGGER.debug("Consumed " + totalConsumedRecords + " records");
+                            LOGGER.info("Consumed " + totalConsumedRecords.get() + " records");
                         }
 
-                        return totalConsumedRecords.get() == total;
+                        return totalConsumedRecords.get() >= total;
                     });
         } catch (ConditionTimeoutException exception) {
             fail("Failed to consume " + totalCount + " records in 600 seconds, consumed " + totalConsumedRecords.get(), exception);
