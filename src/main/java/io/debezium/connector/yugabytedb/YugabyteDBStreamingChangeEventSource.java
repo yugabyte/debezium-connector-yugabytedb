@@ -47,44 +47,44 @@ import io.debezium.pipeline.DataChangeEvent;
 public class YugabyteDBStreamingChangeEventSource implements
         StreamingChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
 
-    private static final String KEEP_ALIVE_THREAD_NAME = "keep-alive";
+    protected static final String KEEP_ALIVE_THREAD_NAME = "keep-alive";
 
     /**
      * Number of received events without sending anything to Kafka which will
      * trigger a "WAL backlog growing" warning.
      */
-    private static final int GROWING_WAL_WARNING_LOG_INTERVAL = 10_000;
+    protected static final int GROWING_WAL_WARNING_LOG_INTERVAL = 10_000;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBStreamingChangeEventSource.class);
 
     // PGOUTPUT decoder sends the messages with larger time gaps than other decoders
     // We thus try to read the message multiple times before we make poll pause
-    private static final int THROTTLE_NO_MESSAGE_BEFORE_PAUSE = 5;
+    protected static final int THROTTLE_NO_MESSAGE_BEFORE_PAUSE = 5;
 
-    private final YugabyteDBConnection connection;
-    private final YugabyteDBEventDispatcher<TableId> dispatcher;
-    private final ErrorHandler errorHandler;
-    private final Clock clock;
-    private final YugabyteDBSchema schema;
-    private final YugabyteDBConnectorConfig connectorConfig;
-    private final YugabyteDBTaskContext taskContext;
+    protected final YugabyteDBConnection connection;
+    protected final YugabyteDBEventDispatcher<TableId> dispatcher;
+    protected final ErrorHandler errorHandler;
+    protected final Clock clock;
+    protected final YugabyteDBSchema schema;
+    protected final YugabyteDBConnectorConfig connectorConfig;
+    protected final YugabyteDBTaskContext taskContext;
 
-    private final Snapshotter snapshotter;
-    private final DelayStrategy pauseNoMessage;
-    private final ElapsedTimeStrategy connectionProbeTimer;
+    protected final Snapshotter snapshotter;
+    protected final DelayStrategy pauseNoMessage;
+    protected final ElapsedTimeStrategy connectionProbeTimer;
 
     /**
      * The minimum of (number of event received since the last event sent to Kafka,
      * number of event received since last WAL growing warning issued).
      */
-    private long numberOfEventsSinceLastEventSentOrWalGrowingWarning = 0;
-    private OpId lastCompletelyProcessedLsn;
+    protected long numberOfEventsSinceLastEventSentOrWalGrowingWarning = 0;
+    protected OpId lastCompletelyProcessedLsn;
 
-    private final AsyncYBClient asyncYBClient;
-    private final YBClient syncClient;
-    private YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
-    private final Map<String, OpId> checkPointMap;
-    private final ChangeEventQueue<DataChangeEvent> queue;
+    protected final AsyncYBClient asyncYBClient;
+    protected final YBClient syncClient;
+    protected YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
+    protected final Map<String, OpId> checkPointMap;
+    protected final ChangeEventQueue<DataChangeEvent> queue;
 
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
                                                 YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
@@ -177,7 +177,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
-    private void bootstrapTabletWithRetry(List<Pair<String,String>> tabletPairList) throws Exception {
+    protected void bootstrapTabletWithRetry(List<Pair<String,String>> tabletPairList) throws Exception {
         short retryCountForBootstrapping = 0;
         for (Pair<String, String> entry : tabletPairList) {
             // entry is a Pair<tableId, tabletId>
@@ -216,7 +216,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     }
 
 
-    private void getChanges2(ChangeEventSourceContext context,
+    protected void getChanges2(ChangeEventSourceContext context,
                              YBPartition partitionn,
                              YugabyteDBOffsetContext offsetContext,
                              boolean previousOffsetPresent)
@@ -413,8 +413,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         }
                                         if (message.getOperation() == Operation.COMMIT) {
                                             LOGGER.debug("LSN in case of COMMIT is " + lsn);
-                                            offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
-                                                    String.valueOf(message.getTransactionId()), null, null/* taskContext.getSlotXmin(connection) */);
+                                            offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                                                    String.valueOf(message.getTransactionId()), null, null,/* taskContext.getSlotXmin(connection) */
+                                                    message.getRecordTime());
                                             commitMessage(part, offsetContext, lsn);
 
                                             if (recordsInTransactionalBlock.containsKey(tabletId)) {
@@ -445,8 +446,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     }
                                     else if (message.getOperation() == Operation.COMMIT) {
                                         LOGGER.debug("LSN in case of COMMIT is " + lsn);
-                                        offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
-                                                String.valueOf(message.getTransactionId()), null, null/* taskContext.getSlotXmin(connection) */);
+                                        offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                                                String.valueOf(message.getTransactionId()), null, null/* taskContext.getSlotXmin(connection) */,
+                                                message.getRecordTime());
                                         commitMessage(part, offsetContext, lsn);
                                         dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
 
@@ -502,8 +504,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     // If you need to print the received record, change debug level to info
                                     LOGGER.debug("Received DML record {}", record);
 
-                                    offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
-                                            String.valueOf(message.getTransactionId()), tableId, null/* taskContext.getSlotXmin(connection) */);
+                                    offsetContext.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                                            String.valueOf(message.getTransactionId()), tableId, null/* taskContext.getSlotXmin(connection) */,
+                                            message.getRecordTime());
 
                                     boolean dispatched = message.getOperation() != Operation.NOOP
                                             && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
@@ -599,7 +602,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         LOGGER.info("WAL resume position '{}' discovered", resumeLsn.get());
     }
 
-    private void probeConnectionIfNeeded() throws SQLException {
+    protected void probeConnectionIfNeeded() throws SQLException {
         // CDCSDK Find out why it fails.
         // if (connectionProbeTimer.hasElapsed()) {
         // connection.prepareQuery("SELECT 1");
@@ -607,7 +610,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         // }
     }
 
-    private void commitMessage(YBPartition partition, YugabyteDBOffsetContext offsetContext,
+    protected void commitMessage(YBPartition partition, YugabyteDBOffsetContext offsetContext,
                                final OpId lsn)
             throws SQLException, InterruptedException {
         lastCompletelyProcessedLsn = lsn;
@@ -632,7 +635,7 @@ public class YugabyteDBStreamingChangeEventSource implements
      * @param dispatched
      *            Whether an event was sent to the broker or not
      */
-    private void maybeWarnAboutGrowingWalBacklog(boolean dispatched) {
+    protected void maybeWarnAboutGrowingWalBacklog(boolean dispatched) {
         if (dispatched) {
             numberOfEventsSinceLastEventSentOrWalGrowingWarning = 0;
         }
@@ -688,7 +691,7 @@ public class YugabyteDBStreamingChangeEventSource implements
      *
      * @return true if the current streaming phase is performing catch up streaming
      */
-    private boolean isInPreSnapshotCatchUpStreaming(YugabyteDBOffsetContext offsetContext) {
+    protected boolean isInPreSnapshotCatchUpStreaming(YugabyteDBOffsetContext offsetContext) {
         return offsetContext.getStreamingStoppingLsn() != null;
     }
 
@@ -761,7 +764,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
-    private void handleTabletSplit(CDCErrorException cdcErrorException,
+    protected void handleTabletSplit(CDCErrorException cdcErrorException,
                                    List<Pair<String,String>> tabletPairList,
                                    YugabyteDBOffsetContext offsetContext,
                                    String streamId,

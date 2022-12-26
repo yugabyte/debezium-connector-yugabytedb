@@ -441,9 +441,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       }
 
                       previousOffset.updateWalPosition(tabletId, lsn, lastCompletelyProcessedLsn, 
-                                                       message.getCommitTime(), 
+                                                       message.getRawCommitTime(),
                                                        String.valueOf(message.getTransactionId()), 
-                                                       tId, null);
+                                                       tId, null, message.getRecordTime());
                       
                       boolean dispatched = (message.getOperation() != Operation.NOOP) && 
                           dispatcher.dispatchDataChangeEvent(part, tId, 
