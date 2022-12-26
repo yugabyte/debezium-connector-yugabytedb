@@ -62,12 +62,10 @@ public class Merger {
 
     public Message poll() {
         Message message = Objects.requireNonNull(queue.poll());
-//        if (message.record.getRowMessage().getOp() != CdcService.RowMessage.Op.DDL) {
-            LOGGER.info("Message is: {}", message);
-            LOGGER.info("Records for tablet: {}", mergeSlots.get(message.tablet).size());
-            mergeSlots.get(message.tablet).removeIf(item -> item.compareTo(message) == 0);
-            LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(message.tablet).size());
-//        }
+        LOGGER.info("Message is: {}", message);
+        LOGGER.info("Records for tablet: {}", mergeSlots.get(message.tablet).size());
+        mergeSlots.get(message.tablet).removeIf(item -> item.compareTo(message) == 0);
+        LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(message.tablet).size());
         return message;
     }
 

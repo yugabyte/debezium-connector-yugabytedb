@@ -5,33 +5,24 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 import java.sql.SQLException;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
-import io.debezium.config.CommonConnectorConfig;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.apache.log4j.Logger;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
-import org.checkerframework.checker.units.qual.A;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.junit.jupiter.api.Disabled;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
-import io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState;
-import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
-import io.debezium.util.Strings;
 
 /**
  * Basic unit tests to check the behaviour with stream consistency.
@@ -40,7 +31,7 @@ import io.debezium.util.Strings;
  */
 
 public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
-    private final static Logger LOGGER = Logger.getLogger(YugabyteDBStreamConsistencyTest.class);
+    private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBStreamConsistencyTest.class);
     private static YugabyteYSQLContainer ybContainer;
 
     private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
@@ -65,9 +56,9 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
     @Before
     public void before() {
         initializeConnectorTestFramework();
-        if (Boolean.FALSE) {
-            LOGGER.info("Just printing inside false block");
-        }
+
+        TestHelper.execute("DROP TABLE IF EXISTS employee;");
+        TestHelper.execute("DROP TABLE IF EXISTS department;");
     }
 
     @After
@@ -86,8 +77,8 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
     @Test
     public void recordsShouldStreamInConsistentOrderOnly() throws Exception {
         // Create 2 tables, refer first in the second one
-        TestHelper.execute("CREATE TABLE department (dept_id INT PRIMARY KEY, dept_name TEXT);");
-        TestHelper.execute("CREATE TABLE employee (emp_id INT PRIMARY KEY, emp_name TEXT, d_id INT, FOREIGN KEY (d_id) REFERENCES department(dept_id));");
+        TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT);");
+        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, FOREIGN KEY (d_id) REFERENCES department(id));");
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee", dbStreamId);
@@ -106,7 +97,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
 
         final int iterations = 5;
         final int batchSize = 100;
-        int departmentId = 1;
+        int departmentId = 1000;
         long totalCount = 0;
         int beginKey = 1;
         int endKey = beginKey + batchSize - 1;
@@ -115,6 +106,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
             // Insert records into the first table
             TestHelper.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d');", departmentId, departmentId));
 
+            // TODO Vaibhav: This order is not correct and the records will be added in a different order
             indicesOfParentAdditions.add((int) totalCount); // Hack to add the indices of the required records
 
             // Insert records into the second table
@@ -126,16 +118,17 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
             beginKey = endKey + 1;
             endKey = beginKey + batchSize - 1;
 
-            // Every iteration will insert 101 records
+            // Every iteration will insert (batchSize + 1) records
             totalCount += batchSize /* batch to employee */ + 1 /* single insert to department */;
         }
-
-        System.out.println("VKVK indices: " + indicesOfParentAdditions);
 
         // Dummy wait
         TestHelper.waitFor(Duration.ofSeconds(25));
 
-        List<SourceRecord> records = new ArrayList<>();
+        List<SourceRecord> duplicateRecords = new ArrayList<>();
+        List<SourceRecord> recordsToAssert = new ArrayList<>();
+
+        Set<Integer> recordPkSet = new HashSet<>();
 
         final long total = totalCount;
         AtomicLong totalConsumedRecords = new AtomicLong();
@@ -145,33 +138,40 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
                     .until(() -> {
                         int consumed = super.consumeAvailableRecords(record -> {
                             LOGGER.debug("The record being consumed is " + record);
-                            records.add(record);
+                            Struct s = (Struct) record.value();
+                            int id = s.getStruct("after").getStruct("id").getInt32("value");
+
+                            if (recordPkSet.contains(id)) {
+                                duplicateRecords.add(record);
+                            } else {
+                                recordsToAssert.add(record);
+                            }
+
+                            recordPkSet.add(id);
                         });
                         if (consumed > 0) {
                             totalConsumedRecords.addAndGet(consumed);
                             LOGGER.info("Consumed " + totalConsumedRecords.get() + " records");
                         }
 
-                        return totalConsumedRecords.get() >= total;
+                        return recordPkSet.size() == total;
                     });
         } catch (ConditionTimeoutException exception) {
             fail("Failed to consume " + totalCount + " records in 600 seconds, consumed " + totalConsumedRecords.get(), exception);
         }
 
-//        SourceRecords r = consumeRecordsByTopic((int) totalCount);
-//        assertEquals(1, r.topics().size());
-//
-//        String onlyTopicName = r.topics().stream().iterator().next();
-//        List<SourceRecord> records = r.recordsForTopic(onlyTopicName);
 
-//        for (int index : indicesOfParentAdditions) {
-//            // Assert that the respective record belongs to table the parent table eg. department
-//            System.out.println("VKVK verifying: " + index);
-//            SourceRecord record = records.get(index);
-//            Struct s = (Struct) record.value();
+        for (int i = 0; i < recordsToAssert.size(); ++i) {
+            SourceRecord record = recordsToAssert.get(i);
+            Struct s = (Struct) record.value();
 //            assertEquals("department", s.getStruct("source").getString("table"));
-//        }
+            if (s.getStruct("source").getString("table").equals("department")) {
+                LOGGER.info("department table record at index: {}", i);
+            }
+        }
 
-        assertEquals(totalCount, records.size());
+        LOGGER.info("Found {} duplicate records while streaming", duplicateRecords.size());
+
+        assertEquals(totalCount, recordPkSet.size());
     }
 }
