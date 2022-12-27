@@ -865,5 +865,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                 }
             }
         }
+
+        // In ideal scenarios, this should NEVER be returned from this function.
+        return null;
     }
 }
