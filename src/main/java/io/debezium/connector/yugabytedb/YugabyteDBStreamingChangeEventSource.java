@@ -768,7 +768,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                    YugabyteDBOffsetContext offsetContext,
                                    String streamId,
                                    Map<String, Boolean> schemaNeeded) throws Exception {
-        // Obtain the tablet ID of the splitted tablet from the message.
+        // Obtain the tablet ID of the split tablet from the message.
         String splitTabletId = getTabletIdFromSplitMessage(cdcErrorException.getMessage());
         LOGGER.info("Removing the tablet {} from the list to get the changes since it has been split", splitTabletId);
 
@@ -777,24 +777,14 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         String tableId = entryToBeDeleted.getKey();
 
-        // Get the child tablets and add them to the polling list.
         GetTabletListToPollForCDCResponse getTabletListResponse =
-          this.syncClient.getTabletListToPollForCdc(
+          getTabletListResponseWithRetry(
               this.syncClient.openTableByUUID(tableId),
               streamId,
               tableId,
               splitTabletId);
         
         Objects.requireNonNull(getTabletListResponse);
-
-        if (getTabletListResponse.getTabletCheckpointPairListSize() != 2) {
-            LOGGER.warn("Found {} tablets for the parent tablet {}",
-                        getTabletListResponse.getTabletCheckpointPairListSize(), splitTabletId);
-            throw new Exception("Found unexpected ("
-                                + getTabletListResponse.getTabletCheckpointPairListSize()
-                                + ") number of tablets while trying to fetch the children of parent "
-                                + splitTabletId);
-        }
 
         // Remove the entry with the tablet which has been split.
         boolean removeSuccessful = tabletPairList.remove(entryToBeDeleted);
@@ -814,6 +804,66 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         for (TabletCheckpointPair pair : getTabletListResponse.getTabletCheckpointPairList()) {
             addTabletIfNotPresent(tabletPairList, pair, tableId, offsetContext, schemaNeeded);
+        }
+    }
+
+    /**
+     * Get the children tablets of the specified tablet which has been split. This API will retry
+     * until the retry limit has been hit.
+     * @param ybTable the {@link YBTable} object to which the split tablet belongs
+     * @param streamId the DB stream ID being used for polling
+     * @param tableId table UUID of the table to which the split tablet belongs
+     * @param splitTabletId tablet UUID of the split tablet
+     * @return {@link GetTabletListToPollForCDCResponse} containing the list of child tablets
+     * @throws Exception when the retry limit has been hit or the metronome pause is interrupted
+     */
+    private GetTabletListToPollForCDCResponse getTabletListResponseWithRetry(
+        YBTable ybTable, String streamId, String tableId, String splitTabletId) throws Exception {
+        short retryCount = 0;
+        while (retryCount <= connectorConfig.maxConnectorRetries()) {
+            try {
+                // Note that YBClient also retries internally if it encounters an error which can
+                // be retried.
+                GetTabletListToPollForCDCResponse response =
+                    this.syncClient.getTabletListToPollForCdc(
+                        ybTable,
+                        streamId,
+                        tableId,
+                        splitTabletId);
+
+                if (response.getTabletCheckpointPairListSize() != 2) {
+                    LOGGER.warn("Found {} tablets for the parent tablet {}",
+                            response.getTabletCheckpointPairListSize(), splitTabletId);
+                    throw new Exception("Found unexpected ("
+                            + response.getTabletCheckpointPairListSize()
+                            + ") number of tablets while trying to fetch the children of parent "
+                            + splitTabletId);
+                }
+
+                retryCount = 0;
+                return response;
+            } catch (Exception e) {
+                ++retryCount;
+                if (retryCount > connectorConfig.maxConnectorRetries()) {
+                    LOGGER.error("Too many errors while trying to get children for split tablet {}", splitTabletId);
+                    LOGGER.error("Error", e);
+                    throw e;
+                }
+
+                LOGGER.warn("Error while trying to get the children for the split tablet {}, will retry attempt {} of {} after {} milliseconds",
+                            splitTabletId, retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs());
+                LOGGER.warn("Stacktrace", e);
+
+                try {
+                    final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+                    retryMetronome.pause();
+                }
+                catch (InterruptedException ie) {
+                    LOGGER.warn("Connector retry sleep while pausing to get the children tablets for parent {} interrupted", splitTabletId);
+                    LOGGER.warn("Exception for interruption", ie);
+                    Thread.currentThread().interrupt();
+                }
+            }
         }
     }
 }
