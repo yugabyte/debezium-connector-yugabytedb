@@ -3,11 +3,11 @@
 
 # The base image is derived from debezium/connect:1.7 and contains the following drivers
 # and connectors prepopulated:
-#  - JDBC Sink Connector v10.2.5
+#  - JDBC Sink Connector v10.6.0
 #  - YugabyteDB JDBC Driver v42.3.5-yb-1
-#  - MySql JDBC Driver v8.0.21
-#  - PostgreSQL JDBC Driver v42.4.1
-FROM quay.io/yugabyte/connect-base-yb:0.3
+#  - MySql JDBC Driver v8.0.31
+#  - PostgreSQL JDBC Driver v42.5.1
+FROM quay.io/yugabyte/connect-base-yb:0.4
 
 # Create the directories for the connectors to be placed into
 ENV KAFKA_CONNECT_YB_DIR=$KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb
