@@ -356,7 +356,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId));
                       } catch (CDCErrorException cdcException) {
                         // Check if exception indicates a tablet split.
-                        LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
+                        LOGGER.debug("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
                         if (cdcException.getCDCError().getCode() == Code.TABLET_SPLIT || cdcException.getCDCError().getCode() == Code.INVALID_REQUEST) {
                             LOGGER.info("Encountered a tablet split on tablet {}, handling it gracefully", tabletId);
                             if (LOGGER.isDebugEnabled()) {
@@ -368,7 +368,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             // Break out of the loop so that the iteration can start afresh on the modified list.
                             break;
                         } else {
-                            LOGGER.info("Throwing error because error code did not match. Split code: {}, code received: {}", Code.TABLET_SPLIT, cdcException.getCDCError().getCode());
+                            LOGGER.warn("Throwing error because error code did not match. Expected split code: {}, code received: {}", Code.TABLET_SPLIT, cdcException.getCDCError().getCode());
                             throw cdcException;
                         }
                       }
