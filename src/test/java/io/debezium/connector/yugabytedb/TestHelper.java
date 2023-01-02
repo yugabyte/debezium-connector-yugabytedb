@@ -28,6 +28,8 @@ import java.util.stream.Collectors;
 
 import javax.sql.DataSource;
 
+import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.postgresql.jdbc.PgConnection;
@@ -621,6 +623,16 @@ public final class TestHelper {
             .until(() -> {
                 return true;
             });
+    }
+
+    /**
+     * Get the value of the operation to which the given source records belongs.
+     * @param record the {@link SourceRecord} to get the operation for
+     * @return the string value of the operation - c, u, r or d
+     */
+    protected static String getOpValue(SourceRecord record) {
+        Struct s = (Struct) record.value();
+        return s.getString("op");
     }
 
     private static List<String> getOpenIdleTransactions(YugabyteDBConnection connection) throws SQLException {
