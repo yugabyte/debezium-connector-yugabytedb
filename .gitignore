@@ -30,4 +30,4 @@ generated-sources
 .settings
 
 # Idea related files
-./idea/
+.idea/
