@@ -37,6 +37,7 @@ import org.testcontainers.containers.JdbcDatabaseContainer;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 import org.testcontainers.containers.strategy.YugabyteYSQLWaitStrategy;
 import org.testcontainers.containers.wait.strategy.HostPortWaitStrategy;
+import org.testcontainers.utility.DockerImageName;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
@@ -335,7 +336,41 @@ public final class TestHelper {
     }
 
     protected static YugabyteYSQLContainer getYbContainer() {
-        YugabyteYSQLContainer container = new YugabyteYSQLContainer("yugabytedb/yugabyte:2.12.7.0-b27");
+        return getYbContainer(null, null);
+    }
+
+    protected static YugabyteYSQLContainer getYbContainer(String masterFlags, String tserverFlags) {
+        String dockerImageName = System.getenv("YB_DOCKER_IMAGE_17");
+
+        if (dockerImageName == null || dockerImageName.isEmpty()) {
+            final String imageTag = "2.14.5.0-b18";
+            LOGGER.info("Environment variable YB_DOCKER_IMAGE_17 is empty, defaulting to image tag {} from Dockerhub", imageTag);
+            dockerImageName = "yugabytedb/yugabyte:" + imageTag;
+        }
+
+        LOGGER.info("Using docker image in test: {}", dockerImageName);
+
+        if (tserverFlags == null || tserverFlags.isEmpty()) {
+            tserverFlags = "";
+        } else {
+            tserverFlags = " --tserver_flags=" + tserverFlags;
+        }
+
+        if (masterFlags == null || masterFlags.isEmpty()) {
+            masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0";
+        } else {
+            masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0," + masterFlags;
+        }
+
+        LOGGER.info("tserver flags: {}", tserverFlags);
+        LOGGER.info("master flags: {}", masterFlags);
+
+        String startupCommand = "bin/yugabyted start --listen=0.0.0.0 " + masterFlags + tserverFlags + " --daemon=false";
+        LOGGER.info("Container startup command: {}", startupCommand);
+
+        YugabyteYSQLContainer container = new YugabyteYSQLContainer(
+                DockerImageName.parse(dockerImageName)
+                        .asCompatibleSubstituteFor("yugabytedb/yugabyte"));
         container.withPassword("yugabyte");
         container.withUsername("yugabyte");
         container.withDatabaseName("yugabyte");
@@ -348,7 +383,7 @@ public final class TestHelper {
                 add(new PortBinding(Ports.Binding.bindPort(9042), new ExposedPort(9042)));
             }
         }));
-        container.withCommand("bin/yugabyted start --listen=0.0.0.0 --master_flags=rpc_bind_addresses=0.0.0.0 --daemon=false");
+        container.withCommand(startupCommand);
         return container;
     }
 

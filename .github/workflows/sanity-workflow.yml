@@ -1,13 +1,11 @@
-name: Sanity Test
+name: Sanity Test for branch 1.7
 
 on:
   push:
     branches:
-      - main
       - 1.7  
   pull_request:
     branches:
-      - main
       - 1.7
 
 jobs:
@@ -22,5 +20,17 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+      - name: Login to quay.io
+        uses: docker/login-action@v2
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_BOT_USERNAME }}
+          password: ${{ secrets.QUAY_BOT_TOKEN }}
+      - name: Pull docker image for yugabyte-db
+        env:
+          YB_DOCKER_IMAGE_17: ${{ secrets.YB_DOCKER_IMAGE_17 }}
+        run: docker pull $YB_DOCKER_IMAGE_17
       - name: Sanity Test that code compiles and tests pass.
+        env:
+          YB_DOCKER_IMAGE_17: ${{ secrets.YB_DOCKER_IMAGE_17 }}
         run: mvn clean test
