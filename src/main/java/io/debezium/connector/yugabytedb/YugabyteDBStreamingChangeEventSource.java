@@ -347,7 +347,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                       GetChangesResponse response = null;
 
                       if (schemaNeeded.get(tabletId)) {
-                        LOGGER.info("Requesting schema for tablet: {}", tabletId);
+                        LOGGER.debug("Requesting schema for tablet: {}", tabletId);
                       }
 
                       try {
