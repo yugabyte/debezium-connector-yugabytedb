@@ -28,3 +28,6 @@ generated-sources
 .classpath
 .project
 .settings
+
+# Idea related files
+./idea/
