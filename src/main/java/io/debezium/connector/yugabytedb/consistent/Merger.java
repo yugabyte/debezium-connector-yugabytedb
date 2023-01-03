@@ -6,18 +6,15 @@ import org.yb.cdc.CdcService;
 
 import java.math.BigInteger;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.PriorityBlockingQueue;
 
 /**
  * @author Rajat Venkatesh
  */
 public class Merger {
     private static final Logger LOGGER = LoggerFactory.getLogger(Merger.class);
-    private final PriorityBlockingQueue<Message> queue = new PriorityBlockingQueue<>();
-    private final ConcurrentMap<String, List<Message>> mergeSlots = new ConcurrentHashMap<>();
-    private final ConcurrentMap<String, BigInteger> tabletSafeTime = new ConcurrentHashMap<>();
+    private final PriorityQueue<Message> queue = new PriorityQueue<>();
+    private final Map<String, List<Message>> mergeSlots = new HashMap<>();
+    private final Map<String, BigInteger> tabletSafeTime = new HashMap<>();
 
     public Merger(List<String> tabletList) {
         tabletList.forEach(tabletId -> {
@@ -73,11 +70,16 @@ public class Merger {
         }
 
         Message message = Objects.requireNonNull(queue.poll());
-        LOGGER.info("Message is: {}", message);
-        LOGGER.info("Records for tablet: {}", mergeSlots.get(message.tablet).size());
-        mergeSlots.get(message.tablet).removeIf(item -> item.compareTo(message) == 0);
-        LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(message.tablet).size());
-        return Optional.of(message);
+
+        if (message.commitTime.compareTo(this.streamSafeTime()) < 0) {
+            LOGGER.info("Message is: {}", message);
+            LOGGER.info("Records for tablet: {}", mergeSlots.get(message.tablet).size());
+            mergeSlots.get(message.tablet).removeIf(item -> item.compareTo(message) == 0);
+            LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(message.tablet).size());
+            return Optional.of(message);
+        } else {
+            return Optional.empty();
+        }
     }
 
     public boolean isEmpty() {
