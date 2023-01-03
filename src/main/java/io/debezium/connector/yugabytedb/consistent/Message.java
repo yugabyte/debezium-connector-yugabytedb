@@ -1,21 +1,28 @@
 package io.debezium.connector.yugabytedb.consistent;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 
+import java.math.BigInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * @author Rajat Venkatesh
+ */
 public class Message implements Comparable<Message> {
+    private static final Logger LOGGER = LoggerFactory.getLogger(Message.class);
 
     public final CdcService.CDCSDKProtoRecordPB record;
     public final String tablet;
     public final String txn;
-    public final long commitTime;
-    public final long recordTime;
-    public final long snapShotTime;
+    public final BigInteger commitTime;
+    public final BigInteger recordTime;
+    public final BigInteger snapShotTime;
     public final long sequence;
 
     public Message(CdcService.CDCSDKProtoRecordPB record, String tablet, String txn,
-                   long commitTime, long recordTime, long snapShotTime, long sequence) {
+                   BigInteger commitTime, BigInteger recordTime, BigInteger snapShotTime, long sequence) {
         this.record = record;
         this.tablet = tablet;
         this.txn = txn;
@@ -27,27 +34,18 @@ public class Message implements Comparable<Message> {
 
     @Override
     public int compareTo(Message o) {
-        if (this.commitTime != o.commitTime) {
-            return this.commitTime < o.commitTime ? -1 : 1;
-        } else if (!this.txn.equals(o.txn)) {
-            return this.txn.compareTo(o.txn);
+        if (!this.commitTime.equals(o.commitTime)) {
+            return this.commitTime.compareTo(o.commitTime);
         } else if (this.sequence != o.sequence){
             return this.sequence < o.sequence ? -1 : 1;
-        } else if (this.recordTime != o.recordTime) {
-            return this.recordTime < o.recordTime ? -1 : 1;
+        } else if (!this.recordTime.equals(o.recordTime)) {
+            return this.recordTime.compareTo(o.recordTime);
         } else if (this.record.getRowMessage().getOp() == CdcService.RowMessage.Op.BEGIN && o.record.getRowMessage().getOp() != CdcService.RowMessage.Op.BEGIN) {
             return -1;
         } else if (this.record.getRowMessage().getOp() == CdcService.RowMessage.Op.COMMIT && o.record.getRowMessage().getOp() != CdcService.RowMessage.Op.COMMIT) {
             return 1;
         }
 
-//        else if (this.record.getRowMessage().getOp() == CdcService.RowMessage.Op.BEGIN) {
-//            return -1;
-//        } else if (this.record.getRowMessage().getOp() == CdcService.RowMessage.Op.COMMIT) {
-//            return 1;
-//        }
-
-        System.out.println("Returning 0 fro the compareTo function");
         return 0;
     }
 
@@ -90,8 +88,25 @@ public class Message implements Comparable<Message> {
             CdcService.RowMessage m = record.getRowMessage();
             return new Message(this.record, this.tabletId,
                     String.valueOf(m.getTransactionId()),
-                    m.getCommitTime(), m.getRecordTime(), this.snapshotTime,
+                    toUnsignedBigInteger(m.getCommitTime()), toUnsignedBigInteger(m.getRecordTime()), toUnsignedBigInteger(this.snapshotTime),
                     sequence.incrementAndGet());
+        }
+    }
+
+    /**
+     * Return a BigInteger equal to the unsigned value of the argument.
+     * Code taken from <a href="https://github.com/AdoptOpenJDK/openjdk-jdk11/blob/master/src/java.base/share/classes/java/lang/Long.java#L241">Long.java</a>
+     */
+    protected static BigInteger toUnsignedBigInteger(long i) {
+        if (i >= 0L)
+            return BigInteger.valueOf(i);
+        else {
+            int upper = (int) (i >>> 32);
+            int lower = (int) i;
+
+            // return (upper << 32) + lower
+            return (BigInteger.valueOf(Integer.toUnsignedLong(upper))).shiftLeft(32).
+                    add(BigInteger.valueOf(Integer.toUnsignedLong(lower)));
         }
     }
 }

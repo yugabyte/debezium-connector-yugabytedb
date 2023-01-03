@@ -95,9 +95,9 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
 
         TestHelper.waitFor(Duration.ofSeconds(25));
 
-        final int iterations = 5;
+        final int iterations = 10;
         final int batchSize = 100;
-        int departmentId = 1000;
+        int departmentId = -1;
         long totalCount = 0;
         int beginKey = 1;
         int endKey = beginKey + batchSize - 1;
@@ -106,14 +106,14 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
             // Insert records into the first table
             TestHelper.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d');", departmentId, departmentId));
 
-            // TODO Vaibhav: This order is not correct and the records will be added in a different order
-            indicesOfParentAdditions.add((int) totalCount); // Hack to add the indices of the required records
+            // Hack to add the indices of the required records
+            indicesOfParentAdditions.add((int) totalCount);
 
             // Insert records into the second table
             TestHelper.execute(String.format("INSERT INTO employee VALUES (generate_series(%d,%d), 'gs emp name', %d);", beginKey, endKey, departmentId));
 
             // Change department ID for next iteration
-            ++departmentId;
+            --departmentId;
 
             beginKey = endKey + 1;
             endKey = beginKey + batchSize - 1;
@@ -160,17 +160,23 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
             fail("Failed to consume " + totalCount + " records in 600 seconds, consumed " + totalConsumedRecords.get(), exception);
         }
 
+        LOGGER.info("Found {} duplicate records while streaming", duplicateRecords.size());
 
+        // This will print the indices of the records signifying to the department table which are also present in the list
+        // indicesOfParentTabletAdditions - but having this log will help in debugging in case the test fails.
         for (int i = 0; i < recordsToAssert.size(); ++i) {
             SourceRecord record = recordsToAssert.get(i);
             Struct s = (Struct) record.value();
-//            assertEquals("department", s.getStruct("source").getString("table"));
             if (s.getStruct("source").getString("table").equals("department")) {
-                LOGGER.info("department table record at index: {}", i);
+                LOGGER.info("department table record found at index: {}", i);
             }
         }
 
-        LOGGER.info("Found {} duplicate records while streaming", duplicateRecords.size());
+        for (int index : indicesOfParentAdditions) {
+            LOGGER.info("Asserting department table record at index {}", index);
+            Struct s = (Struct) recordsToAssert.get(index).value();
+            assertEquals("department", s.getStruct("source").getString("table"));
+        }
 
         assertEquals(totalCount, recordPkSet.size());
     }
