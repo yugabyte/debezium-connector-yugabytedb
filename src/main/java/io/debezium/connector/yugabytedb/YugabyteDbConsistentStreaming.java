@@ -170,7 +170,7 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                         GetChangesResponse response = null;
 
                         if (schemaNeeded.get(tabletId)) {
-                            LOGGER.info("Requesting schema for tablet: {}", tabletId);
+                            LOGGER.debug("Requesting schema for tablet: {}", tabletId);
                         }
 
                         if (merger.isSlotEmpty(tabletId)) {
@@ -201,11 +201,6 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                                     .getResp()
                                     .getCdcSdkProtoRecordsList()) {
                                 CdcService.RowMessage.Op op = record.getRowMessage().getOp();
-
-                                // Workaround to stop requesting the schema multiple times if received once
-                                if (record.getRowMessage().getOp() == CdcService.RowMessage.Op.DDL) {
-                                    schemaNeeded.put(tabletId, Boolean.FALSE);
-                                }
 
                                 merger.addMessage(new Message.Builder()
                                         .setRecord(record)
