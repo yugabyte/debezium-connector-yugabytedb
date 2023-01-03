@@ -467,4 +467,33 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         // so if the topic simply doesn't exist then the test should pass
         assertFalse(records.topics().contains("test_server.public.all_types"));
     }
+
+    // GitHub issue: https://github.com/yugabyte/debezium-connector-yugabytedb/issues/134
+    @Test
+    public void updatePrimaryKeyToSameValue() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+
+        // Ignore tombstones since we will not need them for verification.
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.TOMBSTONES_ON_DELETE, false);
+        start(YugabyteDBConnector.class, configBuilder.build());
+
+        awaitUntilConnectorIsReady();
+
+        List<SourceRecord> records = new ArrayList<>();
+
+        // Insert a record and then update the primary key to the same value.
+        insertRecords(1); // This will insert a record with id = 0.
+        TestHelper.execute("UPDATE t1 SET id = 0 WHERE id = 0;");
+
+        // There should be 3 records - INSERT + DELETE + UPDATE
+        waitAndFailIfCannotConsume(records, 3);
+
+        assertEquals("c", TestHelper.getOpValue(records.get(0)));
+        assertEquals("d", TestHelper.getOpValue(records.get(1)));
+        assertEquals("c", TestHelper.getOpValue(records.get(2)));
+    }
 }
