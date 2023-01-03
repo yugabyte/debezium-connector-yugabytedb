@@ -25,3 +25,4 @@ RUN mkdir /kafka/etc && cd /kafka/etc && curl -so jmx_prometheus_javaagent-0.17.
 ADD metrics.yml /etc/jmx-exporter/
 
 ENV CLASSPATH=$KAFKA_HOME
+
