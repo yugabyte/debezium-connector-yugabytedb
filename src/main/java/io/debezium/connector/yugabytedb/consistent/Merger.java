@@ -52,7 +52,7 @@ public class Merger {
         return tabletSafeTime.get(tabletId);
     }
 
-    public Optional<Message> peek() {
+    private Optional<Message> peek() {
         Message message = queue.peek();
         Optional<Message> peeked = message != null && message.commitTime.compareTo(this.streamSafeTime()) < 0
                 ? Optional.of(message) : Optional.empty();
@@ -65,21 +65,20 @@ public class Merger {
     }
 
     public synchronized Optional<Message> poll() {
-        if (queue.isEmpty()) {
-            return Optional.empty();
+        Optional<Message> message = this.peek();
+
+        if (message.isEmpty()) {
+            return message;
         }
 
-        Message message = Objects.requireNonNull(queue.poll());
-
-        if (message.commitTime.compareTo(this.streamSafeTime()) < 0) {
-            LOGGER.info("Message is: {}", message);
-            LOGGER.info("Records for tablet: {}", mergeSlots.get(message.tablet).size());
-            mergeSlots.get(message.tablet).removeIf(item -> item.compareTo(message) == 0);
-            LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(message.tablet).size());
-            return Optional.of(message);
-        } else {
-            return Optional.empty();
-        }
+        // Remove message from queue as well as mergeSlots
+        queue.poll();
+        Message polledMessage = message.get();
+        LOGGER.info("Message is: {}", polledMessage);
+        LOGGER.info("Records for tablet: {}", mergeSlots.get(polledMessage.tablet).size());
+        mergeSlots.get(polledMessage.tablet).removeIf(item -> item.compareTo(polledMessage) == 0);
+        LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(polledMessage.tablet).size());
+        return message;
     }
 
     public boolean isEmpty() {
