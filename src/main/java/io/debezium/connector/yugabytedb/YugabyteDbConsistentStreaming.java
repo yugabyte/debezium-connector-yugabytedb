@@ -170,7 +170,7 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                         GetChangesResponse response = null;
 
                         if (schemaNeeded.get(tabletId)) {
-                            LOGGER.info("Requesting schema for tablet: {}", tabletId);
+                            LOGGER.debug("Requesting schema for tablet: {}", tabletId);
                         }
 
                         if (merger.isSlotEmpty(tabletId)) {
@@ -200,6 +200,8 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                             for (CdcService.CDCSDKProtoRecordPB record : response
                                     .getResp()
                                     .getCdcSdkProtoRecordsList()) {
+                                CdcService.RowMessage.Op op = record.getRowMessage().getOp();
+
                                 merger.addMessage(new Message.Builder()
                                         .setRecord(record)
                                         .setTabletId(tabletId)
@@ -228,15 +230,18 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                         }
                     }
 
-                    while (merger.peek().isPresent()) {
+                    Optional<Message> pollMessage = merger.poll();
+                    while (pollMessage.isPresent()) {
                         LOGGER.info("Merger has records");
-                        Message message = merger.poll();
+                        Message message = pollMessage.get();
                         CdcService.RowMessage m = message.record.getRowMessage();
                         YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(
                                 m, this.yugabyteDBTypeRegistry);
                         dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
                                 beginCountForTablet, message.tablet, new YBPartition(message.tablet),
-                                message.snapShotTime, message.record, m, ybMessage);
+                                message.snapShotTime.longValue(), message.record, m, ybMessage);
+
+                        pollMessage = merger.poll();
                     }
 
                     // Reset the retry count, because if flow reached at this point, it means that the connection

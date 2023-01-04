@@ -4,22 +4,26 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 
+import java.math.BigInteger;
 import java.util.*;
 
+/**
+ * @author Rajat Venkatesh
+ */
 public class Merger {
     private static final Logger LOGGER = LoggerFactory.getLogger(Merger.class);
     private final PriorityQueue<Message> queue = new PriorityQueue<>();
     private final Map<String, List<Message>> mergeSlots = new HashMap<>();
-    private final Map<String, Long> tabletSafeTime = new HashMap<>();
+    private final Map<String, BigInteger> tabletSafeTime = new HashMap<>();
 
     public Merger(List<String> tabletList) {
         tabletList.forEach(tabletId -> {
             mergeSlots.put(tabletId, new ArrayList<>());
-            tabletSafeTime.put(tabletId, 0L);
+            tabletSafeTime.put(tabletId, BigInteger.ZERO);
         });
     }
 
-    public void addMessage(Message message) {
+    public synchronized void addMessage(Message message) {
         if (message.record.getRowMessage().getOp() == CdcService.RowMessage.Op.SAFEPOINT) {
             LOGGER.debug("Received safe point message {}", message);
             tabletSafeTime.put(message.tablet, message.commitTime);
@@ -31,31 +35,49 @@ public class Merger {
         LOGGER.debug("Add message {}", message);
     }
 
-    public Long streamSafeTime() {
+    public BigInteger streamSafeTime() {
         // tabletSafeTime.entrySet().stream().forEach(e -> LOGGER.info("Tablet {}, safe time {}", e.getKey(), e.getValue()));
         return Collections.min(tabletSafeTime.values());
     }
 
-    public Optional<Message> peek() {
+    public long totalQueueSize() {
+        return queue.size();
+    }
+
+    public int pendingMessagesInTablet(String tabletId) {
+        return mergeSlots.get(tabletId).size();
+    }
+
+    public BigInteger safeTimeForTablet(String tabletId) {
+        return tabletSafeTime.get(tabletId);
+    }
+
+    private Optional<Message> peek() {
         Message message = queue.peek();
-        Optional<Message> peeked = message != null && message.commitTime < this.streamSafeTime()
+        Optional<Message> peeked = message != null && message.commitTime.compareTo(this.streamSafeTime()) < 0
                 ? Optional.of(message) : Optional.empty();
 
-        if (message != null && message.commitTime < this.streamSafeTime()) {
-            LOGGER.debug("Stream Safe Time {}, Top message is {} ", this.streamSafeTime(), peeked);
+        if (peeked.isPresent() && peeked.get().record.getRowMessage().getOp() == CdcService.RowMessage.Op.INSERT) {
+            LOGGER.debug("Stream Safe Time {}, Top message is {}", this.streamSafeTime(), peeked);
         }
 
         return peeked;
     }
 
-    public Message poll() {
-        Message message = Objects.requireNonNull(queue.poll());
-        if (message.record.getRowMessage().getOp() != CdcService.RowMessage.Op.DDL) {
-            LOGGER.info("Message is: {}", message);
-            LOGGER.info("Records for tablet: {}", mergeSlots.get(message.tablet).size());
-            mergeSlots.get(message.tablet).removeIf(item -> item.compareTo(message) == 0);
-            LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(message.tablet).size());
+    public synchronized Optional<Message> poll() {
+        Optional<Message> message = this.peek();
+
+        if (message.isEmpty()) {
+            return message;
         }
+
+        // Remove message from queue as well as mergeSlots
+        queue.poll();
+        Message polledMessage = message.get();
+        LOGGER.info("Message is: {}", polledMessage);
+        LOGGER.info("Records for tablet: {}", mergeSlots.get(polledMessage.tablet).size());
+        mergeSlots.get(polledMessage.tablet).removeIf(item -> item.compareTo(polledMessage) == 0);
+        LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(polledMessage.tablet).size());
         return message;
     }
 
