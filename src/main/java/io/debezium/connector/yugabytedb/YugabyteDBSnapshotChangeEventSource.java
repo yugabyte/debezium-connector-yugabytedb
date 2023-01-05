@@ -446,9 +446,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 
                 previousOffset.getSourceInfo(tabletId).updateLastCommit(finalOpId);
 
-                if (Arrays.equals(finalOpId.getKey(), "".getBytes())
-                        && finalOpId.getWrite_id() == 0
-                        && finalOpId.getTime() == 0) {
+                if (isSnapshotComplete(finalOpId)) {
                     // This will mark the snapshot completed for the tablet
                     snapshotCompletedTablets.add(tabletId);
                     LOGGER.info("Snapshot completed for tablet {} belonging to table {} ({})", 
@@ -498,6 +496,18 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       // If the flow comes at this stage then it either failed or was aborted by 
       // some user interruption
       return SnapshotResult.aborted();
+    }
+
+    /**
+     * Check if the passed OpId matches the conditions which signify that the snapshot has
+     * been complete.
+     *
+     * @param opId the {@link OpId} to check for
+     * @return true if the passed {@link OpId} means snapshot is complete, false otherwise
+     */
+    private boolean isSnapshotComplete(OpId opId) {
+        return Arrays.equals(opId.getKey(), "".getBytes()) && opId.getWrite_id() == 0
+                && opId.getTime() == 0;
     }
 
     protected Stream<TableId> getDataCollectionsToBeSnapshotted(Set<TableId> allDataCollections) {

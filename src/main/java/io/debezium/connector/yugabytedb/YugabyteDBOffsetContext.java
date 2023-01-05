@@ -263,6 +263,19 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                 : sourceInfo.lsn();
     }
 
+    /**
+     * If a previous OpId is null then we want the server to send the snapshot from the
+     * beginning. Requesting from the term -1, index -1 and empty key would indicate
+     * the server that a snapshot needs to be taken and the write ID as -1 tells that we are
+     * in the snapshot mode and snapshot time 0 signifies that we are bootstrapping
+     * the snapshot flow.
+     * <p>
+     * In short, we are telling the server to decide an appropriate checkpoint till which the
+     * snapshot needs to be taken and send it as a response back to the connector.
+     *
+     * @param tabletId the tablet UUID
+     * @return {@link OpId} from which we need to read the snapshot from the server
+     */
     OpId snapshotLSN(String tabletId) {
       // get the sourceInfo of the tablet
       SourceInfo sourceInfo = getSourceInfo(tabletId);
