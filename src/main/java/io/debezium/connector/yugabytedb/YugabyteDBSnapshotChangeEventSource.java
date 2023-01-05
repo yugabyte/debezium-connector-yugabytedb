@@ -466,8 +466,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 LOGGER.debug("Final OpId is {}", finalOpId);
                 
                 previousOffset.getSourceInfo(tabletId).updateLastCommit(finalOpId);
-                
-                if (finalOpId.equals(new OpId(-1, -1, "".getBytes(), 0, 0))) {
+
+                if (Arrays.equals(finalOpId.getKey(), "".getBytes())
+                        && finalOpId.getWrite_id() == 0
+                        && finalOpId.getTime() == 0) {
                     // This will mark the snapshot completed for the tablet
                     snapshotCompletedTablets.add(tabletId);
                     LOGGER.info("Snapshot completed for tablet {} belonging to table {} ({})", 
