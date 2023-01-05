@@ -214,7 +214,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                       this.connectorConfig.streamId(), 
                                       tableId /* tableId */, 
                                       tabletId /* tabletId */, 
-                                      -1 /* term */, -1 /* index */, 
+                                      0 /* term */, 0 /* index */,
                                       false /* initialCheckpoint */, false /* bootstrap */);
         }
 
@@ -339,27 +339,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                  // Check if snapshot is completed here, if it is, then break out of the loop
                 if (snapshotCompletedTablets.size() == tableToTabletForSnapshot.size()) {
                     LOGGER.info("Snapshot completed for all the tablets");
-                    // Commit checkpoints for all tablets to make them ready for streaming changes
-//                    for (Pair<String, String> entry : tableToTabletIds) {
-//                      try {
-//                        // Only checkpoint in case this is the first time snapshot has been
-//                        // completed, otherwise we will end up setting the checkpoint to 0,0 even
-//                        // for tablets for which snapshot has been completed in a previous run
-//                        // of the connector
-//                        if (!snapshotCompletedPreviously.contains(entry.getValue())) {
-//                          YBClientUtils.setCheckpoint(this.syncClient,
-//                                                      this.connectorConfig.streamId(),
-//                                                      entry.getKey() /* tableId */,
-//                                                      entry.getValue() /* tabletId */,
-//                                                      0 /* term */, 0 /* index */,
-//                                                      true /* initialCheckpoint */,
-//                                                      true /* bootstrap */);
-//                        }
-//                      } catch (Exception e) {
-//                        throw new DebeziumException(e);
-//                      }
-//                    }
-
                     return SnapshotResult.completed(previousOffset);
                 }
 
