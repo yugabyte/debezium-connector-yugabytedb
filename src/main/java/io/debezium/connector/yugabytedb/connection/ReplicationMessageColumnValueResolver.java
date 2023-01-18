@@ -198,6 +198,6 @@ public class ReplicationMessageColumnValueResolver {
         }
 
         return value.asDefault(yugabyteDBTypeRegistry, type.getOid(), columnName, fullType,
-                includeUnknownDatatypes, connection);
+                includeUnknownDatatypes, null /* connection - passing null to see if we can makedo without connection */);
     }
 }

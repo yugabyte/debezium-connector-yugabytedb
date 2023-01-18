@@ -5,9 +5,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.apache.log4j.Logger;
 import org.junit.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.DebeziumException;
@@ -15,8 +17,10 @@ import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
 import io.debezium.util.Strings;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 public class YugabyteDBCompleteTypesTest extends YugabyteDBTestBase {
-    private final static Logger LOGGER = Logger.getLogger(YugabyteDBCompleteTypesTest.class);
+    private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBCompleteTypesTest.class);
     private static YugabyteYSQLContainer ybContainer;
 
     @BeforeClass
@@ -101,6 +105,17 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBTestBase {
         assertValueField(record, "after/ts/value", 1637841600000L);
         assertValueField(record, "after/tstz/value", "2021-11-25T06:30:00Z");
         assertValueField(record, "after/uuidval/value", "ffffffff-ffff-ffff-ffff-ffffffffffff");
+
+        Struct textArray = (Struct) record.value();
+        List<Object> textArrayList = textArray.getStruct("after").getStruct("txtarr").getArray("value");
+        assertEquals(textArrayList.get(0).toString(), "element1");
+        assertEquals(textArrayList.get(1).toString(), "element2");
+
+        Struct intArray = (Struct) record.value();
+        List<Object> intArrayList = intArray.getStruct("after").getStruct("intarr").getArray("value");
+        assertEquals(intArrayList.get(0).toString(), String.valueOf(0));
+        assertEquals(intArrayList.get(1).toString(), String.valueOf(1));
+        assertEquals(intArrayList.get(2).toString(), String.valueOf(2));
     }
 
     @Test

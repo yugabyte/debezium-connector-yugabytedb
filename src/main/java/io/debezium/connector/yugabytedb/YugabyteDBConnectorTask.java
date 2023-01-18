@@ -192,8 +192,7 @@ public class YugabyteDBConnectorTask
                     YugabyteDBChangeRecordEmitter::updateSchema,
                     metadataProvider,
                     heartbeatFactory,
-                    schemaNameAdjuster,
-                    jdbcConnection);
+                    schemaNameAdjuster);
 
             YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
                     previousOffsets,
@@ -203,7 +202,6 @@ public class YugabyteDBConnectorTask
                     new YugabyteDBChangeEventSourceFactory(
                             connectorConfig,
                             snapshotter,
-                            jdbcConnection,
                             errorHandler,
                             dispatcher,
                             clock,

@@ -328,7 +328,7 @@ public class YbProtoColumnValue extends AbstractColumnValue<Value.DatumMessagePB
              * }
              */
             final String dataString = asString();
-            return new PgArray(connection.get(), type.getOid(), dataString);
+            return new PgArray(/*connection.get()*/ null, type.getOid(), dataString);
             /*
              * String dataString = new String(data, Charset.forName("UTF-8"));
              * PgArray arrayData = new PgArray(connection.get(), (int) value.getColumnType(), dataString);
@@ -336,7 +336,7 @@ public class YbProtoColumnValue extends AbstractColumnValue<Value.DatumMessagePB
              * return Arrays.asList((Object[]) deserializedArray);
              */
         }
-        catch (SQLException e) {
+        catch (Exception e) {
             LOGGER.warn("Unexpected exception trying to process PgArray column '{}'", value.getColumnName(), e);
         }
         return null;

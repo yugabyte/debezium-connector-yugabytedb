@@ -61,7 +61,6 @@ public class YugabyteDBStreamingChangeEventSource implements
     // We thus try to read the message multiple times before we make poll pause
     private static final int THROTTLE_NO_MESSAGE_BEFORE_PAUSE = 5;
 
-    private final YugabyteDBConnection connection;
     private final YugabyteDBEventDispatcher<TableId> dispatcher;
     private final ErrorHandler errorHandler;
     private final Clock clock;
@@ -87,11 +86,10 @@ public class YugabyteDBStreamingChangeEventSource implements
     private final ChangeEventQueue<DataChangeEvent> queue;
 
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
-                                                YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
+                                                YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
                                                 YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection,
                                                 ChangeEventQueue<DataChangeEvent> queue) {
         this.connectorConfig = connectorConfig;
-        this.connection = connection;
         this.dispatcher = dispatcher;
         this.errorHandler = errorHandler;
         this.clock = clock;
@@ -131,7 +129,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         if (!hasStartLsnStoredInContext) {
             LOGGER.info("No start opid found in the context.");
-                offsetContext = YugabyteDBOffsetContext.initialContext(connectorConfig, connection, clock, partitions);
+                offsetContext = YugabyteDBOffsetContext.initialContext(connectorConfig, clock, partitions);
         }
 
         try {
@@ -509,7 +507,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                     boolean dispatched = message.getOperation() != Operation.NOOP
                                             && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
-                                                    schema, connection, tableId, message, pgSchemaNameInRecord, tabletId, taskContext.isBeforeImageEnabled()));
+                                                    schema, tableId, message, pgSchemaNameInRecord, tabletId, taskContext.isBeforeImageEnabled()));
 
                                     if (recordsInTransactionalBlock.containsKey(tabletId)) {
                                         recordsInTransactionalBlock.merge(tabletId, 1, Integer::sum);
