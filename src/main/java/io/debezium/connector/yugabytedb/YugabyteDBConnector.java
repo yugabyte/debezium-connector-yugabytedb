@@ -170,6 +170,16 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
         LOGGER.debug("Configuring {} YugabyteDB connector task(s)", taskConfigs.size());
         closeYBClient();
+
+        // Close the connection to database
+        try {
+            if (connection.isConnected()) {
+                connection.close();
+            }
+        } catch (SQLException sqlException) {
+            LOGGER.warn("Error while closing the JDBC connection", sqlException);
+        }
+
         return taskConfigs;
     }
 
