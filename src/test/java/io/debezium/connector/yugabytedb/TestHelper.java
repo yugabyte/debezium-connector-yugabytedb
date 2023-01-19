@@ -324,6 +324,10 @@ public final class TestHelper {
         MASTER_ADDRESS = address;
     }
 
+    public static String getMasterAddress() {
+        return MASTER_ADDRESS;
+    }
+
     public static YugabyteDBTypeRegistry getTypeRegistry() {
         final YugabyteDBConnectorConfig config = new YugabyteDBConnectorConfig(defaultConfig().build());
         try (final YugabyteDBConnection connection = new YugabyteDBConnection(config.getJdbcConfig(), getPostgresValueConverterBuilder(config), YugabyteDBConnection.CONNECTION_GENERAL)) {
