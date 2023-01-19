@@ -60,8 +60,6 @@ public class YugabyteDBConnectorTask
 
     private volatile YugabyteDBTaskContext taskContext;
     private volatile ChangeEventQueue<DataChangeEvent> queue;
-    private volatile YugabyteDBConnection jdbcConnection;
-    private volatile YugabyteDBConnection heartbeatConnection;
     private volatile YugabyteDBSchema schema;
 
     @Override
@@ -118,10 +116,6 @@ public class YugabyteDBConnectorTask
                 databaseCharset,
                 typeRegistry);
 
-        // Global JDBC connection used both for snapshotting and streaming.
-        // Must be able to resolve datatypes.
-        jdbcConnection = new YugabyteDBConnection(connectorConfig.getJdbcConfig(), valueConverterBuilder, YugabyteDBConnection.CONNECTION_GENERAL);
-
         // CDCSDK We can just build the type registry on the co-ordinator and then send the
         // map of Postgres Type and Oid to the Task using Config
         final YugabyteDBTypeRegistry yugabyteDBTypeRegistry =
@@ -163,24 +157,6 @@ public class YugabyteDBConnectorTask
             final YugabyteDBEventMetadataProvider metadataProvider = new YugabyteDBEventMetadataProvider();
 
             Configuration configuration = connectorConfig.getConfig();
-            HeartbeatFactory heartbeatFactory = new HeartbeatFactory<>(
-                    connectorConfig,
-                    topicSelector,
-                    schemaNameAdjuster,
-                    () -> new YugabyteDBConnection(connectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL),
-                    exception -> {
-                        String sqlErrorId = exception.getSQLState();
-                        switch (sqlErrorId) {
-                            case "57P01":
-                                // Postgres error admin_shutdown, see https://www.postgresql.org/docs/12/errcodes-appendix.html
-                                throw new DebeziumException("Could not execute heartbeat action query (Error: " + sqlErrorId + ")", exception);
-                            case "57P03":
-                                // Postgres error cannot_connect_now, see https://www.postgresql.org/docs/12/errcodes-appendix.html
-                                throw new RetriableException("Could not execute heartbeat action query (Error: " + sqlErrorId + ")", exception);
-                            default:
-                                break;
-                        }
-                    });
 
             final YugabyteDBEventDispatcher<TableId> dispatcher = new YugabyteDBEventDispatcher<>(
                     connectorConfig,
@@ -191,7 +167,6 @@ public class YugabyteDBConnectorTask
                     DataChangeEvent::new,
                     YugabyteDBChangeRecordEmitter::updateSchema,
                     metadataProvider,
-                    heartbeatFactory,
                     schemaNameAdjuster);
 
             YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
@@ -333,14 +308,6 @@ public class YugabyteDBConnectorTask
 
     @Override
     protected void doStop() {
-        if (jdbcConnection != null) {
-            jdbcConnection.close();
-        }
-
-        if (heartbeatConnection != null) {
-            heartbeatConnection.close();
-        }
-
         if (schema != null) {
             schema.close();
         }
