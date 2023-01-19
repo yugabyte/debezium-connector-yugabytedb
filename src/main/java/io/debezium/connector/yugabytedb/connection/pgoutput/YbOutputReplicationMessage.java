@@ -91,9 +91,9 @@ public class YbOutputReplicationMessage implements ReplicationMessage {
      *
      * @return the value; may be null
      */
-    public static Object getValue(String columnName, YugabyteDBType type, String fullType, String rawValue, final PgConnectionSupplier connection,
+    public static Object getValue(String columnName, YugabyteDBType type, String fullType, String rawValue,
                                   boolean includeUnknownDataTypes, YugabyteDBTypeRegistry yugabyteDBTypeRegistry) {
         final YbOutputColumnValue columnValue = new YbOutputColumnValue(rawValue);
-        return ReplicationMessageColumnValueResolver.resolveValue(columnName, type, fullType, columnValue, connection, includeUnknownDataTypes, yugabyteDBTypeRegistry);
+        return ReplicationMessageColumnValueResolver.resolveValue(columnName, type, fullType, columnValue, includeUnknownDataTypes, yugabyteDBTypeRegistry);
     }
 }

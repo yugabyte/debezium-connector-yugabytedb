@@ -920,7 +920,6 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
             }
             else if (data instanceof PgArray) {
                 try {
-//                  final Object[] values = (Object[]) ((PgArray) data).getArray();
                     final Object[] values = getArrayElements(data);
                     final List<Object> converted = new ArrayList<>(values.length);
                     for (Object value : values) {

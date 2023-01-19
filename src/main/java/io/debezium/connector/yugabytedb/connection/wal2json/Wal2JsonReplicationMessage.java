@@ -123,8 +123,8 @@ class Wal2JsonReplicationMessage implements ReplicationMessage {
             columns.add(new AbstractReplicationMessageColumn(columnName, columnType, columnTypeName, columnOptional, true) {
 
                 @Override
-                public Object getValue(PgConnectionSupplier connection, boolean includeUnknownDatatypes) {
-                    return Wal2JsonReplicationMessage.this.getValue(columnName, columnType, columnTypeName, rawValue, connection, includeUnknownDatatypes);
+                public Object getValue(boolean includeUnknownDatatypes) {
+                    return Wal2JsonReplicationMessage.this.getValue(columnName, columnType, columnTypeName, rawValue, includeUnknownDatatypes);
                 }
 
                 @Override
@@ -167,10 +167,10 @@ class Wal2JsonReplicationMessage implements ReplicationMessage {
      *
      * @return the value; may be null
      */
-    public Object getValue(String columnName, YugabyteDBType type, String fullType, Value rawValue, final PgConnectionSupplier connection,
+    public Object getValue(String columnName, YugabyteDBType type, String fullType, Value rawValue,
                            boolean includeUnknownDatatypes) {
         final Wal2JsonColumnValue columnValue = new Wal2JsonColumnValue(rawValue);
-        return ReplicationMessageColumnValueResolver.resolveValue(columnName, type, fullType, columnValue, connection, includeUnknownDatatypes, yugabyteDBTypeRegistry);
+        return ReplicationMessageColumnValueResolver.resolveValue(columnName, type, fullType, columnValue, includeUnknownDatatypes, yugabyteDBTypeRegistry);
     }
 
     @Override

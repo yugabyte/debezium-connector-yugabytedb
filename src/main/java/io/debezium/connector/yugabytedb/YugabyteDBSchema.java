@@ -366,16 +366,11 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
      * @param tabletId the tablet UUId to refresh the schema for
      * @throws SQLException if JDBC connection fails
      */
-    protected void refresh(YugabyteDBConnection connection, TableId tableId,
+    protected void refresh(TableId tableId,
                            boolean refreshToastableColumns, CdcService.CDCSDKSchemaPB schemaPB,
                            String tabletId) throws SQLException {
         readSchemaWithTablet(null /* dummy object */, null, tableId.schema(), tableId::equals,
                              null, true, schemaPB, tableId, tabletId);
-
-        if (refreshToastableColumns) {
-            // and refresh toastable columns info
-            refreshToastableColumnsMap(connection, tableId);
-        }
     }
 
     protected boolean isFilteredOut(TableId id) {

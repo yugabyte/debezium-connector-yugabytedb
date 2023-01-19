@@ -310,7 +310,7 @@ public class YbProtoColumnValue extends AbstractColumnValue<Value.DatumMessagePB
     }
 
     @Override
-    public Object asArray(String columnName, YugabyteDBType type, String fullType, PgConnectionSupplier connection) {
+    public Object asArray(String columnName, YugabyteDBType type, String fullType) {
         // Currently the logical decoding plugin sends unhandled types as a byte array containing the string
         // representation (in Postgres) of the array value.
         // The approach to decode this is sub-optimal but the only way to improve this is to update the plugin.
@@ -343,8 +343,7 @@ public class YbProtoColumnValue extends AbstractColumnValue<Value.DatumMessagePB
     }
 
     @Override
-    public Object asDefault(YugabyteDBTypeRegistry yugabyteDBTypeRegistry, int columnType, String columnName, String fullType, boolean includeUnknownDatatypes,
-                            PgConnectionSupplier connection) {
+    public Object asDefault(YugabyteDBTypeRegistry yugabyteDBTypeRegistry, int columnType, String columnName, String fullType, boolean includeUnknownDatatypes) {
         final YugabyteDBType type = yugabyteDBTypeRegistry.get(columnType);
         if (type.getOid() == yugabyteDBTypeRegistry.geometryOid() ||
                 type.getOid() == yugabyteDBTypeRegistry.geographyOid() ||
