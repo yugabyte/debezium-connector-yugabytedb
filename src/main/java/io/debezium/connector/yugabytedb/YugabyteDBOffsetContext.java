@@ -97,23 +97,20 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     }
 
     public static YugabyteDBOffsetContext initialContextForSnapshot(YugabyteDBConnectorConfig connectorConfig,
-                                                                    YugabyteDBConnection jdbcConnection,
                                                                     Clock clock,
                                                                     Set<YBPartition> partitions) {
-        return initialContext(connectorConfig, jdbcConnection, clock, new OpId(-1, -1, "".getBytes(), -1, 0),
+        return initialContext(connectorConfig, clock, new OpId(-1, -1, "".getBytes(), -1, 0),
                 new OpId(-1, -1, "".getBytes(), -1, 0), partitions);
     }
 
     public static YugabyteDBOffsetContext initialContext(YugabyteDBConnectorConfig connectorConfig,
-                                                         YugabyteDBConnection jdbcConnection,
                                                          Clock clock,
                                                          Set<YBPartition> partitions) {
-        return initialContext(connectorConfig, jdbcConnection, clock, new OpId(0, 0, "".getBytes(), 0, 0),
+        return initialContext(connectorConfig, clock, new OpId(0, 0, "".getBytes(), 0, 0),
                 new OpId(0, 0, "".getBytes(), 0, 0), partitions);
     }
 
     public static YugabyteDBOffsetContext initialContext(YugabyteDBConnectorConfig connectorConfig,
-                                                         YugabyteDBConnection jdbcConnection,
                                                          Clock clock,
                                                          OpId lastCommitLsn,
                                                          OpId lastCompletelyProcessedLsn,

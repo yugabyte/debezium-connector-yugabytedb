@@ -56,7 +56,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     private final EventDispatcher<YBPartition,TableId> dispatcher;
     protected final Clock clock;
     private final Snapshotter snapshotter;
-    private final YugabyteDBConnection connection;
 
     private final AsyncYBClient asyncClient;
     private final YBClient syncClient;
@@ -67,7 +66,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
                                                YugabyteDBTaskContext taskContext,
-                                               Snapshotter snapshotter, YugabyteDBConnection connection,
+                                               Snapshotter snapshotter,
                                                YugabyteDBSchema schema, YugabyteDBEventDispatcher<TableId> dispatcher, Clock clock,
                                                SnapshotProgressListener snapshotProgressListener) {
         super(connectorConfig, snapshotProgressListener);
@@ -77,7 +76,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.dispatcher = dispatcher;
         this.clock = clock;
         this.snapshotter = snapshotter;
-        this.connection = connection;
         this.snapshotProgressListener = snapshotProgressListener;
 
         this.asyncClient = new AsyncYBClient.AsyncYBClientBuilder(connectorConfig.masterAddresses())
@@ -122,7 +120,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             Set<YBPartition> partitions = new YBPartition.Provider(connectorConfig).getPartitions();
 
             LOGGER.info("Setting offsetContext/previousOffset for snapshot...");
-            previousOffset = YugabyteDBOffsetContext.initialContextForSnapshot(this.connectorConfig, connection, clock, partitions);
+            previousOffset = YugabyteDBOffsetContext.initialContextForSnapshot(this.connectorConfig, clock, partitions);
 
             return doExecute(context, partition, previousOffset, ctx, snapshottingTask);
         }
@@ -427,8 +425,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       boolean dispatched = (message.getOperation() != Operation.NOOP) && 
                           dispatcher.dispatchDataChangeEvent(part, tId, 
                               new YugabyteDBChangeRecordEmitter(part, previousOffset, clock, 
-                                                                this.connectorConfig, schema, 
-                                                                connection, tId, message, 
+                                                                this.connectorConfig, schema,
+                                                                tId, message,
                                                                 pgSchemaName, tabletId,
                                                                 taskContext.isBeforeImageEnabled()));
 

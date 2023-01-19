@@ -42,7 +42,6 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     private final ReplicationMessage message;
     private final YugabyteDBSchema schema;
     private final YugabyteDBConnectorConfig connectorConfig;
-    private final YugabyteDBConnection connection;
     private final TableId tableId;
 
     private boolean shouldSendBeforeImage = false;
@@ -52,7 +51,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
 
     public YugabyteDBChangeRecordEmitter(YBPartition partition, OffsetContext offset, Clock clock,
                                          YugabyteDBConnectorConfig connectorConfig,
-                                         YugabyteDBSchema schema, YugabyteDBConnection connection,
+                                         YugabyteDBSchema schema,
                                          TableId tableId, ReplicationMessage message, String pgSchemaName,
                                          String tabletId, boolean shouldSendBeforeImage) {
         super(partition, offset, clock);
@@ -60,7 +59,6 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         this.schema = schema;
         this.message = message;
         this.connectorConfig = connectorConfig;
-        this.connection = connection;
 
         this.pgSchemaName = pgSchemaName;
 
@@ -184,17 +182,13 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
                 ? schemaColumns.size()
                 : columnsWithoutToasted.size()];
 
-        final Set<String> undeliveredToastableColumns = new HashSet<>(schema
-                .getToastableColumnsForTableId(table.id()));
         for (ReplicationMessage.Column column : columns) {
             // DBZ-298 Quoted column names will be sent like that in messages,
             // but stored unquoted in the column names
             final String columnName = Strings.unquoteIdentifierPart(column.getName());
-            undeliveredToastableColumns.remove(columnName);
             int position = getPosition(columnName, table, values);
             if (position != -1) {
-                Object value = column.getValue(() -> (BaseConnection) connection.connection(),
-                        connectorConfig.includeUnknownDatatypes());
+                Object value = column.getValue(connectorConfig.includeUnknownDatatypes());
                 // values[position] = value;
                 values[position] = new Object[]{ value, Boolean.TRUE };
             }
@@ -227,18 +221,14 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
 
         // initialize to unset
 
-        final Set<String> undeliveredToastableColumns = new HashSet<>(schema
-                .getToastableColumnsForTableId(table.id()));
         for (ReplicationMessage.Column column : columns) {
             // DBZ-298 Quoted column names will be sent like that in messages,
             // but stored unquoted in the column names
             final String columnName = Strings.unquoteIdentifierPart(column.getName());
-            undeliveredToastableColumns.remove(columnName);
 
             int position = getPosition(columnName, table, values);
             if (position != -1) {
-                Object value = column.getValue(() -> (BaseConnection) connection.connection(),
-                        connectorConfig.includeUnknownDatatypes());
+                Object value = column.getValue(connectorConfig.includeUnknownDatatypes());
 
                 values[position] = new Object[]{ value, Boolean.TRUE };
             }
@@ -284,8 +274,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         try {
             // Using another implementation of refresh() to take into picture the schema information too.
             LOGGER.debug("Refreshing schema for the table {}", tableId);
-            schema.refresh(connection, tableId,
-                           connectorConfig.skipRefreshSchemaOnMissingToastableData(),
+            schema.refresh(tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData(),
                            schema.getSchemaPBForTablet(tableId, tabletId), tabletId);
         }
         catch (SQLException e) {

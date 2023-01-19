@@ -29,7 +29,6 @@ import io.debezium.pipeline.DataChangeEvent;
 public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFactory<YBPartition, YugabyteDBOffsetContext> {
 
     private final YugabyteDBConnectorConfig configuration;
-    private final YugabyteDBConnection jdbcConnection;
     private final ErrorHandler errorHandler;
     private final YugabyteDBEventDispatcher<TableId> dispatcher;
     private final Clock clock;
@@ -43,7 +42,6 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
 
     public YugabyteDBChangeEventSourceFactory(YugabyteDBConnectorConfig configuration,
                                               Snapshotter snapshotter,
-                                              YugabyteDBConnection jdbcConnection,
                                               ErrorHandler errorHandler,
                                               YugabyteDBEventDispatcher<TableId> dispatcher,
                                               Clock clock, YugabyteDBSchema schema,
@@ -53,7 +51,6 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
                                               SlotState startingSlotInfo,
                                               ChangeEventQueue<DataChangeEvent> queue) {
         this.configuration = configuration;
-        this.jdbcConnection = jdbcConnection;
         this.errorHandler = errorHandler;
         this.dispatcher = dispatcher;
         this.clock = clock;
@@ -73,7 +70,6 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
                 configuration,
                 taskContext,
                 snapshotter,
-                jdbcConnection,
                 schema,
                 dispatcher,
                 clock,
@@ -85,7 +81,6 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
         return new YugabyteDBStreamingChangeEventSource(
                 configuration,
                 snapshotter,
-                jdbcConnection,
                 dispatcher,
                 errorHandler,
                 clock,
@@ -93,20 +88,5 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
                 taskContext,
                 replicationConnection,
                 queue);
-    }
-
-    @Override
-    public Optional<IncrementalSnapshotChangeEventSource<YBPartition, ? extends DataCollectionId>> getIncrementalSnapshotChangeEventSource(YugabyteDBOffsetContext offsetContext,
-                                                                                                                              SnapshotProgressListener snapshotProgressListener,
-                                                                                                                              DataChangeEventListener dataChangeEventListener) {
-        final SignalBasedIncrementalSnapshotChangeEventSource<YBPartition, TableId> incrementalSnapshotChangeEventSource = new SignalBasedIncrementalSnapshotChangeEventSource<YBPartition, TableId>(
-                configuration,
-                jdbcConnection,
-                dispatcher,
-                schema,
-                clock,
-                snapshotProgressListener,
-                dataChangeEventListener);
-        return Optional.of(incrementalSnapshotChangeEventSource);
     }
 }

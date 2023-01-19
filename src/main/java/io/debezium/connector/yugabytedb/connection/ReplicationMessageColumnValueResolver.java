@@ -35,8 +35,7 @@ public class ReplicationMessageColumnValueResolver {
      * @return
      */
     public static Object resolveValue(String columnName, YugabyteDBType type, String fullType,
-                                      ColumnValue value, final PgConnectionSupplier connection,
-                                      boolean includeUnknownDatatypes,
+                                      ColumnValue value, boolean includeUnknownDatatypes,
                                       YugabyteDBTypeRegistry yugabyteDBTypeRegistry) {
         if (value.isNull()) {
             // nulls are null
@@ -46,14 +45,14 @@ public class ReplicationMessageColumnValueResolver {
         // CDCSDK this is for UDT
         // see if we can use this or we may not support this.
         if (!type.isRootType()) {
-            return resolveValue(columnName, type.getParentType(), fullType, value, connection,
+            return resolveValue(columnName, type.getParentType(), fullType, value,
                     includeUnknownDatatypes, yugabyteDBTypeRegistry);
         }
 
         // CDCSDK this too we can avoid using connection.
         // only date and string requires
         if (value.isArray(type)) {
-            return value.asArray(columnName, type, fullType, connection);
+            return value.asArray(columnName, type, fullType);
         }
 
         if (type.isEnumType()) {
@@ -197,7 +196,6 @@ public class ReplicationMessageColumnValueResolver {
                 break;
         }
 
-        return value.asDefault(yugabyteDBTypeRegistry, type.getOid(), columnName, fullType,
-                includeUnknownDatatypes, connection);
+        return value.asDefault(yugabyteDBTypeRegistry, type.getOid(), columnName, fullType, includeUnknownDatatypes);
     }
 }

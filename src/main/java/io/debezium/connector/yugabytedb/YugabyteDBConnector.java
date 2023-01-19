@@ -82,13 +82,25 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
     @Override
     public List<Map<String, String>> taskConfigs(int maxTasks) {
-        if (props == null) {
-            LOGGER.error("Configuring a maximum of {} tasks with no connector configuration" +
-                    " available", maxTasks);
-            return Collections.emptyList();
+        List<Map<String, String>> taskConfigs = new ArrayList<>();
+        try {
+            if (props == null) {
+                LOGGER.error("Configuring a maximum of {} tasks with no connector configuration" +
+                        " available", maxTasks);
+                return Collections.emptyList();
+            }
+
+            connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL);
+            taskConfigs = taskConfigsImpl(maxTasks);
+        } finally {
+            closeYBClient();
+            connection.close();
         }
 
-        connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL);
+        return taskConfigs;
+    }
+
+    private List<Map<String, String>> taskConfigsImpl(int maxTasks) {
         final Charset databaseCharset = connection.getDatabaseCharset();
         String charSetName = databaseCharset.name();
 
@@ -120,7 +132,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         Map<String, ConfigValue> results = validateAllFields(config);
 
         validateTServerConnection(results, config);
-        
+
         String streamIdValue = this.yugabyteDBConnectorConfig.streamId();
         LOGGER.debug("The streamid in config is" + this.yugabyteDBConnectorConfig.streamId());
 
@@ -169,7 +181,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         }
 
         LOGGER.debug("Configuring {} YugabyteDB connector task(s)", taskConfigs.size());
-        closeYBClient();
+
         return taskConfigs;
     }
 

@@ -36,6 +36,7 @@ import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import io.debezium.connector.yugabytedb.connection.YBArray;
 import org.apache.kafka.connect.data.Decimal;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
@@ -69,6 +70,8 @@ import io.debezium.relational.ValueConverter;
 import io.debezium.time.*;
 import io.debezium.util.NumberConversions;
 import io.debezium.util.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A provider of {@link ValueConverter}s and {@link SchemaBuilder}s for various YugabyteDB specific
@@ -79,6 +82,7 @@ import io.debezium.util.Strings;
  * @author Suranjan Kumar (skumar@yugabyte.com)
  */
 public class YugabyteDBValueConverter extends JdbcValueConverters {
+    private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBValueConverter.class);
 
     public static final Timestamp POSITIVE_INFINITY_TIMESTAMP = new Timestamp(PGStatement.DATE_POSITIVE_INFINITY);
     public static final Instant POSITIVE_INFINITY_INSTANT = Conversions.toInstantFromMicros(PGStatement.DATE_POSITIVE_INFINITY);
@@ -916,18 +920,26 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
             }
             else if (data instanceof PgArray) {
                 try {
-                    final Object[] values = (Object[]) ((PgArray) data).getArray();
+                    final Object[] values = getArrayElements(data);
                     final List<Object> converted = new ArrayList<>(values.length);
                     for (Object value : values) {
                         converted.add(elementConverter.convert(resolveArrayValue(value, elementType)));
                     }
                     r.deliver(converted);
                 }
-                catch (SQLException e) {
+                catch (Exception e) {
                     throw new ConnectException("Failed to read value of array " + column.name());
                 }
             }
         });
+    }
+
+    private String[] getArrayElements(Object data) {
+        // This simple hack may not be feasible for 2D arrays
+        // TODO: add test for 2D arrays
+        String dataString = data.toString();
+        dataString = dataString.substring(1, dataString.length() - 1);
+        return dataString.split(",");
     }
 
     private Object resolveArrayValue(Object value, YugabyteDBType elementType) {

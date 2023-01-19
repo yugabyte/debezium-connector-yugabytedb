@@ -683,11 +683,9 @@ public class YbOutputMessageDecoder extends AbstractMessageDecoder {
                         new AbstractReplicationMessageColumn(columnName, columnType, typeExpression,
                                 optional, true) {
                             @Override
-                            public Object getValue(PgConnectionSupplier connection,
-                                                   boolean includeUnknownDatatypes) {
+                            public Object getValue(boolean includeUnknownDatatypes) {
                                 return YbOutputReplicationMessage.getValue(columnName, columnType,
-                                        typeExpression, valueStr, connection,
-                                        includeUnknownDatatypes,
+                                        typeExpression, valueStr, includeUnknownDatatypes,
                                         yugabyteDBTypeRegistry);
                             }
 
@@ -702,8 +700,7 @@ public class YbOutputMessageDecoder extends AbstractMessageDecoder {
                         new AbstractReplicationMessageColumn(columnName, columnType, typeExpression,
                                 true, true) {
                             @Override
-                            public Object getValue(PgConnectionSupplier connection,
-                                                   boolean includeUnknownDatatypes) {
+                            public Object getValue(boolean includeUnknownDatatypes) {
                                 return null;
                             }
                         });
