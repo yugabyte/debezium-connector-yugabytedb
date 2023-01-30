@@ -468,6 +468,37 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         assertFalse(records.topics().contains("test_server.public.all_types"));
     }
 
+    @Test
+    public void snapshotTableThenStreamData() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        int recordCountT1 = 5000;
+
+        // Insert records in the table t1
+        insertBulkRecords(recordCountT1);
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
+
+        start(YugabyteDBConnector.class, configBuilder.build());
+
+        awaitUntilConnectorIsReady();
+
+        // Dummy wait for sometime so that the connector has some time to transition to streaming.
+        TestHelper.waitFor(Duration.ofSeconds(30));
+        String insertStringFormat = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
+        TestHelper.executeBulkWithRange(insertStringFormat, recordCountT1, recordCountT1 + 1000);
+
+        // Total records inserted at this stage would be recordCountT1 + 1000
+        int totalRecords = recordCountT1 + 1000;
+
+        // Consume and assert that we have received all the records now.
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, totalRecords);
+    }
+
     // GitHub issue: https://github.com/yugabyte/debezium-connector-yugabytedb/issues/134
     @Test
     public void updatePrimaryKeyToSameValue() throws Exception {
