@@ -234,6 +234,9 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                     }
 
                     Optional<Message> pollMessage = merger.poll();
+                    if (!pollMessage.isPresent()) {
+                        LOGGER.info("Poll message is not present, no processing will happen");
+                    }
                     while (pollMessage.isPresent()) {
                         LOGGER.info("Merger has records");
                         Message message = pollMessage.get();

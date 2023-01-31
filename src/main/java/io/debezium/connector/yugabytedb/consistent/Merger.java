@@ -68,6 +68,7 @@ public class Merger {
         Optional<Message> message = this.peek();
 
         if (message.isEmpty()) {
+            LOGGER.info("Empty message being returned from poll");
             return message;
         }
 
