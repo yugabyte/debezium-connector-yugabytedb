@@ -60,7 +60,10 @@ public class Merger {
         }
 
         for (Map.Entry entry : mergeSlots.entrySet()) {
-            LOGGER.info("Tablet {} with first message {}", entry.getKey(), ((List<Message>) entry.getValue()).get(0));
+            List<Message> l = (List<Message>) entry.getValue();
+            if (!l.isEmpty()) {
+                LOGGER.info("Tablet {} with first message {}", entry.getKey(), l.get(0));
+            }
         }
     }
 
