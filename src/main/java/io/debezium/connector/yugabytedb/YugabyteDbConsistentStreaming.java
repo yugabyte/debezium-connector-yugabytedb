@@ -173,6 +173,7 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                             LOGGER.debug("Requesting schema for tablet: {}", tabletId);
                         }
 
+                        // TODO Vaibhav: we may need to revamp this logic of not polling when the slot is not empty
                         if (merger.isSlotEmpty(tabletId)) {
                             try {
                                 response = this.syncClient.getChangesCDCSDK(
@@ -217,6 +218,8 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                                         .updateLastCommit(finalOpid);
                                 LOGGER.debug("The final opid is " + finalOpid);
                             }
+                        } else {
+                            LOGGER.info("Merge slot not empty for tablet {} of table {}", tabletId, table.getName());
                         }
 
                         probeConnectionIfNeeded();
