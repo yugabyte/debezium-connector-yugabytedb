@@ -46,6 +46,8 @@ public class Message implements Comparable<Message> {
             return 1;
         }
 
+        LOGGER.info("Returning 0 from compareTo");
+
         return 0;
     }
 
