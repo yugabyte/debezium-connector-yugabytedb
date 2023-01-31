@@ -54,6 +54,14 @@ public class Merger {
 
     private Optional<Message> peek() {
         Message message = queue.peek();
+        if (message == null) {
+            LOGGER.info("Message is null in peek");
+        } else {
+            LOGGER.info("Message is not null in peek with message {}", message);
+            if (!(message.commitTime.compareTo(this.streamSafeTime()) < 0)) {
+                LOGGER.info("Commit time compareTo condition is getting false");
+            }
+        }
         Optional<Message> peeked = message != null && message.commitTime.compareTo(this.streamSafeTime()) < 0
                 ? Optional.of(message) : Optional.empty();
 
