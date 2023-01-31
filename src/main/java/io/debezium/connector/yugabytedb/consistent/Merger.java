@@ -103,6 +103,13 @@ public class Merger {
         LOGGER.info("Message is: {}", polledMessage);
         LOGGER.info("Records for tablet: {}", mergeSlots.get(polledMessage.tablet).size());
         mergeSlots.get(polledMessage.tablet).removeIf(item -> item.compareTo(polledMessage) == 0);
+
+        // After removing the record, if there is any record left in the slot then update the tablet safetime
+        // to the value of the first record in the merge slot.
+        if (!mergeSlots.get(polledMessage.tablet).isEmpty()) {
+            tabletSafeTime.put(polledMessage.tablet, mergeSlots.get(polledMessage.tablet).get(0).commitTime);
+        }
+
         LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(polledMessage.tablet).size());
         return message;
     }
