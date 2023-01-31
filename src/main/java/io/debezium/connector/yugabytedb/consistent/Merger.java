@@ -31,7 +31,7 @@ public class Merger {
             LOGGER.debug("Received safe point message {}", message);
             return;
         }
-        
+
         queue.add(message);
         mergeSlots.get(message.tablet).add(message);
         LOGGER.debug("Add message {}", message);
@@ -54,6 +54,16 @@ public class Merger {
         return tabletSafeTime.get(tabletId);
     }
 
+    public void dumpState() {
+        for (Map.Entry entry : tabletSafeTime.entrySet()) {
+            LOGGER.info("Tablet {} with safetime {}", entry.getKey(), entry.getValue());
+        }
+
+        for (Map.Entry entry : mergeSlots.entrySet()) {
+            LOGGER.info("Tablet {} with first message {}", entry.getKey(), ((List<Message>) entry.getValue()).get(0));
+        }
+    }
+
     private Optional<Message> peek() {
         Message message = queue.peek();
         if (message == null) {
@@ -63,6 +73,7 @@ public class Merger {
             if (!(message.commitTime.compareTo(this.streamSafeTime()) <= 0)) {
                 LOGGER.info("Commit time compareTo condition is getting false");
                 LOGGER.info("Stream safetime {} and message commit time {}", this.streamSafeTime(), message.commitTime);
+                dumpState();
             }
         }
         Optional<Message> peeked = message != null && message.commitTime.compareTo(this.streamSafeTime()) <= 0
