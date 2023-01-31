@@ -25,7 +25,7 @@ public class Merger {
 
     public synchronized void addMessage(Message message) {
         tabletSafeTime.put(message.tablet, message.commitTime);
-        LOGGER.debug("Put {}:{}, verifying {}", message.tablet, message.commitTime, tabletSafeTime.get(message.tablet));
+        LOGGER.info("Put {}:{}, verifying {}", message.tablet, message.commitTime, tabletSafeTime.get(message.tablet));
 
         if (message.record.getRowMessage().getOp() == CdcService.RowMessage.Op.SAFEPOINT) {
             LOGGER.debug("Received safe point message {}", message);
