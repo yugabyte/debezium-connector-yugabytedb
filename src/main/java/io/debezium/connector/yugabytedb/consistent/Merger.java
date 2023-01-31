@@ -60,6 +60,7 @@ public class Merger {
             LOGGER.info("Message is not null in peek with message {}", message);
             if (!(message.commitTime.compareTo(this.streamSafeTime()) < 0)) {
                 LOGGER.info("Commit time compareTo condition is getting false");
+                LOGGER.info("Stream safetime {} and message commit time {}", this.streamSafeTime(), message.commitTime);
             }
         }
         Optional<Message> peeked = message != null && message.commitTime.compareTo(this.streamSafeTime()) < 0
