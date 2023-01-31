@@ -107,6 +107,7 @@ public class Merger {
         // After removing the record, if there is any record left in the slot then update the tablet safetime
         // to the value of the first record in the merge slot.
         if (!mergeSlots.get(polledMessage.tablet).isEmpty()) {
+            LOGGER.info("Updating safetime for tablet {} to {}", polledMessage.tablet, mergeSlots.get(polledMessage.tablet).get(0).commitTime);
             tabletSafeTime.put(polledMessage.tablet, mergeSlots.get(polledMessage.tablet).get(0).commitTime);
         }
 
