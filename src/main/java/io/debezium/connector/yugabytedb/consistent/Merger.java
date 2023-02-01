@@ -24,10 +24,8 @@ public class Merger {
     }
 
     public synchronized void addMessage(Message message) {
-        tabletSafeTime.put(message.tablet, message.commitTime);
-        LOGGER.info("Put {}:{}, verifying {}", message.tablet, message.commitTime, tabletSafeTime.get(message.tablet));
-
         if (message.record.getRowMessage().getOp() == CdcService.RowMessage.Op.SAFEPOINT) {
+            setTabletSafeTime(message.tablet, message.commitTime);
             LOGGER.debug("Received safe point message {}", message);
             return;
         }
@@ -40,6 +38,11 @@ public class Merger {
     public BigInteger streamSafeTime() {
         // tabletSafeTime.entrySet().stream().forEach(e -> LOGGER.info("Tablet {}, safe time {}", e.getKey(), e.getValue()));
         return Collections.min(tabletSafeTime.values());
+    }
+
+    public void setTabletSafeTime(String tabletId, BigInteger safeTime) {
+        LOGGER.info("Updating safetime for tablet {}:{}, verifying {}", tabletId, safeTime, this.tabletSafeTime.get(tabletId));
+        this.tabletSafeTime.put(tabletId, safeTime);
     }
 
     public long totalQueueSize() {
@@ -107,8 +110,7 @@ public class Merger {
         // After removing the record, if there is any record left in the slot then update the tablet safetime
         // to the value of the first record in the merge slot.
         if (!mergeSlots.get(polledMessage.tablet).isEmpty()) {
-            LOGGER.info("Updating safetime for tablet {} to {}", polledMessage.tablet, mergeSlots.get(polledMessage.tablet).get(0).commitTime);
-            tabletSafeTime.put(polledMessage.tablet, mergeSlots.get(polledMessage.tablet).get(0).commitTime);
+            setTabletSafeTime(polledMessage.tablet, mergeSlots.get(polledMessage.tablet).get(0).commitTime);
         }
 
         LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(polledMessage.tablet).size());
