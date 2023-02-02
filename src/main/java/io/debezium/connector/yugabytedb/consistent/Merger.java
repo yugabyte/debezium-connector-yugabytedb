@@ -81,7 +81,7 @@ public class Merger {
         }
     }
 
-    private Optional<Message> peek() {
+    private synchronized Optional<Message> peek() {
         Message message = queue.peek();
         if (message == null) {
             LOGGER.info("Message is null in peek");
