@@ -34,4 +34,21 @@ class MessageTest {
         assertEquals(1, commit.compareTo(insert));
     }
 
+    @Test
+    void valueBasedTest() {
+        Message first = new Message(null, "6940b1af2c764cbb9743c9c1dee04a68",
+                "5e5af632-75ca-41d1-92c5-5525a4e1b73e",
+                BigInteger.valueOf(6861762200086036480L),
+                BigInteger.valueOf(6861762200086036480L),
+                BigInteger.ZERO, 8268);
+
+        Message second = new Message(null, "ee06f1ee103f4ceeb0ee3e100ba2f805",
+                "5e5af632-75ca-41d1-92c5-5525a4e1b73e",
+                BigInteger.valueOf(6861762200090394624L),
+                BigInteger.valueOf(6861762200090394624L),
+                BigInteger.ZERO, 2468);
+
+        assertEquals(-1, first.compareTo(second));
+    }
+
 }

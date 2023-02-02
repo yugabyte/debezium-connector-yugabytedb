@@ -24,14 +24,24 @@ public class Merger {
     }
 
     public synchronized void addMessage(Message message) {
+        setTabletSafeTime(message.tablet, message.commitTime);
         if (message.record.getRowMessage().getOp() == CdcService.RowMessage.Op.SAFEPOINT) {
-            setTabletSafeTime(message.tablet, message.commitTime);
             LOGGER.debug("Received safe point message {}", message);
             return;
         }
 
         queue.add(message);
+        // Assumption is that everything is sorted within a merge slot.
         mergeSlots.get(message.tablet).add(message);
+
+        // Throw an exception if things are not sorted in merge slot
+        // Verify that the merge slot is sorted in itself
+        BigInteger lastTime = BigInteger.ZERO;
+        for (Message m : mergeSlots.get(message.tablet)) {
+            assert lastTime.compareTo(m.commitTime) <= 0; // last time should always be smaller than or equal to current element
+            lastTime = m.commitTime;
+        }
+
         LOGGER.debug("Add message {}", message);
     }
 
@@ -41,6 +51,7 @@ public class Merger {
     }
 
     public void setTabletSafeTime(String tabletId, BigInteger safeTime) {
+        assert safeTime.compareTo(this.tabletSafeTime.get(tabletId)) != -1;
         LOGGER.info("Updating safetime for tablet {}:{}, verifying {}", tabletId, safeTime, this.tabletSafeTime.get(tabletId));
         this.tabletSafeTime.put(tabletId, safeTime);
     }
@@ -110,7 +121,9 @@ public class Merger {
         // After removing the record, if there is any record left in the slot then update the tablet safetime
         // to the value of the first record in the merge slot.
         if (!mergeSlots.get(polledMessage.tablet).isEmpty()) {
-            setTabletSafeTime(polledMessage.tablet, mergeSlots.get(polledMessage.tablet).get(0).commitTime);
+            // Assert that the tablet safetime is greater than or equal to the next message.
+            assert this.tabletSafeTime.get(polledMessage.tablet).compareTo(mergeSlots.get(polledMessage.tablet).get(0).commitTime) >= 0;
+//            setTabletSafeTime(polledMessage.tablet, mergeSlots.get(polledMessage.tablet).get(0).commitTime);
         }
 
         LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(polledMessage.tablet).size());

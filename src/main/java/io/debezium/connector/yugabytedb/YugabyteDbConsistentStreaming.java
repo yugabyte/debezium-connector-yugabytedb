@@ -254,6 +254,9 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                     // has succeeded
                     retryCount = 0;
                 }
+            } catch (AssertionError ae) {
+                LOGGER.error("Assertion exception caught while polling", ae);
+                merger.dumpState();
             } catch (Exception e) {
                 ++retryCount;
                 // If the retry limit is exceeded, log an error with a description and throw the exception.
