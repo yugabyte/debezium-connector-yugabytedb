@@ -122,8 +122,12 @@ public class Merger {
         // to the value of the first record in the merge slot.
         if (!mergeSlots.get(polledMessage.tablet).isEmpty()) {
             // Assert that the tablet safetime is greater than or equal to the next message.
-            assert this.tabletSafeTime.get(polledMessage.tablet).compareTo(mergeSlots.get(polledMessage.tablet).get(0).commitTime) >= 0;
-//            setTabletSafeTime(polledMessage.tablet, mergeSlots.get(polledMessage.tablet).get(0).commitTime);
+//            assert this.tabletSafeTime.get(polledMessage.tablet).compareTo(mergeSlots.get(polledMessage.tablet).get(0).commitTime) >= 0;
+
+            // If tablet safetime is less than that of the next message in the slot, then update the safetime so that the connector doesn't get stuck
+            if (this.tabletSafeTime.get(polledMessage.tablet).compareTo(mergeSlots.get(polledMessage.tablet).get(0).commitTime) == -1) {
+                setTabletSafeTime(polledMessage.tablet, mergeSlots.get(polledMessage.tablet).get(0).commitTime);
+            }
         }
 
         LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(polledMessage.tablet).size());
