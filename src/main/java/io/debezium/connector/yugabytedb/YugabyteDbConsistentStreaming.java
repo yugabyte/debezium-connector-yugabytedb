@@ -203,11 +203,6 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                                     .getCdcSdkProtoRecordsList()) {
                                 CdcService.RowMessage.Op op = record.getRowMessage().getOp();
 
-                                // Ignoring BEGIN and COMMIT records purposely.
-                                if (record.getRowMessage().getOp() == CdcService.RowMessage.Op.BEGIN || record.getRowMessage().getOp() == CdcService.RowMessage.Op.COMMIT) {
-                                    continue;
-                                }
-
                                 merger.addMessage(new Message.Builder()
                                         .setRecord(record)
                                         .setTabletId(tabletId)
