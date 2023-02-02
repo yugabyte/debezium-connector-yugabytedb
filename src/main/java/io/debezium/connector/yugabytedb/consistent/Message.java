@@ -32,7 +32,7 @@ public class Message implements Comparable<Message> {
         this.sequence = sequence;
     }
 
-    @Override
+    @Override // this -> A and o -> B
     public int compareTo(Message o) {
         if (!this.commitTime.equals(o.commitTime)) {
             return this.commitTime.compareTo(o.commitTime);
