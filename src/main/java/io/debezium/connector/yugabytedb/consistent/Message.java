@@ -34,6 +34,10 @@ public class Message implements Comparable<Message> {
 
     @Override // this -> A and o -> B
     public int compareTo(Message o) {
+        if (this.tablet.equals(o.tablet)) {
+            return this.sequence < o.sequence ? -1 : 1;
+        }
+
         if (!this.commitTime.equals(o.commitTime)) {
             return this.commitTime.compareTo(o.commitTime);
         } else if (this.sequence != o.sequence){
