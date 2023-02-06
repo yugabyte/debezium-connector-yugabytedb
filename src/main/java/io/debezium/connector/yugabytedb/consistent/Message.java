@@ -36,14 +36,18 @@ public class Message implements Comparable<Message> {
     public int compareTo(Message o) {
         if (!this.commitTime.equals(o.commitTime)) {
             return this.commitTime.compareTo(o.commitTime);
-        } else if (this.sequence != o.sequence) {
-            return this.sequence < o.sequence ? -1 : 1;
-        } else if (!this.recordTime.equals(o.recordTime)) {
-            return this.recordTime.compareTo(o.recordTime);
-        } else if (this.record.getRowMessage().getOp() == CdcService.RowMessage.Op.BEGIN && o.record.getRowMessage().getOp() != CdcService.RowMessage.Op.BEGIN) {
+        } else if (isBegin(this.record.getRowMessage().getOp()) && !isBegin(o.record.getRowMessage().getOp())) {
             return -1;
-        } else if (this.record.getRowMessage().getOp() == CdcService.RowMessage.Op.COMMIT && o.record.getRowMessage().getOp() != CdcService.RowMessage.Op.COMMIT) {
+        } else if (isCommit(this.record.getRowMessage().getOp()) && !isCommit(o.record.getRowMessage().getOp())) {
             return 1;
+        } else if (!isBegin(this.record.getRowMessage().getOp()) && isBegin(o.record.getRowMessage().getOp())) {
+            return 1;
+        } else if (!isCommit(this.record.getRowMessage().getOp()) && isCommit(o.record.getRowMessage().getOp())) {
+            return -1;
+        } /*else if (this.sequence != o.sequence) {
+            return this.sequence < o.sequence ? -1 : 1;
+        }*/ else if (notBeginCommit(this, o) && !this.recordTime.equals(o.recordTime)) {
+            return this.recordTime.compareTo(o.recordTime);
         }
 
         LOGGER.info("Returning 0 from compareTo");
@@ -62,6 +66,27 @@ public class Message implements Comparable<Message> {
                 ", sequence=" + sequence +
                 ", op=" + this.record.getRowMessage().getOp().name() +
                 '}';
+    }
+
+    /**
+     * Whether both the messages are neither BEGIN not COMMIT
+     * @param a first message to be compared
+     * @param b another message to be compared
+     * @return true if both the messages are neither BEGIN nor COMMIT, false otherwise
+     */
+    public boolean notBeginCommit(Message a, Message b) {
+        return !isBegin(a.record.getRowMessage().getOp())
+                && !isBegin(b.record.getRowMessage().getOp())
+                && !isCommit(a.record.getRowMessage().getOp())
+                && !isCommit(b.record.getRowMessage().getOp());
+    }
+
+    public boolean isBegin(CdcService.RowMessage.Op op) {
+        return op == CdcService.RowMessage.Op.BEGIN;
+    }
+
+    public boolean isCommit(CdcService.RowMessage.Op op) {
+        return op == CdcService.RowMessage.Op.COMMIT;
     }
 
     public static class Builder {
