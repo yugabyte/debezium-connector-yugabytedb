@@ -53,7 +53,6 @@ public class Merger {
      * @param safeTime the safetime to be set
      */
     public void setTabletSafeTime(String tabletId, BigInteger safeTime) {
-        assert safeTime.compareTo(this.tabletSafeTime.get(tabletId)) != -1;
         LOGGER.info("Updating safetime for tablet {}:{}, verifying {}", tabletId, safeTime, this.tabletSafeTime.get(tabletId));
         this.tabletSafeTime.put(tabletId, safeTime);
     }
