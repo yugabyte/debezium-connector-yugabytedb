@@ -379,6 +379,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 .getResp()
                                 .getCdcSdkProtoRecordsList()) {
                             CdcService.RowMessage m = record.getRowMessage();
+
+                            if (m.getOp() == CdcService.RowMessage.Op.SAFEPOINT) {
+                                // Ignore the safe point record in this class as this record is not
+                                // relevant for processing if no consistency mode is specified.
+                                continue;
+                            }
+
                             YbProtoReplicationMessage message = new YbProtoReplicationMessage(
                                     m, this.yugabyteDBTypeRegistry);
 
