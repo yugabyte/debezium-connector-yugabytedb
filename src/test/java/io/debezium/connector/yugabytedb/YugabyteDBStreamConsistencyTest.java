@@ -57,6 +57,8 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
     public void before() {
         initializeConnectorTestFramework();
 
+        TestHelper.execute("DROP TABLE IF EXISTS address;");
+        TestHelper.execute("DROP TABLE IF EXISTS contract;");
         TestHelper.execute("DROP TABLE IF EXISTS employee;");
         TestHelper.execute("DROP TABLE IF EXISTS department;");
     }
@@ -65,8 +67,10 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
     public void after() throws Exception {
         stopConnector();
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
-        TestHelper.execute("DROP TABLE employee;");
-        TestHelper.execute("DROP TABLE department;");
+        TestHelper.execute("DROP TABLE IF EXISTS address;");
+        TestHelper.execute("DROP TABLE IF EXISTS contract;");
+        TestHelper.execute("DROP TABLE IF EXISTS employee;");
+        TestHelper.execute("DROP TABLE IF EXISTS department;");
     }
 
     @AfterClass
