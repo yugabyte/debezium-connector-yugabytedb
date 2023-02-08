@@ -91,15 +91,15 @@ public class Message implements Comparable<Message> {
      * @param b another message to be compared
      * @return true if both the messages are neither BEGIN nor COMMIT, false otherwise
      */
-    public boolean notBeginCommit(Message a, Message b) {
+    public static boolean notBeginCommit(Message a, Message b) {
         return !isBegin(a) && !isBegin(b) && !isCommit(a) && !isCommit(b);
     }
 
-    public boolean isBegin(Message m) {
+    public static boolean isBegin(Message m) {
         return m.record.getRowMessage().getOp() == CdcService.RowMessage.Op.BEGIN;
     }
 
-    public boolean isCommit(Message m) {
+    public static boolean isCommit(Message m) {
         return m.record.getRowMessage().getOp() == CdcService.RowMessage.Op.COMMIT;
     }
 
