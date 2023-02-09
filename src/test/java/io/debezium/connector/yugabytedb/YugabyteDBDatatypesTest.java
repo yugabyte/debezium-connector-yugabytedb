@@ -30,6 +30,8 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
 import io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState;
 import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
 import io.debezium.util.Strings;
+import org.yb.client.YBClient;
+import org.yb.client.YBTable;
 
 /**
  * Basic unit tests to check the behaviour with YugabyteDB datatypes
@@ -497,6 +499,37 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         // Consume and assert that we have received all the records now.
         List<SourceRecord> records = new ArrayList<>();
         waitAndFailIfCannotConsume(records, totalRecords);
+    }
+
+    // GitHub issue: https://github.com/yugabyte/debezium-connector-yugabytedb/issues/143
+    @Test
+    public void snapshotTableWithCompaction() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        int recordCount = 5000;
+
+        // Insert records in the table t1
+        insertBulkRecords(recordCount);
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
+
+        start(YugabyteDBConnector.class, configBuilder.build());
+
+        awaitUntilConnectorIsReady();
+
+        // Assuming that at this point snapshot would still be running, update a few records and
+        // compact the table.
+        TestHelper.execute("UPDATE t1 SET first_name='fname' WHERE id < 10;");
+        YBClient ybClient = TestHelper.getYbClient(TestHelper.getMasterAddress());
+        YBTable ybTable = TestHelper.getYbTable(ybClient, "t1");
+        ybClient.flushTable(ybTable.getTableId());
+
+        // Consume and assert that we have received all the records now.
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, recordCount + 10 /* updates */);
     }
 
     // GitHub issue: https://github.com/yugabyte/debezium-connector-yugabytedb/issues/134

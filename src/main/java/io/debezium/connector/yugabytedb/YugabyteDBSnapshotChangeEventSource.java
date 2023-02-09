@@ -215,7 +215,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                       tableId /* tableId */, 
                                       tabletId /* tabletId */, 
                                       0 /* term */, 0 /* index */,
-                                      false /* initialCheckpoint */, false /* bootstrap */);
+                                      true /* initialCheckpoint */, false /* bootstrap */,
+                                      0 /* invalid cdcsdkSafeTime */);
         }
 
         // Reaching this point would mean that the process went through without failure so reset
