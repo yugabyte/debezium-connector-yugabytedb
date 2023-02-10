@@ -57,6 +57,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
     public void before() {
         initializeConnectorTestFramework();
 
+        TestHelper.execute("DROP TABLE IF EXISTS locality;");
         TestHelper.execute("DROP TABLE IF EXISTS address;");
         TestHelper.execute("DROP TABLE IF EXISTS contract;");
         TestHelper.execute("DROP TABLE IF EXISTS employee;");
@@ -67,6 +68,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
     public void after() throws Exception {
         stopConnector();
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
+        TestHelper.execute("DROP TABLE IF EXISTS locality;");
         TestHelper.execute("DROP TABLE IF EXISTS address;");
         TestHelper.execute("DROP TABLE IF EXISTS contract;");
         TestHelper.execute("DROP TABLE IF EXISTS employee;");
@@ -193,6 +195,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
         TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, FOREIGN KEY (d_id) REFERENCES department(id));");
         TestHelper.execute("CREATE TABLE contract (id INT PRIMARY KEY, contract_name TEXT, c_id INT, FOREIGN KEY (c_id) REFERENCES employee(id));");
         TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT, FOREIGN KEY (a_id) REFERENCES contract(id));");
+        TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, a_id INT, FOREIGN KEY (l_id) REFERENCES address(id));");
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee,public.contract,public.address", dbStreamId);
@@ -217,6 +220,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
         int employeeId = 1, employeeBatchSize = 5 * scaleFactor;
         int contractId = 1, contractBatchSize = 10 * scaleFactor;
         int addressId = 1, addressBatchSize = 20 * scaleFactor;
+        int localityId = 1, localityBatchSize = 30 * scaleFactor;
 
         // This counter will also indicate the final index of the inserted record while streaming.
         long totalCount = 0;
@@ -227,6 +231,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
         List<Integer> employeeIndices = new ArrayList<>();
         List<Integer> contractIndices = new ArrayList<>();
         List<Integer> addressIndices = new ArrayList<>();
+        List<Integer> localityIndices = new ArrayList<>();
 
         for (int i = 0; i < iterations; ++i) {
             TestHelper.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d');", departmentId, departmentId));
@@ -248,6 +253,14 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
                         TestHelper.execute(String.format("INSERT INTO address VALUES (%d, 'address no %d', %d);", l, l, k /* contract fKey */));
                         addressIndices.add((int) totalCount);
                         ++totalCount;
+
+                        for (int m = localityId; m <= localityId + localityBatchSize - 1; ++m) {
+                            TestHelper.execute(String.format("INSERT INTO locality VALUES (%d, 'locality no %d', %d);", m, m, l /* address fKey */));
+                            localityIndices.add((int) totalCount);
+                            ++totalCount;
+                        }
+                        // Increment localityId for next iteration.
+                        localityId += localityBatchSize;
                     }
                     // Increment addressId for next iteration.
                     addressId += addressBatchSize;
@@ -301,6 +314,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
         assertTableNameInIndexList(recordsToAssert, employeeIndices, "employee");
         assertTableNameInIndexList(recordsToAssert, contractIndices, "contract");
         assertTableNameInIndexList(recordsToAssert, addressIndices, "address");
+        assertTableNameInIndexList(recordsToAssert, localityIndices, "locality");
     }
 
     private void assertTableNameInIndexList(List<SourceRecord> sourceRecords, List<Integer> indicesList, String tableName) {
