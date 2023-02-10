@@ -4,6 +4,8 @@ import com.google.protobuf.ByteString;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.RowMessage.Op;
 
@@ -17,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Rajat Venkatesh, Vaibhav Kushwaha
  */
 public class MessageTest {
+    private static final Logger LOGGER = LoggerFactory.getLogger(MessageTest.class);
     private final long lowCommitTime = 12345L;
     private final long highCommitTime = 123456L;
     private final long lowRecordTime = 12345L;
@@ -128,12 +131,12 @@ public class MessageTest {
          *
          * Note that record time does not matter here.
          */
-        parameterList.add(getParameter(Op.BEGIN, Op.INSERT, lowCommitTime, highCommitTime, 0, lowRecordTime, -1));
-        parameterList.add(getParameter(Op.BEGIN, Op.INSERT, highCommitTime, lowCommitTime, 0, lowRecordTime, 1));
-        parameterList.add(getParameter(Op.BEGIN, Op.INSERT, lowCommitTime, lowCommitTime, 0, lowRecordTime, -1));
-        parameterList.add(getParameter(Op.INSERT, Op.BEGIN, lowCommitTime, highCommitTime, lowRecordTime, 0, -1));
-        parameterList.add(getParameter(Op.INSERT, Op.BEGIN, highCommitTime, lowCommitTime, lowRecordTime, 0, 1));
-        parameterList.add(getParameter(Op.INSERT, Op.BEGIN, lowCommitTime, lowCommitTime, lowRecordTime, 0, 1));
+        parameterList.add(getParameter(Op.BEGIN, Op.INSERT, lowCommitTime, highCommitTime, 0, lowRecordTime, -1)); // 0
+        parameterList.add(getParameter(Op.BEGIN, Op.INSERT, highCommitTime, lowCommitTime, 0, lowRecordTime, 1)); // 1
+        parameterList.add(getParameter(Op.BEGIN, Op.INSERT, lowCommitTime, lowCommitTime, 0, lowRecordTime, -1)); // 2
+        parameterList.add(getParameter(Op.INSERT, Op.BEGIN, lowCommitTime, highCommitTime, lowRecordTime, 0, -1)); // 3
+        parameterList.add(getParameter(Op.INSERT, Op.BEGIN, highCommitTime, lowCommitTime, lowRecordTime, 0, 1)); // 4
+        parameterList.add(getParameter(Op.INSERT, Op.BEGIN, lowCommitTime, lowCommitTime, lowRecordTime, 0, 1)); // 5
 
         /**
          * Comparison based on CommitTime i.e. M1, M2, M1.commitTime >,<,= M2.commitTime
@@ -146,12 +149,12 @@ public class MessageTest {
          *
          * Note that record time does not matter here.
          */
-        parameterList.add(getParameter(Op.COMMIT, Op.INSERT, highCommitTime, lowCommitTime, 0, lowRecordTime, 1));
-        parameterList.add(getParameter(Op.COMMIT, Op.INSERT, lowCommitTime, highCommitTime, 0, lowRecordTime, -1));
-        parameterList.add(getParameter(Op.COMMIT, Op.INSERT, lowCommitTime, lowCommitTime, 0, lowRecordTime, 1));
-        parameterList.add(getParameter(Op.INSERT, Op.COMMIT, lowCommitTime, highCommitTime, lowRecordTime, 0, -1));
-        parameterList.add(getParameter(Op.INSERT, Op.COMMIT, highCommitTime, lowRecordTime, lowRecordTime, 0, 1));
-        parameterList.add(getParameter(Op.INSERT, Op.COMMIT, lowCommitTime, lowCommitTime, lowRecordTime, 0, -1));
+        parameterList.add(getParameter(Op.COMMIT, Op.INSERT, highCommitTime, lowCommitTime, 0, lowRecordTime, 1)); // 6
+        parameterList.add(getParameter(Op.COMMIT, Op.INSERT, lowCommitTime, highCommitTime, 0, lowRecordTime, -1)); // 7
+        parameterList.add(getParameter(Op.COMMIT, Op.INSERT, lowCommitTime, lowCommitTime, 0, lowRecordTime, 1)); // 8
+        parameterList.add(getParameter(Op.INSERT, Op.COMMIT, lowCommitTime, highCommitTime, lowRecordTime, 0, -1)); // 9
+        parameterList.add(getParameter(Op.INSERT, Op.COMMIT, highCommitTime, lowRecordTime, lowRecordTime, 0, 1)); // 10
+        parameterList.add(getParameter(Op.INSERT, Op.COMMIT, lowCommitTime, lowCommitTime, lowRecordTime, 0, -1)); // 11
 
         /**
          * Comparison based on commitTime, recordTime
@@ -162,13 +165,13 @@ public class MessageTest {
          *
          * Note that here if commit time is different then record time does not matter.
          */
-        parameterList.add(getParameter(Op.INSERT, Op.INSERT, lowCommitTime, lowCommitTime, highRecordTime, lowRecordTime, 1));
-        parameterList.add(getParameter(Op.INSERT, Op.INSERT, lowCommitTime, highCommitTime, lowCommitTime, highRecordTime, -1));
-        parameterList.add(getParameter(Op.INSERT, Op.INSERT, highCommitTime, lowCommitTime, highCommitTime, lowRecordTime, 1));
-        parameterList.add(getParameter(Op.INSERT, Op.INSERT, lowCommitTime, highCommitTime, lowRecordTime, highCommitTime, -1));
+        parameterList.add(getParameter(Op.INSERT, Op.INSERT, lowCommitTime, lowCommitTime, highRecordTime, lowRecordTime, 1)); // 12
+        parameterList.add(getParameter(Op.INSERT, Op.INSERT, lowCommitTime, highCommitTime, lowCommitTime, highRecordTime, -1)); // 13
+        parameterList.add(getParameter(Op.INSERT, Op.INSERT, highCommitTime, lowCommitTime, highCommitTime, lowRecordTime, 1)); // 14
+        parameterList.add(getParameter(Op.INSERT, Op.INSERT, lowCommitTime, highCommitTime, lowRecordTime, highCommitTime, -1)); // 15
 
         for (int i = 0; i < parameterList.size(); ++i) {
-            System.out.println("Verifying index " + i);
+            LOGGER.info("Verifying record at index {}", i);
             parameterList.get(i).verify();
         }
     }
