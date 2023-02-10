@@ -2,16 +2,25 @@ package io.debezium.connector.yugabytedb.consistent;
 
 import com.google.protobuf.ByteString;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.yb.cdc.CdcService;
+import org.yb.cdc.CdcService.RowMessage.Op;
 
 import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * @author Rajat Venkatesh, Vaibhav Kushwaha
  */
-class MessageTest {
+public class MessageTest {
+    private final long lowCommitTime = 12345L;
+    private final long highCommitTime = 123456L;
+    private final long lowRecordTime = 12345L;
+    private final long highRecordTime = 23456L;
     @Test
     public void comparatorTest() {
         CdcService.CDCSDKProtoRecordPB beginRecord = CdcService.CDCSDKProtoRecordPB.newBuilder()
@@ -102,5 +111,99 @@ class MessageTest {
                 .setSnapshotTime(0).build();
 
         assertTrue(Message.notBeginCommit(m1, m2));
+    }
+
+    @Test
+    public void verifyCommitTimeRecordTimeComparison() {
+        List<Params> parameterList = new ArrayList<>();
+
+        /**
+         * Comparison based on CommitTime i.e. M1, M2, M1.commitTime >,<,= M2.commitTime
+         * Begin, Normal, Normal < Begin.
+         * Begin, Normal, Normal > Begin
+         * Begin, Normal, Normal = Begin
+         * Normal, Begin, Normal < Begin.
+         * Normal, Begin, Normal > Begin
+         * Normal, Begin, Normal = Begin
+         *
+         * Note that record time does not matter here.
+         */
+        parameterList.add(getParameter(Op.BEGIN, Op.INSERT, lowCommitTime, highCommitTime, 0, lowRecordTime, -1));
+        parameterList.add(getParameter(Op.BEGIN, Op.INSERT, highCommitTime, lowCommitTime, 0, lowRecordTime, 1));
+        parameterList.add(getParameter(Op.BEGIN, Op.INSERT, lowCommitTime, lowCommitTime, 0, lowRecordTime, -1));
+        parameterList.add(getParameter(Op.INSERT, Op.BEGIN, lowCommitTime, highCommitTime, lowRecordTime, 0, -1));
+        parameterList.add(getParameter(Op.INSERT, Op.BEGIN, highCommitTime, lowCommitTime, lowRecordTime, 0, 1));
+        parameterList.add(getParameter(Op.INSERT, Op.BEGIN, lowCommitTime, lowCommitTime, lowRecordTime, 0, 1));
+
+        /**
+         * Comparison based on CommitTime i.e. M1, M2, M1.commitTime >,<,= M2.commitTime
+         * Commit, Normal, Normal < Commit.
+         * Commit, Normal, Normal > Commit
+         * Commit, Normal, Normal = Commit
+         * Normal, Commit, Normal < Commit.
+         * Normal, Commit, Normal > Commit
+         * Normal, Commit, Normal = Commit
+         *
+         * Note that record time does not matter here.
+         */
+        parameterList.add(getParameter(Op.COMMIT, Op.INSERT, highCommitTime, lowCommitTime, 0, lowRecordTime, 1));
+        parameterList.add(getParameter(Op.COMMIT, Op.INSERT, lowCommitTime, highCommitTime, 0, lowRecordTime, -1));
+        parameterList.add(getParameter(Op.COMMIT, Op.INSERT, lowCommitTime, lowCommitTime, 0, lowRecordTime, 1));
+        parameterList.add(getParameter(Op.INSERT, Op.COMMIT, lowCommitTime, highCommitTime, lowRecordTime, 0, -1));
+        parameterList.add(getParameter(Op.INSERT, Op.COMMIT, highCommitTime, lowRecordTime, lowRecordTime, 0, 1));
+        parameterList.add(getParameter(Op.INSERT, Op.COMMIT, lowCommitTime, lowCommitTime, lowRecordTime, 0, -1));
+
+        /**
+         * Comparison based on commitTime, recordTime
+         * M1 = M2, M1 > M2
+         * M1 = M2, M1 < M2
+         * M1 > M2
+         * M1 < M2
+         *
+         * Note that here if commit time is different then record time does not matter.
+         */
+        parameterList.add(getParameter(Op.INSERT, Op.INSERT, lowCommitTime, lowCommitTime, highRecordTime, lowRecordTime, 1));
+        parameterList.add(getParameter(Op.INSERT, Op.INSERT, lowCommitTime, highCommitTime, lowCommitTime, highRecordTime, -1));
+        parameterList.add(getParameter(Op.INSERT, Op.INSERT, highCommitTime, lowCommitTime, highCommitTime, lowRecordTime, 1));
+        parameterList.add(getParameter(Op.INSERT, Op.INSERT, lowCommitTime, highCommitTime, lowRecordTime, highCommitTime, -1));
+
+        for (int i = 0; i < parameterList.size(); ++i) {
+            System.out.println("Verifying index " + i);
+            parameterList.get(i).verify();
+        }
+    }
+
+    public static class Params {
+        public Message m1;
+        public Message m2;
+        public int expectedResult;
+
+        public Params(Message m1, Message m2, int expectedResult) {
+            this.m1 = m1;
+            this.m2 = m2;
+            this.expectedResult = expectedResult;
+        }
+
+        public void verify() {
+            assertEquals(this.m1.compareTo(this.m2), this.expectedResult);
+        }
+    }
+
+    public Params getParameter(CdcService.RowMessage.Op op1, CdcService.RowMessage.Op op2, long commitTime1, long commitTime2, long recordTime1, long recordTime2, long expectedResult) {
+        Message m1 = new Message.Builder()
+                .setRecord(CdcService.CDCSDKProtoRecordPB.newBuilder()
+                        .setRowMessage(CdcService.RowMessage.newBuilder()
+                                .setOp(op1)
+                                .setRecordTime(recordTime1)
+                                .setCommitTime(commitTime1)
+                                .build()).build()).setTabletId("tablet1").build();
+        Message m2 = new Message.Builder()
+                .setRecord(CdcService.CDCSDKProtoRecordPB.newBuilder()
+                        .setRowMessage(CdcService.RowMessage.newBuilder()
+                                .setOp(op2)
+                                .setRecordTime(recordTime2)
+                                .setCommitTime(commitTime2)
+                                .build()).build()).setTabletId("tablet2").build();
+        return new Params(m1, m2, (int) expectedResult);
     }
 }
