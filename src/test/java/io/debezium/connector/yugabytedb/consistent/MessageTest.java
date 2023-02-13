@@ -1,17 +1,18 @@
 package io.debezium.connector.yugabytedb.consistent;
 
 import com.google.protobuf.ByteString;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.RowMessage.Op;
 
 import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -20,10 +21,10 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class MessageTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(MessageTest.class);
-    private final long lowCommitTime = 12345L;
-    private final long highCommitTime = 123456L;
-    private final long lowRecordTime = 12345L;
-    private final long highRecordTime = 23456L;
+    private final static long lowCommitTime = 12345L;
+    private final static long highCommitTime = 123456L;
+    private final static long lowRecordTime = 12345L;
+    private final static long highRecordTime = 23456L;
     @Test
     public void comparatorTest() {
         CdcService.CDCSDKProtoRecordPB beginRecord = CdcService.CDCSDKProtoRecordPB.newBuilder()
@@ -116,64 +117,68 @@ public class MessageTest {
         assertTrue(Message.notBeginCommit(m1, m2));
     }
 
-    @Test
-    public void verifyCommitTimeRecordTimeComparison() {
-        List<Params> parameterList = new ArrayList<>();
+    @DisplayName("Test for different combinations of compareTo")
+    @ParameterizedTest
+    @MethodSource("parameterSource")
+    public void compareToTest(CdcService.RowMessage.Op op1, CdcService.RowMessage.Op op2,
+                              long commitTime1, long commitTime2, long recordTime1,
+                              long recordTime2, long expectedResult) {
+        Params p = getParameter(op1, op2, commitTime1, commitTime2, recordTime1, recordTime2, expectedResult);
+        p.verify();
+    }
 
-        /**
-         * Comparison based on CommitTime i.e. M1, M2, M1.commitTime >,<,= M2.commitTime
-         * Begin, Normal, Normal < Begin.
-         * Begin, Normal, Normal > Begin
-         * Begin, Normal, Normal = Begin
-         * Normal, Begin, Normal < Begin.
-         * Normal, Begin, Normal > Begin
-         * Normal, Begin, Normal = Begin
-         *
-         * Note that record time does not matter here.
-         */
-        parameterList.add(getParameter(Op.BEGIN, Op.INSERT, lowCommitTime, highCommitTime, 0, lowRecordTime, -1)); // 0
-        parameterList.add(getParameter(Op.BEGIN, Op.INSERT, highCommitTime, lowCommitTime, 0, lowRecordTime, 1)); // 1
-        parameterList.add(getParameter(Op.BEGIN, Op.INSERT, lowCommitTime, lowCommitTime, 0, lowRecordTime, -1)); // 2
-        parameterList.add(getParameter(Op.INSERT, Op.BEGIN, lowCommitTime, highCommitTime, lowRecordTime, 0, -1)); // 3
-        parameterList.add(getParameter(Op.INSERT, Op.BEGIN, highCommitTime, lowCommitTime, lowRecordTime, 0, 1)); // 4
-        parameterList.add(getParameter(Op.INSERT, Op.BEGIN, lowCommitTime, lowCommitTime, lowRecordTime, 0, 1)); // 5
+    private static Stream<Arguments> parameterSource() {
+        return Stream.of(
+                /**
+                 * Comparison based on CommitTime i.e. M1, M2, M1.commitTime >,<,= M2.commitTime
+                 * Begin, Normal, Normal < Begin.
+                 * Begin, Normal, Normal > Begin
+                 * Begin, Normal, Normal = Begin
+                 * Normal, Begin, Normal < Begin.
+                 * Normal, Begin, Normal > Begin
+                 * Normal, Begin, Normal = Begin
+                 * <p>
+                 * Note that record time does not matter here.
+                 */
+                Arguments.of(Op.BEGIN, Op.INSERT, lowCommitTime, highCommitTime, 0, lowRecordTime, -1),
+                Arguments.of(Op.BEGIN, Op.INSERT, highCommitTime, lowCommitTime, 0, lowRecordTime, 1),
+                Arguments.of(Op.BEGIN, Op.INSERT, lowCommitTime, lowCommitTime, 0, lowRecordTime, -1),
+                Arguments.of(Op.INSERT, Op.BEGIN, lowCommitTime, highCommitTime, lowRecordTime, 0, -1),
+                Arguments.of(Op.INSERT, Op.BEGIN, highCommitTime, lowCommitTime, lowRecordTime, 0, 1),
+                Arguments.of(Op.INSERT, Op.BEGIN, lowCommitTime, lowCommitTime, lowRecordTime, 0, 1),
 
-        /**
-         * Comparison based on CommitTime i.e. M1, M2, M1.commitTime >,<,= M2.commitTime
-         * Commit, Normal, Normal < Commit.
-         * Commit, Normal, Normal > Commit
-         * Commit, Normal, Normal = Commit
-         * Normal, Commit, Normal < Commit.
-         * Normal, Commit, Normal > Commit
-         * Normal, Commit, Normal = Commit
-         *
-         * Note that record time does not matter here.
-         */
-        parameterList.add(getParameter(Op.COMMIT, Op.INSERT, highCommitTime, lowCommitTime, 0, lowRecordTime, 1)); // 6
-        parameterList.add(getParameter(Op.COMMIT, Op.INSERT, lowCommitTime, highCommitTime, 0, lowRecordTime, -1)); // 7
-        parameterList.add(getParameter(Op.COMMIT, Op.INSERT, lowCommitTime, lowCommitTime, 0, lowRecordTime, 1)); // 8
-        parameterList.add(getParameter(Op.INSERT, Op.COMMIT, lowCommitTime, highCommitTime, lowRecordTime, 0, -1)); // 9
-        parameterList.add(getParameter(Op.INSERT, Op.COMMIT, highCommitTime, lowRecordTime, lowRecordTime, 0, 1)); // 10
-        parameterList.add(getParameter(Op.INSERT, Op.COMMIT, lowCommitTime, lowCommitTime, lowRecordTime, 0, -1)); // 11
+                /**
+                 * Comparison based on CommitTime i.e. M1, M2, M1.commitTime >,<,= M2.commitTime
+                 * Commit, Normal, Normal < Commit.
+                 * Commit, Normal, Normal > Commit
+                 * Commit, Normal, Normal = Commit
+                 * Normal, Commit, Normal < Commit.
+                 * Normal, Commit, Normal > Commit
+                 * Normal, Commit, Normal = Commit
+                 * <p>
+                 * Note that record time does not matter here.
+                 */
+                Arguments.of(Op.COMMIT, Op.INSERT, highCommitTime, lowCommitTime, 0, lowRecordTime, 1),
+                Arguments.of(Op.COMMIT, Op.INSERT, lowCommitTime, highCommitTime, 0, lowRecordTime, -1),
+                Arguments.of(Op.COMMIT, Op.INSERT, lowCommitTime, lowCommitTime, 0, lowRecordTime, 1),
+                Arguments.of(Op.INSERT, Op.COMMIT, lowCommitTime, highCommitTime, lowRecordTime, 0, -1),
+                Arguments.of(Op.INSERT, Op.COMMIT, highCommitTime, lowRecordTime, lowRecordTime, 0, 1),
+                Arguments.of(Op.INSERT, Op.COMMIT, lowCommitTime, lowCommitTime, lowRecordTime, 0, -1),
 
-        /**
-         * Comparison based on commitTime, recordTime
-         * M1 = M2, M1 > M2
-         * M1 = M2, M1 < M2
-         * M1 > M2
-         * M1 < M2
-         *
-         * Note that here if commit time is different then record time does not matter.
-         */
-        parameterList.add(getParameter(Op.INSERT, Op.INSERT, lowCommitTime, lowCommitTime, highRecordTime, lowRecordTime, 1)); // 12
-        parameterList.add(getParameter(Op.INSERT, Op.INSERT, lowCommitTime, highCommitTime, lowCommitTime, highRecordTime, -1)); // 13
-        parameterList.add(getParameter(Op.INSERT, Op.INSERT, highCommitTime, lowCommitTime, highCommitTime, lowRecordTime, 1)); // 14
-        parameterList.add(getParameter(Op.INSERT, Op.INSERT, lowCommitTime, highCommitTime, lowRecordTime, highCommitTime, -1)); // 15
-
-        for (int i = 0; i < parameterList.size(); ++i) {
-            LOGGER.info("Verifying record at index {}", i);
-            parameterList.get(i).verify();
-        }
+                /**
+                 * Comparison based on commitTime, recordTime
+                 * M1 = M2, M1 > M2
+                 * M1 = M2, M1 < M2
+                 * M1 > M2
+                 * M1 < M2
+                 * <p>
+                 * Note that here if commit time is different then record time does not matter.
+                 */
+                Arguments.of(Op.INSERT, Op.INSERT, lowCommitTime, lowCommitTime, highRecordTime, lowRecordTime, 1),
+                Arguments.of(Op.INSERT, Op.INSERT, lowCommitTime, highCommitTime, lowRecordTime, highRecordTime, -1),
+                Arguments.of(Op.INSERT, Op.INSERT, highCommitTime, lowCommitTime, highRecordTime, lowRecordTime, 1),
+                Arguments.of(Op.INSERT, Op.INSERT, lowCommitTime, highCommitTime, lowRecordTime, highRecordTime, -1)
+        );
     }
 
     public static class Params {

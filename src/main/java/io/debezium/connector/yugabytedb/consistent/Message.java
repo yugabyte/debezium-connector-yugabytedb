@@ -8,6 +8,8 @@ import java.math.BigInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
+ * Assumptions made here are:<br>
+ * 1. If commitTime1 == commitTime2 then recordTime1 SHOULD NOT be equal to recordTime2
  * @author Rajat Venkatesh
  */
 public class Message implements Comparable<Message> {
