@@ -1,5 +1,6 @@
 package io.debezium.connector.yugabytedb.consistent;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.yb.cdc.CdcService;
 
@@ -90,5 +91,40 @@ class MergerTest {
         Optional<Message> secondPoll = merger.poll();
         assertFalse(secondPoll.isEmpty());
         assertTrue(secondPoll.get().equals(child));
+    }
+
+    @DisplayName("Verify for exception when adding a record of lower commit time to merge slot")
+    @Test
+    public void throwExceptionIfRecordOutOfOrder() {
+        final String dummyTablet = "99b31e3a72ea419daaf740f1cba47ec4";
+        CdcService.CDCSDKProtoRecordPB proto1 = CdcService.CDCSDKProtoRecordPB.newBuilder()
+                .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.INSERT).build())
+                .build();
+        Message m1 = new Message(proto1, dummyTablet, "9820053e-1597-42cb-a1aa-6f0ebe8237ca",
+                BigInteger.valueOf(6863526294757593088L),
+                BigInteger.valueOf(6863526294428749824L),
+                BigInteger.ZERO,
+                605244);
+
+        CdcService.CDCSDKProtoRecordPB proto2 = CdcService.CDCSDKProtoRecordPB.newBuilder()
+                .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.INSERT).build())
+                .build();
+        Message m2 = new Message(proto2, dummyTablet, "be309af9-0a7d-40c2-b855-79e2e73b2daa",
+                BigInteger.valueOf(68635262947L), // Lower commit time than previous record.
+                BigInteger.valueOf(6863526294462816256L),
+                BigInteger.ZERO,
+                605228);
+
+        Merger merger = new Merger(List.of(dummyTablet));
+
+        merger.addMessage(m1);
+
+        try {
+            merger.addMessage(m2);
+        } catch (AssertionError ae) {
+            // An assertion error will be thrown saying that commit time of incoming message is less
+            // than that of the last record in the merge slot.
+            assertTrue(ae.getMessage().contains("Commit time of the newly added message is less than the last message in the merge slot"));
+        }
     }
 }
