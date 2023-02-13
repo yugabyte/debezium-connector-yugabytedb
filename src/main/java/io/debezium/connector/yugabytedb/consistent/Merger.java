@@ -11,6 +11,11 @@ import java.util.*;
  * @author Rajat Venkatesh, Vaibhav Kushwaha
  */
 public class Merger {
+    /*
+        Assumptions made:
+          1. The elements in a merge slot are sorted already because we assume a sorted order
+             from the WAL level itself.
+     */
     private static final Logger LOGGER = LoggerFactory.getLogger(Merger.class);
     private final PriorityQueue<Message> queue = new PriorityQueue<>();
     private final Map<String, List<Message>> mergeSlots = new HashMap<>();
@@ -35,6 +40,18 @@ public class Merger {
         if (message.record.getRowMessage().getOp() == CdcService.RowMessage.Op.SAFEPOINT) {
             LOGGER.debug("Received safe point message {}", message);
             return;
+        }
+
+        // TODO: Wrap these checks under a flag maybe.
+        if (!isMergeSlotSorted(this.mergeSlots.get(message.tablet))) {
+            throw new AssertionError("Merge slot is not sorted");
+        }
+
+        if (!this.mergeSlots.get(message.tablet).isEmpty()
+                && message.commitTime.compareTo(this.mergeSlots.get(message.tablet)
+                .get(this.mergeSlots.get(message.tablet).size() - 1).commitTime) < 0) {
+            throw new AssertionError("Commit time of the newly added message is less than the " +
+                                     "last message in the merge slot");
         }
 
         queue.add(message);
@@ -125,7 +142,7 @@ public class Merger {
         // less than that of the next message in the slot.
         if (!mergeSlots.get(polledMessage.tablet).isEmpty()
             && this.tabletSafeTime.get(polledMessage.tablet)
-                   .compareTo(mergeSlots.get(polledMessage.tablet).get(0).commitTime) == -1) {
+                .compareTo(mergeSlots.get(polledMessage.tablet).get(0).commitTime) < 0) {
                 setTabletSafeTime(polledMessage.tablet, mergeSlots.get(polledMessage.tablet).get(0).commitTime);
         }
 
@@ -139,5 +156,63 @@ public class Merger {
 
     public boolean isSlotEmpty(String tabletId) {
         return mergeSlots.get(tabletId).isEmpty();
+    }
+
+    /**
+     * Whether the messages in the merge slot are sorted properly by the virtue of their
+     * commit time.
+     * @param mergeSlot the merge slot to check sorting for
+     * @return true if messages are sorted, false otherwise
+     */
+    public boolean isMergeSlotSorted(List<Message> mergeSlot) {
+        Message prev = null;
+        for (Message m : mergeSlot) {
+            if (prev != null && prev.commitTime.compareTo(m.commitTime) >= 0) {
+                return false;
+            }
+            prev = m;
+        }
+
+        return true;
+    }
+
+    /**
+     * Print the tablet related information such as the safetime for tablet as well as the first
+     * message in its merge slot if any exists.
+     * @param tabletId tablet UUID
+     */
+    public void logTabletInfo(String tabletId) {
+        LOGGER.info("Safetime for tablet {}: {} with first message: {}",
+                tabletId, this.tabletSafeTime.get(tabletId),
+                this.mergeSlots.get(tabletId).isEmpty()
+                        ? "Merge slot empty" : this.mergeSlots.get(tabletId).get(0));
+    }
+
+    /**
+     * Print the tablet safetime of the given tablet, stream safetime and the first message in the
+     * merge slot for the tablet. If the tabletID passed is null or empty, it will print the
+     * of all the tablets.
+     * @param tabletId tablet UUID
+     */
+    public void dumpState(String tabletId) {
+        LOGGER.info("Stream safetime: {}", this.streamSafeTime());
+
+        if (tabletId != null && !tabletId.isEmpty()) {
+            logTabletInfo(tabletId);
+        } else {
+            // The keys of the map are the tablet IDs.
+            for (String tablet : this.tabletSafeTime.keySet()) {
+                logTabletInfo(tablet);
+            }
+        }
+    }
+
+    /**
+     * Print the safetime info of all the tablets, the stream safetime as well as the first message
+     * in the merge slot of that tablet if the merge slot is not empty.
+     */
+    public void dumpState() {
+        // Passing null so that it can print the details of all the tablets.
+        this.dumpState(null);
     }
 }
