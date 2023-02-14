@@ -168,7 +168,7 @@ public class Merger {
     public boolean isMergeSlotSorted(List<Message> mergeSlot) {
         Message prev = null;
         for (Message m : mergeSlot) {
-            if (prev != null && prev.commitTime.compareTo(m.commitTime) >= 0) {
+            if (prev != null && prev.commitTime.compareTo(m.commitTime) > 0) {
                 return false;
             }
             prev = m;
