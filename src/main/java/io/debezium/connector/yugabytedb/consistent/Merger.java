@@ -24,7 +24,7 @@ public class Merger {
     public Merger(List<String> tabletList) {
         tabletList.forEach(tabletId -> {
             mergeSlots.put(tabletId, new ArrayList<>());
-            setTabletSafeTime(tabletId, BigInteger.ZERO);
+            this.tabletSafeTime.put(tabletId, BigInteger.ZERO);
         });
     }
 
@@ -43,13 +43,9 @@ public class Merger {
         }
 
         // TODO: Wrap these checks under a flag maybe.
-        if (!isMergeSlotSorted(this.mergeSlots.get(message.tablet))) {
-            throw new AssertionError("Merge slot is not sorted");
-        }
-
         if (!this.mergeSlots.get(message.tablet).isEmpty()
-                && message.commitTime.compareTo(this.mergeSlots.get(message.tablet)
-                .get(this.mergeSlots.get(message.tablet).size() - 1).commitTime) < 0) {
+                && message.compareTo(this.mergeSlots.get(message.tablet)
+                    .get(this.mergeSlots.get(message.tablet).size() - 1)) < 0) {
             throw new AssertionError("Commit time of the newly added message is less than the " +
                                      "last message in the merge slot");
         }
@@ -70,6 +66,16 @@ public class Merger {
      * @param safeTime the safetime to be set
      */
     public void setTabletSafeTime(String tabletId, BigInteger safeTime) {
+        // TODO: Wrap this assert under the flag.
+        // If the safetime we are setting is less than the already set value then it would indicate
+        // that we are moving backward in time, which is wrong. Throw an assertion error in that case.
+        if (safeTime.compareTo(this.tabletSafeTime.get(tabletId)) < 0) {
+            final String errorMessage = "Merger tried to set tablet safetime to a lower value. Tablet: "
+                                        + tabletId + " Current safetime value: "
+                                        + this.tabletSafeTime.get(tabletId).toString()
+                                        + " Attempted set value: " + safeTime.toString();
+            throw new AssertionError(errorMessage);
+        }
         LOGGER.info("Updating safetime for tablet {}:{}, verifying {}", tabletId, safeTime, this.tabletSafeTime.get(tabletId));
         this.tabletSafeTime.put(tabletId, safeTime);
     }
@@ -137,14 +143,12 @@ public class Merger {
         LOGGER.info("Records for tablet: {}", mergeSlots.get(polledMessage.tablet).size());
         mergeSlots.get(polledMessage.tablet).removeIf(item -> item.compareTo(polledMessage) == 0);
 
-        // After removing the record, if there is any record left in the slot then update the tablet
-        // safetime to the value of the first record in the merge slot, iff the tablet safetime is
-        // less than that of the next message in the slot.
+        // After removing the record, if the tablet safetime becomes less than that of the first
+        // record in the merge slot then it indicates an issue, throw error with appropriate message.
         if (!mergeSlots.get(polledMessage.tablet).isEmpty()
             && this.tabletSafeTime.get(polledMessage.tablet)
                 .compareTo(mergeSlots.get(polledMessage.tablet).get(0).commitTime) < 0) {
-            LOGGER.error("The block to be removed got called VKVK");
-//                setTabletSafeTime(polledMessage.tablet, mergeSlots.get(polledMessage.tablet).get(0).commitTime);
+            throw new AssertionError("Tablet safetime is less than the commit time of first message in merge slot");
         }
 
         LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(polledMessage.tablet).size());

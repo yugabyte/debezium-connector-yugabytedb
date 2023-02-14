@@ -64,8 +64,11 @@ public class MessageTest {
     }
 
     @DisplayName("Two unequal messages are detected")
-    @Test
-    public void messageInequality() {
+    @ParameterizedTest(name = "{index}. {0}")
+    @MethodSource("parameterSourceForInequality")
+    public void messageInequality(String testName, String tabletId, String txn,
+                                  BigInteger commitTime, BigInteger recordTime,
+                                  BigInteger snapshotTime, Op op) {
         CdcService.CDCSDKProtoRecordPB dummyRecord = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder()
                         .setOp(CdcService.RowMessage.Op.INSERT).build()).build();
@@ -77,64 +80,14 @@ public class MessageTest {
                 BigInteger.ZERO,
                 34);
 
-        // Differs in tablet ID.
-        Message m2 = new Message(dummyRecord, "3fe122ffe3f24ad39c2cf8a57f54321f",
-                "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
-                BigInteger.valueOf(6822178296477519872L),
-                BigInteger.ZERO,
-                BigInteger.ZERO,
-                34);
-
-        // Differs in transaction.
-        Message m3 = new Message(dummyRecord, "3fe122ffe3f24ad39c2cf8a57fa124b3",
-                "57b8705f-69cd-4709-ac9b-b6c57fa12345",
-                BigInteger.valueOf(6822178296477519872L),
-                BigInteger.ZERO,
-                BigInteger.ZERO,
-                34);
-
-        // Differs in commit time.
-        Message m4 = new Message(dummyRecord, "3fe122ffe3f24ad39c2cf8a57fa124b3",
-                "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
-                BigInteger.valueOf(682217829L),
-                BigInteger.ZERO,
-                BigInteger.ZERO,
-                34);
-
-        // Differs in record time.
-        Message m5 = new Message(dummyRecord, "3fe122ffe3f24ad39c2cf8a57fa124b3",
-                "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
-                BigInteger.valueOf(6822178296495259648L),
-                BigInteger.valueOf(123456789L),
-                BigInteger.ZERO,
-                34);
-
-        // Differs in snapshot time.
-        Message m6 = new Message(dummyRecord, "3fe122ffe3f24ad39c2cf8a57fa124b3",
-                "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
-                BigInteger.valueOf(6822178296495259648L),
-                BigInteger.ZERO,
-                BigInteger.valueOf(987654321L),
-                34);
-
-        // Differs by Op.
         CdcService.CDCSDKProtoRecordPB record = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder()
-                        .setOp(CdcService.RowMessage.Op.UPDATE).build()).build();
-        Message m7 = new Message(record, "3fe122ffe3f24ad39c2cf8a57fa124b3",
-                "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
-                BigInteger.valueOf(6822178296495259648L),
-                BigInteger.ZERO,
-                BigInteger.ZERO,
-                34);
+                        .setOp(op).build()).build();
+        Message m2 = new Message(record, tabletId, txn, commitTime, recordTime, snapshotTime, 35);
 
-        assertFalse(m1.equals(m2)); // Comparison by tablet ID.
-        assertFalse(m1.equals(m3)); // Comparison by transaction.
-        assertFalse(m1.equals(m4)); // Comparison by commit time.
-        assertFalse(m1.equals(m5)); // Comparison by record time.
-        assertFalse(m1.equals(m6)); // Comparison by snapshot time.
-        assertFalse(m1.equals(m7)); // Comparison by op.
+        assertFalse(m1.equals(m2));
     }
+
 
     @DisplayName("Verify when two messages are equal")
     @Test
@@ -221,7 +174,7 @@ public class MessageTest {
 
     @DisplayName("Different combinations of compareTo")
     @ParameterizedTest(name = "{index}. Checking {0}")
-    @MethodSource("parameterSource")
+    @MethodSource("parameterSourceForCompareTo")
     public void compareToTest(String testName, CdcService.RowMessage.Op op1,
                               CdcService.RowMessage.Op op2, long commitTime1, long commitTime2,
                               long recordTime1, long recordTime2, long expectedResult) {
@@ -243,7 +196,7 @@ public class MessageTest {
         assertEquals(m1.compareTo(m2), expectedResult);
     }
 
-    private static Stream<Arguments> parameterSource() {
+    private static Stream<Arguments> parameterSourceForCompareTo() {
         return Stream.of(
                 /*
                  * Comparison based on CommitTime i.e. M1, M2, M1.commitTime >,<,= M2.commitTime
@@ -294,6 +247,17 @@ public class MessageTest {
                 Arguments.of("M1 = M2, M1 < M2", Op.INSERT, Op.INSERT, lowCommitTime, highCommitTime, lowRecordTime, highRecordTime, -1),
                 Arguments.of("M1 > M2", Op.INSERT, Op.INSERT, highCommitTime, lowCommitTime, highRecordTime, lowRecordTime, 1),
                 Arguments.of("M1 < M2", Op.INSERT, Op.INSERT, lowCommitTime, highCommitTime, lowRecordTime, highRecordTime, -1)
+        );
+    }
+
+    private static Stream<Arguments> parameterSourceForInequality() {
+        return Stream.of(
+                Arguments.of("Difference of tablet ID", "3fe122ffe3f24ad39c2cf8a57f54321f", "57b8705f-69cd-4709-ac9b-b6c57fa995ce", BigInteger.valueOf(6822178296477519872L), BigInteger.ZERO, BigInteger.ZERO, Op.INSERT),
+                Arguments.of("Difference of transaction", "3fe122ffe3f24ad39c2cf8a57fa124b3", "57b8705f-69cd-4709-ac9b-b6c57fa12345", BigInteger.valueOf(6822178296477519872L), BigInteger.ZERO, BigInteger.ZERO, Op.INSERT),
+                Arguments.of("Difference of commit time", "3fe122ffe3f24ad39c2cf8a57fa124b3", "57b8705f-69cd-4709-ac9b-b6c57fa995ce", BigInteger.valueOf(682217829L), BigInteger.ZERO, BigInteger.ZERO, Op.INSERT),
+                Arguments.of("Difference of record time", "3fe122ffe3f24ad39c2cf8a57fa124b3", "57b8705f-69cd-4709-ac9b-b6c57fa995ce", BigInteger.valueOf(6822178296477519872L), BigInteger.valueOf(123456789L), BigInteger.ZERO, Op.INSERT),
+                Arguments.of("Difference of snapshot time", "3fe122ffe3f24ad39c2cf8a57fa124b3", "57b8705f-69cd-4709-ac9b-b6c57fa995ce", BigInteger.valueOf(6822178296477519872L), BigInteger.ZERO, BigInteger.valueOf(987654321L), Op.INSERT),
+                Arguments.of("Difference of Op", "3fe122ffe3f24ad39c2cf8a57fa124b3", "57b8705f-69cd-4709-ac9b-b6c57fa995ce", BigInteger.valueOf(6822178296477519872L), BigInteger.ZERO, BigInteger.ZERO, Op.UPDATE)
         );
     }
 }
