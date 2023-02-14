@@ -143,7 +143,8 @@ public class Merger {
         if (!mergeSlots.get(polledMessage.tablet).isEmpty()
             && this.tabletSafeTime.get(polledMessage.tablet)
                 .compareTo(mergeSlots.get(polledMessage.tablet).get(0).commitTime) < 0) {
-                setTabletSafeTime(polledMessage.tablet, mergeSlots.get(polledMessage.tablet).get(0).commitTime);
+            LOGGER.error("The block to be removed got called VKVK");
+//                setTabletSafeTime(polledMessage.tablet, mergeSlots.get(polledMessage.tablet).get(0).commitTime);
         }
 
         LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(polledMessage.tablet).size());
