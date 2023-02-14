@@ -124,7 +124,7 @@ public class Merger {
 
     /**
      * Get the front message from the queue to process further. This function also removes the
-     * message from the relevant merge slot and update the tablet safetime if required.
+     * message from the relevant merge slot.
      * @return a {@link Message} wrapped in an {@link Optional}, or an {@link Optional#empty()} if
      *      * message is null
      */
