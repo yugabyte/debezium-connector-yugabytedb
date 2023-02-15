@@ -248,6 +248,12 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                     // has succeeded
                     retryCount = 0;
                 }
+            } catch(AssertionError ae) {
+                LOGGER.error("Assertion error received: {}", ae);
+                merger.dumpState();
+
+                // The connector should ideally be stopped if this kind of state is reached.
+                throw new DebeziumException(ae);
             } catch (Exception e) {
                 ++retryCount;
                 // If the retry limit is exceeded, log an error with a description and throw the exception.

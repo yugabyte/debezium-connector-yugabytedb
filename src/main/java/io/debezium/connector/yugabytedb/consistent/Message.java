@@ -75,6 +75,18 @@ public class Message implements Comparable<Message> {
     }
 
     @Override
+    public boolean equals(Object obj) {
+        Message o = ((Message) obj);
+        return this.tablet.equals(o.tablet)
+                && this.commitTime.compareTo(o.commitTime) == 0
+                && this.txn.equals(o.txn)
+                && this.recordTime.compareTo(o.recordTime) == 0
+                && this.snapShotTime.compareTo(o.snapShotTime) == 0
+                && this.sequence == o.sequence
+                && this.record.getRowMessage().getOp().name().equals(o.record.getRowMessage().getOp().name());
+    }
+
+    @Override
     public String toString() {
         return "Message{" +
                 "tablet='" + tablet + '\'' +
