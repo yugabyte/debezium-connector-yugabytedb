@@ -1,4 +1,4 @@
-package io.debezium.connector.yugabytedb;
+package io.debezium.connector.yugabytedb.consistent;
 
 import static org.junit.Assert.*;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -8,6 +8,9 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
+import io.debezium.connector.yugabytedb.TestHelper;
+import io.debezium.connector.yugabytedb.YugabyteDBConnector;
+import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -45,11 +48,11 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
     private static final String SETUP_TABLES_STMT = CREATE_TABLES_STMT + INSERT_STMT;
     @BeforeClass
     public static void beforeClass() throws SQLException {
-//        ybContainer = TestHelper.getYbContainer();
-//        ybContainer.start();
+        ybContainer = TestHelper.getYbContainer(null, "cdc_populate_safepoint_record=true");
+        ybContainer.start();
 
-//        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-//        TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
+        TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
         TestHelper.dropAllSchemas();
     }
 
@@ -71,7 +74,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
 
     @AfterClass
     public static void afterClass() throws Exception {
-//        ybContainer.stop();
+        ybContainer.stop();
     }
 
     @Test
