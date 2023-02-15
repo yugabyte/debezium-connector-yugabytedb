@@ -195,7 +195,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
         TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, FOREIGN KEY (d_id) REFERENCES department(id));");
         TestHelper.execute("CREATE TABLE contract (id INT PRIMARY KEY, contract_name TEXT, c_id INT, FOREIGN KEY (c_id) REFERENCES employee(id));");
         TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT, FOREIGN KEY (a_id) REFERENCES contract(id));");
-        TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, a_id INT, FOREIGN KEY (l_id) REFERENCES address(id));");
+        TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, l_id INT, FOREIGN KEY (l_id) REFERENCES address(id));");
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee,public.contract,public.address", dbStreamId);
@@ -218,9 +218,9 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
         final int iterations = 5 * scaleFactor;
         int departmentId = 1;
         int employeeId = 1, employeeBatchSize = 5 * scaleFactor;
-        int contractId = 1, contractBatchSize = 10 * scaleFactor;
-        int addressId = 1, addressBatchSize = 20 * scaleFactor;
-        int localityId = 1, localityBatchSize = 30 * scaleFactor;
+        int contractId = 1, contractBatchSize = 6 * scaleFactor;
+        int addressId = 1, addressBatchSize = 7 * scaleFactor;
+        int localityId = 1, localityBatchSize = 8 * scaleFactor;
 
         // This counter will also indicate the final index of the inserted record while streaming.
         long totalCount = 0;
@@ -241,20 +241,24 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
             ++totalCount;
 
             for (int j = employeeId; j <= employeeId + employeeBatchSize - 1; ++j) {
+                LOGGER.info("inserting into employee with id {}", j);
                 TestHelper.execute(String.format("BEGIN; INSERT INTO employee VALUES (%d, 'emp no %d', %d); COMMIT;", j, j, departmentId));
                 employeeIndices.add((int) totalCount);
                 ++totalCount;
                 for (int k = contractId; k <= contractId + contractBatchSize - 1; ++k) {
+                    LOGGER.info("inserting into contract with id {}", k);
                     TestHelper.execute(String.format("BEGIN; INSERT INTO contract VALUES (%d, 'contract no %d', %d); COMMIT;", k, k, j /* employee fKey */));
                     contractIndices.add((int) totalCount);
                     ++totalCount;
 
                     for (int l = addressId; l <= addressId + addressBatchSize - 1; ++l) {
+                        LOGGER.info("inserting into address with id {}", l);
                         TestHelper.execute(String.format("BEGIN; INSERT INTO address VALUES (%d, 'address no %d', %d); COMMIT;", l, l, k /* contract fKey */));
                         addressIndices.add((int) totalCount);
                         ++totalCount;
 
                         for (int m = localityId; m <= localityId + localityBatchSize - 1; ++m) {
+                            LOGGER.info("inserting into locality with id {}", m);
                             TestHelper.execute(String.format("BEGIN; INSERT INTO locality VALUES (%d, 'locality no %d', %d); COMMIT;", m, m, l /* address fKey */));
                             localityIndices.add((int) totalCount);
                             ++totalCount;
