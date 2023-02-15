@@ -103,7 +103,7 @@ public class Merger {
         Message message = queue.peek();
 
         if (message == null) {
-            LOGGER.warn("Message after peeking is null (actually means to message in queue)");
+            LOGGER.warn("Message after peeking is null (actually means no message in queue)");
         } else {
             LOGGER.warn("Message is not null in queue - actual message is {}", message);
             if (!(message.commitTime.compareTo(this.streamSafeTime()) <= 0)) {
