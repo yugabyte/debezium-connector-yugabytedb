@@ -36,9 +36,9 @@ public class Merger {
      * @see Message
      */
     public synchronized void addMessage(Message message) {
-        if (message.record.getRowMessage().getOp() != CdcService.RowMessage.Op.DDL) {
-            setTabletSafeTime(message.tablet, message.commitTime);
-        }
+        setTabletSafeTime(message.tablet, message.commitTime);
+
+        assert message.record.getRowMessage().getOp() != CdcService.RowMessage.Op.DDL;
 
         if (message.record.getRowMessage().getOp() == CdcService.RowMessage.Op.SAFEPOINT) {
             LOGGER.debug("Received safe point message {}", message);
@@ -106,7 +106,7 @@ public class Merger {
         Message message = queue.peek();
 
         if (message == null) {
-            LOGGER.warn("Message after peeking is null (actually means to message in queue)");
+            LOGGER.warn("Message after peeking is null (actually means no message in queue)");
         } else {
             LOGGER.warn("Message is not null in queue - actual message is {}", message);
             if (!(message.commitTime.compareTo(this.streamSafeTime()) <= 0)) {
