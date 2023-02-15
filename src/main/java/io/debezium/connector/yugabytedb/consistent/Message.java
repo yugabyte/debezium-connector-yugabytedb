@@ -8,6 +8,8 @@ import java.math.BigInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
+ * Assumptions made here are:<br>
+ * 1. If commitTime1 == commitTime2 then recordTime1 SHOULD NOT be equal to recordTime2
  * @author Rajat Venkatesh
  */
 public class Message implements Comparable<Message> {
@@ -32,21 +34,56 @@ public class Message implements Comparable<Message> {
         this.sequence = sequence;
     }
 
+    /**
+     * Compares two messages based on the following conditions:
+     * <ol>
+     *   <li>Commit time of the two messages is given top priority in comparison</li>
+     *   <li>
+     *        If (this is BEGIN and o is NOT BEGIN) or (this is NOT COMMIT and o is COMMIT) then this
+     *        would go first in the sorting order
+     *   </li>
+     *   <li>
+     *        If (this is COMMIT and o is NOT COMMIT) or (this is NOT BEGIN and o is BEGIN) then
+     *        o would go first in the sorting order, in other words - this would go after o
+     *   </li>
+     *   <li>
+     *        If both the messages, this and o, are neither begin nor commit, then they are compared
+     *        based on their record time.
+     *   </li>
+     * </ol>
+     *
+     * If all the above conditions fail, then the assumption is that the records are equal and can
+     * go either way.
+     * @param o the object to be compared.
+     * @return -1 if this is less than o, 0 if this is equal or 1 if this is greater than o
+     */
     @Override
     public int compareTo(Message o) {
         if (!this.commitTime.equals(o.commitTime)) {
             return this.commitTime.compareTo(o.commitTime);
-        } else if (this.sequence != o.sequence){
-            return this.sequence < o.sequence ? -1 : 1;
-        } else if (!this.recordTime.equals(o.recordTime)) {
-            return this.recordTime.compareTo(o.recordTime);
-        } else if (this.record.getRowMessage().getOp() == CdcService.RowMessage.Op.BEGIN && o.record.getRowMessage().getOp() != CdcService.RowMessage.Op.BEGIN) {
+        } else if ((isBegin(this) && !isBegin(o))
+                    || (!isCommit(this) && isCommit(o))) {
             return -1;
-        } else if (this.record.getRowMessage().getOp() == CdcService.RowMessage.Op.COMMIT && o.record.getRowMessage().getOp() != CdcService.RowMessage.Op.COMMIT) {
+        } else if ((isCommit(this) && !isCommit(o))
+                    || (!isBegin(this) && isBegin(o))) {
             return 1;
+        } else if (notBeginCommit(this, o) && !this.recordTime.equals(o.recordTime)) {
+            return this.recordTime.compareTo(o.recordTime);
         }
 
         return 0;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        Message o = ((Message) obj);
+        return this.tablet.equals(o.tablet)
+                && this.commitTime.compareTo(o.commitTime) == 0
+                && this.txn.equals(o.txn)
+                && this.recordTime.compareTo(o.recordTime) == 0
+                && this.snapShotTime.compareTo(o.snapShotTime) == 0
+                && this.sequence == o.sequence
+                && this.record.getRowMessage().getOp().name().equals(o.record.getRowMessage().getOp().name());
     }
 
     @Override
@@ -60,6 +97,24 @@ public class Message implements Comparable<Message> {
                 ", sequence=" + sequence +
                 ", op=" + this.record.getRowMessage().getOp().name() +
                 '}';
+    }
+
+    /**
+     * Whether both the messages are neither BEGIN not COMMIT
+     * @param a first message to be compared
+     * @param b another message to be compared
+     * @return true if both the messages are neither BEGIN nor COMMIT, false otherwise
+     */
+    public static boolean notBeginCommit(Message a, Message b) {
+        return !isBegin(a) && !isBegin(b) && !isCommit(a) && !isCommit(b);
+    }
+
+    public static boolean isBegin(Message m) {
+        return m.record.getRowMessage().getOp() == CdcService.RowMessage.Op.BEGIN;
+    }
+
+    public static boolean isCommit(Message m) {
+        return m.record.getRowMessage().getOp() == CdcService.RowMessage.Op.COMMIT;
     }
 
     public static class Builder {
