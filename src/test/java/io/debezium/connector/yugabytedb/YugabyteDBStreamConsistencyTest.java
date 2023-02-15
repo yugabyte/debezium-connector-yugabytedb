@@ -241,21 +241,21 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
             ++totalCount;
 
             for (int j = employeeId; j <= employeeId + employeeBatchSize - 1; ++j) {
-                TestHelper.execute(String.format("INSERT INTO employee VALUES (%d, 'emp no %d', %d);", j, j, departmentId));
+                TestHelper.execute(String.format("BEGIN; INSERT INTO employee VALUES (%d, 'emp no %d', %d); COMMIT;", j, j, departmentId));
                 employeeIndices.add((int) totalCount);
                 ++totalCount;
                 for (int k = contractId; k <= contractId + contractBatchSize - 1; ++k) {
-                    TestHelper.execute(String.format("INSERT INTO contract VALUES (%d, 'contract no %d', %d);", k, k, j /* employee fKey */));
+                    TestHelper.execute(String.format("BEGIN; INSERT INTO contract VALUES (%d, 'contract no %d', %d); COMMIT;", k, k, j /* employee fKey */));
                     contractIndices.add((int) totalCount);
                     ++totalCount;
 
                     for (int l = addressId; l <= addressId + addressBatchSize - 1; ++l) {
-                        TestHelper.execute(String.format("INSERT INTO address VALUES (%d, 'address no %d', %d);", l, l, k /* contract fKey */));
+                        TestHelper.execute(String.format("BEGIN; INSERT INTO address VALUES (%d, 'address no %d', %d); COMMIT;", l, l, k /* contract fKey */));
                         addressIndices.add((int) totalCount);
                         ++totalCount;
 
                         for (int m = localityId; m <= localityId + localityBatchSize - 1; ++m) {
-                            TestHelper.execute(String.format("INSERT INTO locality VALUES (%d, 'locality no %d', %d);", m, m, l /* address fKey */));
+                            TestHelper.execute(String.format("BEGIN; INSERT INTO locality VALUES (%d, 'locality no %d', %d); COMMIT;", m, m, l /* address fKey */));
                             localityIndices.add((int) totalCount);
                             ++totalCount;
                         }
