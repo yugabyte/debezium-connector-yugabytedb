@@ -48,7 +48,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
     private static final String SETUP_TABLES_STMT = CREATE_TABLES_STMT + INSERT_STMT;
     @BeforeClass
     public static void beforeClass() throws SQLException {
-        ybContainer = TestHelper.getYbContainer(null, "cdc_populate_safepoint_record=true");
+        ybContainer = TestHelper.getYbContainer(null, "cdc_max_stream_intent_records=10,cdc_populate_safepoint_record=true");
         ybContainer.start();
 
         TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
