@@ -36,9 +36,14 @@ public class Merger {
      * @see Message
      */
     public synchronized void addMessage(Message message) {
-        setTabletSafeTime(message.tablet, message.commitTime);
-
         assert message.record.getRowMessage().getOp() != CdcService.RowMessage.Op.DDL;
+
+        LOGGER.info("Message in addMessage {}", message);
+        if (!this.mergeSlots.get(message.tablet).isEmpty()) {
+            LOGGER.info("Last message in merge slot: {}", this.mergeSlots.get(message.tablet).get(this.mergeSlots.get(message.tablet).size() - 1));
+        }
+
+        setTabletSafeTime(message.tablet, message.commitTime);
 
         if (message.record.getRowMessage().getOp() == CdcService.RowMessage.Op.SAFEPOINT) {
             LOGGER.debug("Received safe point message {}", message);

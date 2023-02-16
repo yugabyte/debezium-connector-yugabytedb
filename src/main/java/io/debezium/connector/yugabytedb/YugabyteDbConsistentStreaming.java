@@ -202,7 +202,7 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                                     .getCdcSdkProtoRecordsList()) {
                                 CdcService.RowMessage.Op op = record.getRowMessage().getOp();
 
-                                if (!schemaNeeded.get(tabletId) && record.getRowMessage().getOp() == CdcService.RowMessage.Op.DDL) {
+                                if (record.getRowMessage().getOp() == CdcService.RowMessage.Op.DDL) {
                                     YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(record.getRowMessage(), this.yugabyteDBTypeRegistry);
                                     dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
                                             beginCountForTablet, tabletId, new YBPartition(tabletId),

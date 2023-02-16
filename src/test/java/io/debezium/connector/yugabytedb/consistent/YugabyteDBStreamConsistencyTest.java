@@ -48,11 +48,11 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
     private static final String SETUP_TABLES_STMT = CREATE_TABLES_STMT + INSERT_STMT;
     @BeforeClass
     public static void beforeClass() throws SQLException {
-        ybContainer = TestHelper.getYbContainer(null, "cdc_max_stream_intent_records=10,cdc_populate_safepoint_record=true");
-        ybContainer.start();
-
-        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-        TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+//        ybContainer = TestHelper.getYbContainer(null, "cdc_max_stream_intent_records=10,cdc_populate_safepoint_record=true");
+//        ybContainer.start();
+//
+//        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
+//        TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
         TestHelper.dropAllSchemas();
     }
 
@@ -80,7 +80,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
 
     @AfterClass
     public static void afterClass() throws Exception {
-        ybContainer.stop();
+//        ybContainer.stop();
     }
 
     @Test
