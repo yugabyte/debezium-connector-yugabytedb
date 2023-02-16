@@ -202,11 +202,18 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                                     .getCdcSdkProtoRecordsList()) {
                                 CdcService.RowMessage.Op op = record.getRowMessage().getOp();
 
-                                merger.addMessage(new Message.Builder()
-                                        .setRecord(record)
-                                        .setTabletId(tabletId)
-                                        .setSnapshotTime(response.getSnapshotTime())
-                                        .build());
+                                if (record.getRowMessage().getOp() == CdcService.RowMessage.Op.DDL) {
+                                    YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(record.getRowMessage(), this.yugabyteDBTypeRegistry);
+                                    dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
+                                            beginCountForTablet, tabletId, new YBPartition(tabletId),
+                                            response.getSnapshotTime(), record, record.getRowMessage(), ybMessage);
+                                } else {
+                                    merger.addMessage(new Message.Builder()
+                                            .setRecord(record)
+                                            .setTabletId(tabletId)
+                                            .setSnapshotTime(response.getSnapshotTime())
+                                            .build());
+                                }
                                 OpId finalOpid = new OpId(
                                         response.getTerm(),
                                         response.getIndex(),
