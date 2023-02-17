@@ -279,6 +279,11 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
         }
     }
 
+    @Override
+    public void commitOffset(Map<String, ?> offset) {
+
+    }
+
     private void dispatchMessage(YugabyteDBOffsetContext offsetContext, Map<String, Boolean> schemaNeeded,
                                  Map<String, Integer> recordsInTransactionalBlock,
                                  Map<String, Integer> beginCountForTablet,

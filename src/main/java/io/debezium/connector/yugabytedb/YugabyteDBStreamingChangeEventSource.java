@@ -659,24 +659,13 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     @Override
     public void commitOffset(Map<String, ?> offset) {
-        // try {
-        LOGGER.debug("Commit offset: " + offset);
-        ReplicationStream replicationStream = null; // this.replicationStream.get();
-        final OpId commitLsn = null; // OpId.valueOf((String) offset.get(PostgresOffsetContext.LAST_COMMIT_LSN_KEY));
-        final OpId changeLsn = OpId.valueOf((String) offset.get(YugabyteDBOffsetContext.LAST_COMPLETELY_PROCESSED_LSN_KEY));
-        final OpId lsn = (commitLsn != null) ? commitLsn : changeLsn;
-
-        if (replicationStream != null && lsn != null) {
-            if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("Flushing LSN to server: {}", lsn);
+        try {
+            LOGGER.info("commitOffset called with offset map as");
+            for (Map.Entry<String, ?> entry : offset.entrySet()) {
+                LOGGER.info("Key: {} Value: {}", entry.getKey(), entry.getValue());
             }
-            // tell the server the point up to which we've processed data, so it can be free to recycle WAL segments
-            // CDCSDK yugabyte does it automatically.
-            // but we may need an API
-            // replicationStream.flushLsn(lsn);
-        }
-        else {
-            LOGGER.debug("Streaming has already stopped, ignoring commit callback...");
+        } catch (Exception e) {
+
         }
     }
 
