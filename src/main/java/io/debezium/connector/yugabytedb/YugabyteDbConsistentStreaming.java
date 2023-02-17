@@ -202,11 +202,18 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                                     .getCdcSdkProtoRecordsList()) {
                                 CdcService.RowMessage.Op op = record.getRowMessage().getOp();
 
-                                merger.addMessage(new Message.Builder()
-                                        .setRecord(record)
-                                        .setTabletId(tabletId)
-                                        .setSnapshotTime(response.getSnapshotTime())
-                                        .build());
+                                if (record.getRowMessage().getOp() == CdcService.RowMessage.Op.DDL) {
+                                    YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(record.getRowMessage(), this.yugabyteDBTypeRegistry);
+                                    dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
+                                            beginCountForTablet, tabletId, new YBPartition(tabletId),
+                                            response.getSnapshotTime(), record, record.getRowMessage(), ybMessage);
+                                } else {
+                                    merger.addMessage(new Message.Builder()
+                                            .setRecord(record)
+                                            .setTabletId(tabletId)
+                                            .setSnapshotTime(response.getSnapshotTime())
+                                            .build());
+                                }
                                 OpId finalOpid = new OpId(
                                         response.getTerm(),
                                         response.getIndex(),
@@ -248,6 +255,12 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                     // has succeeded
                     retryCount = 0;
                 }
+            } catch(AssertionError ae) {
+                LOGGER.error("Assertion error received: {}", ae);
+                merger.dumpState();
+
+                // The connector should ideally be stopped if this kind of state is reached.
+                throw new DebeziumException(ae);
             } catch (Exception e) {
                 ++retryCount;
                 // If the retry limit is exceeded, log an error with a description and throw the exception.

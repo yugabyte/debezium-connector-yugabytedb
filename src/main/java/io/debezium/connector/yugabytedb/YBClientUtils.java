@@ -170,17 +170,31 @@ public class YBClientUtils {
    * @param index index of the checkpoint
    * @param initialCheckpoint flag to indicate whether to start retaining intents
    * @param bootstrap flag to indicate whether to bootstrap the tablet
+   * @param cdcsdkSafeTime the safe time to set
    * @throws Exception if things go wrong
    */
   public static void setCheckpoint(YBClient ybClient, String streamId, String tableId, 
                                    String tabletId, long term, long index, 
-                                   boolean initialCheckpoint, boolean bootstrap) throws Exception {
+                                   boolean initialCheckpoint, boolean bootstrap,
+                                   long cdcsdkSafeTime) throws Exception {
     String logFormatString = "Connector setting checkpoint for tablet {} with streamId {} - " 
-                             + "term: {} index: {} initialCheckpoint: {} bootstrap: {}";
-    LOGGER.debug(logFormatString, tabletId, streamId, term, index, initialCheckpoint, bootstrap);
-    ybClient.bootstrapTablet(ybClient.openTableByUUID(tableId), streamId, tabletId, term, 
-                             index, initialCheckpoint, bootstrap);
+                             + "term: {} index: {} initialCheckpoint: {} bootstrap: {} "
+                             + "cdcsdkSafeTime: {}";
+    LOGGER.debug(logFormatString, tabletId, streamId, term, index, initialCheckpoint, bootstrap,
+                 cdcsdkSafeTime);
+    ybClient.commitCheckpoint(ybClient.openTableByUUID(tableId), streamId, tabletId, term,
+                             index, initialCheckpoint, bootstrap, cdcsdkSafeTime);
   }
+
+    public static void setCheckpoint(YBClient ybClient, String streamId, String tableId,
+                                     String tabletId, long term, long index,
+                                     boolean initialCheckpoint, boolean bootstrap) throws Exception {
+        String logFormatString = "Connector setting checkpoint for tablet {} with streamId {} - "
+                + "term: {} index: {} initialCheckpoint: {} bootstrap: {}";
+        LOGGER.debug(logFormatString, tabletId, streamId, term, index, initialCheckpoint, bootstrap);
+        ybClient.bootstrapTablet(ybClient.openTableByUUID(tableId), streamId, tabletId, term,
+                index, initialCheckpoint, bootstrap);
+    }
 
   /**
    * Helper function to get the Debezium style TableId of a table from table UUID
