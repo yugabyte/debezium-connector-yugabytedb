@@ -664,6 +664,10 @@ public class YugabyteDBStreamingChangeEventSource implements
             for (Map.Entry<String, ?> entry : offset.entrySet()) {
                 LOGGER.info("Key: {} Value: {}", entry.getKey(), entry.getValue());
             }
+
+            OpId opId = OpId.valueOf((String) offset.get(YugabyteDBOffsetContext.LAST_COMPLETELY_PROCESSED_LSN_KEY));
+
+            // Commit the checkpoint received in the previous step using YBClient#commitCheckpoint
         } catch (Exception e) {
 
         }

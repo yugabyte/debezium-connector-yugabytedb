@@ -146,29 +146,34 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     @Override
     public Map<String, ?> getOffset() {
         Map<String, Object> result = new HashMap<>();
-        if (sourceInfo.timestamp() != null) {
-            result.put(SourceInfo.TIMESTAMP_USEC_KEY, Conversions
-                    .toEpochMicros(sourceInfo.timestamp()));
+//        if (sourceInfo.timestamp() != null) {
+//            result.put(SourceInfo.TIMESTAMP_USEC_KEY, Conversions
+//                    .toEpochMicros(sourceInfo.timestamp()));
+//        }
+//        if (sourceInfo.txId() != null) {
+//            result.put(SourceInfo.TXID_KEY, sourceInfo.txId());
+//        }
+//        if (sourceInfo.lsn() != null) {
+//            result.put(SourceInfo.LSN_KEY, sourceInfo.lsn().toSerString());
+//        }
+//        if (sourceInfo.xmin() != null) {
+//            result.put(SourceInfo.XMIN_KEY, sourceInfo.xmin());
+//        }
+//        if (sourceInfo.isSnapshot()) {
+//            result.put(SourceInfo.SNAPSHOT_KEY, true);
+//            result.put(SourceInfo.LAST_SNAPSHOT_RECORD_KEY, lastSnapshotRecord);
+//        }
+//        if (lastCompletelyProcessedLsn != null) {
+//            result.put(LAST_COMPLETELY_PROCESSED_LSN_KEY, lastCompletelyProcessedLsn.toSerString());
+//        }
+//        if (lastCommitLsn != null) {
+//            result.put(LAST_COMMIT_LSN_KEY, lastCommitLsn.toSerString());
+//        }
+
+        for (Map.Entry<String, SourceInfo> entry : this.tabletSourceInfo.entrySet()) {
+            result.put(entry.getKey(), entry.getValue().lsn());
         }
-        if (sourceInfo.txId() != null) {
-            result.put(SourceInfo.TXID_KEY, sourceInfo.txId());
-        }
-        if (sourceInfo.lsn() != null) {
-            result.put(SourceInfo.LSN_KEY, sourceInfo.lsn().toSerString());
-        }
-        if (sourceInfo.xmin() != null) {
-            result.put(SourceInfo.XMIN_KEY, sourceInfo.xmin());
-        }
-        if (sourceInfo.isSnapshot()) {
-            result.put(SourceInfo.SNAPSHOT_KEY, true);
-            result.put(SourceInfo.LAST_SNAPSHOT_RECORD_KEY, lastSnapshotRecord);
-        }
-        if (lastCompletelyProcessedLsn != null) {
-            result.put(LAST_COMPLETELY_PROCESSED_LSN_KEY, lastCompletelyProcessedLsn.toSerString());
-        }
-        if (lastCommitLsn != null) {
-            result.put(LAST_COMMIT_LSN_KEY, lastCommitLsn.toSerString());
-        }
+
         return sourceInfo.isSnapshot() ? result
                 : incrementalSnapshotContext
                         .store(transactionContext.store(result));
