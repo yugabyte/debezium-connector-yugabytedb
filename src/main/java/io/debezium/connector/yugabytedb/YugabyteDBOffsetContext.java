@@ -171,7 +171,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 //        }
 
         for (Map.Entry<String, SourceInfo> entry : this.tabletSourceInfo.entrySet()) {
-            result.put(entry.getKey(), entry.getValue().lsn());
+            result.put(entry.getKey(), entry.getValue().lsn().toSerString());
         }
 
         return sourceInfo.isSnapshot() ? result
