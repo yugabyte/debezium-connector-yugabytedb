@@ -13,6 +13,7 @@ import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.heartbeat.Heartbeat;
 import io.debezium.pipeline.ErrorHandler;
 import io.debezium.pipeline.source.spi.StreamingChangeEventSource;
+import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
 import io.debezium.util.Clock;
@@ -85,6 +86,10 @@ public class YugabyteDBStreamingChangeEventSource implements
     protected YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
     protected final Map<String, OpId> checkPointMap;
     protected final ChangeEventQueue<DataChangeEvent> queue;
+
+    // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
+    // and the value is tablet UUID
+    List<Pair<String, String>> tabletPairList = null;
 
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
                                                 YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
@@ -227,9 +232,6 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
 
-        // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
-        // and the value is tablet UUID
-        List<Pair<String, String>> tabletPairList = null;
         try {
             tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
             LOGGER.debug("The tablet list is " + tabletPairList);
@@ -661,16 +663,33 @@ public class YugabyteDBStreamingChangeEventSource implements
     public void commitOffset(Map<String, ?> offset) {
         try {
             LOGGER.info("commitOffset called with offset map as");
-            for (Map.Entry<String, ?> entry : offset.entrySet()) {
-                LOGGER.info("Key: {} Value: {}", entry.getKey(), entry.getValue());
-            }
 
-            OpId opId = OpId.valueOf((String) offset.get(YugabyteDBOffsetContext.LAST_COMPLETELY_PROCESSED_LSN_KEY));
+            // todo Vaibhav: ignore the transaction_id for PoC purposes now
+            for (Map.Entry<String, ?> entry : offset.entrySet()) {
+                if (!entry.getKey().equals("transaction_id")) {
+                    LOGGER.info("Key: {} Value: {}", entry.getKey(), entry.getValue());
+                    OpId tempOpId = OpId.valueOf((String) entry.getValue());
+                    this.syncClient.commitCheckpoint(getTableFromTablet(entry.getKey()),
+                            this.connectorConfig.streamId(), entry.getKey() /* tabletId */,
+                            tempOpId.getTerm(), tempOpId.getIndex(), false /* initialCheckpoint */);
+                }
+            }
 
             // Commit the checkpoint received in the previous step using YBClient#commitCheckpoint
         } catch (Exception e) {
-
+            LOGGER.warn("Unable to commit checkpoint on server", e);
         }
+    }
+
+    public YBTable getTableFromTablet(String tabletId) {
+        for (Pair<String, String> p : this.tabletPairList) {
+            if (p.getValue().equals(tabletId)) {
+                return this.syncClient.openTableByUUID(p.getKey());
+            }
+        }
+
+        // Null would mean that no match was found for the given tablet ID.
+        return null;
     }
 
     /**
