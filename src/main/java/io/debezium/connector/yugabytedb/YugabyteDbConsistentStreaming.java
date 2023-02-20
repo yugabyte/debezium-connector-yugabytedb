@@ -281,7 +281,7 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
 
     @Override
     public void commitOffset(Map<String, ?> offset) {
-
+        super.commitOffset(offset);
     }
 
     private void dispatchMessage(YugabyteDBOffsetContext offsetContext, Map<String, Boolean> schemaNeeded,

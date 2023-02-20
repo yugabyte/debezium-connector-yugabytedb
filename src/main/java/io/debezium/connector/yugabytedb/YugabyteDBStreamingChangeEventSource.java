@@ -662,29 +662,41 @@ public class YugabyteDBStreamingChangeEventSource implements
     @Override
     public void commitOffset(Map<String, ?> offset) {
         try {
-            LOGGER.info("commitOffset called with offset map as");
+            LOGGER.info("Committing offsets on server");
 
-            // todo Vaibhav: ignore the transaction_id for PoC purposes now
-            // and see where is it getting populated so that you can remove it from the code itself.
             for (Map.Entry<String, ?> entry : offset.entrySet()) {
+                // TODO: The transaction_id field is getting populated somewhere and see if it can
+                // be removed or blocked from getting added to this map.
                 if (!entry.getKey().equals("transaction_id")) {
-                    LOGGER.info("Key: {} Value: {}", entry.getKey(), entry.getValue());
+                    LOGGER.info("Tablet: {} OpId: {}", entry.getKey(), entry.getValue());
+
+                    // Parse the string to get the OpId object.
                     OpId tempOpId = OpId.valueOf((String) entry.getValue());
+
                     YBTable table = getTableFromTablet(entry.getKey());
                     Objects.requireNonNull(table);
+
                     this.syncClient.commitCheckpoint(table,
                             this.connectorConfig.streamId(), entry.getKey() /* tabletId */,
                             tempOpId.getTerm(), tempOpId.getIndex(), false /* initialCheckpoint */);
+                    LOGGER.info("Committed checkpoint on server for stream ID {} tablet {} with term {} index {}",
+                                this.connectorConfig.streamId(), entry.getKey(), tempOpId.getTerm(), tempOpId.getIndex());
                 }
             }
-
-            // Commit the checkpoint received in the previous step using YBClient#commitCheckpoint
         } catch (Exception e) {
-            LOGGER.warn("Unable to commit checkpoint on server", e);
+            LOGGER.warn("Unable to commit checkpoint", e);
         }
     }
 
-    public YBTable getTableFromTablet(String tabletId) throws Exception {
+    /**
+     * Iterate over the tablet pair list and return back the table ID to which the given
+     * tablet belongs.
+     * @param tabletId tablet UUID
+     * @return a {@link YBTable} object for the table to which the tablet belongs, or null if no
+     * match is found
+     * @throws Exception if the {@link YBClient} cannot open the table
+     */
+    private YBTable getTableFromTablet(String tabletId) throws Exception {
         for (Pair<String, String> p : this.tabletPairList) {
             if (p.getValue().equals(tabletId)) {
                 return this.syncClient.openTableByUUID(p.getKey());
