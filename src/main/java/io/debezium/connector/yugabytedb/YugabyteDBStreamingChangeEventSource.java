@@ -665,11 +665,14 @@ public class YugabyteDBStreamingChangeEventSource implements
             LOGGER.info("commitOffset called with offset map as");
 
             // todo Vaibhav: ignore the transaction_id for PoC purposes now
+            // and see where is it getting populated so that you can remove it from the code itself.
             for (Map.Entry<String, ?> entry : offset.entrySet()) {
                 if (!entry.getKey().equals("transaction_id")) {
                     LOGGER.info("Key: {} Value: {}", entry.getKey(), entry.getValue());
                     OpId tempOpId = OpId.valueOf((String) entry.getValue());
-                    this.syncClient.commitCheckpoint(getTableFromTablet(entry.getKey()),
+                    YBTable table = getTableFromTablet(entry.getKey());
+                    Objects.requireNonNull(table);
+                    this.syncClient.commitCheckpoint(table,
                             this.connectorConfig.streamId(), entry.getKey() /* tabletId */,
                             tempOpId.getTerm(), tempOpId.getIndex(), false /* initialCheckpoint */);
                 }
