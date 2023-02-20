@@ -681,7 +681,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
-    public YBTable getTableFromTablet(String tabletId) {
+    public YBTable getTableFromTablet(String tabletId) throws Exception {
         for (Pair<String, String> p : this.tabletPairList) {
             if (p.getValue().equals(tabletId)) {
                 return this.syncClient.openTableByUUID(p.getKey());
