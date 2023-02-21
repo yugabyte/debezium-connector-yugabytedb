@@ -667,7 +667,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // TODO: The transaction_id field is getting populated somewhere and see if it can
                 // be removed or blocked from getting added to this map.
                 if (!entry.getKey().equals("transaction_id")) {
-                    LOGGER.info("Tablet: {} OpId: {}", entry.getKey(), entry.getValue());
+                    LOGGER.debug("Tablet: {} OpId: {}", entry.getKey(), entry.getValue());
 
                     // Parse the string to get the OpId object.
                     OpId tempOpId = OpId.valueOf((String) entry.getValue());
@@ -678,7 +678,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                     this.syncClient.commitCheckpoint(table,
                             this.connectorConfig.streamId(), entry.getKey() /* tabletId */,
                             tempOpId.getTerm(), tempOpId.getIndex(), false /* initialCheckpoint */);
-                    LOGGER.info("Committed checkpoint on server for stream ID {} tablet {} with term {} index {}",
+                    LOGGER.debug("Committed checkpoint on server for stream ID {} tablet {} with term {} index {}",
                                 this.connectorConfig.streamId(), entry.getKey(), tempOpId.getTerm(), tempOpId.getIndex());
                 }
             }
