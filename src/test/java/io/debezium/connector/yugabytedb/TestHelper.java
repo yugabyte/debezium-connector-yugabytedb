@@ -66,9 +66,9 @@ import io.debezium.relational.RelationalDatabaseConnectorConfig;
  */
 public final class TestHelper {
 
-    public static final String TEST_SERVER = "test_server";
-    public static final String TEST_DATABASE = "postgres";
-    public static final String PK_FIELD = "pk";
+    protected static final String TEST_SERVER = "test_server";
+    protected static final String TEST_DATABASE = "postgres";
+    protected static final String PK_FIELD = "pk";
     private static final String TEST_PROPERTY_PREFIX = "debezium.test.";
     private static final Logger LOGGER = LoggerFactory.getLogger(TestHelper.class);
 
@@ -105,7 +105,7 @@ public final class TestHelper {
     private TestHelper() {
     }
 
-    public static ResultSet performQuery(JdbcDatabaseContainer<?> container, String sql) throws SQLException {
+    protected static ResultSet performQuery(JdbcDatabaseContainer<?> container, String sql) throws SQLException {
         DataSource ds = getDataSource(container);
         Statement statement = ds.getConnection().createStatement();
         statement.execute(sql);
@@ -115,7 +115,7 @@ public final class TestHelper {
         return resultSet;
     }
 
-    public static DataSource getDataSource(JdbcDatabaseContainer<?> container) {
+    protected static DataSource getDataSource(JdbcDatabaseContainer<?> container) {
         HikariConfig hikariConfig = new HikariConfig();
         hikariConfig.setJdbcUrl(container.getJdbcUrl());
         hikariConfig.setUsername(container.getUsername());
@@ -347,13 +347,13 @@ public final class TestHelper {
                 getPostgresValueConverter(yugabyteDBTypeRegistry, config));
     }
 
-    public static Set<String> schemaNames() throws SQLException {
+    protected static Set<String> schemaNames() throws SQLException {
         try (YugabyteDBConnection connection = create()) {
             return connection.readAllSchemaNames(Filters.IS_SYSTEM_SCHEMA.negate());
         }
     }
 
-    public static void createTableInSecondaryDatabase(String query) throws SQLException {
+    protected static void createTableInSecondaryDatabase(String query) throws SQLException {
         // Create a connector to the new database and execute the query
         try (YugabyteDBConnection conn = createConnectionTo(SECONDARY_DATABASE)) {
             Statement st = conn.connection().createStatement();
@@ -361,11 +361,11 @@ public final class TestHelper {
         }
     }
 
-    public static Configuration.Builder getConfigBuilder(String fullTableNameWithSchema, String dbStreamId) throws Exception {
+    protected static Configuration.Builder getConfigBuilder(String fullTableNameWithSchema, String dbStreamId) throws Exception {
         return getConfigBuilder("yugabyte", fullTableNameWithSchema, dbStreamId);
     }
 
-    public static Configuration.Builder getConfigBuilder(String namespaceName, String fullTableNameWithSchema, String dbStreamId) throws Exception {
+    protected static Configuration.Builder getConfigBuilder(String namespaceName, String fullTableNameWithSchema, String dbStreamId) throws Exception {
         return TestHelper.defaultConfig()
                 .with(YugabyteDBConnectorConfig.DATABASE_NAME, namespaceName)
                 .with(YugabyteDBConnectorConfig.HOSTNAME, CONTAINER_YSQL_HOST) // this field is required as of now
@@ -377,12 +377,12 @@ public final class TestHelper {
                 .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId);
     }
 
-    public static void setContainerHostPort(String host, int port) {
+    protected static void setContainerHostPort(String host, int port) {
         CONTAINER_YSQL_HOST = host;
         CONTAINER_YSQL_PORT = port;
     }
 
-    public static void setContainerMasterPort(int masterPort) {
+    protected static void setContainerMasterPort(int masterPort) {
         CONTAINER_MASTER_PORT = String.valueOf(masterPort);
     }
 
@@ -392,7 +392,7 @@ public final class TestHelper {
      * @param tserverFlags comma separated value of tserver flags in form flag1=val2,flag2=val2
      * @return a {@link YugabyteYSQLContainer}
      */
-    public static YugabyteYSQLContainer getYbContainer(String masterFlags, String tserverFlags) {
+    protected static YugabyteYSQLContainer getYbContainer(String masterFlags, String tserverFlags) {
         String dockerImageName = System.getenv("YB_DOCKER_IMAGE");
         
         if (dockerImageName == null || dockerImageName.isEmpty()) {
@@ -438,11 +438,11 @@ public final class TestHelper {
         return container;
     }
 
-    public static YugabyteYSQLContainer getYbContainer() {
+    protected static YugabyteYSQLContainer getYbContainer() {
         return getYbContainer(null, null);
     }
 
-    public static YBClient getYbClient(String masterAddresses) throws Exception {
+    protected static YBClient getYbClient(String masterAddresses) throws Exception {
         AsyncYBClient asyncClient = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses)
                 .defaultAdminOperationTimeoutMs(YugabyteDBConnectorConfig.DEFAULT_ADMIN_OPERATION_TIMEOUT_MS)
                 .defaultOperationTimeoutMs(YugabyteDBConnectorConfig.DEFAULT_OPERATION_TIMEOUT_MS)
@@ -453,7 +453,7 @@ public final class TestHelper {
         return new YBClient(asyncClient);
     }
 
-    public static YBTable getYbTable(YBClient syncClient, String tableName) throws Exception {
+    protected static YBTable getYbTable(YBClient syncClient, String tableName) throws Exception {
         ListTablesResponse resp = syncClient.getTablesList();
 
         for (TableInfo tableInfo : resp.getTableInfoList()) {
@@ -541,7 +541,7 @@ public final class TestHelper {
         }
     }
 
-    public static Configuration.Builder defaultConfig() {
+    protected static Configuration.Builder defaultConfig() {
         JdbcConfiguration jdbcConfiguration = defaultJdbcConfig();
         Configuration.Builder builder = Configuration.create();
         jdbcConfiguration.forEach((field, value) -> builder.with(YugabyteDBConnectorConfig.DATABASE_CONFIG_PREFIX + field, value));
@@ -557,11 +557,11 @@ public final class TestHelper {
         return builder;
     }
 
-    public static void executeDDL(String ddlFile) throws Exception {
+    protected static void executeDDL(String ddlFile) throws Exception {
         executeDDL(ddlFile, "yugabyte");
     }
 
-    public static void executeDDL(String ddlFile, String databaseName) throws Exception {
+    protected static void executeDDL(String ddlFile, String databaseName) throws Exception {
         URL ddlTestFile = TestHelper.class.getClassLoader().getResource(ddlFile);
         assertNotNull("Cannot locate " + ddlFile, ddlTestFile);
         String statements = Files.readAllLines(Paths.get(ddlTestFile.toURI()))
@@ -572,7 +572,7 @@ public final class TestHelper {
         }
     }
 
-    public static void executeDDL(JdbcDatabaseContainer<?> container, String ddlFile) throws Exception {
+    protected static void executeDDL(JdbcDatabaseContainer<?> container, String ddlFile) throws Exception {
         URL ddlTestFile = TestHelper.class.getClassLoader().getResource(ddlFile);
         assertNotNull("Cannot locate " + ddlFile, ddlTestFile);
         String statements = Files.readAllLines(Paths.get(ddlTestFile.toURI()))
@@ -584,11 +584,11 @@ public final class TestHelper {
         }
     }
 
-    public static String topicName(String suffix) {
+    protected static String topicName(String suffix) {
         return TestHelper.TEST_SERVER + "." + suffix;
     }
 
-    public static boolean shouldSSLConnectionFail() {
+    protected static boolean shouldSSLConnectionFail() {
         return Boolean.parseBoolean(System.getProperty(TEST_PROPERTY_PREFIX + "ssl.failonconnect", "true"));
     }
 
@@ -596,7 +596,7 @@ public final class TestHelper {
         return Integer.parseInt(System.getProperty(TEST_PROPERTY_PREFIX + "records.waittime", "2"));
     }
 
-    public static SourceInfo sourceInfo() {
+    protected static SourceInfo sourceInfo() {
         return new SourceInfo(new YugabyteDBConnectorConfig(
                 Configuration.create()
                         .with(YugabyteDBConnectorConfig.SERVER_NAME, TEST_SERVER)
@@ -604,7 +604,7 @@ public final class TestHelper {
                         .build()));
     }
 
-    public static void assertNoOpenTransactions() throws SQLException {
+    protected static void assertNoOpenTransactions() throws SQLException {
         try (YugabyteDBConnection connection = TestHelper.create()) {
             connection.setAutoCommit(true);
 
@@ -620,7 +620,7 @@ public final class TestHelper {
     }
 
     // Function to introduce dummy wait conditions in tests
-    public static void waitFor(Duration duration) {
+    protected static void waitFor(Duration duration) {
         Awaitility.await()
             .pollDelay(duration)
             .atMost(duration.plusSeconds(1))
@@ -634,7 +634,7 @@ public final class TestHelper {
      * @param record the {@link SourceRecord} to get the operation for
      * @return the string value of the operation - c, u, r or d
      */
-    public static String getOpValue(SourceRecord record) {
+    protected static String getOpValue(SourceRecord record) {
         Struct s = (Struct) record.value();
         return s.getString("op");
     }
