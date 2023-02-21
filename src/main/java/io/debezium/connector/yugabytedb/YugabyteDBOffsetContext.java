@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.kafka.common.utils.CopyOnWriteMap;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
@@ -109,6 +110,9 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     public YugabyteDBOffsetContext(YugabyteDBOffsetContext that) {
         this(that.previousOffsets, that.connectorConfig);
+        for (Map.Entry<String, SourceInfo> entry : that.tabletSourceInfo.entrySet()) {
+            this.tabletSourceInfo.put(entry.getKey(), entry.getValue());
+        }
     }
 
     public static YugabyteDBOffsetContext initialContextForSnapshot(YugabyteDBConnectorConfig connectorConfig,
