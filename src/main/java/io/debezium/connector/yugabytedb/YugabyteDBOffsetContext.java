@@ -164,14 +164,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     }
 
     public Struct getSourceInfoForTablet(String tabletId) {
-        Schema schema = SchemaBuilder.struct()
-                .field(TABLET_KEY, Schema.STRING_SCHEMA)
-                .field(TABLET_LSN, Schema.STRING_SCHEMA)
-                .build();
-
-        return new Struct(schema)
-                .put(TABLET_KEY, tabletId)
-                .put(TABLET_LSN, this.tabletSourceInfo.get(tabletId).lsn().toSerString());
+        return this.tabletSourceInfo.get(tabletId).struct();
     }
 
     @Override
