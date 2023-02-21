@@ -84,6 +84,8 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     public YugabyteDBOffsetContext(Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets,
                                    YugabyteDBConnectorConfig config) {
+        this.previousOffsets = previousOffsets;
+        this.connectorConfig = config;
         this.tabletSourceInfo = new ConcurrentHashMap();
         this.sourceInfo = new SourceInfo(config);
         this.sourceInfoSchema = sourceInfo.schema();
