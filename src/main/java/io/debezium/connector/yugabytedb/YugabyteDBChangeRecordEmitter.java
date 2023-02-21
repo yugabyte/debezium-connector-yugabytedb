@@ -94,12 +94,6 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     }
 
     @Override
-    public OffsetContext getOffset() {
-        // Return a copy so that the values do not change further.
-        return new YugabyteDBOffsetContext(offsetContext);
-    }
-
-    @Override
     public void emitChangeRecords(DataCollectionSchema schema, Receiver receiver) throws InterruptedException {
         schema = synchronizeTableSchema(schema);
         super.emitChangeRecords(schema, receiver);

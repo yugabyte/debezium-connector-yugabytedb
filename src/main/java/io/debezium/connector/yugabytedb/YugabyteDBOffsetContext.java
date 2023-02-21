@@ -52,9 +52,6 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     private TransactionContext transactionContext;
     private IncrementalSnapshotContext<TableId> incrementalSnapshotContext;
 
-    private Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets;
-    private YugabyteDBConnectorConfig connectorConfig;
-
     private YugabyteDBOffsetContext(YugabyteDBConnectorConfig connectorConfig,
                                     OpId lsn, OpId lastCompletelyProcessedLsn,
                                     OpId lastCommitLsn,
@@ -85,8 +82,6 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     public YugabyteDBOffsetContext(Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets,
                                    YugabyteDBConnectorConfig config) {
-        this.previousOffsets = previousOffsets;
-        this.connectorConfig = config;
         this.tabletSourceInfo = new ConcurrentHashMap();
         this.sourceInfo = new SourceInfo(config);
         this.sourceInfoSchema = sourceInfo.schema();
@@ -106,13 +101,6 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         LOGGER.debug("Populating the tabletsourceinfo with " + this.getTabletSourceInfo());
         this.transactionContext = new TransactionContext();
         this.incrementalSnapshotContext = new SignalBasedIncrementalSnapshotContext<>();
-    }
-
-    public YugabyteDBOffsetContext(YugabyteDBOffsetContext that) {
-        this(that.previousOffsets, that.connectorConfig);
-        for (Map.Entry<String, SourceInfo> entry : that.tabletSourceInfo.entrySet()) {
-            this.tabletSourceInfo.put(entry.getKey(), entry.getValue());
-        }
     }
 
     public static YugabyteDBOffsetContext initialContextForSnapshot(YugabyteDBConnectorConfig connectorConfig,
