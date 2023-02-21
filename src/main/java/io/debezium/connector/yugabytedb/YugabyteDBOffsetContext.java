@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,7 +33,12 @@ import io.debezium.util.Clock;
 
 public class YugabyteDBOffsetContext implements OffsetContext {
     public static final String LAST_COMPLETELY_PROCESSED_LSN_KEY = "lsn_proc";
-    public static final String LAST_COMMIT_LSN_KEY = "lsn_commit";
+
+    // TODO: Remove commented area before final merge (commenting because this is not being used)
+    // public static final String LAST_COMMIT_LSN_KEY = "lsn_commit";
+    public static final String TABLET_KEY = "tablet";
+    public static final String TABLET_LSN = "tablet_lsn";
+
     private static final Logger LOGGER = LoggerFactory
             .getLogger(YugabyteDBSnapshotChangeEventSource.class);
     private final Schema sourceInfoSchema;
@@ -44,6 +50,9 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     private OpId streamingStoppingLsn = null;
     private TransactionContext transactionContext;
     private IncrementalSnapshotContext<TableId> incrementalSnapshotContext;
+
+    private Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets;
+    private YugabyteDBConnectorConfig connectorConfig;
 
     private YugabyteDBOffsetContext(YugabyteDBConnectorConfig connectorConfig,
                                     OpId lsn, OpId lastCompletelyProcessedLsn,
@@ -94,6 +103,10 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         LOGGER.debug("Populating the tabletsourceinfo with " + this.getTabletSourceInfo());
         this.transactionContext = new TransactionContext();
         this.incrementalSnapshotContext = new SignalBasedIncrementalSnapshotContext<>();
+    }
+
+    public YugabyteDBOffsetContext(YugabyteDBOffsetContext that) {
+        this(that.previousOffsets, that.connectorConfig);
     }
 
     public static YugabyteDBOffsetContext initialContextForSnapshot(YugabyteDBConnectorConfig connectorConfig,
@@ -154,6 +167,17 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         return sourceInfo.isSnapshot() ? result
                 : incrementalSnapshotContext
                         .store(transactionContext.store(result));
+    }
+
+    public Struct getSourceInfoForTablet(String tabletId) {
+        Schema schema = SchemaBuilder.struct()
+                .field(TABLET_KEY, Schema.STRING_SCHEMA)
+                .field(TABLET_LSN, Schema.STRING_SCHEMA)
+                .build();
+
+        return new Struct(schema)
+                .put(TABLET_KEY, tabletId)
+                .put(TABLET_LSN, this.tabletSourceInfo.get(tabletId).lsn());
     }
 
     @Override
