@@ -35,7 +35,7 @@ public class SourceInfoTest extends YugabyteDBTestBase {
             fail();
         }
 
-        source.update(DUMMY_TABLET_ID, OpId.valueOf("::::"), 123L, "txId",
+        source.update(DUMMY_TABLET_ID, OpId.valueOf("1:2:keyStrValue:4:5"), 123L, "txId",
                       new TableId("yugabyte", "public", DUMMY_TABLE_NAME), 123L, 123L);
     }
 
@@ -66,7 +66,7 @@ public class SourceInfoTest extends YugabyteDBTestBase {
 
     @Test
     public void shouldHaveLsn() {
-        assertEquals("::::", source.struct().getString(SourceInfo.LSN_KEY));
+        assertEquals("1:2:keyStrValuc=:4:5", source.struct().getString(SourceInfo.LSN_KEY));
     }
 
     @Test
@@ -85,9 +85,9 @@ public class SourceInfoTest extends YugabyteDBTestBase {
                 .field(SourceInfo.TXID_KEY, Schema.OPTIONAL_STRING_SCHEMA)
                 .field(SourceInfo.LSN_KEY, Schema.OPTIONAL_STRING_SCHEMA)
                 .field(SourceInfo.XMIN_KEY, Schema.OPTIONAL_INT64_SCHEMA)
-                .field(SourceInfo.TABLET_ID, Schema.STRING_SCHEMA)
                 .field(SourceInfo.COMMIT_TIME, Schema.OPTIONAL_INT64_SCHEMA)
                 .field(SourceInfo.RECORD_TIME, Schema.INT64_SCHEMA)
+                .field(SourceInfo.TABLET_ID, Schema.STRING_SCHEMA)
                 .build();
 
         VerifyRecord.assertConnectSchemasAreEqual(null, source.struct().schema(), schema);
