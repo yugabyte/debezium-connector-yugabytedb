@@ -18,6 +18,7 @@ import io.debezium.connector.SnapshotRecord;
 import io.debezium.connector.common.BaseSourceInfo;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.relational.TableId;
+import io.debezium.time.Conversions;
 
 /**
  * Information about the source of information, which for normal events contains information about the transaction id and the
@@ -137,6 +138,9 @@ public final class SourceInfo extends BaseSourceInfo {
         this.txId = txId;
         this.xmin = xmin;
         this.recordTime = recordTime;
+
+        // The commit time of the record is technically the timestamp of the record.
+        this.timestamp = Conversions.toInstantFromMicros(commitTime);
 
         if (tableId != null && tableId.schema() != null) {
             this.schemaName = tableId.schema();
