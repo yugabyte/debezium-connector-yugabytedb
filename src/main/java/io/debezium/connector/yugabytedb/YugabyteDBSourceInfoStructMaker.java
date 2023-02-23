@@ -11,6 +11,9 @@ import org.apache.kafka.connect.data.Struct;
 import io.debezium.config.CommonConnectorConfig;
 import io.debezium.connector.AbstractSourceInfoStructMaker;
 
+/**
+ * @author Suranjan Kumar
+ */
 public class YugabyteDBSourceInfoStructMaker extends AbstractSourceInfoStructMaker<SourceInfo> {
 
     private final Schema schema;
@@ -18,7 +21,7 @@ public class YugabyteDBSourceInfoStructMaker extends AbstractSourceInfoStructMak
     public YugabyteDBSourceInfoStructMaker(String connector, String version, CommonConnectorConfig connectorConfig) {
         super(connector, version, connectorConfig);
         schema = commonSchemaBuilder()
-                .name("io.debezium.connector.postgresql.Source")
+                .name("io.debezium.connector.yugabytedb.Source")
                 .field(SourceInfo.SCHEMA_NAME_KEY, Schema.STRING_SCHEMA)
                 .field(SourceInfo.TABLE_NAME_KEY, Schema.STRING_SCHEMA)
                 .field(SourceInfo.TXID_KEY, Schema.OPTIONAL_STRING_SCHEMA)

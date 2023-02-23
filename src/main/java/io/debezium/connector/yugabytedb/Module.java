@@ -15,9 +15,7 @@ import io.debezium.util.IoUtil;
  * @author Suranjan Kumar
  */
 public final class Module {
-
-    // TODO : Suranjan Kuamr Fix the version
-    private static final Properties INFO = IoUtil.loadProperties(Module.class, "io/debezium/connector/yugabytedb2/build.version");
+    private static final Properties INFO = IoUtil.loadProperties(Module.class, "io/debezium/connector/yugabytedb/build.version");
 
     public static String version() {
         return INFO.getProperty("version");
