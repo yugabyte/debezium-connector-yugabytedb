@@ -101,7 +101,7 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
                     queue);
         } else {
             LOGGER.info("Instantiating CONSISTENT Streaming Source");
-            return new YugabyteDbConsistentStreaming(
+            return new YugabyteDBConsistentStreamingSource(
                     configuration,
                     snapshotter,
                     jdbcConnection,
