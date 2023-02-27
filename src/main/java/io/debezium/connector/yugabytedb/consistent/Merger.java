@@ -36,6 +36,8 @@ public class Merger {
      * @see Message
      */
     public synchronized void addMessage(Message message) {
+        assert message.record.getRowMessage().getOp() != CdcService.RowMessage.Op.DDL;
+
         setTabletSafeTime(message.tablet, message.commitTime);
         if (message.record.getRowMessage().getOp() == CdcService.RowMessage.Op.SAFEPOINT) {
             LOGGER.debug("Received safe point message {}", message);

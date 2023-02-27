@@ -28,11 +28,11 @@ import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEventSource {
+public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChangeEventSource {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDbConsistentStreaming.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBConsistentStreamingSource.class);
 
-    public YugabyteDbConsistentStreaming(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter, YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock, YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection, ChangeEventQueue<DataChangeEvent> queue) {
+    public YugabyteDBConsistentStreamingSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter, YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock, YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection, ChangeEventQueue<DataChangeEvent> queue) {
         super(connectorConfig, snapshotter, connection, dispatcher, errorHandler, clock, schema, taskContext, replicationConnection, queue);
     }
 
@@ -202,11 +202,18 @@ public class YugabyteDbConsistentStreaming extends YugabyteDBStreamingChangeEven
                                     .getCdcSdkProtoRecordsList()) {
                                 CdcService.RowMessage.Op op = record.getRowMessage().getOp();
 
-                                merger.addMessage(new Message.Builder()
-                                        .setRecord(record)
-                                        .setTabletId(tabletId)
-                                        .setSnapshotTime(response.getSnapshotTime())
-                                        .build());
+                                if (record.getRowMessage().getOp() == CdcService.RowMessage.Op.DDL) {
+                                    YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(record.getRowMessage(), this.yugabyteDBTypeRegistry);
+                                    dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
+                                            beginCountForTablet, tabletId, new YBPartition(tabletId),
+                                            response.getSnapshotTime(), record, record.getRowMessage(), ybMessage);
+                                } else {
+                                    merger.addMessage(new Message.Builder()
+                                            .setRecord(record)
+                                            .setTabletId(tabletId)
+                                            .setSnapshotTime(response.getSnapshotTime())
+                                            .build());
+                                }
                                 OpId finalOpid = new OpId(
                                         response.getTerm(),
                                         response.getIndex(),
