@@ -11,9 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.apache.kafka.common.utils.CopyOnWriteMap;
 import org.apache.kafka.connect.data.Schema;
-import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,16 +27,10 @@ import io.debezium.pipeline.spi.Offsets;
 import io.debezium.pipeline.txmetadata.TransactionContext;
 import io.debezium.relational.TableId;
 import io.debezium.schema.DataCollectionId;
-import io.debezium.time.Conversions;
 import io.debezium.util.Clock;
 
 public class YugabyteDBOffsetContext implements OffsetContext {
     public static final String LAST_COMPLETELY_PROCESSED_LSN_KEY = "lsn_proc";
-
-    // TODO: Remove commented area before final merge (commenting because this is not being used)
-    // public static final String LAST_COMMIT_LSN_KEY = "lsn_commit";
-    public static final String TABLET_KEY = "tablet";
-    public static final String TABLET_LSN = "tablet_lsn";
 
     private static final Logger LOGGER = LoggerFactory
             .getLogger(YugabyteDBSnapshotChangeEventSource.class);
