@@ -12,6 +12,7 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.cdc.CdcService;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.CDCStreamInfo;
 import org.yb.cdc.CdcService.CDCRecordType;
@@ -247,6 +248,47 @@ public class YBClientUtils {
     return null;
   }
 
+    /**
+     * Get the {@link CDCStreamInfo} object for the specified configuration. Note that the connector
+     * configuration is just used to extract the stream ID
+     * @param connectorConfig the connector configuration
+     * @return a {@link CDCStreamInfo} object having metadata about the stream ID
+     * @throws Exception
+     */
+  public static CDCStreamInfo getStreamInfo(YugabyteDBConnectorConfig connectorConfig)
+          throws Exception{
+      YBClient ybClient = getYbClient(connectorConfig);
+      GetDBStreamInfoResponse getDBStreamInfoResponse =
+              ybClient.getDBStreamInfo(connectorConfig.streamId());
+
+      // If there are no tables in the response then we should return a null.
+      if (getDBStreamInfoResponse.getTableInfoList().size() == 0) {
+          return null;
+      }
+
+      // We just need to pass one table ID to get the RPC request going, for now, taking the first
+      // table ID in the list.
+      ListCDCStreamsResponse resp =
+              ybClient.listCDCStreams(
+                      getDBStreamInfoResponse.getTableInfoList().get(0).getTableId().toStringUtf8(),
+                      getDBStreamInfoResponse.getNamespaceId(), null);
+
+      // Close the ybClient instance.
+      try {
+          ybClient.close();
+      } catch (Exception e) {
+          LOGGER.warn("Exception while closing YBClient instance", e);
+      }
+
+      for (CDCStreamInfo streamInfo : resp.getStreams()) {
+          if (streamInfo.getStreamId().equals(connectorConfig.streamId())) {
+              return streamInfo;
+          }
+      }
+
+      return null;
+  }
+
   /**
    * Check whether the passed stream ID in the connector configuration has before image enabled.
    * Make sure this function is not called often since this involves multiple RPC calls which
@@ -257,43 +299,30 @@ public class YBClientUtils {
    */
   public static boolean isBeforeImageEnabled(YugabyteDBConnectorConfig connectorConfig)
       throws Exception {
-    YBClient ybClient = getYbClient(connectorConfig);
-    GetDBStreamInfoResponse getDBStreamInfoResponse =
-      ybClient.getDBStreamInfo(connectorConfig.streamId());
+    CDCStreamInfo cdcStreamInfo = getStreamInfo(connectorConfig);
 
-    // If there are no tables in the response then we should return a null saying that the before
-    // image is not enabled.
-    if (getDBStreamInfoResponse.getTableInfoList().size() == 0) {
-      return false;
-    }
-
-    // We just need to pass one table ID to get the RPC request going, for now, taking the first
-    // table ID in the list.
-    ListCDCStreamsResponse resp =
-      ybClient.listCDCStreams(
-        getDBStreamInfoResponse.getTableInfoList().get(0).getTableId().toStringUtf8(),
-        getDBStreamInfoResponse.getNamespaceId(), null);
-
-    CDCStreamInfo cdcStreamInfo = null;
-    for (CDCStreamInfo streamInfo : resp.getStreams()) {
-      if (streamInfo.getStreamId().equals(connectorConfig.streamId())) {
-        cdcStreamInfo = streamInfo;
-        break;
-      }
-    }
-
+    // If streamInfo is null, it would mean that either there are no tables configured with the
+    // given stream ID.
     if (cdcStreamInfo == null) {
       LOGGER.warn("The configured stream ID is not found in the list stream response");
       return false;
     }
 
-    // Close the ybClient instance.
-    try {
-      ybClient.close();
-    } catch (Exception e) {
-      LOGGER.warn("Exception while closing YBClient instance", e);
-    }
-
     return cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.ALL.name());
+  }
+
+  /**
+   * Check whether the stream has EXPLICIT checkpointing enabled.
+   * @param connectorConfig the connector configuration
+   * @return true if stream has EXPLICIT checkpointing enabled, false otherwise
+   * @throws Exception
+   */
+  public static boolean isExplicitCheckpointingEnabled(YugabyteDBConnectorConfig connectorConfig)
+          throws Exception {
+      CDCStreamInfo cdcStreamInfo = getStreamInfo(connectorConfig);
+      Objects.requireNonNull(cdcStreamInfo);
+
+      return cdcStreamInfo.getOptions().get("checkpoint_type")
+               .equals(CdcService.CDCCheckpointType.EXPLICIT);
   }
 }

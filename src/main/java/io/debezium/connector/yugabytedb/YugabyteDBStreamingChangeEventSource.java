@@ -88,7 +88,10 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
     // and the value is tablet UUID
-    List<Pair<String, String>> tabletPairList = null;
+    protected List<Pair<String, String>> tabletPairList = null;
+
+    protected Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
+    protected boolean explicitCheckpointingEnabled = false;
 
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
                                                 YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
@@ -119,6 +122,16 @@ public class YugabyteDBStreamingChangeEventSource implements
         syncClient = new YBClient(asyncYBClient);
         yugabyteDBTypeRegistry = taskContext.schema().getTypeRegistry();
         this.queue = queue;
+        this.tabletToExplicitCheckpoint = new HashMap<>();
+
+        try {
+            this.explicitCheckpointingEnabled = YBClientUtils.isExplicitCheckpointingEnabled(connectorConfig);
+        } catch (Exception e) {
+            LOGGER.warn("Cannot retrieve the status for explicit checkpointing, checkpointing will not be available (can lead to instability). Received error", e);
+            if (!connectorConfig.ignoreExceptions()) {
+                throw new DebeziumException(e);
+            }
+        }
     }
 
     @Override
@@ -271,6 +284,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         for (Pair<String, String> entry : tabletPairList) {
             final String tabletId = entry.getValue();
             offsetContext.initSourceInfo(tabletId, this.connectorConfig);
+            tabletToExplicitCheckpoint.put(tabletId, null);
         }
 
         // This will contain the tablet ID mapped to the number of records it has seen
@@ -354,7 +368,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                       try {
                         response = this.syncClient.getChangesCDCSDK(
                             table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
-                            cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId));
+                            cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
+                            explicitCheckpointingEnabled ? tabletToExplicitCheckpoint.get(tabletId) : null);
                       } catch (CDCErrorException cdcException) {
                         // Check if exception indicates a tablet split.
                         LOGGER.debug("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
@@ -660,6 +675,10 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     @Override
     public void commitOffset(Map<String, ?> offset) {
+        if (!explicitCheckpointingEnabled) {
+            return;
+        }
+
         try {
             LOGGER.info("Committing offsets on server");
 
@@ -671,13 +690,8 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                     // Parse the string to get the OpId object.
                     OpId tempOpId = OpId.valueOf((String) entry.getValue());
+                    this.tabletToExplicitCheckpoint.put(entry.getKey(), tempOpId.toCdcSdkCheckpoint());
 
-                    YBTable table = getTableFromTablet(entry.getKey());
-                    Objects.requireNonNull(table);
-
-                    this.syncClient.commitCheckpoint(table,
-                            this.connectorConfig.streamId(), entry.getKey() /* tabletId */,
-                            tempOpId.getTerm(), tempOpId.getIndex(), false /* initialCheckpoint */);
                     LOGGER.debug("Committed checkpoint on server for stream ID {} tablet {} with term {} index {}",
                                 this.connectorConfig.streamId(), entry.getKey(), tempOpId.getTerm(), tempOpId.getIndex());
                 }
