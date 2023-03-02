@@ -4,24 +4,21 @@ import java.sql.SQLException;
 import java.util.concurrent.CompletableFuture;
 
 import org.apache.log4j.Logger;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import static org.junit.Assert.*;
+import org.junit.jupiter.api.*;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 public class YugabyteDBConfigTest extends YugabyteDBTestBase {
   private final static Logger LOGGER = Logger.getLogger(YugabyteDBConnectorIT.class);
 
     private static YugabyteYSQLContainer ybContainer;
 
-    @BeforeClass
+    @BeforeAll
     public static void beforeClass() throws SQLException {
         ybContainer = TestHelper.getYbContainer();
         ybContainer.start();
@@ -31,19 +28,19 @@ public class YugabyteDBConfigTest extends YugabyteDBTestBase {
         TestHelper.dropAllSchemas();
     }
 
-    @Before
+    @BeforeEach
     public void before() {
         initializeConnectorTestFramework();
     }
 
-    @After
+    @AfterEach
     public void after() throws Exception {
         stopConnector();
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
     }
 
-    @AfterClass
-    public static void afterClass() throws Exception {
+    @AfterAll
+    public static void afterClass() {
         ybContainer.stop();
     }
 
