@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
@@ -236,7 +237,6 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
     int columnCount = 40;
     TestHelper.dropAllSchemas();
 
-    int sum = 0;
     createTables(columnCount);
 
     String dbStreamId = TestHelper.getNewDbStreamId(COLOCATED_DB_NAME, "test_1");
@@ -272,6 +272,8 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
 
     LOGGER.info("Expected record count after thread finish: {}", totalExpectedRecords);
 
+    // TODO: Figure out a way to verify the column info in records as well.
+    // Maybe use record.schema().fields().size() to verify column count
     // Verify the record count now
     List<SourceRecord> records = new ArrayList<>();
     CompletableFuture.runAsync(() -> verifyRecordCount(records, totalExpectedRecords))
