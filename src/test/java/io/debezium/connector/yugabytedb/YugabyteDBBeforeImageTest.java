@@ -1,7 +1,6 @@
 package io.debezium.connector.yugabytedb;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import java.sql.SQLException;
@@ -11,15 +10,10 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.YugabyteYSQLContainer;
@@ -34,7 +28,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBTestBase {
   private static YugabyteYSQLContainer ybContainer;
   private static String masterAddresses;
 
-  @BeforeClass
+  @BeforeAll
   public static void beforeClass() throws SQLException {
       ybContainer = TestHelper.getYbContainer();
       ybContainer.start();
@@ -46,18 +40,18 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBTestBase {
       TestHelper.dropAllSchemas();
   }
 
-  @Before
+  @BeforeEach
   public void before() {
       initializeConnectorTestFramework();
   }
 
-  @After
+  @AfterEach
   public void after() throws Exception {
       stopConnector();
       TestHelper.executeDDL("drop_tables_and_databases.ddl");
   }
 
-  @AfterClass
+  @AfterAll
   public static void afterClass() throws Exception {
       ybContainer.stop();
   }

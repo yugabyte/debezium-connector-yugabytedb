@@ -7,7 +7,7 @@ import java.util.concurrent.CompletableFuture;
 
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.log4j.Logger;
-import org.junit.*;
+import org.junit.jupiter.api.*;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.DebeziumException;
@@ -19,7 +19,7 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBTestBase {
     private final static Logger LOGGER = Logger.getLogger(YugabyteDBCompleteTypesTest.class);
     private static YugabyteYSQLContainer ybContainer;
 
-    @BeforeClass
+    @BeforeAll
     public static void beforeClass() throws SQLException {
         ybContainer = TestHelper.getYbContainer();
         ybContainer.start();
@@ -30,18 +30,18 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBTestBase {
         TestHelper.dropAllSchemas();
     }
 
-    @Before
+    @BeforeEach
     public void before() {
         initializeConnectorTestFramework();
     }
 
-    @After
+    @AfterEach
     public void after() throws Exception {
         stopConnector();
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
     }
 
-    @AfterClass
+    @AfterAll
     public static void afterClass() throws Exception {
         ybContainer.stop();
     }

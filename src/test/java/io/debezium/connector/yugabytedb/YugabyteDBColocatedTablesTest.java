@@ -4,14 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-import java.sql.SQLException;
 import java.time.Duration;
 
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.*;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
@@ -33,7 +28,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
   private final String INSERT_TEST_NO_COLOCATED =
     "INSERT INTO test_no_colocated VALUES (%d, 'not a colocated table');";
 
-  @BeforeClass
+  @BeforeAll
   public static void beforeClass() throws Exception {
     ybContainer = TestHelper.getYbContainer();
     ybContainer.start();
@@ -44,20 +39,20 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
     TestHelper.executeDDL("yugabyte_create_tables.ddl");
   }
 
-  @Before
+  @BeforeEach
   public void before() throws Exception {
     initializeConnectorTestFramework();
     TestHelper.dropAllSchemas();
     createTables();
   }
 
-  @After
+  @AfterEach
   public void after() throws Exception {
     stopConnector();
     dropTables();
   }
 
-  @AfterClass
+  @AfterAll
   public static void afterClass() throws Exception {
     ybContainer.stop();
   }

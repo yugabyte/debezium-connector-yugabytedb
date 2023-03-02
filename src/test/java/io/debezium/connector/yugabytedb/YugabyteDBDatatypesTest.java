@@ -1,8 +1,5 @@
 package io.debezium.connector.yugabytedb;
 
-import static org.junit.Assert.*;
-import static org.junit.jupiter.api.Assertions.fail;
-
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -17,21 +14,17 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.log4j.Logger;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.*;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
 import io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState;
 import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
-import io.debezium.util.Strings;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Basic unit tests to check the behaviour with YugabyteDB datatypes
@@ -226,7 +219,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
       fail();
     }
   }
-    @BeforeClass
+    @BeforeAll
     public static void beforeClass() throws SQLException {
         ybContainer = TestHelper.getYbContainer();
         ybContainer.start();
@@ -236,19 +229,19 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         TestHelper.dropAllSchemas();
     }
 
-    @Before
+    @BeforeEach
     public void before() {
         initializeConnectorTestFramework();
     }
 
-    @After
+    @AfterEach
     public void after() throws Exception {
         stopConnector();
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
     }
 
-    @AfterClass
-    public static void afterClass() throws Exception {
+    @AfterAll
+    public static void afterClass() {
         ybContainer.stop();
     }
     // This test will just verify that the TestContainers are up and running
