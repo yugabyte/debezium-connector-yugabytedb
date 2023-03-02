@@ -52,6 +52,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
   public void before() throws Exception {
     initializeConnectorTestFramework();
     TestHelper.dropAllSchemas();
+    // TODO Vaibhav: commented for test only, remove for final cleanup
 //    createTables();
   }
 
@@ -319,6 +320,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
     TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_3;", COLOCATED_DB_NAME);
     TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_no_colocated;", COLOCATED_DB_NAME);
   }
+
   private void verifyRecordCount(List<SourceRecord> records, long recordsCount) {
     waitAndFailIfCannotConsume(records, recordsCount, 10 * 60 * 1000);
   }
@@ -348,7 +350,6 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
 
     assertEquals(recordsCount, totalConsumedRecords.get());
   }
-
 
   protected static class Executor implements Runnable {
     private final String tableName;
