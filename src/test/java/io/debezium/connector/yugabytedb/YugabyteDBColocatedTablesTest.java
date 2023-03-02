@@ -1,17 +1,20 @@
 package io.debezium.connector.yugabytedb;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
-import java.sql.SQLException;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.apache.kafka.connect.source.SourceRecord;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionTimeoutException;
+import org.junit.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
@@ -23,6 +26,7 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
+  private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBColocatedTablesTest.class);
   private static YugabyteYSQLContainer ybContainer;
 
   private static final String COLOCATED_DB_NAME = "colocated_database";  
@@ -48,7 +52,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
   public void before() throws Exception {
     initializeConnectorTestFramework();
     TestHelper.dropAllSchemas();
-    createTables();
+//    createTables();
   }
 
   @After
@@ -58,7 +62,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
   }
 
   @AfterClass
-  public static void afterClass() throws Exception {
+  public static void afterClass() {
     ybContainer.stop();
   }
 
@@ -221,25 +225,89 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
       recordsAfterRestart.topics().contains(TestHelper.TEST_SERVER + ".public.test_no_colocated"));
   }
 
+  @Test
+  public void dropColumnsForTablesAndHandleSchemaChanges() throws Exception {
+    /**
+     * 1. Create colocated tables having 40 columns (+2 for other columns)
+     * 2. Start the CDC pipeline and keep inserting data
+     * 3. Execute ALTER TABLE...DROP commands randomly.
+     */
+    int columnCount = 40;
+    TestHelper.dropAllSchemas();
+
+    int sum = 0;
+    createTables(columnCount);
+
+    String dbStreamId = TestHelper.getNewDbStreamId(COLOCATED_DB_NAME, "test_1");
+    Configuration.Builder configBuilder =
+        TestHelper.getConfigBuilder(COLOCATED_DB_NAME, "public.test_1,public.test_2,public.test_3", dbStreamId);
+    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 5_000);
+    configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
+
+    start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> assertTrue(success));
+
+    awaitUntilConnectorIsReady();
+
+    // Start threads to perform schema change operations on the colocated tables.
+    Executor ex1 = new Executor("test_1", columnCount);
+    Executor ex2 = new Executor("test_2", columnCount);
+    Executor ex3 = new Executor("test_3", columnCount);
+    Thread thread1 = new Thread(ex1);
+    Thread thread2 = new Thread(ex2);
+    Thread thread3 = new Thread(ex3);
+
+    // We can get the total number of records to be inserted for one table and the actual number
+    // would be 3 times of that value since all the tables are having same inserts.
+    long totalExpectedRecords = 3 * ex1.getTotalRecordsToBeInserted();
+
+    thread1.start();
+    thread2.start();
+    thread3.start();
+
+    // Wait for the threads to finish.
+    thread1.join();
+    thread2.join();
+    thread3.join();
+
+    LOGGER.info("Expected record count after thread finish: {}", totalExpectedRecords);
+
+    // Verify the record count now
+    List<SourceRecord> records = new ArrayList<>();
+    CompletableFuture.runAsync(() -> verifyRecordCount(records, totalExpectedRecords))
+            .exceptionally(throwable -> {
+              throw new RuntimeException(throwable);
+            }).get();
+  }
+
   /**
    * Helper function to create the required tables in the database COLOCATED_DB_NAME
    */
-  private void createTables() {
-    final String createTest1 =
-      "CREATE TABLE test_1 (id INT PRIMARY KEY, name TEXT) WITH (COLOCATED = true);";
-    final String createTest2 =
-      "CREATE TABLE test_2 (text_key TEXT PRIMARY KEY) WITH (COLOCATED = true);";
-    final String createTest3 = 
-      "CREATE TABLE test_3 (hours FLOAT PRIMARY KEY, hours_in_text VARCHAR(40))"
-      + " WITH (COLOCATED = true);";
+  private void createTables(int columnCount) {
+    StringBuilder createTest1 = new StringBuilder("CREATE TABLE test_1 (id INT PRIMARY KEY, name TEXT");
+    StringBuilder createTest2 = new StringBuilder("CREATE TABLE test_2 (text_key TEXT PRIMARY KEY, random_val TEXT DEFAULT 'random value'");
+    StringBuilder createTest3 = new StringBuilder("CREATE TABLE test_3 (hours FLOAT PRIMARY KEY, hours_in_text VARCHAR(40)");
+    for (int i = 1; i <= columnCount; ++i) {
+      createTest1.append(", col_").append(i).append(" INT DEFAULT 404");
+      createTest2.append(", col_").append(i).append(" INT DEFAULT 404");
+      createTest3.append(", col_").append(i).append(" INT DEFAULT 404");
+    }
+
+    createTest1.append(") WITH (COLOCATED = true);");
+    createTest2.append(") WITH (COLOCATED = true);");
+    createTest3.append(") WITH (COLOCATED = true);");
+
     final String createTestNoColocated = 
       "CREATE TABLE test_no_colocated (id INT PRIMARY KEY, name TEXT) WITH (COLOCATED = false)"
       + " SPLIT INTO 3 TABLETS;";
 
-    TestHelper.executeInDatabase(createTest1, COLOCATED_DB_NAME);
-    TestHelper.executeInDatabase(createTest2, COLOCATED_DB_NAME);
-    TestHelper.executeInDatabase(createTest3, COLOCATED_DB_NAME);
+    TestHelper.executeInDatabase(createTest1.toString(), COLOCATED_DB_NAME);
+    TestHelper.executeInDatabase(createTest2.toString(), COLOCATED_DB_NAME);
+    TestHelper.executeInDatabase(createTest3.toString(), COLOCATED_DB_NAME);
     TestHelper.executeInDatabase(createTestNoColocated, COLOCATED_DB_NAME);
+  }
+
+  private void createTables() {
+    createTables(0);
   }
 
   /**
@@ -250,5 +318,67 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
     TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_2;", COLOCATED_DB_NAME);
     TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_3;", COLOCATED_DB_NAME);
     TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_no_colocated;", COLOCATED_DB_NAME);
+  }
+  private void verifyRecordCount(List<SourceRecord> records, long recordsCount) {
+    waitAndFailIfCannotConsume(records, recordsCount, 10 * 60 * 1000);
+  }
+
+  private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
+                                          long milliSecondsToWait) {
+    AtomicLong totalConsumedRecords = new AtomicLong();
+    long seconds = milliSecondsToWait / 1000;
+    try {
+      Awaitility.await()
+              .atMost(Duration.ofSeconds(seconds))
+              .until(() -> {
+                int consumed = super.consumeAvailableRecords(record -> {
+                  LOGGER.debug("The record being consumed is " + record);
+                  records.add(record);
+                });
+                if (consumed > 0) {
+                  totalConsumedRecords.addAndGet(consumed);
+                  LOGGER.debug("Consumed " + totalConsumedRecords + " records");
+                }
+
+                return totalConsumedRecords.get() == recordsCount;
+              });
+    } catch (ConditionTimeoutException exception) {
+      fail("Failed to consume " + recordsCount + " records in " + seconds + " seconds, total consumed: " + totalConsumedRecords.get(), exception);
+    }
+
+    assertEquals(recordsCount, totalConsumedRecords.get());
+  }
+
+
+  protected static class Executor implements Runnable {
+    private final String tableName;
+    private final int columnCount;
+
+    public Executor(String tableName, int columnCount) {
+      this.tableName = tableName;
+      this.columnCount = columnCount;
+    }
+
+    public long getTotalRecordsToBeInserted() {
+      long sum = 0;
+      for (int i = 1; i <= this.columnCount; ++i) {
+        sum += i;
+      }
+
+      return sum;
+    }
+
+    @Override
+    public void run() {
+      int startKey = 1;
+      for (int i = 1; i <= columnCount; ++i) {
+        // Drop the column and then insert some records
+        TestHelper.executeInDatabase("ALTER TABLE " + tableName + " DROP COLUMN col_" + i + ";", COLOCATED_DB_NAME);
+
+        String generateSeries = "INSERT INTO %s VALUES (generate_series(%d, %d));";
+        TestHelper.executeInDatabase(String.format(generateSeries, tableName, startKey, startKey + i - 1), COLOCATED_DB_NAME);
+        startKey += i;
+      }
+    }
   }
 }
