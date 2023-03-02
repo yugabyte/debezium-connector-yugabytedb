@@ -1,7 +1,6 @@
 package io.debezium.connector.yugabytedb;
 
-import static org.junit.Assert.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.sql.SQLException;
 import java.time.Duration;
@@ -14,12 +13,7 @@ import java.util.stream.Collectors;
 
 import org.apache.kafka.connect.data.Struct;
 import org.awaitility.Awaitility;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.YugabyteYSQLContainer;
@@ -40,7 +34,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBTestBase {
   private static YugabyteYSQLContainer ybContainer;
   private static String masterAddresses;
 
-  @BeforeClass
+  @BeforeAll
   public static void beforeClass() throws SQLException {
       ybContainer = TestHelper.getYbContainer();
       ybContainer.start();
@@ -52,19 +46,19 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBTestBase {
       TestHelper.dropAllSchemas();
   }
 
-  @Before
+  @BeforeEach
   public void before() {
       initializeConnectorTestFramework();
   }
 
-  @After
+  @AfterEach
   public void after() throws Exception {
       stopConnector();
       TestHelper.executeDDL("drop_tables_and_databases.ddl");
   }
 
-  @AfterClass
-  public static void afterClass() throws Exception {
+  @AfterAll
+  public static void afterClass() {
       ybContainer.stop();
   }
 
@@ -235,7 +229,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBTestBase {
     LOGGER.debug("Record key set size: " + recordKeySet.size());
     List<Integer> rList = recordKeySet.stream().collect(Collectors.toList());
     Collections.sort(rList);
-    
+
     assertEquals(recordsCount, recordKeySet.size());
   }
 
