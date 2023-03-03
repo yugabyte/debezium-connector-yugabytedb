@@ -24,16 +24,21 @@ import static org.junit.jupiter.api.Assertions.*;
 public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
     private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSnapshotTest.class);
 
+    // We will use the database where colocation is turned on by default so that we can reuse
+    // the same database for colocated as well as non-colocated tables.
+    private final String DB_NAME = "colocated_database";
+
     private static YugabyteYSQLContainer ybContainer;
 
     @BeforeAll
-    public static void beforeClass() throws SQLException {
+    public static void beforeClass() throws Exception {
         ybContainer = TestHelper.getYbContainer();
         ybContainer.start();
 
         TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
         TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
         TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
     }
 
     @BeforeEach
@@ -44,6 +49,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
     @AfterEach
     public void after() throws Exception {
         stopConnector();
+        TestHelper.executeInDatabase("DROP TABLE snapshot_table;", DB_NAME);
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
     }
 
@@ -55,13 +61,14 @@ public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
     @Test
     public void testSnapshotRecordConsumption() throws Exception {
         TestHelper.dropAllSchemas();
-        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        createTable(false);
         final int recordsCount = 5000;
-        // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
+        // insert rows in the table snapshot_table with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertBulkRecords(recordsCount);
 
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        String dbStreamId = TestHelper.getNewDbStreamId(DB_NAME, "snapshot_table");
+        Configuration.Builder configBuilder =
+                TestHelper.getConfigBuilder(DB_NAME, "public.snapshot_table", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
         start(YugabyteDBConnector.class, configBuilder.build());
 
@@ -78,21 +85,21 @@ public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
     @Test
     public void shouldOnlySnapshotTablesInList() throws Exception {
         TestHelper.dropAllSchemas();
-        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        createTable(false);
 
         int recordCountT1 = 5000;
 
-        // Insert records in the table t1
+        // Insert records in the table snapshot_table
         insertBulkRecords(recordCountT1);
 
         // Insert records in the table all_types
-        TestHelper.execute(HelperStrings.INSERT_ALL_TYPES);
-        TestHelper.execute(HelperStrings.INSERT_ALL_TYPES);
+        TestHelper.executeInDatabase(DB_NAME, HelperStrings.INSERT_ALL_TYPES);
+        TestHelper.executeInDatabase(DB_NAME, HelperStrings.INSERT_ALL_TYPES);
 
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1,public.all_types", dbStreamId);
+        String dbStreamId = TestHelper.getNewDbStreamId(DB_NAME, "snapshot_table");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DB_NAME, "public.snapshot_table,public.all_types", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
-        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE_TABLES, "public.t1");
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE_TABLES, "public.snapshot_table");
 
         start(YugabyteDBConnector.class, configBuilder.build());
 
@@ -106,7 +113,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
         assertNotNull(records);
 
         // Assert that there are the expected number of records in the snapshot table
-        assertEquals(recordCountT1, records.recordsForTopic("test_server.public.t1").size());
+        assertEquals(recordCountT1, records.recordsForTopic("test_server.public.snapshot_table").size());
 
         // Since there are no records for this topic, the topic itself won't be created
         // so if the topic simply doesn't exist then the test should pass
@@ -116,15 +123,15 @@ public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
     @Test
     public void snapshotTableThenStreamData() throws Exception {
         TestHelper.dropAllSchemas();
-        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        createTable(false);
 
         int recordCountT1 = 5000;
 
-        // Insert records in the table t1
+        // Insert records in the table snapshot_table
         insertBulkRecords(recordCountT1);
 
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        String dbStreamId = TestHelper.getNewDbStreamId(DB_NAME, "snapshot_table");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DB_NAME, "public.snapshot_table", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
 
         start(YugabyteDBConnector.class, configBuilder.build());
@@ -133,8 +140,11 @@ public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
 
         // Dummy wait for some time so that the connector has some time to transition to streaming.
         TestHelper.waitFor(Duration.ofSeconds(30));
-        String insertStringFormat = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
-        TestHelper.executeBulkWithRange(insertStringFormat, recordCountT1, recordCountT1 + 1000);
+        String insertStringFormat = "INSERT INTO snapshot_table VALUES (%s, 'Vaibhav', 'Kushwaha', 30);";
+        TestHelper.executeInDatabase(
+                String.format(insertStringFormat,
+                              String.format("generate_series(%d, %d)",
+                                            recordCountT1, recordCountT1 + 1000)), DB_NAME);
 
         // Total records inserted at this stage would be recordCountT1 + 1000
         int totalRecords = recordCountT1 + 1000;
@@ -148,15 +158,15 @@ public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
     @Test
     public void snapshotTableWithCompaction() throws Exception {
         TestHelper.dropAllSchemas();
-        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        createTable(false);
 
         int recordCount = 5000;
 
-        // Insert records in the table t1
+        // Insert records in the table snapshot_table
         insertBulkRecords(recordCount);
 
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        String dbStreamId = TestHelper.getNewDbStreamId(DB_NAME, "snapshot_table");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DB_NAME, "public.snapshot_table", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
 
         start(YugabyteDBConnector.class, configBuilder.build());
@@ -165,9 +175,9 @@ public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
 
         // Assuming that at this point snapshot would still be running, update a few records and
         // compact the table.
-        TestHelper.execute("UPDATE t1 SET first_name='fname' WHERE id < 10;");
+        TestHelper.executeInDatabase("UPDATE snapshot_table SET first_name='fname' WHERE id < 10;", DB_NAME);
         YBClient ybClient = TestHelper.getYbClient(TestHelper.getMasterAddress());
-        YBTable ybTable = TestHelper.getYbTable(ybClient, "t1");
+        YBTable ybTable = TestHelper.getYbTable(ybClient, "snapshot_table");
         ybClient.flushTable(ybTable.getTableId());
 
         // Consume and assert that we have received all the records now.
@@ -175,9 +185,26 @@ public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
         waitAndFailIfCannotConsume(records, recordCount + 10 /* updates */);
     }
 
+    @Test
+    public void snapshotColocatedTables() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        // Create colocated tables
+
+        // We will be inserting
+        int recordCount = 3000;
+    }
+
+    private void createTable(boolean isColocated) throws Exception {
+        final String createCommand = String.format("CREATE TABLE snapshot_table (id INT PRIMARY KEY, " +
+                "first_name TEXT NOT NULL, last_name VARCHAR(40), hours DOUBLE PRECISION) " +
+                "WITH (COLOCATED = %b);", isColocated);
+        TestHelper.executeInDatabase(createCommand, DB_NAME);
+    }
+
     private void insertBulkRecords(int numRecords) throws Exception {
-        String formatInsertString = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
-        CompletableFuture.runAsync(() -> TestHelper.executeBulk(formatInsertString, numRecords))
+        String formatInsertString = "INSERT INTO snapshot_table VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
+        CompletableFuture.runAsync(() -> TestHelper.executeBulk(formatInsertString, numRecords, DB_NAME))
                 .exceptionally(throwable -> {
             throw new RuntimeException(throwable);
         }).get();
