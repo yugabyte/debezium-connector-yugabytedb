@@ -1,9 +1,5 @@
 package io.debezium.connector.yugabytedb;
 
-import static org.junit.Assert.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.fail;
-
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -15,17 +11,15 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Unit tests to verify that the connector works with schema changes gracefully.
@@ -40,7 +34,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
   
   private static YugabyteYSQLContainer ybContainer;
 
-  @BeforeClass
+  @BeforeAll
   public static void beforeClass() throws SQLException {
       String tserverFlags = "cdc_max_stream_intent_records=200";
       ybContainer = TestHelper.getYbContainer(null, tserverFlags);
@@ -52,19 +46,19 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
       TestHelper.dropAllSchemas();
   }
 
-  @Before
+  @BeforeEach
   public void before() {
       initializeConnectorTestFramework();
   }
 
-  @After
+  @AfterEach
   public void after() throws Exception {
       stopConnector();
       TestHelper.executeDDL("drop_tables_and_databases.ddl");
   }
 
-  @AfterClass
-  public static void afterClass() throws Exception {
+  @AfterAll
+  public static void afterClass() {
       ybContainer.stop();
   }
 

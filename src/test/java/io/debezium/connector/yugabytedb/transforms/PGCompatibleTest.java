@@ -1,14 +1,12 @@
 package io.debezium.connector.yugabytedb.transforms;
 
 import io.debezium.data.Envelope;
-import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
-import org.apache.kafka.common.protocol.types.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.header.Header;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.yb.util.Pair;
 
 import java.time.Instant;
@@ -18,7 +16,6 @@ import java.util.Map;
 
 import static io.debezium.transforms.ExtractNewRecordStateConfigDefinition.ADD_HEADERS;
 import static io.debezium.transforms.ExtractNewRecordStateConfigDefinition.HANDLE_DELETES;
-import static org.hamcrest.MatcherAssert.assertThat;
 
 
 public class PGCompatibleTest {
