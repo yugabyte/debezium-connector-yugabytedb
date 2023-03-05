@@ -6,13 +6,14 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 
-import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -58,10 +59,11 @@ public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
         ybContainer.stop();
     }
 
-    @Test
-    public void testSnapshotRecordConsumption() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void testSnapshotRecordConsumption(boolean colocated) throws Exception {
         TestHelper.dropAllSchemas();
-        createTable(false);
+        createTable(colocated);
         final int recordsCount = 5000;
         // insert rows in the table snapshot_table with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertBulkRecords(recordsCount);
@@ -82,10 +84,11 @@ public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
                 }).get();
     }
 
-    @Test
-    public void shouldOnlySnapshotTablesInList() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void shouldOnlySnapshotTablesInList(boolean colocated) throws Exception {
         TestHelper.dropAllSchemas();
-        createTable(false);
+        createTable(colocated);
 
         int recordCountT1 = 5000;
 
@@ -120,10 +123,11 @@ public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
         assertFalse(records.topics().contains("test_server.public.all_types"));
     }
 
-    @Test
-    public void snapshotTableThenStreamData() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void snapshotTableThenStreamData(boolean colocated) throws Exception {
         TestHelper.dropAllSchemas();
-        createTable(false);
+        createTable(colocated);
 
         int recordCountT1 = 5000;
 
@@ -155,10 +159,11 @@ public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
     }
 
     // GitHub issue: https://github.com/yugabyte/debezium-connector-yugabytedb/issues/143
-    @Test
-    public void snapshotTableWithCompaction() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void snapshotTableWithCompaction(boolean colocated) throws Exception {
         TestHelper.dropAllSchemas();
-        createTable(false);
+        createTable(colocated);
 
         int recordCount = 5000;
 
@@ -185,8 +190,9 @@ public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
         waitAndFailIfCannotConsume(records, recordCount + 10 /* updates */);
     }
 
-    @Test
-    public void snapshotColocatedTables() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void snapshotColocatedTables(boolean colocated) throws Exception {
         TestHelper.dropAllSchemas();
 
         // Create colocated tables
