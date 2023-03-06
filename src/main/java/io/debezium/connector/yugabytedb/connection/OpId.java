@@ -6,6 +6,7 @@ import java.util.Base64;
 import org.yb.cdc.CdcService.CDCSDKCheckpointPB;
 
 import com.google.common.base.Objects;
+import org.yb.client.CdcSdkCheckpoint;
 
 public class OpId implements Comparable<OpId> {
 
@@ -120,5 +121,9 @@ public class OpId implements Comparable<OpId> {
         return new OpId(checkpoint.getTerm(), checkpoint.getIndex(),
                         checkpoint.getKey().toByteArray(), checkpoint.getWriteId(),
                         checkpoint.getSnapshotTime());
+    }
+
+    public CdcSdkCheckpoint toCdcSdkCheckpoint() {
+        return new CdcSdkCheckpoint(this.term, this.index, this.key, this.write_id, this.time);
     }
 }
