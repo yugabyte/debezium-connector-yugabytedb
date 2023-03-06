@@ -590,6 +590,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withValidation(Field::isBoolean)
             .withInvisibleRecommender();
 
+    protected static final Field ENABLE_EXPLICIT_CHECKPOINTING = Field.create("yugabytedb.enable.explicit.checkpointing")
+            .withDescription("Internal use only")
+            .withValidation(Field::isBoolean)
+            .withInvisibleRecommender();
+
     public static final Field TABLET_LIST = Field.create(TASK_CONFIG_PREFIX + "tabletlist")
             .withDisplayName("YugabyteDB Tablet LIST for a Task")
             .withType(ConfigDef.Type.STRING)

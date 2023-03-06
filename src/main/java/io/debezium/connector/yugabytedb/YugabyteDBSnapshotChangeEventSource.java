@@ -19,11 +19,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
-import org.yb.client.AsyncYBClient;
-import org.yb.client.GetChangesResponse;
-import org.yb.client.GetCheckpointResponse;
-import org.yb.client.YBClient;
-import org.yb.client.YBTable;
+import org.yb.client.*;
 
 import io.debezium.DebeziumException;
 import io.debezium.connector.yugabytedb.connection.OpId;
@@ -64,6 +60,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     private OpId lastCompletelyProcessedLsn;
 
     private YugabyteDBTypeRegistry yugabyteDbTypeRegistry;
+
+    protected Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
 
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
                                                YugabyteDBTaskContext taskContext,
@@ -282,6 +280,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         schemaNeeded.put(entry.getValue(), Boolean.TRUE);
 
         previousOffset.initSourceInfo(entry.getValue(), this.connectorConfig);
+        this.tabletToExplicitCheckpoint.put(entry.getValue(), null);
         LOGGER.debug("Previous offset for tablet {} is {}", entry.getValue(), previousOffset.toString());
       }
 
@@ -364,7 +363,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 
                 GetChangesResponse resp = this.syncClient.getChangesCDCSDK(table, 
                     connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(), 
-                    cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId));
+                    cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
+                    taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tabletId) : null);
                 
                 // Process the response
                 for (CdcService.CDCSDKProtoRecordPB record : 
@@ -497,6 +497,33 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       // If the flow comes at this stage then it either failed or was aborted by 
       // some user interruption
       return SnapshotResult.aborted();
+    }
+
+    public void commitOffset(Map<String, ?> offset) {
+        if (!taskContext.shouldEnableExplicitCheckpointing()) {
+            return;
+        }
+
+        try {
+            LOGGER.info("Committing offsets on server");
+
+            for (Map.Entry<String, ?> entry : offset.entrySet()) {
+                // TODO: The transaction_id field is getting populated somewhere and see if it can
+                // be removed or blocked from getting added to this map.
+                if (!entry.getKey().equals("transaction_id")) {
+                    LOGGER.debug("Tablet: {} OpId: {}", entry.getKey(), entry.getValue());
+
+                    // Parse the string to get the OpId object.
+                    OpId tempOpId = OpId.valueOf((String) entry.getValue());
+                    this.tabletToExplicitCheckpoint.put(entry.getKey(), tempOpId.toCdcSdkCheckpoint());
+
+                    LOGGER.debug("Committed checkpoint on server for stream ID {} tablet {} with term {} index {}",
+                            this.connectorConfig.streamId(), entry.getKey(), tempOpId.getTerm(), tempOpId.getIndex());
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Unable to commit checkpoint", e);
+        }
     }
 
     /**

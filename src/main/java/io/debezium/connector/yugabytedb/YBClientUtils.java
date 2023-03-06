@@ -262,15 +262,13 @@ public class YBClientUtils {
                   ybClient.getDBStreamInfo(connectorConfig.streamId());
 
           // We just need to pass one table ID to get the RPC request going, for now, taking the first
-          // table ID in the list. If there are no tables in the GetDBStreamInfoResponse then
-          // getting a table ID will effectively throw a NullPointerException.
+          // table ID in the list.
           //
           // Note that we need to pass one table ID to the ListCDCStreamsRequest RPC call.
+          Objects.requireNonNull(getDBStreamInfoResponse.getTableInfoList().get(0));
           resp = ybClient.listCDCStreams(
                           getDBStreamInfoResponse.getTableInfoList().get(0).getTableId().toStringUtf8(),
                           getDBStreamInfoResponse.getNamespaceId(), null);
-      } catch (NullPointerException npe) {
-          LOGGER.error("There are no tables associated with the given stream ID", npe);
       } catch (Exception e) {
           LOGGER.warn("Exception while making RPC calls to server", e);
       }

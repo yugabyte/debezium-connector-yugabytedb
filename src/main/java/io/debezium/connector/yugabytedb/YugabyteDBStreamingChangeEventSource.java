@@ -86,12 +86,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     protected final Map<String, OpId> checkPointMap;
     protected final ChangeEventQueue<DataChangeEvent> queue;
 
-    // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
-    // and the value is tablet UUID
-    protected List<Pair<String, String>> tabletPairList = null;
-
     protected Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
-    protected boolean explicitCheckpointingEnabled = false;
 
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
                                                 YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
@@ -123,15 +118,6 @@ public class YugabyteDBStreamingChangeEventSource implements
         yugabyteDBTypeRegistry = taskContext.schema().getTypeRegistry();
         this.queue = queue;
         this.tabletToExplicitCheckpoint = new HashMap<>();
-
-        try {
-            this.explicitCheckpointingEnabled = YBClientUtils.isExplicitCheckpointingEnabled(connectorConfig);
-        } catch (Exception e) {
-            LOGGER.warn("Cannot retrieve the status for explicit checkpointing, checkpointing will not be available (can lead to instability). Received error", e);
-            if (!connectorConfig.ignoreExceptions()) {
-                throw new DebeziumException(e);
-            }
-        }
     }
 
     @Override
@@ -244,6 +230,9 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
 
+        // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
+        // and the value is tablet UUID
+        List<Pair<String, String>> tabletPairList = null;
         try {
             tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
             LOGGER.debug("The tablet list is " + tabletPairList);
@@ -369,7 +358,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                         response = this.syncClient.getChangesCDCSDK(
                             table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                             cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
-                            explicitCheckpointingEnabled ? tabletToExplicitCheckpoint.get(tabletId) : null);
+                            taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tabletId) : null);
                       } catch (CDCErrorException cdcException) {
                         // Check if exception indicates a tablet split.
                         LOGGER.debug("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
@@ -675,7 +664,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     @Override
     public void commitOffset(Map<String, ?> offset) {
-        if (!explicitCheckpointingEnabled) {
+        if (!taskContext.shouldEnableExplicitCheckpointing()) {
             return;
         }
 
@@ -699,25 +688,6 @@ public class YugabyteDBStreamingChangeEventSource implements
         } catch (Exception e) {
             LOGGER.warn("Unable to commit checkpoint", e);
         }
-    }
-
-    /**
-     * Iterate over the tablet pair list and return back the table ID to which the given
-     * tablet belongs.
-     * @param tabletId tablet UUID
-     * @return a {@link YBTable} object for the table to which the tablet belongs, or null if no
-     * match is found
-     * @throws Exception if the {@link YBClient} cannot open the table
-     */
-    private YBTable getTableFromTablet(String tabletId) throws Exception {
-        for (Pair<String, String> p : this.tabletPairList) {
-            if (p.getValue().equals(tabletId)) {
-                return this.syncClient.openTableByUUID(p.getKey());
-            }
-        }
-
-        // Null would mean that no match was found for the given tablet ID.
-        return null;
     }
 
     /**
