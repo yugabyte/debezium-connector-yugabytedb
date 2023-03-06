@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
@@ -256,25 +257,15 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
     awaitUntilConnectorIsReady();
 
     // Start threads to perform schema change operations on the colocated tables.
-    Executor ex1 = new Executor("test_1", columnCount);
-    Executor ex2 = new Executor("test_2", columnCount);
-    Executor ex3 = new Executor("test_3", columnCount);
-    Thread thread1 = new Thread(ex1);
-    Thread thread2 = new Thread(ex2);
-    Thread thread3 = new Thread(ex3);
+    Executor ex = new Executor(Arrays.asList("test_1", "test_2", "test_3"), columnCount);
+    Thread thread = new Thread(ex);
 
     // We can get the total number of records to be inserted for one table and the actual number
     // would be 3 times of that value since all the tables are having same inserts.
-    long totalExpectedRecords = 3 * ex1.getTotalRecordsToBeInserted();
+    long totalExpectedRecords = 3 * ex.getTotalRecordsToBeInserted();
 
-    thread1.start();
-    thread2.start();
-    thread3.start();
-
-    // Wait for the threads to finish.
-    thread1.join();
-    thread2.join();
-    thread3.join();
+    thread.start();
+    thread.join();
 
     LOGGER.info("Expected record count after thread finish: {}", totalExpectedRecords);
 
@@ -360,11 +351,11 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
   }
 
   protected static class Executor implements Runnable {
-    private final String tableName;
+    private final List<String> tables;
     private final int columnCount;
 
-    public Executor(String tableName, int columnCount) {
-      this.tableName = tableName;
+    public Executor(List<String> tables, int columnCount) {
+      this.tables = tables;
       this.columnCount = columnCount;
     }
 
@@ -381,11 +372,14 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
     public void run() {
       int startKey = 1;
       for (int i = 1; i <= columnCount; ++i) {
-        // Drop the column and then insert some records
-        TestHelper.executeInDatabase("ALTER TABLE " + tableName + " DROP COLUMN col_" + i + ";", COLOCATED_DB_NAME);
+        for (String tableName : tables) {
+          // Drop the column and then insert some records
+          TestHelper.executeInDatabase("ALTER TABLE " + tableName + " DROP COLUMN col_" + i + ";", COLOCATED_DB_NAME);
 
-        String generateSeries = "INSERT INTO %s VALUES (generate_series(%d, %d));";
-        TestHelper.executeInDatabase(String.format(generateSeries, tableName, startKey, startKey + i - 1), COLOCATED_DB_NAME);
+          String generateSeries = "INSERT INTO %s VALUES (generate_series(%d, %d));";
+          TestHelper.executeInDatabase(String.format(generateSeries, tableName, startKey, startKey + i - 1), COLOCATED_DB_NAME);
+        }
+
         startKey += i;
       }
     }
