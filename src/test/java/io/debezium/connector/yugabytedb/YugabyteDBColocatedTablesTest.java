@@ -53,8 +53,6 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
   public void before() throws Exception {
     initializeConnectorTestFramework();
     TestHelper.dropAllSchemas();
-    // TODO Vaibhav: commented for test only, remove for final cleanup
-//    createTables();
   }
 
   @After
@@ -70,6 +68,8 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
 
   @Test
   public void shouldSupportBasicColocatedTableStreaming() throws Exception {
+    createTables();
+
     String dbStreamId = TestHelper.getNewDbStreamId(COLOCATED_DB_NAME, "test_1");
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder(COLOCATED_DB_NAME,
         "public.test_1", dbStreamId);
@@ -99,6 +99,8 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
   // This test also verifies that the connector works for a subset of the colocated tables as well
   @Test
   public void shouldWorkForTablesInIncludeListOnly() throws Exception {
+    createTables();
+
     String dbStreamId = TestHelper.getNewDbStreamId(COLOCATED_DB_NAME, "test_1");
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder(COLOCATED_DB_NAME,
         "public.test_1,public.test_2", dbStreamId);
@@ -131,6 +133,8 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
 
   @Test
   public void shouldWorkWithMixOfColocatedAndNonColocatedTables() throws Exception {
+    createTables();
+
     String dbStreamId = TestHelper.getNewDbStreamId(COLOCATED_DB_NAME, "test_1");
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder(COLOCATED_DB_NAME,
         "public.test_1,public.test_2,public.test_no_colocated", dbStreamId);
@@ -163,6 +167,8 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
 
   @Test
   public void shouldWorkAfterAddingTableAfterRestart() throws Exception {
+    createTables();
+
     String dbStreamId = TestHelper.getNewDbStreamId(COLOCATED_DB_NAME, "test_1");
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder(COLOCATED_DB_NAME,
         "public.test_1,public.test_2", dbStreamId);
