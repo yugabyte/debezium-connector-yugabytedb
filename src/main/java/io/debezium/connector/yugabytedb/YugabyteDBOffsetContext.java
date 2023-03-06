@@ -27,12 +27,11 @@ import io.debezium.pipeline.spi.Offsets;
 import io.debezium.pipeline.txmetadata.TransactionContext;
 import io.debezium.relational.TableId;
 import io.debezium.schema.DataCollectionId;
-import io.debezium.time.Conversions;
 import io.debezium.util.Clock;
 
 public class YugabyteDBOffsetContext implements OffsetContext {
     public static final String LAST_COMPLETELY_PROCESSED_LSN_KEY = "lsn_proc";
-    public static final String LAST_COMMIT_LSN_KEY = "lsn_commit";
+
     private static final Logger LOGGER = LoggerFactory
             .getLogger(YugabyteDBSnapshotChangeEventSource.class);
     private final Schema sourceInfoSchema;
@@ -146,32 +145,18 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     @Override
     public Map<String, ?> getOffset() {
         Map<String, Object> result = new HashMap<>();
-        if (sourceInfo.timestamp() != null) {
-            result.put(SourceInfo.TIMESTAMP_USEC_KEY, Conversions
-                    .toEpochMicros(sourceInfo.timestamp()));
+
+        for (Map.Entry<String, SourceInfo> entry : this.tabletSourceInfo.entrySet()) {
+            result.put(entry.getKey(), entry.getValue().lsn().toSerString());
         }
-        if (sourceInfo.txId() != null) {
-            result.put(SourceInfo.TXID_KEY, sourceInfo.txId());
-        }
-        if (sourceInfo.lsn() != null) {
-            result.put(SourceInfo.LSN_KEY, sourceInfo.lsn().toSerString());
-        }
-        if (sourceInfo.xmin() != null) {
-            result.put(SourceInfo.XMIN_KEY, sourceInfo.xmin());
-        }
-        if (sourceInfo.isSnapshot()) {
-            result.put(SourceInfo.SNAPSHOT_KEY, true);
-            result.put(SourceInfo.LAST_SNAPSHOT_RECORD_KEY, lastSnapshotRecord);
-        }
-        if (lastCompletelyProcessedLsn != null) {
-            result.put(LAST_COMPLETELY_PROCESSED_LSN_KEY, lastCompletelyProcessedLsn.toSerString());
-        }
-        if (lastCommitLsn != null) {
-            result.put(LAST_COMMIT_LSN_KEY, lastCommitLsn.toSerString());
-        }
+
         return sourceInfo.isSnapshot() ? result
                 : incrementalSnapshotContext
                         .store(transactionContext.store(result));
+    }
+
+    public Struct getSourceInfoForTablet(String tabletId) {
+        return this.tabletSourceInfo.get(tabletId).struct();
     }
 
     @Override
