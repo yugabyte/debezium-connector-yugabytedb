@@ -499,13 +499,26 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       return SnapshotResult.aborted();
     }
 
+    /**
+     * For EXPLICIT checkpointing, the following code flow is used:<br><br>
+     * 1. Kafka Connect invokes the callback {@code commit()} which further invokes
+     * {@code commitOffset(offsets)} in the Debezium API <br><br>
+     * 2. Both the streaming and snapshot change event source classes maintain a map
+     * {@code tabletToExplicitCheckpoint} which stores the offsets sent by Kafka Connect. <br><br>
+     * 3. So when the connector gets the acknowledgement back by saying that Kafka has received
+     * records till certain offset, we update the value in {@code tabletToExplicitCheckpoint} <br><br>
+     * 4. While making the next `GetChanges` call, we pass the value from the map
+     * {@code tabletToExplicitCheckpoint} for the relevant tablet and hence the server then takes
+     * care of updating those checkpointed values in the {@code cdc_state} table <br><br>
+     * @param offset a map containing the {@link OpId} information for all the tablets
+     */
     public void commitOffset(Map<String, ?> offset) {
         if (!taskContext.shouldEnableExplicitCheckpointing()) {
             return;
         }
 
         try {
-            LOGGER.info("Committing offsets on server");
+            LOGGER.info("Committing offsets on server for snapshot");
 
             for (Map.Entry<String, ?> entry : offset.entrySet()) {
                 // TODO: The transaction_id field is getting populated somewhere and see if it can
