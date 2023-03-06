@@ -6,14 +6,13 @@
 
 package io.debezium.connector.yugabytedb;
 
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -563,7 +562,7 @@ public final class TestHelper {
 
     public static void executeDDL(String ddlFile, String databaseName) throws Exception {
         URL ddlTestFile = TestHelper.class.getClassLoader().getResource(ddlFile);
-        assertNotNull("Cannot locate " + ddlFile, ddlTestFile);
+        assertNotNull(ddlTestFile, "Cannot locate " + ddlFile);
         String statements = Files.readAllLines(Paths.get(ddlTestFile.toURI()))
                 .stream()
                 .collect(Collectors.joining(System.lineSeparator()));
@@ -574,7 +573,7 @@ public final class TestHelper {
 
     public static void executeDDL(JdbcDatabaseContainer<?> container, String ddlFile) throws Exception {
         URL ddlTestFile = TestHelper.class.getClassLoader().getResource(ddlFile);
-        assertNotNull("Cannot locate " + ddlFile, ddlTestFile);
+        assertNotNull(ddlTestFile, "Cannot locate " + ddlFile);
         String statements = Files.readAllLines(Paths.get(ddlTestFile.toURI()))
                 .stream()
                 .collect(Collectors.joining(System.lineSeparator()));

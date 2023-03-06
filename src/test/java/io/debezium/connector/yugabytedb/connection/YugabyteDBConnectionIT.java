@@ -6,7 +6,7 @@
 
 package io.debezium.connector.yugabytedb.connection;
 
-import org.junit.After;
+import org.junit.jupiter.api.AfterEach;
 
 import io.debezium.util.Testing;
 
@@ -17,7 +17,7 @@ import io.debezium.util.Testing;
  */
 public class YugabyteDBConnectionIT {
 
-    @After
+    @AfterEach
     public void after() {
         Testing.Print.disable();
     }
