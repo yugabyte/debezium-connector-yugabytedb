@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -17,7 +18,6 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,23 +26,16 @@ import static org.junit.jupiter.api.Assertions.*;
  * 
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
+public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
   private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSchemaEvolutionTest.class);
   
   // Keeping the id part as a string only so that it is easier to use generate_series as well.
   private final String insertFormatString = "INSERT INTO t1 VALUES (%s, 'name_value');";
-  
-  private static YugabyteYSQLContainer ybContainer;
 
   @BeforeAll
   public static void beforeClass() throws SQLException {
       String tserverFlags = "cdc_max_stream_intent_records=200";
-      ybContainer = TestHelper.getYbContainer(null, tserverFlags);
-      ybContainer.start();
-
-      TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-      TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
-
+      initializeYBContainer(null, tserverFlags);
       TestHelper.dropAllSchemas();
   }
 
@@ -59,7 +52,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
 
   @AfterAll
   public static void afterClass() {
-      ybContainer.stop();
+      shutdownYBContainer();
   }
 
   @Test
