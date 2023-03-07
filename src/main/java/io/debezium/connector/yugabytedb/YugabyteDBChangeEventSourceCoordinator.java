@@ -143,9 +143,16 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
 
     @Override
     public void commitOffset(Map<String, ?> offset) {
+        // TODO Vaibhav: check if snapshot has not completed only then commit the offsets
+        // Check if snapshotter is enabled as well as well as it is under progress,
+        // if it is not under progress i.e. completed already then the commit offset callback
+        // should go to the streaming source
+        if (!commitOffsetLock.isLocked() && snapshotter.shouldSnapshot()) {
+            snapshotSource.commitOffset(offset);
+        }
+
         if (!commitOffsetLock.isLocked() && streamingSource != null && offset != null) {
             streamingSource.commitOffset(offset);
-            snapshotSource.commitOffset(offset);
         }
     }
 

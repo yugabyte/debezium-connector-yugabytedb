@@ -1,7 +1,7 @@
 package io.debezium.connector.yugabytedb;
 
 import io.debezium.connector.AbstractSourceInfoStructMaker;
-import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.data.VerifyRecord;
 import io.debezium.relational.TableId;
@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class SourceInfoTest extends YugabyteDBTestBase {
+public class SourceInfoTest extends YugabyteDBContainerTestBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(SourceInfoTest.class);
     private SourceInfo source;
 

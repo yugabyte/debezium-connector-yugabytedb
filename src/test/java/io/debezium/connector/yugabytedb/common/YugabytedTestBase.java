@@ -29,7 +29,7 @@ public class YugabytedTestBase extends TestBaseClass {
         // Do nothing.
     }
 
-    public static void shutdownContainer() {
+    public static void shutdownYBContainer() {
         // Do nothing.
     }
 

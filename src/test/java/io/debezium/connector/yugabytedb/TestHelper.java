@@ -466,7 +466,7 @@ public final class TestHelper {
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
-                                          boolean withBeforeImage) throws Exception {
+                                          boolean withBeforeImage, boolean explicit) throws Exception {
         YBClient syncClient = getYbClient(MASTER_ADDRESS);
 
         YBTable placeholderTable = getYbTable(syncClient, tableName);
@@ -478,7 +478,7 @@ public final class TestHelper {
         String dbStreamId;
         try {
             dbStreamId = syncClient.createCDCStream(placeholderTable, namespaceName,
-                                                    "PROTO", "IMPLICIT",
+                                                    "PROTO", explicit ? "EXPLICIT" : "IMPLICIT",
                                                     withBeforeImage ? "ALL" : null).getStreamId();
         } finally {
             syncClient.close();
@@ -487,8 +487,13 @@ public final class TestHelper {
         return dbStreamId;
     }
 
+    public static String getNewDbStreamId(String namespaceName, String tableName,
+                                          boolean withBeforeImage) throws Exception {
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, false /* explicit x*/);
+    }
+
     public static String getNewDbStreamId(String namespaceName, String tableName) throws Exception {
-        return getNewDbStreamId(namespaceName, tableName, false);
+        return getNewDbStreamId(namespaceName, tableName, false, false);
     }
 
     public static JdbcConfiguration.Builder defaultJdbcConfigBuilder() {

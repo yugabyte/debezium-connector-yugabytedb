@@ -61,7 +61,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
     private YugabyteDBTypeRegistry yugabyteDbTypeRegistry;
 
-    protected Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
+    protected Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint = new HashMap<>();
 
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
                                                YugabyteDBTaskContext taskContext,
@@ -535,7 +535,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 }
             }
         } catch (Exception e) {
-            LOGGER.warn("Unable to commit checkpoint", e);
+            LOGGER.warn("Unable to update the tablet to explicit checkpoint map", e);
         }
     }
 

@@ -316,7 +316,6 @@ public class YBClientUtils {
       CDCStreamInfo cdcStreamInfo = getStreamInfo(connectorConfig);
       Objects.requireNonNull(cdcStreamInfo);
 
-      return cdcStreamInfo.getOptions().get("checkpoint_type")
-               .equals(CdcService.CDCCheckpointType.EXPLICIT);
+      return cdcStreamInfo.getOptions().get("checkpoint_type").equals("EXPLICIT");
   }
 }

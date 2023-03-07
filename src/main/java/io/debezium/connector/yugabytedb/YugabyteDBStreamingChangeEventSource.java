@@ -699,7 +699,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 }
             }
         } catch (Exception e) {
-            LOGGER.warn("Unable to commit checkpoint", e);
+            LOGGER.warn("Unable to update the tablet to explicit checkpoint map", e);
         }
     }
 
