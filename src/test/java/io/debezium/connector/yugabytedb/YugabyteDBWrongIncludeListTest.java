@@ -1,3 +1,5 @@
+package io.debezium.connector.yugabytedb;
+
 public class YugabyteDBWrongIncludeListTest {
     // These comments are here only for the time being and the listed steps need to be performed
     // to test the functionality
