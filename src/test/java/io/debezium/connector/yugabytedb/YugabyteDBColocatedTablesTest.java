@@ -6,20 +6,17 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.time.Duration;
 
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import org.junit.jupiter.api.*;
-import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
 
 /**
  * Unit tests to verify connector functionality with colocated tables in YugabyteDB.
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
-  private static YugabyteYSQLContainer ybContainer;
-
+public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
   private static final String COLOCATED_DB_NAME = "colocated_database";  
 
   private final String INSERT_TEST_1 = "INSERT INTO test_1 VALUES (%d, 'sample insert');";
@@ -30,11 +27,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
 
   @BeforeAll
   public static void beforeClass() throws Exception {
-    ybContainer = TestHelper.getYbContainer();
-    ybContainer.start();
-
-    TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-    TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+    initializeYBContainer();
     TestHelper.dropAllSchemas();
     TestHelper.executeDDL("yugabyte_create_tables.ddl");
   }
@@ -54,7 +47,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
 
   @AfterAll
   public static void afterClass() throws Exception {
-    ybContainer.stop();
+    shutdownYBContainer();
   }
 
   @Test

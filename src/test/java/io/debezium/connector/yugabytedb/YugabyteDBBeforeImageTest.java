@@ -16,27 +16,18 @@ import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
-public class YugabyteDBBeforeImageTest extends YugabyteDBTestBase {
+public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
   private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBPartitionTest.class);
   private final String formatInsertString =
       "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 12.345);";
-  private static YugabyteYSQLContainer ybContainer;
-  private static String masterAddresses;
 
   @BeforeAll
   public static void beforeClass() throws SQLException {
-      ybContainer = TestHelper.getYbContainer();
-      ybContainer.start();
-
-      TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-      TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
-      masterAddresses = ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100);
-
+      initializeYBContainer();
       TestHelper.dropAllSchemas();
   }
 
@@ -53,7 +44,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBTestBase {
 
   @AfterAll
   public static void afterClass() throws Exception {
-      ybContainer.stop();
+      shutdownYBContainer();
   }
 
   @Test
