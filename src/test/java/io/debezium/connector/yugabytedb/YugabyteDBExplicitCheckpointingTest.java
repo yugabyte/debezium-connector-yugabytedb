@@ -3,6 +3,7 @@ package io.debezium.connector.yugabytedb;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.embedded.EmbeddedEngine;
 import io.debezium.engine.spi.OffsetCommitPolicy;
@@ -41,7 +42,7 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
 
     @BeforeAll
     public static void beforeAll() throws SQLException {
-        initializeYBContainer();
+        initializeYBContainer(null, "cdc_state_checkpoint_update_interval_ms=0");
         TestHelper.dropAllSchemas();
     }
 
@@ -66,7 +67,7 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false /* before image */, true /* explicit checkpointing */);
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId)
                 .with(EmbeddedEngine.ENGINE_NAME, CONNECTOR_NAME)
-                .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG, Testing.Files.createTestingPath("data/file-connector-offsets.txt"))
+                .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG, Testing.Files.createTestingPath("data/file-connector-offsets.txt").toAbsolutePath())
                 .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
                 .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBConnector.class);
         final Configuration config = configBuilder.build();
