@@ -7,12 +7,12 @@ import org.apache.log4j.Logger;
 
 import io.debezium.config.Configuration;
 import io.debezium.config.Field;
-import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public class YugabyteDBConnectorIT extends YugabyteDBTestBase {
+public class YugabyteDBConnectorIT extends YugabyteDBContainerTestBase {
     private final static Logger LOGGER = Logger.getLogger(YugabyteDBConnectorIT.class);
 
     private YugabyteDBConnector connector;
