@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import io.debezium.connector.yugabytedb.TestHelper;
 import io.debezium.connector.yugabytedb.YugabyteDBConnector;
 import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -22,10 +23,8 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
 
 /**
  * Basic unit tests to check the behaviour with stream consistency.
@@ -33,9 +32,8 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 
-public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
+public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase {
     private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBStreamConsistencyTest.class);
-    private static YugabyteYSQLContainer ybContainer;
 
     private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
             "INSERT INTO s2.a (aa) VALUES (1);";
@@ -48,11 +46,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
     private static final String SETUP_TABLES_STMT = CREATE_TABLES_STMT + INSERT_STMT;
     @BeforeClass
     public static void beforeClass() throws SQLException {
-        ybContainer = TestHelper.getYbContainer(null, "cdc_max_stream_intent_records=10,cdc_populate_safepoint_record=true");
-        ybContainer.start();
-
-        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-        TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+        initializeYBContainer(null, "cdc_max_stream_intent_records=10,cdc_populate_safepoint_record=true");
         TestHelper.dropAllSchemas();
     }
 
@@ -80,7 +74,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBTestBase {
 
     @AfterClass
     public static void afterClass() throws Exception {
-//        ybContainer.stop();
+        shutdownYBContainer();
     }
 
     @Test
