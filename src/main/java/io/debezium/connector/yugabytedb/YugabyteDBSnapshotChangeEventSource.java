@@ -90,6 +90,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.syncClient = new YBClient(this.asyncClient);
 
         this.yugabyteDbTypeRegistry = taskContext.schema().getTypeRegistry();
+        this.tabletToExplicitCheckpoint = new HashMap<>();
     }
 
     @Override
@@ -364,7 +365,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 GetChangesResponse resp = this.syncClient.getChangesCDCSDK(table, 
                     connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(), 
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
-                    taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tabletId) : null);
+                    taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tabletId) : null, table.getTableId());
                 
                 // Process the response
                 for (CdcService.CDCSDKProtoRecordPB record : 
@@ -535,7 +536,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 }
             }
         } catch (Exception e) {
-            LOGGER.warn("Unable to commit checkpoint", e);
+            LOGGER.warn("Unable to update the explicit checkpoint map", e);
         }
     }
 
