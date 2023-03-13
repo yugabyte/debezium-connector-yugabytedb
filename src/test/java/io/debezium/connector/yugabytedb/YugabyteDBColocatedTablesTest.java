@@ -359,12 +359,21 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
       return sum;
     }
 
+    /**
+     * This function will start dropping columns for the tables and will insert a few records
+     * after dropping the column. The flow will be as follows:<br>
+     * <ul>
+     *     Iterate over the column count starting from 1, in every iteration, go over all the tables
+     *     and drop a column and insert a few rows.
+     * </ul>
+     *
+     */
     @Override
     public void run() {
       int startKey = 1;
       for (int i = 1; i <= columnCount; ++i) {
         for (String tableName : tables) {
-          // Drop the column and then insert some records
+          // Drop a column and then insert some records.
           TestHelper.executeInDatabase("ALTER TABLE " + tableName + " DROP COLUMN col_" + i + ";", COLOCATED_DB_NAME);
 
           String generateSeries = "INSERT INTO %s VALUES (generate_series(%d, %d));";
