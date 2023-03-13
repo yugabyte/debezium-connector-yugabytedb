@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBExplicitCheckpointingTest extends YugabytedTestBase {
+public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTestBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBExplicitCheckpointingTest.class);
 
     private final String CONNECTOR_NAME = "explicit-checkpointing-test-connector";
@@ -67,7 +67,7 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabytedTestBase {
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false /* before image */, true /* explicit checkpointing */);
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId)
                 .with(EmbeddedEngine.ENGINE_NAME, CONNECTOR_NAME)
-                .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG, Testing.Files.createTestingFile("file-connector-offsets.txt").getAbsolutePath()) //"/Users/fourpointfour/file-connector-offsets.txt")
+                .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG, Testing.Files.createTestingFile("file-connector-offsets.txt").getAbsolutePath())
                 .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
                 .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBConnector.class);
         final Configuration config = configBuilder.build();
