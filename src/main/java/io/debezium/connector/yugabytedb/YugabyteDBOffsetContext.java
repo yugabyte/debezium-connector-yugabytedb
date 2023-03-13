@@ -142,11 +142,26 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         return context;
     }
 
+    /**
+     * @return the starting {@link OpId} to begin the snapshot with
+     */
+    public static OpId snapshotStartLsn() {
+        return new OpId(-1, -1, "".getBytes(), -1, 0);
+    }
+
+    /**
+     * @return the starting {@link OpId} to begin the streaming with
+     */
+    public static OpId streamingStartLsn() {
+        return new OpId(0, 0, null, 0, 0);
+    }
+
     @Override
     public Map<String, ?> getOffset() {
         Map<String, Object> result = new HashMap<>();
 
         for (Map.Entry<String, SourceInfo> entry : this.tabletSourceInfo.entrySet()) {
+
             result.put(entry.getKey(), entry.getValue().lsn().toSerString());
         }
 
@@ -237,14 +252,14 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     }
 
     OpId lsn() {
-        return sourceInfo.lsn() == null ? new OpId(0, 0, null, 0, 0)
+        return sourceInfo.lsn() == null ? streamingStartLsn()
                 : sourceInfo.lsn();
     }
 
     OpId lsn(String tabletId) {
         // get the sourceInfo of the tablet
         SourceInfo sourceInfo = getSourceInfo(tabletId);
-        return sourceInfo.lsn() == null ? new OpId(0, 0, null, 0, 0)
+        return sourceInfo.lsn() == null ? streamingStartLsn()
                 : sourceInfo.lsn();
     }
 
@@ -264,7 +279,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     OpId snapshotLSN(String tabletId) {
       // get the sourceInfo of the tablet
       SourceInfo sourceInfo = getSourceInfo(tabletId);
-      return sourceInfo.lsn() == null ? new OpId(-1, -1, "".getBytes(), -1, 0)
+      return sourceInfo.lsn() == null ? snapshotStartLsn()
         : sourceInfo.lsn();
     }
 

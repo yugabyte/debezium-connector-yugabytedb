@@ -280,8 +280,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       for (Pair<String, String> entry : tableToTabletIds) {
         schemaNeeded.put(entry.getValue(), Boolean.TRUE);
 
-        previousOffset.initSourceInfo(entry.getValue(), this.connectorConfig);
-        this.tabletToExplicitCheckpoint.put(entry.getValue(), null);
+        previousOffset.initSourceInfo(entry.getValue(), this.connectorConfig, YugabyteDBOffsetContext.snapshotStartLsn());
         LOGGER.debug("Previous offset for tablet {} is {}", entry.getValue(), previousOffset.toString());
       }
 

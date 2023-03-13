@@ -270,12 +270,6 @@ public class YugabyteDBStreamingChangeEventSource implements
             schemaNeeded.put(entry.getValue(), Boolean.TRUE);
         }
 
-        for (Pair<String, String> entry : tabletPairList) {
-            final String tabletId = entry.getValue();
-            offsetContext.initSourceInfo(tabletId, this.connectorConfig);
-            tabletToExplicitCheckpoint.put(tabletId, null);
-        }
-
         // This will contain the tablet ID mapped to the number of records it has seen
         // in the transactional block. Note that the entry will be created only when
         // a BEGIN block is encountered.
