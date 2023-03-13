@@ -1,7 +1,6 @@
 package io.debezium.connector.yugabytedb;
 
-import static org.junit.Assert.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.sql.SQLException;
 import java.time.Duration;
@@ -14,12 +13,7 @@ import java.util.stream.Collectors;
 
 import org.apache.kafka.connect.data.Struct;
 import org.awaitility.Awaitility;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.YugabyteYSQLContainer;
@@ -28,44 +22,39 @@ import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
 /**
  * Unit tests to verify that the connector gracefully handles the tablet splitting on the server.
  * 
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBTabletSplitTest extends YugabyteDBTestBase {
+public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
   private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBPartitionTest.class);
-  private static YugabyteYSQLContainer ybContainer;
   private static String masterAddresses;
 
-  @BeforeClass
+  @BeforeAll
   public static void beforeClass() throws SQLException {
-      ybContainer = TestHelper.getYbContainer();
-      ybContainer.start();
-
-      TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-      TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
-      masterAddresses = ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100);
+      initializeYBContainer();
+      masterAddresses = getMasterAddress();
 
       TestHelper.dropAllSchemas();
   }
 
-  @Before
+  @BeforeEach
   public void before() {
       initializeConnectorTestFramework();
   }
 
-  @After
+  @AfterEach
   public void after() throws Exception {
       stopConnector();
       TestHelper.executeDDL("drop_tables_and_databases.ddl");
   }
 
-  @AfterClass
-  public static void afterClass() throws Exception {
-      ybContainer.stop();
+  @AfterAll
+  public static void afterClass() {
+      shutdownYBContainer();
   }
 
   @Order(1)
@@ -235,7 +224,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBTestBase {
     LOGGER.debug("Record key set size: " + recordKeySet.size());
     List<Integer> rList = recordKeySet.stream().collect(Collectors.toList());
     Collections.sort(rList);
-    
+
     assertEquals(recordsCount, recordKeySet.size());
   }
 

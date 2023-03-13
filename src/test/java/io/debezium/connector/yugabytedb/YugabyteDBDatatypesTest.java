@@ -1,8 +1,5 @@
 package io.debezium.connector.yugabytedb;
 
-import static org.junit.Assert.*;
-import static org.junit.jupiter.api.Assertions.fail;
-
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -12,26 +9,19 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.log4j.Logger;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.junit.jupiter.api.Disabled;
-import org.testcontainers.containers.YugabyteYSQLContainer;
+import org.junit.jupiter.api.*;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
 import io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState;
 import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
-import io.debezium.util.Strings;
-import org.yb.client.YBClient;
-import org.yb.client.YBTable;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Basic unit tests to check the behaviour with YugabyteDB datatypes
@@ -39,9 +29,8 @@ import org.yb.client.YBTable;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 
-public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
+public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
     private final static Logger LOGGER = Logger.getLogger(YugabyteDBDatatypesTest.class);
-    private static YugabyteYSQLContainer ybContainer;
 
     private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
             "INSERT INTO s2.a (aa) VALUES (1);";
@@ -65,14 +54,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         }).get();
     }
 
-  private void insertBulkRecords(int numRecords) throws Exception {
-    String formatInsertString = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
-    CompletableFuture.runAsync(() -> {
-        TestHelper.executeBulk(formatInsertString, numRecords);
-    }).exceptionally(throwable -> {
-      throw new RuntimeException(throwable);
-    }).get();
-  }
     // This function will one row each of the specified enum labels
     private void insertEnumRecords() throws Exception {
         String[] enumLabels = {"ZERO", "ONE", "TWO"};
@@ -184,14 +165,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
         }
     }
 
-    private void verifyRecordCount(long recordsCount) {
-        waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
-    }
-
-    private void verifyRecordCountUntilTimeExpires(long recordsCount, long milliSecondsToWait) {
-        waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount, milliSecondsToWait);
-    }
-
     private void verifyValue(long recordsCount) {
         List<SourceRecord> records = new ArrayList<>();
         waitAndFailIfCannotConsume(records, recordsCount);
@@ -226,30 +199,26 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
       fail();
     }
   }
-    @BeforeClass
+    @BeforeAll
     public static void beforeClass() throws SQLException {
-        ybContainer = TestHelper.getYbContainer();
-        ybContainer.start();
-
-        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-        TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+        initializeYBContainer();
         TestHelper.dropAllSchemas();
     }
 
-    @Before
+    @BeforeEach
     public void before() {
         initializeConnectorTestFramework();
     }
 
-    @After
+    @AfterEach
     public void after() throws Exception {
         stopConnector();
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
     }
 
-    @AfterClass
-    public static void afterClass() throws Exception {
-        ybContainer.stop();
+    @AfterAll
+    public static void afterClass() {
+        shutdownYBContainer();
     }
     // This test will just verify that the TestContainers are up and running
     // and it will also verify that the unit tests are able to make API calls.
@@ -284,29 +253,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
                     throw new RuntimeException(throwable);
                 }).get();
     }
-
-  @Test
-  public void testSnapshotRecordConsumption() throws Exception {
-    TestHelper.dropAllSchemas();
-    TestHelper.executeDDL("yugabyte_create_tables.ddl");
-    final int recordsCount = 5000;
-    // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
-    insertBulkRecords(recordsCount);
-
-    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
-    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-    configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
-    start(YugabyteDBConnector.class, configBuilder.build());
-
-    awaitUntilConnectorIsReady();
-
-    // Only verifying the record count since the snapshot records are not ordered so it may be
-    // a little complex to verify them in the sorted order at the moment
-    CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount))
-      .exceptionally(throwable -> {
-        throw new RuntimeException(throwable);
-      }).get();
-  }
 
     @Test
     public void testRecordDeleteFieldWithYBExtractNewRecordState() throws Exception {
@@ -430,106 +376,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
                 .exceptionally(throwable -> {
                     throw new RuntimeException(throwable);
                 }).get();
-    }
-
-    @Test
-    public void shouldOnlySnapshotTablesInList() throws Exception {
-        TestHelper.dropAllSchemas();
-        TestHelper.executeDDL("yugabyte_create_tables.ddl");
-
-        int recordCountT1 = 5000;
-
-        // Insert records in the table t1
-        insertBulkRecords(recordCountT1);
-
-        // Insert records in the table all_types
-        TestHelper.execute(HelperStrings.INSERT_ALL_TYPES);
-        TestHelper.execute(HelperStrings.INSERT_ALL_TYPES);
-
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1,public.all_types", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
-        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE_TABLES, "public.t1");
-
-        start(YugabyteDBConnector.class, configBuilder.build());
-
-        awaitUntilConnectorIsReady();
-
-        // Dummy wait condition to wait for another 15 seconds
-        TestHelper.waitFor(Duration.ofSeconds(15)); 
-        
-        SourceRecords records = consumeRecordsByTopic(recordCountT1);
-
-        assertNotNull(records);
-
-        // Assert that there are the expected number of records in the snapshotted table
-        assertEquals(recordCountT1, records.recordsForTopic("test_server.public.t1").size());
-
-        // Since there are no records for this topic, the topic itself won't be created
-        // so if the topic simply doesn't exist then the test should pass
-        assertFalse(records.topics().contains("test_server.public.all_types"));
-    }
-
-    @Test
-    public void snapshotTableThenStreamData() throws Exception {
-        TestHelper.dropAllSchemas();
-        TestHelper.executeDDL("yugabyte_create_tables.ddl");
-
-        int recordCountT1 = 5000;
-
-        // Insert records in the table t1
-        insertBulkRecords(recordCountT1);
-
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
-
-        start(YugabyteDBConnector.class, configBuilder.build());
-
-        awaitUntilConnectorIsReady();
-
-        // Dummy wait for sometime so that the connector has some time to transition to streaming.
-        TestHelper.waitFor(Duration.ofSeconds(30));
-        String insertStringFormat = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
-        TestHelper.executeBulkWithRange(insertStringFormat, recordCountT1, recordCountT1 + 1000);
-
-        // Total records inserted at this stage would be recordCountT1 + 1000
-        int totalRecords = recordCountT1 + 1000;
-
-        // Consume and assert that we have received all the records now.
-        List<SourceRecord> records = new ArrayList<>();
-        waitAndFailIfCannotConsume(records, totalRecords);
-    }
-
-    // GitHub issue: https://github.com/yugabyte/debezium-connector-yugabytedb/issues/143
-    @Test
-    public void snapshotTableWithCompaction() throws Exception {
-        TestHelper.dropAllSchemas();
-        TestHelper.executeDDL("yugabyte_create_tables.ddl");
-
-        int recordCount = 5000;
-
-        // Insert records in the table t1
-        insertBulkRecords(recordCount);
-
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
-
-        start(YugabyteDBConnector.class, configBuilder.build());
-
-        awaitUntilConnectorIsReady();
-
-        // Assuming that at this point snapshot would still be running, update a few records and
-        // compact the table.
-        TestHelper.execute("UPDATE t1 SET first_name='fname' WHERE id < 10;");
-        YBClient ybClient = TestHelper.getYbClient(TestHelper.getMasterAddress());
-        YBTable ybTable = TestHelper.getYbTable(ybClient, "t1");
-        ybClient.flushTable(ybTable.getTableId());
-
-        // Consume and assert that we have received all the records now.
-        List<SourceRecord> records = new ArrayList<>();
-        waitAndFailIfCannotConsume(records, recordCount + 10 /* updates */);
     }
 
     // GitHub issue: https://github.com/yugabyte/debezium-connector-yugabytedb/issues/134

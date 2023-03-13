@@ -1,7 +1,9 @@
 package io.debezium.connector.yugabytedb;
 
-import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.*;
+
+import io.debezium.config.Configuration;
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -10,27 +12,20 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
-import org.junit.*;
+import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.YugabyteYSQLContainer;
-
-import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
 
 /**
  * Unit tests to verify connector functionality with colocated tables in YugabyteDB.
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
+public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
   private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBColocatedTablesTest.class);
-  private static YugabyteYSQLContainer ybContainer;
-
   private static final String COLOCATED_DB_NAME = "colocated_database";  
 
   private final String INSERT_TEST_1 = "INSERT INTO test_1 VALUES (%d, 'sample insert');";
@@ -39,32 +34,28 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
   private final String INSERT_TEST_NO_COLOCATED =
     "INSERT INTO test_no_colocated VALUES (%d, 'not a colocated table');";
 
-  @BeforeClass
+  @BeforeAll
   public static void beforeClass() throws Exception {
-    ybContainer = TestHelper.getYbContainer();
-    ybContainer.start();
-
-    TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-    TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+    initializeYBContainer();
     TestHelper.dropAllSchemas();
     TestHelper.executeDDL("yugabyte_create_tables.ddl");
   }
 
-  @Before
+  @BeforeEach
   public void before() throws Exception {
     initializeConnectorTestFramework();
     TestHelper.dropAllSchemas();
   }
 
-  @After
+  @AfterEach
   public void after() throws Exception {
     stopConnector();
     dropTables();
   }
 
-  @AfterClass
+  @AfterAll
   public static void afterClass() {
-    ybContainer.stop();
+    shutdownYBContainer();
   }
 
   @Test
@@ -236,7 +227,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBTestBase {
 
   @Test
   public void dropColumnsForTablesAndHandleSchemaChanges() throws Exception {
-    /**
+    /*
      * 1. Create colocated tables having 40 columns (+2 for other columns)
      * 2. Start the CDC pipeline and keep inserting data
      * 3. Execute ALTER TABLE...DROP commands randomly.

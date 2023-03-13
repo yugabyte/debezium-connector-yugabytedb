@@ -1,9 +1,5 @@
 package io.debezium.connector.yugabytedb;
 
-import static org.junit.Assert.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.fail;
-
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -11,61 +7,52 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Unit tests to verify that the connector works with schema changes gracefully.
  * 
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBSchemaEvolutionTest extends YugabyteDBTestBase {
+public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
   private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSchemaEvolutionTest.class);
   
   // Keeping the id part as a string only so that it is easier to use generate_series as well.
   private final String insertFormatString = "INSERT INTO t1 VALUES (%s, 'name_value');";
-  
-  private static YugabyteYSQLContainer ybContainer;
 
-  @BeforeClass
+  @BeforeAll
   public static void beforeClass() throws SQLException {
       String tserverFlags = "cdc_max_stream_intent_records=200";
-      ybContainer = TestHelper.getYbContainer(null, tserverFlags);
-      ybContainer.start();
-
-      TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-      TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
-
+      initializeYBContainer(null, tserverFlags);
       TestHelper.dropAllSchemas();
   }
 
-  @Before
+  @BeforeEach
   public void before() {
       initializeConnectorTestFramework();
   }
 
-  @After
+  @AfterEach
   public void after() throws Exception {
       stopConnector();
       TestHelper.executeDDL("drop_tables_and_databases.ddl");
   }
 
-  @AfterClass
-  public static void afterClass() throws Exception {
-      ybContainer.stop();
+  @AfterAll
+  public static void afterClass() {
+      shutdownYBContainer();
   }
 
   @Test

@@ -1,7 +1,6 @@
 package io.debezium.connector.yugabytedb;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import java.sql.SQLException;
@@ -11,55 +10,41 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
-public class YugabyteDBBeforeImageTest extends YugabyteDBTestBase {
+public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
   private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBPartitionTest.class);
   private final String formatInsertString =
       "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 12.345);";
-  private static YugabyteYSQLContainer ybContainer;
-  private static String masterAddresses;
 
-  @BeforeClass
+  @BeforeAll
   public static void beforeClass() throws SQLException {
-      ybContainer = TestHelper.getYbContainer();
-      ybContainer.start();
-
-      TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-      TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
-      masterAddresses = ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100);
-
+      initializeYBContainer();
       TestHelper.dropAllSchemas();
   }
 
-  @Before
+  @BeforeEach
   public void before() {
       initializeConnectorTestFramework();
   }
 
-  @After
+  @AfterEach
   public void after() throws Exception {
       stopConnector();
       TestHelper.executeDDL("drop_tables_and_databases.ddl");
   }
 
-  @AfterClass
+  @AfterAll
   public static void afterClass() throws Exception {
-      ybContainer.stop();
+      shutdownYBContainer();
   }
 
   @Test
