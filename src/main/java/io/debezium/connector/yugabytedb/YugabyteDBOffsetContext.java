@@ -118,13 +118,12 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                                                          OpId lastCompletelyProcessedLsn,
                                                          Set<YBPartition> partitions) {
         LOGGER.info("Creating initial offset context");
-        final OpId lsn = null; // OpId.valueOf(jdbcConnection.currentXLogLocation());
-        // TODO:Suranjan read the offset for each of the tablet
+
         final long txId = 0L;// new OpId(0,0,"".getBytes(), 0);
-        LOGGER.info("Read checkpoint at '{}' ", lsn, txId);
+
         YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(
                 connectorConfig,
-                lsn,
+                null, /* passing null since this value is not being used anywhere in constructor */
                 lastCompletelyProcessedLsn,
                 lastCommitLsn,
                 String.valueOf(txId),
@@ -153,7 +152,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
      * @return the starting {@link OpId} to begin the streaming with
      */
     public static OpId streamingStartLsn() {
-        return new OpId(0, 0, null, 0, 0);
+        return new OpId(0, 0, "".getBytes(), 0, 0);
     }
 
     @Override
@@ -161,7 +160,6 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         Map<String, Object> result = new HashMap<>();
 
         for (Map.Entry<String, SourceInfo> entry : this.tabletSourceInfo.entrySet()) {
-
             result.put(entry.getKey(), entry.getValue().lsn().toSerString());
         }
 
