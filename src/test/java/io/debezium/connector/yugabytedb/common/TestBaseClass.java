@@ -1,7 +1,12 @@
 package io.debezium.connector.yugabytedb.common;
 
+import io.debezium.connector.yugabytedb.rules.YugabyteDBLogTestName;
 import io.debezium.embedded.AbstractConnectorTest;
 import org.awaitility.Awaitility;
+
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import java.time.Duration;
@@ -11,7 +16,9 @@ import java.time.Duration;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
+@ExtendWith(YugabyteDBLogTestName.class)
 public class TestBaseClass extends AbstractConnectorTest {
+    public Logger LOGGER = LoggerFactory.getLogger(getClass());
     protected static YugabyteYSQLContainer ybContainer;
 
     protected void awaitUntilConnectorIsReady() throws Exception {

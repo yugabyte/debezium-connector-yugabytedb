@@ -13,9 +13,6 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
 
@@ -27,7 +24,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
-  private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSchemaEvolutionTest.class);
   
   // Keeping the id part as a string only so that it is easier to use generate_series as well.
   private final String insertFormatString = "INSERT INTO t1 VALUES (%s, 'name_value');";

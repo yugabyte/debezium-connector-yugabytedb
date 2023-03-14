@@ -6,9 +6,6 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.YugabyteYSQLContainer;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 
@@ -22,7 +19,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
-    private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSnapshotTest.class);
 
     @BeforeAll
     public static void beforeClass() throws SQLException {

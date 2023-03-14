@@ -4,9 +4,6 @@ import java.sql.SQLException;
 import java.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
@@ -22,7 +19,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class YugabyteDBPartitionTest extends YugabyteDBContainerTestBase {
-  private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBPartitionTest.class);
 
   @BeforeAll
   public static void beforeClass() throws SQLException {
