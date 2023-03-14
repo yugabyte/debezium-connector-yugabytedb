@@ -266,6 +266,14 @@ public class YugabyteDBStreamingChangeEventSource implements
             // entry.getValue() will give the tabletId
             OpId opId = YBClientUtils.getOpIdFromGetTabletListResponse(
                             tabletListResponse.get(entry.getKey()), entry.getValue());
+
+            // If we are getting a term and index as -1 and -1 from the server side it means
+            // that the streaming has not yet started on that tablet ID. In that case, assign a
+            // starting OpId so that the connector can poll using proper checkpoints.
+            if (opId.getTerm() == -1 && opId.getIndex() == -1) {
+                opId = YugabyteDBOffsetContext.streamingStartLsn();
+            }
+
             offsetContext.initSourceInfo(entry.getValue(), this.connectorConfig, opId);
             schemaNeeded.put(entry.getValue(), Boolean.TRUE);
         }
