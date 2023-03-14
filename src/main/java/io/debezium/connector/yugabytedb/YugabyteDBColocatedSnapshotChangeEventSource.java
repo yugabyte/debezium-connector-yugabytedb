@@ -405,8 +405,7 @@ public class YugabyteDBColocatedSnapshotChangeEventSource extends AbstractSnapsh
     }
 
     /**
-     * This function assumes that the colocated tableId has been populated and returns a lookup key
-     * to key the values in different maps.
+     * This function returns a lookup key to get the values in different map based structures.
      * @param tableId the table UUID to use while forming lookup key
      * @return a string value for the lookup key of the format {@code tableId.colocatedTabletId}
      * @throws NullPointerException if {@code colocatedTabletId} has not been populated yet
