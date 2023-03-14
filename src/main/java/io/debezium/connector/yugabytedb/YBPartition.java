@@ -16,6 +16,7 @@ import io.debezium.pipeline.spi.Partition;
 import io.debezium.util.Collect;
 
 public class YBPartition implements Partition {
+    private final static Logger LOGGER = LoggerFactory.getLogger(YBPartition.class);
     private static final String TABLET_PARTITION_KEY = "tabletid";
 
     private final String tabletId;
@@ -30,6 +31,12 @@ public class YBPartition implements Partition {
     }
 
     public String getTabletId() {
+        // In case of colocated tables, tabletId would be a string of the format tableId.tabletId
+        // TODO Vaibhav: Remove this log before final deployment or change it to debug.
+        if (this.tabletId.contains(".")) {
+            LOGGER.info("Returning the lookup key of the partition: {}", this.tabletId);
+        }
+
         return this.tabletId;
     }
 
