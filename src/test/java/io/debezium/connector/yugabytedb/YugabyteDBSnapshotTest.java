@@ -1,7 +1,7 @@
 package io.debezium.connector.yugabytedb;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
@@ -10,7 +10,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.YugabyteYSQLContainer;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 
@@ -22,22 +21,16 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
+public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSnapshotTest.class);
 
     // We will use the database where colocation is turned on by default so that we can reuse
     // the same database for colocated as well as non-colocated tables.
     private final String DB_NAME = "colocated_database";
 
-    private static YugabyteYSQLContainer ybContainer;
-
     @BeforeAll
     public static void beforeClass() throws Exception {
-        ybContainer = TestHelper.getYbContainer();
-        ybContainer.start();
-
-        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-        TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+        initializeYBContainer();
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
     }
@@ -56,7 +49,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBTestBase {
 
     @AfterAll
     public static void afterClass() {
-        ybContainer.stop();
+        shutdownYBContainer();
     }
 
     @ParameterizedTest

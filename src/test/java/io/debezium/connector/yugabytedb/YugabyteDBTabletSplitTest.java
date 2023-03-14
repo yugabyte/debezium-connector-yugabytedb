@@ -22,26 +22,21 @@ import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
 /**
  * Unit tests to verify that the connector gracefully handles the tablet splitting on the server.
  * 
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBTabletSplitTest extends YugabyteDBTestBase {
+public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
   private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBPartitionTest.class);
-  private static YugabyteYSQLContainer ybContainer;
   private static String masterAddresses;
 
   @BeforeAll
   public static void beforeClass() throws SQLException {
-      ybContainer = TestHelper.getYbContainer();
-      ybContainer.start();
-
-      TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-      TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
-      masterAddresses = ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100);
+      initializeYBContainer();
+      masterAddresses = getMasterAddress();
 
       TestHelper.dropAllSchemas();
   }
@@ -59,7 +54,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBTestBase {
 
   @AfterAll
   public static void afterClass() {
-      ybContainer.stop();
+      shutdownYBContainer();
   }
 
   @Order(1)
