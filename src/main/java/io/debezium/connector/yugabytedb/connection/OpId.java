@@ -123,6 +123,12 @@ public class OpId implements Comparable<OpId> {
                         checkpoint.getSnapshotTime());
     }
 
+    public static OpId from(CdcSdkCheckpoint checkpoint) {
+        return new OpId(checkpoint.getTerm(), checkpoint.getIndex(),
+                checkpoint.getKey(), checkpoint.getWriteId(),
+                checkpoint.getTime());
+    }
+
     public CdcSdkCheckpoint toCdcSdkCheckpoint() {
         return new CdcSdkCheckpoint(this.term, this.index, this.key, this.write_id, this.time);
     }
