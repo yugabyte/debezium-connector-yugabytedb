@@ -7,7 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Test annotation to make sure that we are logging the proper test name before and after each test.
+ * Test extension to make sure that we are logging the proper test name before and after each test.
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
