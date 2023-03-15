@@ -7,7 +7,6 @@ import java.util.concurrent.CompletableFuture;
 
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.apache.log4j.Logger;
 import org.junit.jupiter.api.*;
 
 import io.debezium.DebeziumException;
@@ -15,8 +14,6 @@ import io.debezium.config.Configuration;
 import io.debezium.util.Strings;
 
 public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
-    private final static Logger LOGGER = Logger.getLogger(YugabyteDBCompleteTypesTest.class);
-
     @BeforeAll
     public static void beforeClass() throws SQLException {
         initializeYBContainer();

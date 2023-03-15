@@ -3,7 +3,6 @@ package io.debezium.connector.yugabytedb;
 import static org.fest.assertions.Assertions.*;
 
 import org.apache.kafka.common.config.ConfigDef;
-import org.apache.log4j.Logger;
 
 import io.debezium.config.Configuration;
 import io.debezium.config.Field;
@@ -13,7 +12,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class YugabyteDBConnectorIT extends YugabyteDBContainerTestBase {
-    private final static Logger LOGGER = Logger.getLogger(YugabyteDBConnectorIT.class);
 
     private YugabyteDBConnector connector;
 

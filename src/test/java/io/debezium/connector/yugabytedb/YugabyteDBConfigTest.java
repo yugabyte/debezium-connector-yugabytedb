@@ -3,7 +3,6 @@ package io.debezium.connector.yugabytedb;
 import java.sql.SQLException;
 import java.util.concurrent.CompletableFuture;
 
-import org.apache.log4j.Logger;
 import org.junit.jupiter.api.*;
 
 import io.debezium.DebeziumException;
@@ -13,7 +12,6 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
-  private final static Logger LOGGER = Logger.getLogger(YugabyteDBConnectorIT.class);
 
     @BeforeAll
     public static void beforeClass() throws SQLException {
