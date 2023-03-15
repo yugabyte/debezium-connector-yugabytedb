@@ -61,7 +61,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
     private YugabyteDBTypeRegistry yugabyteDbTypeRegistry;
 
-    protected Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
+    private Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
+
+    private boolean snapshotComplete = false;
 
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
                                                YugabyteDBTaskContext taskContext,
@@ -188,6 +190,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       res.keySet().removeIf(tableId -> !filteredTables.contains(tableId));
       
       return res;
+    }
+
+    protected boolean isSnapshotComplete() {
+        return this.snapshotComplete;
     }
 
     @Override
@@ -339,6 +345,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                  // Check if snapshot is completed here, if it is, then break out of the loop
                 if (snapshotCompletedTablets.size() == tableToTabletForSnapshot.size()) {
                     LOGGER.info("Snapshot completed for all the tablets");
+                    this.snapshotComplete = true;
                     return SnapshotResult.completed(previousOffset);
                 }
 
@@ -365,6 +372,18 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(), 
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
                     taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tabletId) : null, table.getTableId());
+
+                // If EXPLICIT checkpointing is enabled then check if the checkpoint is the marker for snapshot completion
+                // and in case it is IMPLICIT checkpointing, the marker value should be checked on the from_op_id we are sending
+                // to the server.
+                if ((taskContext.shouldEnableExplicitCheckpointing()
+                        && isSnapshotCompleteMarker(OpId.from(tabletToExplicitCheckpoint.get(tabletId))))
+                            || isSnapshotCompleteMarker(cp)) {
+                  // This will mark the snapshot completed for the tablet
+                  snapshotCompletedTablets.add(tabletId);
+                  LOGGER.info("Snapshot completed for tablet {} belonging to table {} ({})",
+                          tabletId, table.getName(), tableId);
+                }
                 
                 // Process the response
                 for (CdcService.CDCSDKProtoRecordPB record : 
@@ -446,14 +465,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 LOGGER.debug("Final OpId is {}", finalOpId);
                 
                 previousOffset.getSourceInfo(tabletId).updateLastCommit(finalOpId);
-
-                if (isSnapshotComplete(finalOpId)) {
-                    // This will mark the snapshot completed for the tablet
-                    snapshotCompletedTablets.add(tabletId);
-                    LOGGER.info("Snapshot completed for tablet {} belonging to table {} ({})", 
-                                tabletId, table.getName(), tableId);
-                }
-
             }
             
             // Reset the retry count here indicating that if the flow has reached here then
@@ -546,7 +557,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
      * @param opId the {@link OpId} to check for
      * @return true if the passed {@link OpId} means snapshot is complete, false otherwise
      */
-    private boolean isSnapshotComplete(OpId opId) {
+    private boolean isSnapshotCompleteMarker(OpId opId) {
         return Arrays.equals(opId.getKey(), "".getBytes()) && opId.getWrite_id() == 0
                 && opId.getTime() == 0;
     }
