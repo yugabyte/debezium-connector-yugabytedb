@@ -36,15 +36,18 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
 
     private final boolean sendBeforeImage;
 
+    private final boolean enableExplicitCheckpointing;
+
     protected YugabyteDBTaskContext(YugabyteDBConnectorConfig config, YugabyteDBSchema schema,
                                     TopicSelector<TableId> topicSelector, String taskId,
-                                    boolean sendBeforeImage) {
+                                    boolean sendBeforeImage, boolean enableExplicitCheckpointing) {
         super(config.getContextName(), config.getLogicalName(), taskId, Collections::emptySet);
         this.config = config;
         this.topicSelector = topicSelector;
         assert schema != null;
         this.schema = schema;
         this.sendBeforeImage = sendBeforeImage;
+        this.enableExplicitCheckpointing = enableExplicitCheckpointing;
     }
 
     protected TopicSelector<TableId> topicSelector() {
@@ -61,6 +64,10 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
 
     protected boolean isBeforeImageEnabled() {
         return this.sendBeforeImage;
+    }
+
+    protected boolean shouldEnableExplicitCheckpointing() {
+        return this.enableExplicitCheckpointing;
     }
 
     protected void refreshSchema(YugabyteDBConnection connection,
