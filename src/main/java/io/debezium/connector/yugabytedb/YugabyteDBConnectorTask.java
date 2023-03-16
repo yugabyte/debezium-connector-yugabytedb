@@ -132,7 +132,8 @@ public class YugabyteDBConnectorTask
 
         String taskId = config.getString(YugabyteDBConnectorConfig.TASK_ID.toString());
         boolean sendBeforeImage = config.getBoolean(YugabyteDBConnectorConfig.SEND_BEFORE_IMAGE.toString());
-        this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector, taskId, sendBeforeImage);
+        boolean enableExplicitCheckpointing = config.getBoolean(YugabyteDBConnectorConfig.ENABLE_EXPLICIT_CHECKPOINTING.toString());
+        this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector, taskId, sendBeforeImage, enableExplicitCheckpointing);
 
         // Get the tablet ids and load the offsets
         final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets =

@@ -8,8 +8,6 @@ import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 
@@ -22,7 +20,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
-    private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSnapshotTest.class);
 
     // We will use the database where colocation is turned on by default so that we can reuse
     // the same database for colocated as well as non-colocated tables.
