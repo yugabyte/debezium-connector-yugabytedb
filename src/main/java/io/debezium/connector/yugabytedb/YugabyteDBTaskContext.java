@@ -64,7 +64,7 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
 
     protected boolean haveColocatedTablesOnly() {
         // TODO Vaibhav: this decision will be taken based on the value passed by the top level connector
-        return false;
+        return true;
     }
 
     protected boolean isBeforeImageEnabled() {

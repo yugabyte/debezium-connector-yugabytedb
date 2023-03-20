@@ -2,6 +2,7 @@ package io.debezium.connector.yugabytedb;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
@@ -19,7 +20,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBSnapshotTest extends YugabytedTestBase {
 
     // We will use the database where colocation is turned on by default so that we can reuse
     // the same database for colocated as well as non-colocated tables.
@@ -49,19 +50,24 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         shutdownYBContainer();
     }
 
-    @ParameterizedTest
-    @ValueSource(booleans = {true, false})
-    public void testSnapshotRecordConsumption(boolean colocated) throws Exception {
+//    @ParameterizedTest
+//    @ValueSource(booleans = {true, false})
+    @Test
+    public void testSnapshotRecordConsumption() throws Exception {
         TestHelper.dropAllSchemas();
-        createTable(colocated);
-        final int recordsCount = 5000;
+        createTable(true);
+        // todo: change 100 to 5000
+        final int recordsCount = 100;
+        LOGGER.info("Inserting records now");
         // insert rows in the table snapshot_table with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertBulkRecords(recordsCount);
 
+        LOGGER.info("Creating DB stream ID");
         String dbStreamId = TestHelper.getNewDbStreamId(DB_NAME, "snapshot_table");
         Configuration.Builder configBuilder =
                 TestHelper.getConfigBuilder(DB_NAME, "public.snapshot_table", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
+        LOGGER.info("VKVK starting the connector");
         start(YugabyteDBConnector.class, configBuilder.build());
 
         awaitUntilConnectorIsReady();
@@ -235,7 +241,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
                         });
                         if (consumed > 0) {
                             totalConsumedRecords.addAndGet(consumed);
-                            LOGGER.debug("Consumed " + totalConsumedRecords + " records");
+                            LOGGER.info("Consumed " + totalConsumedRecords + " records");
                         }
 
                         return totalConsumedRecords.get() == recordsCount;

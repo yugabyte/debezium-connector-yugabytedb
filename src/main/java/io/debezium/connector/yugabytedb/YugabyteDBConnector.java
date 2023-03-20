@@ -143,7 +143,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         LOGGER.debug("The streamid being used is " + streamIdValue);
 
         int numGroups = Math.min(this.tabletIds.size(), maxTasks);
-        LOGGER.debug("The tabletIds size are " + tabletIds.size() + " maxTasks" + maxTasks);
+        LOGGER.info("VKVK The tabletIds size are " + tabletIds.size() + " maxTasks" + maxTasks);
 
         List<List<Pair<String, String>>> tabletIdsGrouped = ConnectorUtils.groupPartitions(this.tabletIds, numGroups);
         LOGGER.debug("The grouped tabletIds are " + tabletIdsGrouped.size());
@@ -339,16 +339,29 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             throw new DebeziumException("The tables provided in table.include.list do not exist");
         }
 
+        LOGGER.info("VKVK total tableIDs are {}", tableIds.size());
+
         this.tabletIds = new ArrayList<>();
+        // TODO: Assume that the first tablet you're getting is the colocated tablet ONLY and use
+        // that with all the tables.
+        String colocatedTablet = "";
         try {
             for (String tableId : tableIds) {
                 YBTable table = ybClient.openTableByUUID(tableId);
-                GetTabletListToPollForCDCResponse resp = ybClient.getTabletListToPollForCdc(
-                    table, this.yugabyteDBConnectorConfig.streamId(), tableId);
-                for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
-                    this.tabletIds.add(
-                        new ImmutablePair<String,String>(
-                            tableId, pair.getTabletLocations().getTabletId().toStringUtf8()));
+                LOGGER.info("VKVK getting tablets for table {} ({})", table.getName(), table.getTableId());
+                // TODO: THis if block is just a hack, remove in future.
+                if (colocatedTablet.isEmpty()) {
+                    GetTabletListToPollForCDCResponse resp = ybClient.getTabletListToPollForCdc(
+                            table, this.yugabyteDBConnectorConfig.streamId(), tableId);
+                    for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
+                        colocatedTablet = pair.getTabletLocations().getTabletId().toStringUtf8();
+                        LOGGER.info("Assigning colocated tablet as {}", colocatedTablet);
+                        this.tabletIds.add(
+                                new ImmutablePair<String,String>(
+                                        tableId, pair.getTabletLocations().getTabletId().toStringUtf8()));
+                    }
+                } else {
+                    this.tabletIds.add(new ImmutablePair<String,String>(tableId, colocatedTablet));
                 }
             }
             Collections.sort(this.tabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));

@@ -253,6 +253,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             YBTable table = this.syncClient.openTableByUUID(tId);
             tableIdToTable.put(tId, table);
 
+            LOGGER.info("VKVK calling getTabletListResponse for table {} ({})", table.getTableId(), table.getName());
             GetTabletListToPollForCDCResponse resp =
                 this.syncClient.getTabletListToPollForCdc(table, streamId, tId);
             tabletListResponse.put(tId, resp);
@@ -360,7 +361,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                         response = this.syncClient.getChangesCDCSDK(
                             table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                             cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
-                            taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tabletId) : null, table.getTableId());
+                            taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tabletId) : null);
                       } catch (CDCErrorException cdcException) {
                         // Check if exception indicates a tablet split.
                         LOGGER.debug("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());

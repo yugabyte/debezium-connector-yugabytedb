@@ -54,6 +54,8 @@ public class YugabyteDBColocatedSnapshotChangeEventSource extends AbstractSnapsh
 
     private String colocatedTabletId;
 
+    private boolean snapshotComplete = false;
+
     public YugabyteDBColocatedSnapshotChangeEventSource(
             YugabyteDBConnectorConfig connectorConfig, YugabyteDBTaskContext taskContext,
             Snapshotter snapshotter, YugabyteDBConnection connection, YugabyteDBSchema schema,
@@ -151,6 +153,7 @@ public class YugabyteDBColocatedSnapshotChangeEventSource extends AbstractSnapsh
                 this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
             tableToTabletIds = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
 
+            LOGGER.info("VKVK tableToTabletIds size is {}", tableToTabletIds.size());
             // Since all the tables share the same tablet, get one pair and assign its tabletId to
             // the global member attribute. Assert that the tabletId is common across all the pairs.
             this.colocatedTabletId = tableToTabletIds.get(0).getValue();
@@ -246,6 +249,7 @@ public class YugabyteDBColocatedSnapshotChangeEventSource extends AbstractSnapsh
                         // Check if snapshot is completed here, if it is, then break out of the loop
                         if (snapshotCompletedTables.size() == tableToTabletForSnapshot.size()) {
                             LOGGER.info("Snapshot completed for all the colocated tables");
+                            this.snapshotComplete = true;
                             return SnapshotResult.completed(previousOffset);
                         }
 
@@ -309,11 +313,13 @@ public class YugabyteDBColocatedSnapshotChangeEventSource extends AbstractSnapsh
                                         Objects.requireNonNull(tId);
                                     }
                                     // Getting the table with the help of the schema.
-                                    Table t = schema.tableForTablet(tId, this.colocatedTabletId);
+                                    Table t = schema.tableForTablet(tId, getLookupKey(tableId));
                                     if (YugabyteDBSchema.shouldRefreshSchema(t, message.getSchema())) {
                                         // If we fail to achieve the table, that means we have not specified
                                         // correct schema information. Now try to refresh the schema.
-                                        schema.refreshSchemaWithTabletId(tId, message.getSchema(), pgSchemaName, this.colocatedTabletId);
+                                        // TODO Vaibhav: Over here, even passing this.colocatedTabletId should work as the schema is already
+                                        // stored with table.tablet level
+                                        schema.refreshSchemaWithTabletId(tId, message.getSchema(), pgSchemaName, getLookupKey(tableId));
                                     }
                                 } else {
                                     // DML event
@@ -336,7 +342,7 @@ public class YugabyteDBColocatedSnapshotChangeEventSource extends AbstractSnapsh
                                                     new YugabyteDBChangeRecordEmitter(part, previousOffset, clock,
                                                             this.connectorConfig, schema,
                                                             connection, tId, message,
-                                                            pgSchemaName, this.colocatedTabletId,
+                                                            pgSchemaName, getLookupKey(tableId),
                                                             taskContext.isBeforeImageEnabled()));
 
                                     LOGGER.debug("Dispatched snapshot record successfully");
@@ -353,7 +359,7 @@ public class YugabyteDBColocatedSnapshotChangeEventSource extends AbstractSnapsh
 
                         previousOffset.getSourceInfo(getLookupKey(tableId)).updateLastCommit(finalOpId);
 
-                        if (isSnapshotComplete(finalOpId)) {
+                        if (isSnapshotCompleteMarker(finalOpId)) {
                             // This will mark the snapshot completed for the tablet
                             snapshotCompletedTables.add(tableId);
                             LOGGER.info("Snapshot completed for table {} ({})", table.getTableId(), table.getName());
@@ -418,9 +424,13 @@ public class YugabyteDBColocatedSnapshotChangeEventSource extends AbstractSnapsh
         return tableId + "." + this.colocatedTabletId;
     }
 
-    private boolean isSnapshotComplete(OpId opId) {
+    private boolean isSnapshotCompleteMarker(OpId opId) {
         return Arrays.equals(opId.getKey(), "".getBytes()) && opId.getWrite_id() == 0
                 && opId.getTime() == 0;
+    }
+
+    protected boolean isSnapshotComplete() {
+        return this.snapshotComplete;
     }
 
     protected void setCheckpointWithRetryBeforeSnapshot(
@@ -516,6 +526,10 @@ public class YugabyteDBColocatedSnapshotChangeEventSource extends AbstractSnapsh
         res.keySet().removeIf(tableId -> !filteredTables.contains(tableId));
 
         return res;
+    }
+
+    public void commitOffset(Map<String, ?> offsets) {
+        // DO nothing for now.
     }
 
     protected Stream<TableId> getDataCollectionsToBeSnapshotted(Set<TableId> allDataCollections) {
