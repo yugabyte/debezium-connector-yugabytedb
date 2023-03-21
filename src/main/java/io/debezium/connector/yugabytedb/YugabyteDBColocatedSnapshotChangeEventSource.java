@@ -50,11 +50,13 @@ public class YugabyteDBColocatedSnapshotChangeEventSource extends AbstractSnapsh
 
     private OpId lastCompletelyProcessedLsn;
 
-    private YugabyteDBTypeRegistry yugabyteDbTypeRegistry;
+    private final YugabyteDBTypeRegistry yugabyteDbTypeRegistry;
 
     private String colocatedTabletId;
 
     private boolean snapshotComplete = false;
+
+    private Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
 
     public YugabyteDBColocatedSnapshotChangeEventSource(
             YugabyteDBConnectorConfig connectorConfig, YugabyteDBTaskContext taskContext,
@@ -83,6 +85,7 @@ public class YugabyteDBColocatedSnapshotChangeEventSource extends AbstractSnapsh
         this.syncClient = new YBClient(asyncClient);
 
         this.yugabyteDbTypeRegistry = taskContext.schema().getTypeRegistry();
+        this.tabletToExplicitCheckpoint = new HashMap<>();
     }
 
     @Override

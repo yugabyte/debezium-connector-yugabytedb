@@ -11,6 +11,7 @@ import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.util.*;
 
+import io.debezium.connector.yugabytedb.util.YugabyteDBConnectorUtil;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.kafka.common.config.ConfigDef;
@@ -143,9 +144,9 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         LOGGER.debug("The streamid being used is " + streamIdValue);
 
         int numGroups = Math.min(this.tabletIds.size(), maxTasks);
-        LOGGER.info("VKVK The tabletIds size are " + tabletIds.size() + " maxTasks" + maxTasks);
+        LOGGER.info("The tabletIds size are " + tabletIds.size() + " maxTasks" + maxTasks);
 
-        List<List<Pair<String, String>>> tabletIdsGrouped = ConnectorUtils.groupPartitions(this.tabletIds, numGroups);
+        List<List<Pair<String, String>>> tabletIdsGrouped = YugabyteDBConnectorUtil.groupPartitionsSmartly().groupPartitions(this.tabletIds, numGroups);
         LOGGER.debug("The grouped tabletIds are " + tabletIdsGrouped.size());
         List<Map<String, String>> taskConfigs = new ArrayList<>(tabletIdsGrouped.size());
 
