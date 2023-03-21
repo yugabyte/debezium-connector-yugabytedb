@@ -21,6 +21,9 @@ public class TestBaseClass extends AbstractConnectorTest {
     public Logger LOGGER = LoggerFactory.getLogger(getClass());
     protected static YugabyteYSQLContainer ybContainer;
 
+    protected final String DEFAULT_DB_NAME = "yugabyte";
+    protected final String DEFAULT_COLOCATED_DB_NAME = "colocated_database";
+
     protected void awaitUntilConnectorIsReady() throws Exception {
         Awaitility.await()
                 .pollDelay(Duration.ofSeconds(5))

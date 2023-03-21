@@ -367,7 +367,9 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             Collections.sort(this.tabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));
         }
         catch (Exception e) {
-            LOGGER.error("Error while fetching all the tablets", e);
+            final String errorMessage = "Error while fetching all the tablets";
+            LOGGER.error(errorMessage, e);
+            throw new DebeziumException(errorMessage, e);
         }
     }
 }
