@@ -55,8 +55,7 @@ public class ClientAPITest extends YugabyteDBContainerTestBase {
 		final String createTable2 =
 			String.format("CREATE TABLE test_2 (id INT PRIMARY KEY) WITH (COLOCATED = %s);", colocated);
 
-		// Create database and create tables inside the database.
-		TestHelper.execute(createDatabase);
+		// Create tables inside the colocated database.
 		TestHelper.executeInDatabase(createTable1, DEFAULT_COLOCATED_DB_NAME);
 		TestHelper.executeInDatabase(createTable2, DEFAULT_COLOCATED_DB_NAME);
 
