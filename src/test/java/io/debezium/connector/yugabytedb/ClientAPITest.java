@@ -43,7 +43,7 @@ public class ClientAPITest extends YugabyteDBContainerTestBase {
 	public static void afterClass() throws Exception {
 		shutdownYBContainer();
 	}
-	
+
 	@ParameterizedTest(name = "Colocation: {0}")
 	@ValueSource(booleans = {true, false})
 	public void getTabletListToPollForCDC(boolean colocated) throws Exception {
