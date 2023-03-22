@@ -4,7 +4,6 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.yb.cdc.CdcService;
 import org.yb.client.GetTabletListToPollForCDCResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
@@ -45,7 +44,7 @@ public class ClientAPITest extends YugabyteDBContainerTestBase {
 		shutdownYBContainer();
 	}
 
-	@ParameterizedTest
+	@ParameterizedTest(name = "Colocation: {0}")
 	@ValueSource(booleans = {true, false})
 	public void getTabletListToPollForCDC(boolean colocated) throws Exception {
 		final String createTable1 =
@@ -65,17 +64,12 @@ public class ClientAPITest extends YugabyteDBContainerTestBase {
 		tables.add(TestHelper.getYbTable(ybClient, "test_1"));
 		tables.add(TestHelper.getYbTable(ybClient, "test_2"));
 
-		try {
-			// Now get the tablet list for all the tables.
-			for (YBTable table : tables) {
-				assertNotNull(table);
-				GetTabletListToPollForCDCResponse resp =
-						ybClient.getTabletListToPollForCdc(table, dbStreamId, table.getTableId());
-				assertNotNull(resp);
-			}
-		} catch (Exception e) {
-			// The API call should not fail and should not throw exceptions.
-			fail("Call to the API getTabletListToPollForCDC failed", e);
+		// Now get the tablet list for all the tables.
+		for (YBTable table : tables) {
+			assertNotNull(table);
+			GetTabletListToPollForCDCResponse resp =
+					ybClient.getTabletListToPollForCdc(table, dbStreamId, table.getTableId());
+			assertNotNull(resp);
 		}
 	}
 }
