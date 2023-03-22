@@ -371,7 +371,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 GetChangesResponse resp = this.syncClient.getChangesCDCSDK(table, 
                     connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(), 
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
-                    taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tabletId) : null, tableId);
+                    taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tabletId) : null);
 
                 // If EXPLICIT checkpointing is enabled then check if the checkpoint is the marker for snapshot completion
                 // and in case it is IMPLICIT checkpointing, the marker value should be checked on the from_op_id we are sending

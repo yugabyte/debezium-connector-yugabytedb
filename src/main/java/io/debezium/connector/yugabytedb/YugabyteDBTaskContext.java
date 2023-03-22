@@ -37,10 +37,12 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
     private final boolean sendBeforeImage;
 
     private final boolean enableExplicitCheckpointing;
+    private final boolean hasColocatedTablesOnly;
 
     protected YugabyteDBTaskContext(YugabyteDBConnectorConfig config, YugabyteDBSchema schema,
                                     TopicSelector<TableId> topicSelector, String taskId,
-                                    boolean sendBeforeImage, boolean enableExplicitCheckpointing) {
+                                    boolean sendBeforeImage, boolean enableExplicitCheckpointing,
+                                    boolean hasColocatedTablesOnly) {
         super(config.getContextName(), config.getLogicalName(), taskId, Collections::emptySet);
         this.config = config;
         this.topicSelector = topicSelector;
@@ -48,6 +50,7 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
         this.schema = schema;
         this.sendBeforeImage = sendBeforeImage;
         this.enableExplicitCheckpointing = enableExplicitCheckpointing;
+        this.hasColocatedTablesOnly = hasColocatedTablesOnly;
     }
 
     protected TopicSelector<TableId> topicSelector() {
@@ -62,9 +65,8 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
         return config;
     }
 
-    protected boolean haveColocatedTablesOnly() {
-        // TODO Vaibhav: this decision will be taken based on the value passed by the top level connector
-        return true;
+    protected boolean hasColocatedTablesOnly() {
+        return this.hasColocatedTablesOnly;
     }
 
     protected boolean isBeforeImageEnabled() {

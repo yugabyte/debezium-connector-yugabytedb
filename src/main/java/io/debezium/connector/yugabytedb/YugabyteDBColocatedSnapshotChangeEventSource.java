@@ -532,6 +532,7 @@ public class YugabyteDBColocatedSnapshotChangeEventSource extends AbstractSnapsh
     }
 
     public void commitOffset(Map<String, ?> offsets) {
+        // TODO: Talk and find out what to do here in case of colocated tables.
         // DO nothing for now.
     }
 

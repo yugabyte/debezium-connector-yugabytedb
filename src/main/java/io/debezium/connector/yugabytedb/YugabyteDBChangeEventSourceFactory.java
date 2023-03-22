@@ -69,7 +69,7 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
     @Override
     public SnapshotChangeEventSource<YBPartition, YugabyteDBOffsetContext> getSnapshotChangeEventSource(
                                                                                                                 SnapshotProgressListener snapshotProgressListener) {
-        if (taskContext.haveColocatedTablesOnly()) {
+        if (taskContext.hasColocatedTablesOnly()) {
             return new YugabyteDBColocatedSnapshotChangeEventSource(
                     configuration,
                     taskContext,

@@ -553,6 +553,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withValidation(Field::isBoolean)
             .withInvisibleRecommender();
 
+    protected static final Field HAS_COLOCATED_TABLES_ONLY = Field.create("yugabytedb.has.colocated.tables.only")
+            .withDescription("Internal use only - whether the task has just colocated tables")
+            .withValidation(Field::isBoolean)
+            .withInvisibleRecommender();
+
     public static final Field TABLET_LIST = Field.create(TASK_CONFIG_PREFIX + "tabletlist")
             .withDisplayName("YugabyteDB Tablet LIST for a Task")
             .withType(ConfigDef.Type.STRING)

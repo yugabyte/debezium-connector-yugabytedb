@@ -144,9 +144,9 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         LOGGER.debug("The streamid being used is " + streamIdValue);
 
         int numGroups = Math.min(this.tabletIds.size(), maxTasks);
-        LOGGER.info("The tabletIds size are " + tabletIds.size() + " maxTasks" + maxTasks);
+        LOGGER.debug("The tabletIds size are " + tabletIds.size() + " maxTasks" + maxTasks);
 
-        List<List<Pair<String, String>>> tabletIdsGrouped = YugabyteDBConnectorUtil.groupPartitionsSmartly().groupPartitions(this.tabletIds, numGroups);
+        List<List<Pair<String, String>>> tabletIdsGrouped = YugabyteDBConnectorUtil.groupPartitionsSmartly(this.tabletIds, numGroups);
         LOGGER.debug("The grouped tabletIds are " + tabletIdsGrouped.size());
         List<Map<String, String>> taskConfigs = new ArrayList<>(tabletIdsGrouped.size());
 
@@ -154,6 +154,16 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             LOGGER.debug("The taskTables are " + taskTables);
             Map<String, String> taskProps = new HashMap<>(this.props);
             int taskId = taskConfigs.size();
+
+            // Only checking the first table in the task table group should be enough to know
+            // whether the task contains colocated tables.
+            try {
+                boolean hasColocatedTables = ybClient.openTableByUUID(taskTables.get(0).getKey()).isColocated();
+                taskProps.put(YugabyteDBConnectorConfig.HAS_COLOCATED_TABLES_ONLY.toString(), String.valueOf(hasColocatedTables));
+            } catch (Exception e) {
+                throw new DebeziumException("Unable to open table to check colocation status");
+            }
+
             taskProps.put(YugabyteDBConnectorConfig.TASK_ID.toString(), String.valueOf(taskId));
             String taskTablesSerialized = "";
             try {
