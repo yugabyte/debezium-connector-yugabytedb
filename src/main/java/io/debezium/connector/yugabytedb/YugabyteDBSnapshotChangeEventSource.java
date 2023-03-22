@@ -19,11 +19,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
-import org.yb.client.AsyncYBClient;
-import org.yb.client.GetChangesResponse;
-import org.yb.client.GetCheckpointResponse;
-import org.yb.client.YBClient;
-import org.yb.client.YBTable;
+import org.yb.client.*;
 
 import io.debezium.DebeziumException;
 import io.debezium.connector.yugabytedb.connection.OpId;
@@ -65,6 +61,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
     private YugabyteDBTypeRegistry yugabyteDbTypeRegistry;
 
+    private Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
+
+    private boolean snapshotComplete = false;
+
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
                                                YugabyteDBTaskContext taskContext,
                                                Snapshotter snapshotter, YugabyteDBConnection connection,
@@ -92,6 +92,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.syncClient = new YBClient(this.asyncClient);
 
         this.yugabyteDbTypeRegistry = taskContext.schema().getTypeRegistry();
+        this.tabletToExplicitCheckpoint = new HashMap<>();
     }
 
     @Override
@@ -191,6 +192,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       return res;
     }
 
+    protected boolean isSnapshotComplete() {
+        return this.snapshotComplete;
+    }
+
     @Override
     protected SnapshotResult<YugabyteDBOffsetContext> doExecute(ChangeEventSourceContext context, YugabyteDBOffsetContext previousOffset,
                                                                 SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
@@ -281,7 +286,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       for (Pair<String, String> entry : tableToTabletIds) {
         schemaNeeded.put(entry.getValue(), Boolean.TRUE);
 
-        previousOffset.initSourceInfo(entry.getValue(), this.connectorConfig);
+        previousOffset.initSourceInfo(entry.getValue(), this.connectorConfig, YugabyteDBOffsetContext.snapshotStartLsn());
         LOGGER.debug("Previous offset for tablet {} is {}", entry.getValue(), previousOffset.toString());
       }
 
@@ -340,6 +345,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                  // Check if snapshot is completed here, if it is, then break out of the loop
                 if (snapshotCompletedTablets.size() == tableToTabletForSnapshot.size()) {
                     LOGGER.info("Snapshot completed for all the tablets");
+                    this.snapshotComplete = true;
                     return SnapshotResult.completed(previousOffset);
                 }
 
@@ -364,7 +370,20 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 
                 GetChangesResponse resp = this.syncClient.getChangesCDCSDK(table, 
                     connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(), 
-                    cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId));
+                    cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
+                    taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tabletId) : null, table.getTableId());
+
+                // If EXPLICIT checkpointing is enabled then check if the checkpoint is the marker for snapshot completion
+                // and in case it is IMPLICIT checkpointing, the marker value should be checked on the from_op_id we are sending
+                // to the server.
+                if ((taskContext.shouldEnableExplicitCheckpointing()
+                        && isSnapshotCompleteMarker(OpId.from(tabletToExplicitCheckpoint.get(tabletId))))
+                            || isSnapshotCompleteMarker(cp)) {
+                  // This will mark the snapshot completed for the tablet
+                  snapshotCompletedTablets.add(tabletId);
+                  LOGGER.info("Snapshot completed for tablet {} belonging to table {} ({})",
+                          tabletId, table.getName(), tableId);
+                }
                 
                 // Process the response
                 for (CdcService.CDCSDKProtoRecordPB record : 
@@ -446,14 +465,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 LOGGER.debug("Final OpId is {}", finalOpId);
                 
                 previousOffset.getSourceInfo(tabletId).updateLastCommit(finalOpId);
-
-                if (isSnapshotComplete(finalOpId)) {
-                    // This will mark the snapshot completed for the tablet
-                    snapshotCompletedTablets.add(tabletId);
-                    LOGGER.info("Snapshot completed for tablet {} belonging to table {} ({})", 
-                                tabletId, table.getName(), tableId);
-                }
-
             }
             
             // Reset the retry count here indicating that if the flow has reached here then
@@ -500,13 +511,53 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     }
 
     /**
+     * For EXPLICIT checkpointing, the following code flow is used:<br><br>
+     * 1. Kafka Connect invokes the callback {@code commit()} which further invokes
+     * {@code commitOffset(offsets)} in the Debezium API <br><br>
+     * 2. Both the streaming and snapshot change event source classes maintain a map
+     * {@code tabletToExplicitCheckpoint} which stores the offsets sent by Kafka Connect. <br><br>
+     * 3. So when the connector gets the acknowledgement back by saying that Kafka has received
+     * records till certain offset, we update the value in {@code tabletToExplicitCheckpoint} <br><br>
+     * 4. While making the next `GetChanges` call, we pass the value from the map
+     * {@code tabletToExplicitCheckpoint} for the relevant tablet and hence the server then takes
+     * care of updating those checkpointed values in the {@code cdc_state} table <br><br>
+     * @param offset a map containing the {@link OpId} information for all the tablets
+     */
+    public void commitOffset(Map<String, ?> offset) {
+        if (!taskContext.shouldEnableExplicitCheckpointing()) {
+            return;
+        }
+
+        try {
+            LOGGER.info("Committing offsets on server for snapshot");
+
+            for (Map.Entry<String, ?> entry : offset.entrySet()) {
+                // TODO: The transaction_id field is getting populated somewhere and see if it can
+                // be removed or blocked from getting added to this map.
+                if (!entry.getKey().equals("transaction_id")) {
+                    LOGGER.debug("Tablet: {} OpId: {}", entry.getKey(), entry.getValue());
+
+                    // Parse the string to get the OpId object.
+                    OpId tempOpId = OpId.valueOf((String) entry.getValue());
+                    this.tabletToExplicitCheckpoint.put(entry.getKey(), tempOpId.toCdcSdkCheckpoint());
+
+                    LOGGER.debug("Committed checkpoint on server for stream ID {} tablet {} with term {} index {}",
+                            this.connectorConfig.streamId(), entry.getKey(), tempOpId.getTerm(), tempOpId.getIndex());
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Unable to update the explicit checkpoint map", e);
+        }
+    }
+
+    /**
      * Check if the passed OpId matches the conditions which signify that the snapshot has
      * been complete.
      *
      * @param opId the {@link OpId} to check for
      * @return true if the passed {@link OpId} means snapshot is complete, false otherwise
      */
-    private boolean isSnapshotComplete(OpId opId) {
+    private boolean isSnapshotCompleteMarker(OpId opId) {
         return Arrays.equals(opId.getKey(), "".getBytes()) && opId.getWrite_id() == 0
                 && opId.getTime() == 0;
     }

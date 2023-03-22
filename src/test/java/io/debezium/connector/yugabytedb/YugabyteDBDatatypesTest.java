@@ -12,7 +12,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.apache.log4j.Logger;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
@@ -30,8 +29,6 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 
 public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
-    private final static Logger LOGGER = Logger.getLogger(YugabyteDBDatatypesTest.class);
-
     private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
             "INSERT INTO s2.a (aa) VALUES (1);";
     private static final String CREATE_TABLES_STMT = "DROP SCHEMA IF EXISTS s1 CASCADE;" +

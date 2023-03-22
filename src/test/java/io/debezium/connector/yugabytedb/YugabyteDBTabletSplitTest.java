@@ -14,9 +14,6 @@ import java.util.stream.Collectors;
 import org.apache.kafka.connect.data.Struct;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.YugabyteYSQLContainer;
 import org.yb.client.GetTabletListToPollForCDCResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
@@ -30,7 +27,7 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
-  private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBPartitionTest.class);
+
   private static String masterAddresses;
 
   @BeforeAll
