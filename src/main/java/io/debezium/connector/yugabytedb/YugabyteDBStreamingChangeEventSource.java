@@ -253,7 +253,6 @@ public class YugabyteDBStreamingChangeEventSource implements
             YBTable table = this.syncClient.openTableByUUID(tId);
             tableIdToTable.put(tId, table);
 
-            LOGGER.info("VKVK calling getTabletListResponse for table {} ({})", table.getTableId(), table.getName());
             GetTabletListToPollForCDCResponse resp =
                 this.syncClient.getTabletListToPollForCdc(table, streamId, tId);
             tabletListResponse.put(tId, resp);

@@ -1,7 +1,6 @@
-package io.aiven.kafka.connect.transforms;
+package io.debezium.connector.yugabytedb.util;
 
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
-import io.debezium.connector.yugabytedb.util.YugabyteDBConnectorUtil;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.*;
@@ -13,7 +12,14 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class ConnectorUtilTest extends YugabyteDBContainerTestBase {
+/**
+ * Unit tests to verify the behaviour of various APIs the connector is supposed to use
+ * in order to make sure those APIs are working fine as an individual unit. This test class will
+ * always remain a work in progress.
+ *
+ * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
+ */
+public class YugabyteDBConnectorUtilTest extends YugabyteDBContainerTestBase {
 	@Test
 	public void allColocatedTablesBelongToSameTablet() throws Exception {
 		Pair<String, String> pair1 = new ImmutablePair<>("table1", "same_tablet");

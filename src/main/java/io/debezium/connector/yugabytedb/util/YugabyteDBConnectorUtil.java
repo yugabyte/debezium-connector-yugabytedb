@@ -49,7 +49,6 @@ public class YugabyteDBConnectorUtil {
 		/*
 		  TODO Vaibhav: Discussion needed-
 		  1. The number of tasks can never be 1 in case we are planning to stream multiple colocated tablets.
-		  2. If a colocated tablet contains only one table, it will be considered as non-colocated. (Fix known: to add the YBTable.isColocated check as well)
 		 */
 		if (elements.size() == 0) {
 			throw new IllegalStateException("Elements to be grouped should not be equal to 0");
