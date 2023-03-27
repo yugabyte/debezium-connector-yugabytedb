@@ -86,6 +86,8 @@ public class YugabyteDBStreamingChangeEventSource implements
     private final Map<String, OpId> checkPointMap;
     private final ChangeEventQueue<DataChangeEvent> queue;
 
+    protected Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
+
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
                                                 YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
                                                 YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection,
@@ -115,6 +117,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         syncClient = new YBClient(asyncYBClient);
         yugabyteDBTypeRegistry = taskContext.schema().getTypeRegistry();
         this.queue = queue;
+        this.tabletToExplicitCheckpoint = new HashMap<>();
     }
 
     @Override
@@ -263,13 +266,16 @@ public class YugabyteDBStreamingChangeEventSource implements
             // entry.getValue() will give the tabletId
             OpId opId = YBClientUtils.getOpIdFromGetTabletListResponse(
                             tabletListResponse.get(entry.getKey()), entry.getValue());
+
+            // If we are getting a term and index as -1 and -1 from the server side it means
+            // that the streaming has not yet started on that tablet ID. In that case, assign a
+            // starting OpId so that the connector can poll using proper checkpoints.
+            if (opId.getTerm() == -1 && opId.getIndex() == -1) {
+                opId = YugabyteDBOffsetContext.streamingStartLsn();
+            }
+
             offsetContext.initSourceInfo(entry.getValue(), this.connectorConfig, opId);
             schemaNeeded.put(entry.getValue(), Boolean.TRUE);
-        }
-
-        for (Pair<String, String> entry : tabletPairList) {
-            final String tabletId = entry.getValue();
-            offsetContext.initSourceInfo(tabletId, this.connectorConfig);
         }
 
         // This will contain the tablet ID mapped to the number of records it has seen
@@ -353,7 +359,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                       try {
                         response = this.syncClient.getChangesCDCSDK(
                             table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
-                            cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId));
+                            cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
+                            taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tabletId) : null, table.getTableId());
                       } catch (CDCErrorException cdcException) {
                         // Check if exception indicates a tablet split.
                         LOGGER.debug("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
@@ -654,26 +661,44 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
+    /**
+     * For EXPLICIT checkpointing, the following code flow is used:<br><br>
+     * 1. Kafka Connect invokes the callback {@code commit()} which further invokes
+     * {@code commitOffset(offsets)} in the Debezium API <br><br>
+     * 2. Both the streaming and snapshot change event source classes maintain a map
+     * {@code tabletToExplicitCheckpoint} which stores the offsets sent by Kafka Connect. <br><br>
+     * 3. So when the connector gets the acknowledgement back by saying that Kafka has received
+     * records till certain offset, we update the value in {@code tabletToExplicitCheckpoint} <br><br>
+     * 4. While making the next `GetChanges` call, we pass the value from the map
+     * {@code tabletToExplicitCheckpoint} for the relevant tablet and hence the server then takes
+     * care of updating those checkpointed values in the {@code cdc_state} table <br><br>
+     * @param offset a map containing the {@link OpId} information for all the tablets
+     */
     @Override
     public void commitOffset(Map<String, ?> offset) {
-        // try {
-        LOGGER.debug("Commit offset: " + offset);
-        ReplicationStream replicationStream = null; // this.replicationStream.get();
-        final OpId commitLsn = null; // OpId.valueOf((String) offset.get(PostgresOffsetContext.LAST_COMMIT_LSN_KEY));
-        final OpId changeLsn = OpId.valueOf((String) offset.get(YugabyteDBOffsetContext.LAST_COMPLETELY_PROCESSED_LSN_KEY));
-        final OpId lsn = (commitLsn != null) ? commitLsn : changeLsn;
-
-        if (replicationStream != null && lsn != null) {
-            if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("Flushing LSN to server: {}", lsn);
-            }
-            // tell the server the point up to which we've processed data, so it can be free to recycle WAL segments
-            // CDCSDK yugabyte does it automatically.
-            // but we may need an API
-            // replicationStream.flushLsn(lsn);
+        if (!taskContext.shouldEnableExplicitCheckpointing()) {
+            return;
         }
-        else {
-            LOGGER.debug("Streaming has already stopped, ignoring commit callback...");
+
+        try {
+            LOGGER.info("Committing offsets on server");
+
+            for (Map.Entry<String, ?> entry : offset.entrySet()) {
+                // TODO: The transaction_id field is getting populated somewhere and see if it can
+                // be removed or blocked from getting added to this map.
+                if (!entry.getKey().equals("transaction_id")) {
+                    LOGGER.debug("Tablet: {} OpId: {}", entry.getKey(), entry.getValue());
+
+                    // Parse the string to get the OpId object.
+                    OpId tempOpId = OpId.valueOf((String) entry.getValue());
+                    this.tabletToExplicitCheckpoint.put(entry.getKey(), tempOpId.toCdcSdkCheckpoint());
+
+                    LOGGER.debug("Committed checkpoint on server for stream ID {} tablet {} with term {} index {}",
+                                this.connectorConfig.streamId(), entry.getKey(), tempOpId.getTerm(), tempOpId.getIndex());
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Unable to update the explicit checkpoint map", e);
         }
     }
 

@@ -129,9 +129,12 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         }
 
         boolean sendBeforeImage = false;
+        boolean enableExplicitCheckpointing = false;
         try {
             sendBeforeImage = YBClientUtils.isBeforeImageEnabled(this.yugabyteDBConnectorConfig);
+            enableExplicitCheckpointing = YBClientUtils.isExplicitCheckpointingEnabled(this.yugabyteDBConnectorConfig);
             LOGGER.info("Before image status: {}", sendBeforeImage);
+            LOGGER.info("Explicit checkpointing enabled: {}", enableExplicitCheckpointing);
         } catch (Exception e) {
             LOGGER.error("Error while trying to get before image status", e);
             throw new DebeziumException(e);
@@ -165,6 +168,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             taskProps.put(YugabyteDBConnectorConfig.OID_TO_TYPE.toString(), serializedOidToType);
             taskProps.put(YugabyteDBConnectorConfig.STREAM_ID.toString(), streamIdValue);
             taskProps.put(YugabyteDBConnectorConfig.SEND_BEFORE_IMAGE.toString(), String.valueOf(sendBeforeImage));
+            taskProps.put(YugabyteDBConnectorConfig.ENABLE_EXPLICIT_CHECKPOINTING.toString(), String.valueOf(enableExplicitCheckpointing));
             taskConfigs.add(taskProps);
         }
 
@@ -350,7 +354,9 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             Collections.sort(this.tabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));
         }
         catch (Exception e) {
-            LOGGER.error("Error while fetching all the tablets", e);
+            final String errorMessage = "Error while fetching all the tablets";
+            LOGGER.error(errorMessage, e);
+            throw new DebeziumException(errorMessage, e);
         }
     }
 }

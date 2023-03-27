@@ -3,28 +3,19 @@ package io.debezium.connector.yugabytedb;
 import java.sql.SQLException;
 import java.util.concurrent.CompletableFuture;
 
-import org.apache.log4j.Logger;
 import org.junit.jupiter.api.*;
-import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class YugabyteDBConfigTest extends YugabyteDBTestBase {
-  private final static Logger LOGGER = Logger.getLogger(YugabyteDBConnectorIT.class);
-
-    private static YugabyteYSQLContainer ybContainer;
+public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
 
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        ybContainer = TestHelper.getYbContainer();
-        ybContainer.start();
-
-        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-        TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+        initializeYBContainer();
         TestHelper.dropAllSchemas();
     }
 
@@ -41,7 +32,7 @@ public class YugabyteDBConfigTest extends YugabyteDBTestBase {
 
     @AfterAll
     public static void afterClass() {
-        ybContainer.stop();
+        shutdownYBContainer();
     }
 
     private void insertRecords(int numOfRowsToBeInserted) throws Exception {

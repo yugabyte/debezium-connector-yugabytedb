@@ -9,16 +9,14 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.apache.log4j.Logger;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
-import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
 import io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState;
 import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
 
@@ -30,10 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 
-public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
-    private final static Logger LOGGER = Logger.getLogger(YugabyteDBDatatypesTest.class);
-    private static YugabyteYSQLContainer ybContainer;
-
+public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
     private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
             "INSERT INTO s2.a (aa) VALUES (1);";
     private static final String CREATE_TABLES_STMT = "DROP SCHEMA IF EXISTS s1 CASCADE;" +
@@ -203,11 +198,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
   }
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        ybContainer = TestHelper.getYbContainer();
-        ybContainer.start();
-
-        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-        TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+        initializeYBContainer();
         TestHelper.dropAllSchemas();
     }
 
@@ -224,7 +215,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBTestBase {
 
     @AfterAll
     public static void afterClass() {
-        ybContainer.stop();
+        shutdownYBContainer();
     }
     // This test will just verify that the TestContainers are up and running
     // and it will also verify that the unit tests are able to make API calls.

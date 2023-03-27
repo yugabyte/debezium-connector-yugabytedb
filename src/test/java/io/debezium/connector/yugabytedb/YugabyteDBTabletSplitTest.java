@@ -14,34 +14,26 @@ import java.util.stream.Collectors;
 import org.apache.kafka.connect.data.Struct;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.YugabyteYSQLContainer;
 import org.yb.client.GetTabletListToPollForCDCResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.common.YugabyteDBTestBase;
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
 /**
  * Unit tests to verify that the connector gracefully handles the tablet splitting on the server.
  * 
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBTabletSplitTest extends YugabyteDBTestBase {
-  private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBPartitionTest.class);
-  private static YugabyteYSQLContainer ybContainer;
+public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
+
   private static String masterAddresses;
 
   @BeforeAll
   public static void beforeClass() throws SQLException {
-      ybContainer = TestHelper.getYbContainer();
-      ybContainer.start();
-
-      TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
-      TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
-      masterAddresses = ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100);
+      initializeYBContainer();
+      masterAddresses = getMasterAddress();
 
       TestHelper.dropAllSchemas();
   }
@@ -59,7 +51,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBTestBase {
 
   @AfterAll
   public static void afterClass() {
-      ybContainer.stop();
+      shutdownYBContainer();
   }
 
   @Order(1)
