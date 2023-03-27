@@ -36,6 +36,7 @@ import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import io.debezium.util.HexConverter;
 import org.apache.kafka.connect.data.Decimal;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
@@ -214,9 +215,7 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
             case PgOid.NUMERIC:
                 return numericSchema(column);
             case PgOid.BYTEA:
-                // todo: commented because binary modes are not handled as of now, we send everything as a string only
-                // return binaryMode.getSchema();
-                return SchemaBuilder.string();
+                return binaryMode.getSchema();
             case PgOid.INT2_ARRAY:
                 return SchemaBuilder.array(SchemaBuilder.OPTIONAL_INT16_SCHEMA);
             case PgOid.INT4_ARRAY:
@@ -401,10 +400,15 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
             case PgOid.NUMERIC:
                 return (data) -> convertDecimal(column, fieldDefn, data, decimalMode);
             case PgOid.BYTEA:
-                return data -> convertString(column, fieldDefn, data);
-            // Commented out because bytea are converted to strings as of now and being sent
-            // across Debezium
-            // return data -> convertBinary(column, fieldDefn, data, binaryMode);
+                return data -> {
+                    // Convert to byte array if data is a hexadecimal string.
+                    if (data instanceof String && ((String) data).startsWith("\\x")) {
+                        byte[] dataBytes = HexConverter.convertFromHex(((String) data).substring(2));
+                        return convertBinary(column, fieldDefn, dataBytes, binaryMode);
+                    }
+
+                    return convertBinary(column, fieldDefn, data, binaryMode);
+                };
             case PgOid.VARBIT_ARRAY:
             case PgOid.INT2_ARRAY:
             case PgOid.INT4_ARRAY:
