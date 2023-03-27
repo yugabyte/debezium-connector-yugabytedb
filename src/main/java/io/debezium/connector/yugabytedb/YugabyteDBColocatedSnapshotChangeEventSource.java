@@ -156,7 +156,7 @@ public class YugabyteDBColocatedSnapshotChangeEventSource extends AbstractSnapsh
                 this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
             tableToTabletIds = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
 
-            LOGGER.info("VKVK tableToTabletIds size is {}", tableToTabletIds.size());
+            LOGGER.info("The tableToTabletIds size is {}", tableToTabletIds.size());
             // Since all the tables share the same tablet, get one pair and assign its tabletId to
             // the global member attribute. Assert that the tabletId is common across all the pairs.
             this.colocatedTabletId = tableToTabletIds.get(0).getValue();
@@ -188,7 +188,7 @@ public class YugabyteDBColocatedSnapshotChangeEventSource extends AbstractSnapsh
         for (Pair<String, String> entry : tableToTabletIds) {
             schemaNeeded.put(getLookupKey(entry.getKey()), Boolean.TRUE);
 
-            previousOffset.initSourceInfo(getLookupKey(entry.getKey()), this.connectorConfig, new OpId(-1, -1, "".getBytes(), -1, 0));
+            previousOffset.initSourceInfo(getLookupKey(entry.getKey()), this.connectorConfig, YugabyteDBOffsetContext.snapshotStartLsn());
             LOGGER.debug("Previous offset for tablet {} is {}", entry.getValue(), previousOffset.toString());
         }
 
@@ -220,8 +220,6 @@ public class YugabyteDBColocatedSnapshotChangeEventSource extends AbstractSnapsh
         // A call to set the checkpoint is required first otherwise we will get an error
         // from the server side saying:
         // INTERNAL_ERROR[code 21]: Stream ID {} is expired for Tablet ID {}
-
-        // TODO Vaibhav: See if this works without any change on the server side
         for (Pair<String, String> entry : tableToTabletForSnapshot) {
             setCheckpointWithRetryBeforeSnapshot(entry.getKey() /*tableId*/,
                     snapshotCompletedTables,
@@ -245,7 +243,6 @@ public class YugabyteDBColocatedSnapshotChangeEventSource extends AbstractSnapsh
                         String tableId = tableIdToTabletId.getKey();
                         YBTable table = tableIdToTable.get(tableId);
 
-//                        String tabletId = tableIdToTabletId.getValue();
                         // We are keying partitions by the lookup key as well in case of colocated snapshot
                         YBPartition part = new YBPartition(getLookupKey(tableId));
 
