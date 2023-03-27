@@ -1,10 +1,12 @@
 package io.debezium.connector.yugabytedb;
 
+import java.nio.ByteBuffer;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+import io.debezium.util.HexConverter;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.log4j.Logger;
 import org.junit.jupiter.api.*;
@@ -73,7 +75,7 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBTestBase {
         assertValueField(record, "after/bitcol/value", "11011");
         assertValueField(record, "after/varbitcol/value", "10101");
         assertValueField(record, "after/booleanval/value", false);
-        assertValueField(record, "after/byteaval/value", "\\x01");
+        assertValueField(record, "after/byteaval/value", ByteBuffer.wrap(HexConverter.convertFromHex("01")));
         assertValueField(record, "after/ch/value", "five5");
         assertValueField(record, "after/vchar/value", "sample_text");
         assertValueField(record, "after/cidrval/value", "10.1.0.0/16");
