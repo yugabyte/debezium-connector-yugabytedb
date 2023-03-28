@@ -44,7 +44,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
     private final Snapshotter snapshotter;
     private final SlotState slotInfo;
 
-    private YugabyteDBColocatedSnapshotChangeEventSource snapshotSource;
+    private YugabyteDBSnapshotChangeEventSource snapshotSource;
 
     public YugabyteDBChangeEventSourceCoordinator(Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets,
                                                   ErrorHandler errorHandler,
@@ -91,7 +91,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
       throws InterruptedException {
         Offsets<YBPartition, YugabyteDBOffsetContext> streamingOffsets =
             Offsets.of(new HashMap<>());
-        this.snapshotSource = (YugabyteDBColocatedSnapshotChangeEventSource) snapshotSource;
+        this.snapshotSource = (YugabyteDBSnapshotChangeEventSource) snapshotSource;
 
         LOGGER.info("Performing the snapshot process now");
         for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry :
