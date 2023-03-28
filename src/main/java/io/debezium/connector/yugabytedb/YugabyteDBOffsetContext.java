@@ -31,6 +31,7 @@ import io.debezium.util.Clock;
 
 public class YugabyteDBOffsetContext implements OffsetContext {
     public static final String LAST_COMPLETELY_PROCESSED_LSN_KEY = "lsn_proc";
+    public static final String SNAPSHOT_DONE_KEY = "snapshot_done_key";
 
     private static final Logger LOGGER = LoggerFactory
             .getLogger(YugabyteDBSnapshotChangeEventSource.class);
@@ -152,7 +153,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
      * @return the starting {@link OpId} to begin the streaming with
      */
     public static OpId streamingStartLsn() {
-        return new OpId(0, 0, "".getBytes(), 0, 0);
+        return new OpId(0, 0, SNAPSHOT_DONE_KEY.getBytes(), 0, 0);
     }
 
     @Override
