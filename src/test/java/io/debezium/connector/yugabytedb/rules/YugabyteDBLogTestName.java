@@ -15,20 +15,20 @@ public class YugabyteDBLogTestName implements BeforeEachCallback, AfterEachCallb
     private final Logger LOGGER = LoggerFactory.getLogger(getClass());
 
     @Override
-    public void beforeEach(ExtensionContext extensionContext) throws Exception {
+    public void beforeEach(ExtensionContext extensionContext) {
         if (extensionContext.getTestClass().isPresent()
                 && extensionContext.getTestMethod().isPresent()) {
-            LOGGER.info("Starting test {}#{}",
+            LOGGER.info("<<<<<<<<<<<<<<<<<<<< Starting test {}#{}",
                         extensionContext.getTestClass().get().getSimpleName(),
                         extensionContext.getTestMethod().get().getName());
         }
     }
 
     @Override
-    public void afterEach(ExtensionContext extensionContext) throws Exception {
+    public void afterEach(ExtensionContext extensionContext) {
         if (extensionContext.getTestClass().isPresent()
                 && extensionContext.getTestMethod().isPresent()) {
-            LOGGER.info("Finished test {}#{}",
+            LOGGER.info("Finished test {}#{} >>>>>>>>>>>>>>>>>>>>",
                         extensionContext.getTestClass().get().getSimpleName(),
                         extensionContext.getTestMethod().get().getName());
         }
