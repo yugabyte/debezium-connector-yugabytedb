@@ -368,7 +368,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   break;
                 }
                 
-                GetChangesResponse resp = this.syncClient.getChangesCDCSDK(table, 
+                GetChangesResponse resp = this.syncClient.getChangesCDCSDK(table,
                     connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tableUUID + "." + tabletId),
                     taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tableUUID + "." + tabletId) : null);
