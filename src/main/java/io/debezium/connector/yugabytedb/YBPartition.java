@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 import org.apache.commons.lang3.tuple.Pair;
@@ -15,22 +14,41 @@ import io.debezium.DebeziumException;
 import io.debezium.pipeline.spi.Partition;
 import io.debezium.util.Collect;
 
+/**
+ * Partition class to represent the Debezium partitions for YugabyteDB.
+ *
+ * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
+ */
 public class YBPartition implements Partition {
-    private static final String TABLET_PARTITION_KEY = "tabletid";
+    private static final String PARTITION_KEY = "yb_partition";
 
     private final String tabletId;
+    private final String tableId;
 
-    public YBPartition(String tabletId) {
+    public YBPartition(String tableId, String tabletId) {
+        this.tableId = tableId;
         this.tabletId = tabletId;
     }
 
     @Override
     public Map<String, String> getSourcePartition() {
-        return Collect.hashMapOf(TABLET_PARTITION_KEY, tabletId);
+        return Collect.hashMapOf(PARTITION_KEY, getId());
+    }
+
+    public String getTableId() {
+        return this.tableId;
     }
 
     public String getTabletId() {
         return this.tabletId;
+    }
+
+    /**
+     * @return the ID of this partition in the format {@code tableId.tabletId}, this is essentially
+     * the same thing as using {@code p.getTableId() + "." + p.getTabletId()}
+     */
+    public String getId() {
+        return this.tableId + "." + this.tabletId;
     }
 
     @Override
@@ -42,19 +60,18 @@ public class YBPartition implements Partition {
             return false;
         }
         final YBPartition other = (YBPartition) obj;
-        return Objects.equals(tabletId, other.tabletId);
+
+        return this.tabletId.equals(other.getTabletId()) && this.tableId.equals(other.getTableId());
     }
 
     @Override
     public int hashCode() {
-        return tabletId.hashCode();
+        return getId().hashCode();
     }
 
     @Override
     public String toString() {
-        return "YBPartition{" +
-                "tabletId='" + tabletId + '\'' +
-                '}';
+        return String.format("YBPartition {tableId=%s, tabletId=%s}", this.tableId, this.tabletId);
     }
 
     static class Provider implements Partition.Provider<YBPartition> {
@@ -68,7 +85,7 @@ public class YBPartition implements Partition {
         @Override
         public Set<YBPartition> getPartitions() {
             String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
-            List<Pair<String, String>> tabletPairList = null;
+            List<Pair<String, String>> tabletPairList;
             try {
                 tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
                 LOGGER.debug("The tablet list is " + tabletPairList);
@@ -77,12 +94,12 @@ public class YBPartition implements Partition {
                 throw new DebeziumException("Error while deserializing tablet list", e);
             }
 
-            Set<YBPartition> partititons = new HashSet<>();
+            Set<YBPartition> partitions = new HashSet<>();
             for (Pair<String, String> tabletPair : tabletPairList) {
-                partititons.add(new YBPartition(tabletPair.getRight()));
+                partitions.add(new YBPartition(tabletPair.getLeft(), tabletPair.getRight()));
             }
-            LOGGER.debug("The partition being returned is " + partititons);
-            return partititons;
+            LOGGER.debug("The partition being returned is " + partitions);
+            return partitions;
         }
     }
 }

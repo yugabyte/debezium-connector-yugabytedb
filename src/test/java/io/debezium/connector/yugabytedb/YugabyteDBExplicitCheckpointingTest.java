@@ -20,11 +20,13 @@ import org.yb.client.YBClient;
 
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -115,7 +117,7 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
         YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
         for (Map.Entry<String, ?> entry : offsetMap.entrySet()) {
             if (!entry.getKey().equals("transaction_id")) {
-                String tabletId = entry.getKey();
+                String tabletId = entry.getKey().split(Pattern.quote("."))[1];
                 CdcSdkCheckpoint cp = OpId.valueOf((String) entry.getValue()).toCdcSdkCheckpoint();
 
                 GetCheckpointResponse resp = ybClient.getCheckpoint(

@@ -45,6 +45,7 @@ public final class SourceInfo extends BaseSourceInfo {
     private String schemaName;
     private String tableName;
     private String tabletId;
+    private String tableUUID;
 
     protected SourceInfo(YugabyteDBConnectorConfig connectorConfig) {
         super(connectorConfig);
@@ -70,7 +71,7 @@ public final class SourceInfo extends BaseSourceInfo {
      * @param xmin the xmin of the slot, may be null
      * @return this instance
      */
-    protected SourceInfo update(String tabletId, OpId lsn, Instant commitTime, String txId,
+    protected SourceInfo update(String tableUUID, String tabletId, OpId lsn, Instant commitTime, String txId,
                                 TableId tableId,
                                 Long xmin) {
         this.lsn = lsn;
@@ -85,6 +86,7 @@ public final class SourceInfo extends BaseSourceInfo {
         if (tableId != null && tableId.table() != null) {
             this.tableName = tableId.table();
         }
+        this.tableUUID = tableUUID;
         this.tabletId = tabletId;
         return this;
     }
