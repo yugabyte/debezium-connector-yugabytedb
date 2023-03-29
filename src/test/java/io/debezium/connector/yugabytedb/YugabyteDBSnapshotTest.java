@@ -280,6 +280,67 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         assertEquals(recordCountInNonColocated, recordsForNonColocated.size());
     }
 
+    @Test
+    public void snapshotColocatedNonColocatedThenStream() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        // Create tables.
+        createTables(true /* enforce creation of the colocated tables only */);
+
+        final int recordCountForTest1 = 1000;
+        final int recordCountForTest2 = 2000;
+        final int recordCountForTest3 = 3000;
+        final int recordCountInNonColocated = 4000;
+        insertBulkRecords(recordCountForTest1, "public.test_1");
+        insertBulkRecords(recordCountForTest2, "public.test_2");
+        insertBulkRecords(recordCountForTest3, "public.test_3");
+
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
+        Configuration.Builder configBuilder =
+          TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2,public.test_3,public.test_no_colocated", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
+        start(YugabyteDBConnector.class, configBuilder.build());
+
+        awaitUntilConnectorIsReady();
+
+        List<SourceRecord> recordsForTest1 = new ArrayList<>();
+        List<SourceRecord> recordsForTest2 = new ArrayList<>();
+        List<SourceRecord> recordsForTest3 = new ArrayList<>();
+        List<SourceRecord> recordsForNonColocated = new ArrayList<>();
+
+        // Wait for some time so that the connector can transition to the streaming mode.
+        TestHelper.waitFor(Duration.ofSeconds(60));
+
+        insertBulkRecords(recordCountInNonColocated, "public.test_no_colocated");
+
+        // Inserting 1001 records to test_1
+        TestHelper.executeInDatabase("INSERT INTO test_1 VALUES (generate_series(1000, 2000));", DEFAULT_COLOCATED_DB_NAME);
+
+        // Inserting 3001 records to test_3
+        TestHelper.executeInDatabase("INSERT INTO test_3 VALUES (generate_series(3000, 6000));", DEFAULT_COLOCATED_DB_NAME);
+
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, recordCountForTest1 + recordCountForTest2 + recordCountForTest3 + recordCountInNonColocated + 1001 + 3001);
+
+        // Iterate over the records and add them to their respective topic
+        for (SourceRecord record : records) {
+            if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_1")) {
+                recordsForTest1.add(record);
+            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_2")) {
+                recordsForTest2.add(record);
+            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_3")) {
+                recordsForTest3.add(record);
+            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_no_colocated")) {
+                recordsForNonColocated.add(record);
+            }
+        }
+
+        assertEquals(recordCountForTest1 + 1001, recordsForTest1.size());
+        assertEquals(recordCountForTest2, recordsForTest2.size());
+        assertEquals(recordCountForTest3 + 3001, recordsForTest3.size());
+        assertEquals(recordCountInNonColocated, recordsForNonColocated.size());
+    }
+
     /**
      * Helper function to create the required tables in the database DEFAULT_COLOCATED_DB_NAME
      */
