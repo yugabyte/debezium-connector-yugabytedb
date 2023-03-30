@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 
@@ -38,6 +39,8 @@ public class StriimCompatibleTest {
             .field("schema", Schema.STRING_SCHEMA)
             .field("table", Schema.STRING_SCHEMA)
             .build();
+
+    final List<String> columns = Arrays.asList("id", "name");
 
     final Envelope envelope = Envelope.defineSchema()
             .withName("dummy.Envelope")
@@ -137,6 +140,7 @@ public class StriimCompatibleTest {
             assert(((Struct)unwrappedKey.get("id")).getInt64("value") == 1);
             assert(unwrappedValue.get("before") == null);
             assert(unwrappedValue.getArray("data").equals(expectedData));
+            assert(unwrappedValue.getArray("columns").equals(columns));
 
             assert(((Struct)unwrappedValue.get("metadata")).getString("LSN").equals("1:3::0:0"));
             assert(((Struct)unwrappedValue.get("metadata")).getString("Sequence").equals("[\"454::89\"]"));
@@ -167,6 +171,7 @@ public class StriimCompatibleTest {
             assert(((Struct)unwrappedKey.get("id")).getInt64("value") == 2);
             assert(unwrappedValue.getArray("before").equals(expectedBeforeData));
             assert(unwrappedValue.getArray("data").equals(expectedData));
+            assert(unwrappedValue.getArray("columns").equals(columns));
 
             assert(((Struct)unwrappedValue.get("metadata")).getString("LSN").equals("1:3::0:0"));
             assert(((Struct)unwrappedValue.get("metadata")).getString("Sequence").equals("[\"454::89\"]"));
@@ -197,6 +202,7 @@ public class StriimCompatibleTest {
             assert(((Struct)unwrappedKey.get("id")).getInt64("value") == 1);
             assert(unwrappedValue.getArray("before").equals(expectedBeforeData));
             assert(unwrappedValue.getArray("data").equals(expectedData));
+            assert(unwrappedValue.getArray("columns").equals(columns));
 
             assert(((Struct)unwrappedValue.get("metadata")).getString("LSN").equals("1:3::0:0"));
             assert(((Struct)unwrappedValue.get("metadata")).getString("Sequence").equals("[\"454::89\"]"));
@@ -224,6 +230,7 @@ public class StriimCompatibleTest {
             assert(((Struct)unwrappedKey.get("id")).getInt64("value") == 1);
             assert(unwrappedValue.get("before") == null);
             assert(unwrappedValue.getArray("data").equals(expectedData));
+            assert(unwrappedValue.getArray("columns").equals(columns));
 
             assert(((Struct)unwrappedValue.get("metadata")).getString("LSN").equals("1:3::0:0"));
             assert(((Struct)unwrappedValue.get("metadata")).getString("Sequence").equals("[\"454::89\"]"));
