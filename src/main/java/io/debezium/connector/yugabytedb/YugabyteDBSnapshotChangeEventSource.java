@@ -367,35 +367,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   LOGGER.info("Connector has been stopped");
                   break;
                 }
-                
+
                 GetChangesResponse resp = this.syncClient.getChangesCDCSDK(table,
                     connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tableUUID + "." + tabletId),
                     taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tableUUID + "." + tabletId) : null);
-
-                // If EXPLICIT checkpointing is enabled then check if the checkpoint is the marker for snapshot completion
-                // and in case it is IMPLICIT checkpointing, the marker value should be checked on the from_op_id we are sending
-                // to the server.
-                if ((taskContext.shouldEnableExplicitCheckpointing()
-                        && isSnapshotCompleteMarker(OpId.from(tabletToExplicitCheckpoint.get(tableUUID + "." + tabletId))))
-                            || isSnapshotCompleteMarker(cp)) {
-                  // This will mark the snapshot completed for the tablet
-                  snapshotCompletedTablets.add(tableUUID + "." + tabletId);
-                  LOGGER.info("Snapshot completed for tablet {} belonging to table {} ({})",
-                          tabletId, table.getName(), tableUUID);
-                  LOGGER.info("Calling getChanges with the snapshot done key");
-                  OpId tempOpId = YugabyteDBOffsetContext.snapshotDoneKeyLsn();
-                  GetChangesResponse tempResponse = this.syncClient.getChangesCDCSDK(table,
-                      connectorConfig.streamId(), tabletId, tempOpId.getTerm(), tempOpId.getIndex(),
-                      tempOpId.getKey(), tempOpId.getWrite_id(), tempOpId.getTime(),
-                      schemaNeeded.get(tableUUID + "." + tabletId),
-                    taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tableUUID + "." + tabletId) : null);
-
-                  if (snapshotCompletedTablets.size() == tableToTabletForSnapshot.size()) {
-                    // This is an optimization to complete the snapshot without going into another iteration.
-                    return SnapshotResult.completed(previousOffset);
-                  }
-                }
                 
                 // Process the response
                 for (CdcService.CDCSDKProtoRecordPB record : 
@@ -475,6 +451,47 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 OpId finalOpId = new OpId(resp.getTerm(), resp.getIndex(), resp.getKey(), 
                                           resp.getWriteId(), resp.getSnapshotTime());
                 LOGGER.debug("Final OpId is {}", finalOpId);
+
+                // If EXPLICIT checkpointing is enabled then check if the checkpoint is the marker for snapshot completion
+                // and in case it is IMPLICIT checkpointing, the marker value should be checked on the from_op_id we are sending
+                // to the server.
+                if ((taskContext.shouldEnableExplicitCheckpointing()
+                       && isSnapshotCompleteMarker(OpId.from(tabletToExplicitCheckpoint.get(tableUUID + "." + tabletId))))
+                      || isSnapshotCompleteMarker(cp)) {
+                  // This will mark the snapshot completed for the tablet
+                  snapshotCompletedTablets.add(tableUUID + "." + tabletId);
+                  LOGGER.info("Snapshot completed for tablet {} belonging to table {} ({})",
+                    tabletId, table.getName(), tableUUID);
+                }
+
+                // If EXPLICIT checkpointing is enabled then check if the checkpoint is the marker for snapshot completion
+                // and in case it is IMPLICIT checkpointing, the marker value should be checked on the response op_id
+                // we are receiving from the server.
+                if (taskContext.shouldEnableExplicitCheckpointing()
+                      && isSnapshotCompleteMarker(OpId.from(tabletToExplicitCheckpoint.get(tabletId)))) {
+                  // This will mark the snapshot completed for the tablet
+                  snapshotCompletedTablets.add(tableUUID + "." + tabletId);
+                  LOGGER.info("[EXPLICIT] Snapshot completed for tablet {} belonging to table {} ({})",
+                    tabletId, table.getName(), tableUUID);
+
+                  OpId tempOpId = YugabyteDBOffsetContext.snapshotDoneKeyLsn();
+                  GetChangesResponse tempResponse = this.syncClient.getChangesCDCSDK(table,
+                    connectorConfig.streamId(), tabletId, tempOpId.getTerm(), tempOpId.getIndex(),
+                    tempOpId.getKey(), tempOpId.getWrite_id(), tempOpId.getTime(),
+                    schemaNeeded.get(tableUUID + "." + tabletId),
+                    taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tableUUID + "." + tabletId) : null);
+                } else if (!taskContext.shouldEnableExplicitCheckpointing() && isSnapshotCompleteMarker(finalOpId)) {
+                  snapshotCompletedTablets.add(tableUUID + "." + tabletId);
+                  LOGGER.info("[IMPLICIT] Snapshot completed for tablet {} belonging to table {} ({})",
+                    tabletId, table.getName(), tableUUID);
+
+                  OpId tempOpId = YugabyteDBOffsetContext.snapshotDoneKeyLsn();
+                  GetChangesResponse tempResponse = this.syncClient.getChangesCDCSDK(table,
+                    connectorConfig.streamId(), tabletId, tempOpId.getTerm(), tempOpId.getIndex(),
+                    tempOpId.getKey(), tempOpId.getWrite_id(), tempOpId.getTime(),
+                    schemaNeeded.get(tableUUID + "." + tabletId),
+                    taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tableUUID + "." + tabletId) : null);
+                }
                 
                 previousOffset.getSourceInfo(tableUUID, tabletId).updateLastCommit(finalOpId);
             }

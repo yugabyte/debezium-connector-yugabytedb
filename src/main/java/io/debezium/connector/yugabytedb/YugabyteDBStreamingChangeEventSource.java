@@ -495,9 +495,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         // If we fail to achieve the table, that means we have not specified correct schema information,
                                         // now try to refresh the schema.
                                         if (t == null) {
-                                            LOGGER.info("Registering the schema for tablet {} since it was not registered already", tabletId);
+                                            LOGGER.info("Registering the schema for table {} tablet {} since it was not registered already", entry.getKey(), tabletId);
                                         } else {
-                                            LOGGER.info("Refreshing the schema for tablet {} because of mismatch in cached schema and received schema", tabletId);
+                                            LOGGER.info("Refreshing the schema for table {} tablet {} because of mismatch in cached schema and received schema", entry.getKey(), tabletId);
                                         }
                                         schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
                                     }
