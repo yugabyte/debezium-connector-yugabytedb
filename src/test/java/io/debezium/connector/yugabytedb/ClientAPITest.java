@@ -47,6 +47,10 @@ public class ClientAPITest extends YugabyteDBContainerTestBase {
 	@ParameterizedTest(name = "Colocation: {0}")
 	@ValueSource(booleans = {true, false})
 	public void getTabletListToPollForCDC(boolean colocated) throws Exception {
+		// Drop tables in case they already exist.
+		TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_1;", DEFAULT_COLOCATED_DB_NAME);
+		TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_2;", DEFAULT_COLOCATED_DB_NAME);
+
 		final String createTable1 =
 			String.format("CREATE TABLE test_1 (id INT PRIMARY KEY) WITH (COLOCATED = %s);", colocated);
 		final String createTable2 =
