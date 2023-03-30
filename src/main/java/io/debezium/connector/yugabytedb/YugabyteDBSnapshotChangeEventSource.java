@@ -372,18 +372,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(), 
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
                     taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(tabletId) : null);
-
-                // If EXPLICIT checkpointing is enabled then check if the checkpoint is the marker for snapshot completion
-                // and in case it is IMPLICIT checkpointing, the marker value should be checked on the from_op_id we are sending
-                // to the server.
-                if ((taskContext.shouldEnableExplicitCheckpointing()
-                        && isSnapshotCompleteMarker(OpId.from(tabletToExplicitCheckpoint.get(tabletId))))
-                            || isSnapshotCompleteMarker(cp)) {
-                  // This will mark the snapshot completed for the tablet
-                  snapshotCompletedTablets.add(tabletId);
-                  LOGGER.info("Snapshot completed for tablet {} belonging to table {} ({})",
-                          tabletId, table.getName(), tableId);
-                }
                 
                 // Process the response
                 for (CdcService.CDCSDKProtoRecordPB record : 
@@ -463,6 +451,21 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 OpId finalOpId = new OpId(resp.getTerm(), resp.getIndex(), resp.getKey(), 
                                           resp.getWriteId(), resp.getSnapshotTime());
                 LOGGER.debug("Final OpId is {}", finalOpId);
+
+                // If EXPLICIT checkpointing is enabled then check if the checkpoint is the marker for snapshot completion
+                // and in case it is IMPLICIT checkpointing, the marker value should be checked on the response op_id
+                // we are receiving from the server.
+                if (taskContext.shouldEnableExplicitCheckpointing()
+                      && isSnapshotCompleteMarker(OpId.from(tabletToExplicitCheckpoint.get(tabletId)))) {
+                  // This will mark the snapshot completed for the tablet
+                  snapshotCompletedTablets.add(tabletId);
+                  LOGGER.info("[EXPLICIT] Snapshot completed for tablet {} belonging to table {} ({})",
+                    tabletId, table.getName(), tableId);
+                } else if (!taskContext.shouldEnableExplicitCheckpointing() && isSnapshotCompleteMarker(finalOpId)) {
+                  snapshotCompletedTablets.add(tabletId);
+                  LOGGER.info("[IMPLICIT] Snapshot completed for tablet {} belonging to table {} ({})",
+                    tabletId, table.getName(), tableId);
+                }
                 
                 previousOffset.getSourceInfo(tabletId).updateLastCommit(finalOpId);
             }
