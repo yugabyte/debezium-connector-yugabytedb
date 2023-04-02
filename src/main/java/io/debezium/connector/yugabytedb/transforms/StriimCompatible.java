@@ -15,6 +15,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.Pair;
 
+/**
+ * A transformer to convert records in a format that is compatible with
+ * Striim's PostgreSQLReader format i.e. WAEvent.
+ * @param <R> Record
+ */
 public class StriimCompatible<R extends ConnectRecord<R>> implements Transformation<R> {
     private static final Logger LOGGER = LoggerFactory.getLogger(StriimCompatible.class);
 
@@ -74,10 +79,10 @@ public class StriimCompatible<R extends ConnectRecord<R>> implements Transformat
     private Struct makeMetadata(Struct value, Schema metadataSchema) {
         Struct metadata = new Struct(metadataSchema);
         Struct sourceValue = (Struct) value.get("source");
-        metadata.put("LSN", sourceValue.get("lsn").toString());
-        metadata.put("Sequence", sourceValue.get("sequence").toString());
-        metadata.put("TxnID", sourceValue.get("txId"));
-        metadata.put("TableName", sourceValue.get("schema") + "." + sourceValue.get("table"));
+        metadata.put("LSN", sourceValue.getString("lsn"));
+        metadata.put("Sequence", sourceValue.getString("sequence"));
+        metadata.put("TxnID", sourceValue.getString("txId"));
+        metadata.put("TableName", sourceValue.getString("schema") + "." + sourceValue.getString("table"));
         return metadata;
     }
 
@@ -98,19 +103,12 @@ public class StriimCompatible<R extends ConnectRecord<R>> implements Transformat
         }
 
         for (Field field : value.schema().fields()) {
-            LOGGER.debug("Considering value {}", field.name());
-            if (field.schema().type() == Type.STRUCT) {
-                LOGGER.debug("Value is a struct");
+            if (field.schema().type() == Type.STRUCT && isValueSetStruct(field)) {
                 Struct fieldValue = (Struct) value.get(field);
-                if (isValueSetStruct(field)) {
-                    LOGGER.debug("value is valueset");
-                    values.put(field.name(), fieldValue == null ? null : fieldValue.get("value").toString());
-                } else if (fieldValue != null) {
-                    LOGGER.debug("value is not valueset");
-                    values.put(field.name(), fieldValue == null ? null : fieldValue.toString());
-                }
+                values.put(field.name(), fieldValue == null ? null : fieldValue.get("value").toString());
             } else {
-                LOGGER.debug("value is not a struct");
+                Object fieldValue = value.get(field);
+                values.put(field.name(), fieldValue == null ? null : fieldValue.toString());
             }
         }
         return values;
@@ -157,7 +155,7 @@ public class StriimCompatible<R extends ConnectRecord<R>> implements Transformat
         Struct metadata = makeMetadata(value, updatedSchema.field("metadata").schema());
         newVal.put("columns", allFields);
 
-        switch ((String)value.get("op")) {
+        switch (value.getString("op")) {
             case "c": {
                Map<String, Object> newValues = extractData((Struct) value.get("after"));
 

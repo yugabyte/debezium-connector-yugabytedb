@@ -13,6 +13,9 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 
+/**
+ * Unit tests for {@link StriimCompatible} transformer.
+ */
 public class StriimCompatibleTest {
     final Schema idSchema =  SchemaBuilder.struct()
             .field("value", Schema.INT64_SCHEMA)
@@ -240,6 +243,4 @@ public class StriimCompatibleTest {
             assert(((Struct)unwrappedValue.get("metadata")).get("PK_UPDATE") == null);
         }
     }
-
-
 }
