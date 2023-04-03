@@ -357,8 +357,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 // Skip the tablet if snapshot has already been taken for this tablet
                 if (snapshotCompletedTablets.contains(tabletId)
                       || tabletsWaitingForCallback.contains(tabletId)) {
-                  // Before continuing, check if the tablets waiting for callback have been updated.
-                  doSnapshotCompletionCheck(tabletId, snapshotCompletedTablets, tabletsWaitingForCallback);
+                  // Before continuing, check if the tablets waiting for callback have been updated in case of explicit checkpointing.
+                  if (taskContext.shouldEnableExplicitCheckpointing()) {
+                    doSnapshotCompletionCheck(tabletId, snapshotCompletedTablets, tabletsWaitingForCallback);
+                  }
                   continue;
                 }
 
@@ -553,7 +555,14 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
    */
   public void doSnapshotCompletionCheck(String tabletId, Set<String> snapshotCompletedTablets,
                                         Set<String> tabletsWaitingForCallback) {
-      if (isSnapshotCompleteMarker(OpId.from(this.tabletToExplicitCheckpoint.get(tabletId)))) {
+      OpId opId = OpId.from(this.tabletToExplicitCheckpoint.get(tabletId));
+      if (opId == null) {
+        // If we have no OpId stored in the explicit checkpoint map then that would indicate that
+        // we haven't yet received any callback from Kafka even once and we should wait more.
+        return;
+      }
+
+      if (isSnapshotCompleteMarker(opId)) {
         snapshotCompletedTablets.add(tabletId);
         tabletsWaitingForCallback.removeIf(t -> t.equals(tabletId));
       }
