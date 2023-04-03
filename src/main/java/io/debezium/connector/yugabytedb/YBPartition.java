@@ -25,9 +25,20 @@ public class YBPartition implements Partition {
     private final String tabletId;
     private final String tableId;
 
+    private boolean colocated;
+
     public YBPartition(String tableId, String tabletId) {
         this.tableId = tableId;
         this.tabletId = tabletId;
+
+        // By default, assume that the table is not colocated.
+        this.colocated = false;
+    }
+
+    public YBPartition(String tableId, String tabletId, boolean isTableColocated) {
+        this.tableId = tableId;
+        this.tabletId = tabletId;
+        this.colocated = isTableColocated;
     }
 
     @Override
@@ -44,11 +55,32 @@ public class YBPartition implements Partition {
     }
 
     /**
-     * @return the ID of this partition in the format {@code tableId.tabletId}, this is essentially
-     * the same thing as using {@code p.getTableId() + "." + p.getTabletId()}
+     * @return the ID of this partition in the format {@code tableId.tabletId} (if table is
+     * colocated) or {@code tabletId} (if table is not colocated)
      */
     public String getId() {
-        return this.tableId + "." + this.tabletId;
+        if (!isTableColocated()) {
+            return getTabletId();
+        }
+
+        return getFullPartitionName();
+    }
+
+    /**
+     * Get the full ID of this partition identified by {@code tableId.tabletId} - this will be used
+     * to form the metric names.
+     * @return
+     */
+    public String getFullPartitionName() {
+        return getTableId() + "." + getTabletId();
+    }
+
+    public boolean isTableColocated() {
+        return this.colocated;
+    }
+
+    public void markTableAsColocated() {
+        this.colocated = true;
     }
 
     @Override
@@ -66,7 +98,7 @@ public class YBPartition implements Partition {
 
     @Override
     public int hashCode() {
-        return getId().hashCode();
+        return getFullPartitionName().hashCode();
     }
 
     @Override

@@ -117,7 +117,11 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
         YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
         for (Map.Entry<String, ?> entry : offsetMap.entrySet()) {
             if (!entry.getKey().equals("transaction_id")) {
-                String tabletId = entry.getKey().split(Pattern.quote("."))[1];
+                String[] splitString = entry.getKey().split(Pattern.quote("."));
+
+                // If string doesn't split, that means we have only received the tabletId in the
+                // response, if it splits then we will have two elements - tableId and tabletId.
+                String tabletId = splitString.length == 1 ? splitString[0] : splitString[1];
                 CdcSdkCheckpoint cp = OpId.valueOf((String) entry.getValue()).toCdcSdkCheckpoint();
 
                 GetCheckpointResponse resp = ybClient.getCheckpoint(

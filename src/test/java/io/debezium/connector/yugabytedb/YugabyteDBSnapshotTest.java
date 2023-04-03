@@ -88,9 +88,10 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         // Insert records in the table test_1
         insertBulkRecords(recordCountT1, "public.test_1");
 
-        // Insert records in the table all_types
-        TestHelper.executeInDatabase(DEFAULT_COLOCATED_DB_NAME, HelperStrings.INSERT_ALL_TYPES);
-        TestHelper.executeInDatabase(DEFAULT_COLOCATED_DB_NAME, HelperStrings.INSERT_ALL_TYPES);
+        // Create table and insert records in all_types
+        TestHelper.executeInDatabase(HelperStrings.CREATE_ALL_TYPES, DEFAULT_COLOCATED_DB_NAME);
+        TestHelper.executeInDatabase(HelperStrings.INSERT_ALL_TYPES, DEFAULT_COLOCATED_DB_NAME);
+        TestHelper.executeInDatabase(HelperStrings.INSERT_ALL_TYPES, DEFAULT_COLOCATED_DB_NAME);
 
         String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.all_types", dbStreamId);
@@ -143,8 +144,8 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
             String.format("generate_series(%d, %d)",
               recordCountT1, recordCountT1 + 1000)), DEFAULT_COLOCATED_DB_NAME);
 
-        // Total records inserted at this stage would be recordCountT1 + 1000
-        int totalRecords = recordCountT1 + 1000;
+        // Total records inserted at this stage would be recordCountT1 + 1001
+        int totalRecords = recordCountT1 + 1001;
 
         // Consume and assert that we have received all the records now.
         List<SourceRecord> records = new ArrayList<>();
@@ -372,6 +373,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_2;", DEFAULT_COLOCATED_DB_NAME);
         TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_3;", DEFAULT_COLOCATED_DB_NAME);
         TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_no_colocated;", DEFAULT_COLOCATED_DB_NAME);
+        TestHelper.executeInDatabase("DROP TABLE IF EXISTS all_types;", DEFAULT_COLOCATED_DB_NAME);
     }
 
     private void insertBulkRecords(int numRecords, String fullTableName) {
@@ -411,7 +413,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
                       LOGGER.info("Consumed " + totalConsumedRecords + " records");
                   }
 
-                  return totalConsumedRecords.get() >= recordsCount;
+                  return totalConsumedRecords.get() == recordsCount;
               });
         } catch (ConditionTimeoutException exception) {
             fail("Failed to consume " + recordsCount + " in " + seconds + " seconds", exception);
