@@ -159,9 +159,9 @@ public class StriimCompatible<R extends ConnectRecord<R>> implements Transformat
             case "c": {
                Map<String, Object> newValues = extractData((Struct) value.get("after"));
 
-                metadata.put("OperationName", "INSERT");
-                newVal.put("metadata", metadata);
-                newVal.put("data", convertToOrderedList(newValues, allFields));
+               metadata.put("OperationName", "INSERT");
+               newVal.put("metadata", metadata);
+               newVal.put("data", convertToOrderedList(newValues, allFields));
 
                LOGGER.debug("Update value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(newVal));
                return new org.yb.util.Pair<>(updatedSchema, newVal);
@@ -189,6 +189,16 @@ public class StriimCompatible<R extends ConnectRecord<R>> implements Transformat
                 metadata.put("OperationName", "DELETE");
                 newVal.put("metadata", metadata);
                 newVal.put("data", convertToOrderedList(oldValues, allFields));
+
+                LOGGER.debug("Update value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(newVal));
+                return new org.yb.util.Pair<>(updatedSchema, newVal);
+            }
+            case "r": {
+                Map<String, Object> newValues = extractData((Struct) value.get("after"));
+
+                metadata.put("OperationName", "READ");
+                newVal.put("metadata", metadata);
+                newVal.put("data", convertToOrderedList(newValues, allFields));
 
                 LOGGER.debug("Update value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(newVal));
                 return new org.yb.util.Pair<>(updatedSchema, newVal);

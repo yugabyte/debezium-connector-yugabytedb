@@ -127,6 +127,14 @@ public class StriimCompatibleTest {
         return new SourceRecord(new HashMap<>(), new HashMap<>(), "dummy", keySchema, key, envelope.schema(), deletePayload);
     }
 
+    private SourceRecord createReadRecord() {
+        final Struct key = new Struct(keySchema);
+        key.put("id", createIdStruct());
+
+        final Struct readPayload = envelope.read(createValue(), createSourceStruct(), Instant.now());
+        return new SourceRecord(new HashMap<>(), new HashMap<>(), "dummy", keySchema, key, envelope.schema(), readPayload);
+    }
+
     @Test
     public void testCreateRecord() {
         try (final StriimCompatible<SourceRecord> transform = new StriimCompatible<>()) {
@@ -240,6 +248,33 @@ public class StriimCompatibleTest {
             assert(((Struct)unwrappedValue.get("metadata")).getString("TxnID").equals(""));
             assert(((Struct)unwrappedValue.get("metadata")).getString("TableName").equals("public.store"));
             assert(((Struct)unwrappedValue.get("metadata")).getString("OperationName").equals("DELETE"));
+            assert(((Struct)unwrappedValue.get("metadata")).get("PK_UPDATE") == null);
+        }
+    }
+
+    @Test
+    public void testReadRecord() {
+        try (final StriimCompatible<SourceRecord> transform = new StriimCompatible<>()) {
+            final SourceRecord readRecord = createReadRecord();
+
+            List<String> expectedData = new ArrayList<>();
+            expectedData.add("1");
+            expectedData.add("yb");
+
+            final SourceRecord unwrapped = transform.apply(readRecord);
+            Struct unwrappedKey = (Struct) unwrapped.key();
+            Struct unwrappedValue = (Struct) unwrapped.value();
+
+            assert(((Struct)unwrappedKey.get("id")).getInt64("value") == 1);
+            assert(unwrappedValue.get("before") == null);
+            assert(unwrappedValue.getArray("data").equals(expectedData));
+            assert(unwrappedValue.getArray("columns").equals(columns));
+
+            assert(((Struct)unwrappedValue.get("metadata")).getString("LSN").equals("1:3::0:0"));
+            assert(((Struct)unwrappedValue.get("metadata")).getString("Sequence").equals("[\"454::89\"]"));
+            assert(((Struct)unwrappedValue.get("metadata")).getString("TxnID").equals(""));
+            assert(((Struct)unwrappedValue.get("metadata")).getString("TableName").equals("public.store"));
+            assert(((Struct)unwrappedValue.get("metadata")).getString("OperationName").equals("READ"));
             assert(((Struct)unwrappedValue.get("metadata")).get("PK_UPDATE") == null);
         }
     }
