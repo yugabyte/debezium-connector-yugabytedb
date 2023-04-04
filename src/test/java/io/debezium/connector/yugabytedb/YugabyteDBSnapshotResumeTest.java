@@ -1,7 +1,6 @@
 package io.debezium.connector.yugabytedb;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -19,11 +18,18 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 
-public class YugabyteDBSnapshotMidwayTest extends YugabytedTestBase {
+/**
+ * Basic unit tests to ensure proper working of snapshot resuming functionality - the connector
+ * will resume the snapshot from the snapshot key returned. For more reference see
+ * {@linkplain YugabyteDBSnapshotChangeEventSource#doExecute}
+ *
+ * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
+ */
+public class YugabyteDBSnapshotResumeTest extends YugabytedTestBase {
 	private final String insertStmtFormat = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
 	@BeforeAll
 	public static void beforeClass() throws SQLException {
-		initializeYBContainer(null, "cdc_snapshot_batch_size=20");
+		initializeYBContainer(null, "cdc_snapshot_batch_size=50");
 		TestHelper.dropAllSchemas();
 	}
 
@@ -44,7 +50,7 @@ public class YugabyteDBSnapshotMidwayTest extends YugabytedTestBase {
 	}
 
 	@Test
-	public void baseTestToAssertSnapshotResumeFeature() throws Exception {
+	public void verifySnapshotIsResumedFromKey() throws Exception {
 		TestHelper.dropAllSchemas();
 		TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
@@ -87,11 +93,44 @@ public class YugabyteDBSnapshotMidwayTest extends YugabytedTestBase {
 	}
 
 	private void verifyRecordCount(long recordsCount) {
-		waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
+		waitAndFailIfCannotConsumeRecords(new ArrayList<>(), recordsCount);
 	}
 
-	private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
-		waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
+	private void waitAndFailIfCannotConsumeRecords(List<SourceRecord> records, long recordsCount) {
+		waitAndFailIfCannotConsumeRecords(records, recordsCount, 300 * 1000 /* 5 minutes */);
+	}
+
+	/**
+	 * Consume the records available and add them to a list for further assertion purposes.
+	 * @param records list to which we need to add the records we consume, pass a
+	 * {@code new ArrayList<>()} if you do not need assertions on the consumed values
+	 * @param recordsCount total number of records which should be consumed
+	 * @param milliSecondsToWait duration in milliseconds to wait for while consuming
+	 */
+	private void waitAndFailIfCannotConsumeRecords(List<SourceRecord> records, long recordsCount,
+																								 long milliSecondsToWait) {
+		AtomicLong totalConsumedRecords = new AtomicLong();
+		long seconds = milliSecondsToWait / 1000;
+		try {
+			Awaitility.await()
+				.atMost(Duration.ofSeconds(seconds))
+				.until(() -> {
+					int consumed = super.consumeAvailableRecords(record -> {
+						LOGGER.debug("The record being consumed is " + record);
+						records.add(record);
+					});
+					if (consumed > 0) {
+						totalConsumedRecords.addAndGet(consumed);
+						LOGGER.debug("Consumed " + totalConsumedRecords + " records");
+					}
+
+					return totalConsumedRecords.get() == recordsCount;
+				});
+		} catch (ConditionTimeoutException exception) {
+			fail("Failed to consume " + recordsCount + " in " + seconds + " seconds", exception);
+		}
+
+		assertEquals(recordsCount, totalConsumedRecords.get());
 	}
 
 	private int consumeAllAvailableRecordsTill(long minimumRecordsToConsume) {
@@ -111,38 +150,5 @@ public class YugabyteDBSnapshotMidwayTest extends YugabytedTestBase {
 			});
 
 		return totalConsumedSoFar.get();
-	}
-
-	/**
-	 * Consume the records available and add them to a list for further assertion purposes.
-	 * @param records list to which we need to add the records we consume, pass a
-	 * {@code new ArrayList<>()} if you do not need assertions on the consumed values
-	 * @param recordsCount total number of records which should be consumed
-	 * @param milliSecondsToWait duration in milliseconds to wait for while consuming
-	 */
-	private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
-																					long milliSecondsToWait) {
-		AtomicLong totalConsumedRecords = new AtomicLong();
-		long seconds = milliSecondsToWait / 1000;
-		try {
-			Awaitility.await()
-				.atMost(Duration.ofSeconds(seconds))
-				.until(() -> {
-					int consumed = super.consumeAvailableRecords(record -> {
-						LOGGER.debug("The record being consumed is " + record);
-						records.add(record);
-					});
-					if (consumed > 0) {
-						totalConsumedRecords.addAndGet(consumed);
-						LOGGER.info("Consumed " + totalConsumedRecords + " records");
-					}
-
-					return totalConsumedRecords.get() == recordsCount;
-				});
-		} catch (ConditionTimeoutException exception) {
-			fail("Failed to consume " + recordsCount + " in " + seconds + " seconds", exception);
-		}
-
-		assertEquals(recordsCount, totalConsumedRecords.get());
 	}
 }
