@@ -486,6 +486,19 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                          the snapshot as completed.
                  */
                 if (taskContext.shouldEnableExplicitCheckpointing()) {
+                  // snapshotCompletedTablets contain the tablets for which the following two
+                  // conditions are met:
+                  // 1. The server has sent the snapshot end marker.
+                  // 2. In case of EXPLICIT checkpointing - Kafka has sent the callback so we are
+                  //    sure we have received the data.
+                  //
+                  // Now over here, the additional set i.e. tabletsWaitingForCallback is for cases
+                  // of EXPLICIT checkpointing only where the above point 2 is not satisfied,
+                  // so that we know that server has sent the data (1 is satisfied) but
+                  // Kafka hasn't acknowledged the message's presence. If we always add the
+                  // tabletId to snapshotCompletedTablets - there is a chance that when the
+                  // connector crashes, we may lose some data since we may not have published them
+                  // to Kafka yet.
                   if (isSnapshotCompleteMarker(OpId.from(this.tabletToExplicitCheckpoint.get(tabletId)))) {
                     // This will mark the snapshot completed for the tablet
                     snapshotCompletedTablets.add(tabletId);
