@@ -1,6 +1,8 @@
 package io.debezium.connector.yugabytedb;
 
 import io.debezium.config.Configuration;
+import io.debezium.connector.yugabytedb.annotations.PreviewOnly;
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -25,7 +27,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBSnapshotResumeTest extends YugabytedTestBase {
+@PreviewOnly
+public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 	private final String insertStmtFormat = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
 	@BeforeAll
 	public static void beforeClass() throws SQLException {
