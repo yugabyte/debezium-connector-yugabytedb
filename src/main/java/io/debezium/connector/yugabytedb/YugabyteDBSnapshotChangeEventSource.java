@@ -286,7 +286,12 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       for (Pair<String, String> entry : tableToTabletIds) {
         schemaNeeded.put(entry.getValue(), Boolean.TRUE);
 
-        previousOffset.initSourceInfo(entry.getValue(), this.connectorConfig, YugabyteDBOffsetContext.snapshotStartLsn());
+        GetCheckpointResponse resp = this.syncClient.getCheckpoint(
+          tableIdToTable.get(entry.getKey()), this.connectorConfig.streamId(), entry.getValue());
+        LOGGER.info("The response received has term {} index {} and key {}", resp.getTerm(), resp.getIndex(), resp.getSnapshotKey());
+
+        OpId startLsn = (resp.getSnapshotKey().length == 0) ? YugabyteDBOffsetContext.snapshotStartLsn() : OpId.from(resp);
+        previousOffset.initSourceInfo(entry.getValue(), this.connectorConfig, startLsn);
         LOGGER.debug("Previous offset for tablet {} is {}", entry.getValue(), previousOffset.toString());
       }
 
@@ -672,6 +677,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       GetCheckpointResponse resp = this.syncClient.getCheckpoint(
                                        this.syncClient.openTableByUUID(tableId), 
                                        this.connectorConfig.streamId(), tabletId);
+
+      if (resp.getSnapshotKey().length != 0) {
+        // This indicates that snapshot was altered midway and has not completed, return false
+        return false;
+      }
 
       return !(resp.getTerm() == -1 && resp.getIndex() == -1);
     }
