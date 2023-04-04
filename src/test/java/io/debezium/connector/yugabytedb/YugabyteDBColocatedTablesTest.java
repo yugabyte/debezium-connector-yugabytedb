@@ -3,6 +3,7 @@ package io.debezium.connector.yugabytedb;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.debezium.config.Configuration;
+import io.debezium.connector.yugabytedb.annotations.PreviewOnly;
 import io.debezium.connector.yugabytedb.common.TestBaseClass;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
+@PreviewOnly
 public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
   private final String INSERT_TEST_1 = "INSERT INTO test_1 VALUES (%d, 'sample insert');";
   private final String INSERT_TEST_2 = "INSERT INTO test_2 VALUES (%d::text);";
