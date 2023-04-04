@@ -3,7 +3,6 @@ package io.debezium.connector.yugabytedb;
 import java.sql.SQLException;
 import java.util.concurrent.CompletableFuture;
 
-import io.debezium.connector.yugabytedb.annotations.PreviewOnly;
 import org.junit.jupiter.api.*;
 
 import io.debezium.DebeziumException;
@@ -200,7 +199,6 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
     }
 
     @Test
-    @PreviewOnly
     public void shouldThrowProperErrorMessageWithEmptyTableList() throws Exception {
         TestHelper.dropAllSchemas();
 
