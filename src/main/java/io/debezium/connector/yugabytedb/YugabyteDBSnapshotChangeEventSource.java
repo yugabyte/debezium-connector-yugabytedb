@@ -363,7 +363,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       || tabletsWaitingForCallback.contains(part.getId())) {
                   // Before continuing, check if the tablets waiting for callback have been updated in case of explicit checkpointing.
                   if (taskContext.shouldEnableExplicitCheckpointing()) {
-                    doSnapshotCompletionCheck(tabletId, snapshotCompletedTablets, tabletsWaitingForCallback);
+                    doSnapshotCompletionCheck(part, snapshotCompletedTablets, tabletsWaitingForCallback);
                   }
                   continue;
                 }

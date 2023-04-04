@@ -185,7 +185,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {true})
+    @ValueSource(booleans = {true, false})
     public void snapshotForMultipleTables(boolean colocation) throws Exception {
         TestHelper.dropAllSchemas();
 

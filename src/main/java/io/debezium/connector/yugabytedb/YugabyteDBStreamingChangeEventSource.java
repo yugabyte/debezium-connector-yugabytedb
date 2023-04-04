@@ -519,8 +519,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
                                                     schema, connection, tableId, message, pgSchemaNameInRecord, tabletId, taskContext.isBeforeImageEnabled()));
 
-                                    if (recordsInTransactionalBlock.containsKey(entry.getKey() + "." + tabletId)) {
-                                        recordsInTransactionalBlock.merge(entry.getKey() + "." + tabletId, 1, Integer::sum);
+                                    if (recordsInTransactionalBlock.containsKey(part.getId())) {
+                                        recordsInTransactionalBlock.merge(part.getId(), 1, Integer::sum);
                                     }
 
                                     maybeWarnAboutGrowingWalBacklog(dispatched);
@@ -787,7 +787,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             LOGGER.info("Initialized offset context for tablet {} with OpId {}", tabletId, OpId.from(pair.getCdcSdkCheckpoint()));
 
             // Add the flag to indicate that we need the schema for the new tablets so that the schema can be registered.
-            schemaNeeded.put(tableId + "." + tabletId, Boolean.TRUE);
+            schemaNeeded.put(p.getId(), Boolean.TRUE);
         }
     }
 
