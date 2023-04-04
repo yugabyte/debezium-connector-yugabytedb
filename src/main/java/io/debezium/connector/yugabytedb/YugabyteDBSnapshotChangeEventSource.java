@@ -9,6 +9,7 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -93,6 +94,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
         this.yugabyteDbTypeRegistry = taskContext.schema().getTypeRegistry();
         this.tabletToExplicitCheckpoint = new HashMap<>();
+
     }
 
     @Override
@@ -288,7 +290,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
         GetCheckpointResponse resp = this.syncClient.getCheckpoint(
           tableIdToTable.get(entry.getKey()), this.connectorConfig.streamId(), entry.getValue());
-        LOGGER.info("The response received has term {} index {} and key {}", resp.getTerm(), resp.getIndex(), resp.getSnapshotKey());
+        LOGGER.debug("The response received has term {} index {} key {} and time {}",
+                     resp.getTerm(), resp.getIndex(), resp.getSnapshotKey(), resp.getSnapshotTime());
 
         OpId startLsn = (resp.getSnapshotKey().length == 0) ? YugabyteDBOffsetContext.snapshotStartLsn() : OpId.from(resp);
         previousOffset.initSourceInfo(entry.getValue(), this.connectorConfig, startLsn);

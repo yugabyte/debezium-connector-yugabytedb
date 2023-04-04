@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 
 public class YugabyteDBSnapshotMidwayTest extends YugabytedTestBase {
+	private final String insertStmtFormat = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
 	@BeforeAll
 	public static void beforeClass() throws SQLException {
 		initializeYBContainer(null, "cdc_snapshot_batch_size=20");
@@ -48,58 +49,41 @@ public class YugabyteDBSnapshotMidwayTest extends YugabytedTestBase {
 		TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
 		final int recordsCount = 5_000;
+
 		// insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
-		insertBulkRecords(recordsCount);
+		TestHelper.executeBulk(insertStmtFormat, recordsCount);
 
 		String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
 		Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 		configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
 		start(YugabyteDBConnector.class, configBuilder.build());
-
 		awaitUntilConnectorIsReady();
 
-		AtomicLong totalConsumedAfterKill = new AtomicLong();
-		AtomicInteger timesNoRecordReceived = new AtomicInteger();
-		Awaitility.await()
-			.atMost(Duration.ofSeconds(60))
-			.until(() -> {
-				int consumed = super.consumeAvailableRecords(record -> {
-					LOGGER.debug("The record being consumed is " + record);
-				});
-				if (consumed > 0) {
-					totalConsumedAfterKill.addAndGet(consumed);
-					LOGGER.info("Consumed " + totalConsumedAfterKill + " records");
-				} else {
-					LOGGER.info("Got 0 records upon consumption");
-					timesNoRecordReceived.incrementAndGet();
-				}
-
-				return totalConsumedAfterKill.get() >= 1500;
-			});
-		LOGGER.info("Total consumed records after kill are {}", totalConsumedAfterKill.get());
+		// Consume whatever records are available.
+		int totalConsumedSoFar = consumeAllAvailableRecordsTill(1500);
 
 		// Kill the connector after some seconds and consume whatever data is available.
-		TestHelper.waitFor(Duration.ofSeconds(5));
 		stopConnector();
+
+		// There are changes that some records get published and are ready to consume while the
+		// the connector was being stopped.
+		totalConsumedSoFar += super.consumeAvailableRecords(record -> {});
+
+		// Confirm whether there are no more records to consume.
 		assertNoRecordsToConsume();
 
-		TestHelper.waitFor(Duration.ofSeconds(15));
-
-		// Start the connector again.
+		// Start the connector again - this step will ensure that the connector is resuming the snapshot
+		// and only starting the consumption from the point it left.
 		start(YugabyteDBConnector.class, configBuilder.build());
 		awaitUntilConnectorIsReady();
 
 		// Only verifying the record count since the snapshot records are not ordered, so it may be
 		// a little complex to verify them in the sorted order at the moment
-		CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount - totalConsumedAfterKill.get()))
+		final int finalTotalConsumedSoFar = totalConsumedSoFar;
+		CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount - finalTotalConsumedSoFar))
 			.exceptionally(throwable -> {
 				throw new RuntimeException(throwable);
 			}).get();
-	}
-
-	private void insertBulkRecords(int numRecords) throws Exception {
-		String formatInsertString = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
-		TestHelper.executeBulk(formatInsertString, numRecords);
 	}
 
 	private void verifyRecordCount(long recordsCount) {
@@ -108,6 +92,25 @@ public class YugabyteDBSnapshotMidwayTest extends YugabytedTestBase {
 
 	private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
 		waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
+	}
+
+	private int consumeAllAvailableRecordsTill(long minimumRecordsToConsume) {
+		AtomicInteger totalConsumedSoFar = new AtomicInteger();
+		Awaitility.await()
+			.atMost(Duration.ofSeconds(60))
+			.until(() -> {
+				int consumed = super.consumeAvailableRecords(record -> {
+					LOGGER.debug("The record being consumed is " + record);
+				});
+				if (consumed > 0) {
+					totalConsumedSoFar.addAndGet(consumed);
+					LOGGER.debug("Consumed " + totalConsumedSoFar + " records");
+				}
+
+				return totalConsumedSoFar.get() >= 1500;
+			});
+
+		return totalConsumedSoFar.get();
 	}
 
 	/**
