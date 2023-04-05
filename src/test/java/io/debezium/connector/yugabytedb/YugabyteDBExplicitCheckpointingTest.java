@@ -21,11 +21,13 @@ import org.yb.client.YBClient;
 
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -117,7 +119,11 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
         YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
         for (Map.Entry<String, ?> entry : offsetMap.entrySet()) {
             if (!entry.getKey().equals("transaction_id")) {
-                String tabletId = entry.getKey();
+                String[] splitString = entry.getKey().split(Pattern.quote("."));
+
+                // If string doesn't split, that means we have only received the tabletId in the
+                // response, if it splits then we will have two elements - tableId and tabletId.
+                String tabletId = splitString.length == 1 ? splitString[0] : splitString[1];
                 CdcSdkCheckpoint cp = OpId.valueOf((String) entry.getValue()).toCdcSdkCheckpoint();
 
                 GetCheckpointResponse resp = ybClient.getCheckpoint(

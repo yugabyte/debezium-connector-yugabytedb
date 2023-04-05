@@ -109,6 +109,12 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
 
             if (snapshotResult.isCompletedOrSkipped()) {
                 streamingOffsets.getOffsets().put(partition, snapshotResult.getOffset());
+
+                // Further down the processing unit, we are retrieving all the partitions even
+                // though we pass just one at this level, so in case the snapshot gets completed
+                // for one, it would be safe to break out of this loop to avoid processing things
+                // again.
+                break;
             }
         }
 
