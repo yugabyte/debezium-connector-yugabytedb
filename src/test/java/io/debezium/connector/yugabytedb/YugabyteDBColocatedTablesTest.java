@@ -196,6 +196,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // table test_3 won't be streamed since it might have gotten garbage collected since it resides
     // on the same tablet i.e. colocated
     start(YugabyteDBConnector.class, configBuilder.build());
+    awaitUntilConnectorIsReady();
 
     // The below statements will insert records of the respective types with keys in the
     // range [11,21)
