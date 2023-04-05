@@ -16,7 +16,7 @@ pipeline {
     // }
     environment {
         RELEASE_BUCKET_PATH = "s3://releases.yugabyte.com/debezium-connector-yugabytedb"
-        YB_DOCKER_IMAGE = "quay.io/yugabyte/yugabyte:2.17.3.0-b105"
+        YB_DOCKER_IMAGE = "quay.io/yugabyte/yugabyte:2.17.4.0-b45"
     }
     stages {
         stage('Clone Project') {
