@@ -6,9 +6,6 @@
 
 package io.debezium.connector.yugabytedb;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.fail;
-
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
@@ -56,6 +53,8 @@ import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection.YugabyteDBValueConverterBuilder;
 import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * A utility for integration test cases to connect the YugabyteDB instance running in the Docker 
