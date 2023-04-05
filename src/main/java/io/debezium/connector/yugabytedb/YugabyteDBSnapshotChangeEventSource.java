@@ -93,6 +93,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
         this.yugabyteDbTypeRegistry = taskContext.schema().getTypeRegistry();
         this.tabletToExplicitCheckpoint = new HashMap<>();
+
     }
 
     @Override
@@ -288,10 +289,21 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
       for (Pair<String, String> entry : tableToTabletIds) {
         // We can use tableIdToTable.get(entry.getKey()).isColocated() to get actual status.
-        YBPartition p = new YBPartition(entry.getKey(), entry.getValue(), true /* colocated */);
+        YBPartition p = new YBPartition(entry.getKey() /* tableId */,
+                                        entry.getValue() /* tabletId */, true /* colocated */);
+
+        GetCheckpointResponse resp = this.syncClient.getCheckpoint(
+          tableIdToTable.get(entry.getKey()), this.connectorConfig.streamId(), entry.getValue());
+        LOGGER.debug("The response received has term {} index {} key {} and time {}",
+                     resp.getTerm(), resp.getIndex(), resp.getSnapshotKey(),
+                     resp.getSnapshotTime());
+
+        OpId startLsn = (resp.getSnapshotKey().length == 0) ?
+                            YugabyteDBOffsetContext.snapshotStartLsn() : OpId.from(resp);
+        previousOffset.initSourceInfo(p, this.connectorConfig, startLsn);
         schemaNeeded.put(p.getId(), Boolean.TRUE);
-        previousOffset.initSourceInfo(p, this.connectorConfig, YugabyteDBOffsetContext.snapshotStartLsn());
-        LOGGER.debug("Previous offset for tablet {} is {}", entry.getValue(), previousOffset.toString());
+        LOGGER.debug("Previous offset for table {} tablet {} is {}", p.getTableId(),
+                     p.getTabletId(), previousOffset.toString());
       }
 
       List<Pair<String, String>> tableToTabletForSnapshot = new ArrayList<>();
@@ -695,6 +707,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       GetCheckpointResponse resp = this.syncClient.getCheckpoint(
                                        this.syncClient.openTableByUUID(tableId), 
                                        this.connectorConfig.streamId(), tabletId);
+
+      if (resp.getSnapshotKey().length != 0) {
+        // This indicates that snapshot was altered midway and has not completed, return false
+        return false;
+      }
 
       return !(resp.getTerm() == -1 && resp.getIndex() == -1);
     }
