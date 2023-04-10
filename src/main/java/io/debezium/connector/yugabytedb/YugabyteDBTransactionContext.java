@@ -8,19 +8,23 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Class to manage the distributed transaction related events for YugabyteDB.
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class YugabyteDBTransactionContext extends TransactionContext {
+	private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBTransactionContext.class);
 	private static final String OFFSET_TRANSACTION_ID = TransactionMonitor.DEBEZIUM_TRANSACTION_KEY + "_" + TransactionMonitor.DEBEZIUM_TRANSACTION_ID_KEY;
 	private static final String OFFSET_TABLE_COUNT_PREFIX = TransactionMonitor.DEBEZIUM_TRANSACTION_KEY + "_"
 																														+ TransactionMonitor.DEBEZIUM_TRANSACTION_DATA_COLLECTION_ORDER_KEY + "_";
 	private static final int OFFSET_TABLE_COUNT_PREFIX_LENGTH = OFFSET_TABLE_COUNT_PREFIX.length();
 	private String transactionId = null;
 
-	private Map<String, String> partitionTransactions;
+	private Map<String, String> partitionTransactions = new HashMap<>();
 	private Map<String, Long> partitionTotalEventCount = new HashMap<>();
 	private final Map<String, Long> perTableEventCount = new HashMap<>();
 	private final Map<String, Long> viewPerTableEventCount = Collections.unmodifiableMap(perTableEventCount);
@@ -69,10 +73,12 @@ public class YugabyteDBTransactionContext extends TransactionContext {
 	}
 
 	public void beginTransaction(YBPartition partition, String txId) {
+		LOGGER.info("Putting txID {} for partition {}", txId, partition.getId());
 		partitionTransactions.put(partition.getId(), txId);
 	}
 
 	public void endTransaction(YBPartition partition) {
+		LOGGER.info("Inside endTransaction in txn context");
 		reset(partition.getId());
 	}
 

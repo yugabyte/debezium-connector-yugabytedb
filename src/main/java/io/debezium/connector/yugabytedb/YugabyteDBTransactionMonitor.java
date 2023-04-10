@@ -74,6 +74,7 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 		final YugabyteDBTransactionContext transactionContext = (YugabyteDBTransactionContext) offset.getTransactionContext();
 
 		final String txId = eventMetadataProvider.getTransactionId(source, offset, key, value);
+		LOGGER.info("Transaction ID is {}", txId);
 		if (txId == null) {
 			if (LOGGER.isTraceEnabled()) {
 				LOGGER.trace("Event '{}' has no transaction id", eventMetadataProvider.toSummaryString(source, offset, key, value));
@@ -81,8 +82,9 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 			return;
 		}
 
+		LOGGER.info("Partition ID is {}", partition.getId());
 		if (!transactionContext.isTransactionInProgress(partition)) {
-			transactionContext.beginTransaction(txId);
+			transactionContext.beginTransaction(partition, txId);
 			beginTransaction(partition, offset);
 		}
 		else if (!transactionContext.getTransactionId(partition).equals(txId)) {
@@ -113,7 +115,8 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 		if (!connectorConfig.shouldProvideTransactionMetadata()) {
 			return;
 		}
-		offset.getTransactionContext().beginTransaction(transactionId);
+		YugabyteDBTransactionContext transactionContext = (YugabyteDBTransactionContext) offset.getTransactionContext();
+		transactionContext.beginTransaction((YBPartition) partition, transactionId);
 		beginTransaction((YBPartition) partition, (YugabyteDBOffsetContext) offset);
 	}
 
@@ -126,8 +129,11 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 			return;
 		}
 
+		LOGGER.info("Called transactionCommittedEventImpl");
+
 		YugabyteDBTransactionContext transactionContext = (YugabyteDBTransactionContext) offsetContext.getTransactionContext();
 		if (transactionContext.isTransactionInProgress(partition)) {
+			LOGGER.info("Inside the txn in progress if-block");
 			endTransaction(partition, offsetContext);
 		}
 
@@ -147,6 +153,7 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 	}
 
 	private void endTransaction(YBPartition partition, OffsetContext offsetContext) throws InterruptedException {
+		LOGGER.info("VKVK endTransaction in txn monitor");
 		YugabyteDBTransactionContext transactionContext = (YugabyteDBTransactionContext) offsetContext.getTransactionContext();
 		final Struct key = new Struct(transactionKeySchema);
 		key.put(DEBEZIUM_TRANSACTION_ID_KEY, transactionContext.getTransactionId(partition));
@@ -155,16 +162,17 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 		value.put(DEBEZIUM_TRANSACTION_ID_KEY, transactionContext.getTransactionId(partition));
 		value.put(DEBEZIUM_TRANSACTION_EVENT_COUNT_KEY, transactionContext.getTotalEventCount(partition));
 
-		final Set<Map.Entry<String, Long>> perTableEventCount = offsetContext.getTransactionContext().getPerTableEventCount().entrySet();
-		final List<Struct> valuePerTableCount = new ArrayList<>(perTableEventCount.size());
+		// final Set<Map.Entry<String, Long>> perTableEventCount = offsetContext.getTransactionContext().getPerTableEventCount().entrySet();
+		// final List<Struct> valuePerTableCount = new ArrayList<>(perTableEventCount.size());
 //		for (Map.Entry<String, Long> tableEventCount : perTableEventCount) {
 //			final Struct perTable = new Struct(EVENT_COUNT_PER_DATA_COLLECTION_SCHEMA);
 //			perTable.put(TRANSACTION_COLLECTION_KEY, tableEventCount.getKey());
 //			perTable.put(TRANSACTION_EVENT_COUNT_KEY, tableEventCount.getValue());
 //			valuePerTableCount.add(perTable);
 //		}
-		value.put(DEBEZIUM_TRANSACTION_DATA_COLLECTIONS_KEY, valuePerTableCount);
+		// value.put(DEBEZIUM_TRANSACTION_DATA_COLLECTIONS_KEY, valuePerTableCount);
 
+		LOGGER.info("Calling sender.accept");
 		sender.accept(new SourceRecord(partition.getSourcePartition(), offsetContext.getOffset(),
 			topicName, null, key.schema(), key, value.schema(), value));
 	}

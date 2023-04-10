@@ -391,11 +391,18 @@ public class YugabyteDBStreamingChangeEventSource implements
                             YbProtoReplicationMessage message = new YbProtoReplicationMessage(
                                     m, this.yugabyteDBTypeRegistry);
 
+                            LOGGER.info("VKVK message is {}", m);
+                            if (message.getOperation() == Operation.BEGIN) {
+                                LOGGER.info("BEGIN MESSAGE RECEIVED");
+                            } else if (message.getOperation() == Operation.COMMIT) {
+                                LOGGER.info("COMMIT MESSAGE RECEIVED");
+                            }
+
                             String pgSchemaNameInRecord = m.getPgschemaName();
 
                             // This is a hack to skip tables in case of colocated tables
                             TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-                            if (!new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
+                            if (!message.isDDLMessage() && !message.isTransactionalMessage() && !new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
                                 continue;
                             }
 
@@ -412,7 +419,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                             try {
                                 // Tx BEGIN/END event
                                 if (message.isTransactionalMessage()) {
-                                    if (!connectorConfig.shouldProvideTransactionMetadata()) {
+                                    LOGGER.info("Yes, message is a transactional message");
+                                    if (false) {
                                         LOGGER.debug("Received transactional message {}", record);
                                         // Don't skip on BEGIN message as it would flush LSN for the whole transaction
                                         // too early
@@ -447,6 +455,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     }
 
                                     if (message.getOperation() == Operation.BEGIN) {
+                                        LOGGER.info("HITTING begin block");
                                         LOGGER.debug("LSN in case of BEGIN is " + lsn);
                                         dispatcher.dispatchTransactionStartedEvent(part, message.getTransactionId(), offsetContext);
 
@@ -454,10 +463,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         beginCountForTablet.merge(part.getId(), 1, Integer::sum);
                                     }
                                     else if (message.getOperation() == Operation.COMMIT) {
+                                        LOGGER.info("HITTING commit block");
                                         LOGGER.debug("LSN in case of COMMIT is " + lsn);
                                         offsetContext.updateWalPosition(part, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
                                                 String.valueOf(message.getTransactionId()), null, null/* taskContext.getSlotXmin(connection) */);
                                         commitMessage(part, offsetContext, lsn);
+                                        LOGGER.info("Calling dispatchTransactionCommiitedEvent from streaming source");
                                         dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
 
                                         if (recordsInTransactionalBlock.containsKey(part.getId())) {
@@ -622,7 +633,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         lastCompletelyProcessedLsn = lsn;
         offsetContext.updateCommitPosition(lsn, lastCompletelyProcessedLsn);
         maybeWarnAboutGrowingWalBacklog(false);
-        dispatcher.dispatchHeartbeatEvent(partition, offsetContext);
+        // dispatcher.dispatchHeartbeatEvent(partition, offsetContext);
     }
 
     /**

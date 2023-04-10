@@ -39,7 +39,7 @@ import java.util.Optional;
 /**
  * Custom extension of the {@link EventDispatcher} to accommodate routing {@link LogicalDecodingMessage} events to the change event queue.
  *
- * @author Lairen Hightower
+ * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends EventDispatcher<YBPartition, T> {
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBEventDispatcher.class);
@@ -189,11 +189,13 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
 
     @Override
     public void dispatchTransactionStartedEvent(YBPartition partition, String transactionId, OffsetContext offset) throws InterruptedException {
+        LOGGER.info("Called dispatchTransactionStartedEvent in dispatcher");
         this.transactionMonitor.transactionStartedEvent(partition, transactionId, offset);
     }
 
     @Override
     public void dispatchTransactionCommittedEvent(YBPartition partition, OffsetContext offset) throws InterruptedException {
+        LOGGER.info("Called dispatchTransationCommittedEvent in dispatcher");
         this.transactionMonitor.transactionCommittedEventImpl(partition, (YugabyteDBOffsetContext) offset);
     }
 
