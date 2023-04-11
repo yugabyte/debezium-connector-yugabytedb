@@ -120,7 +120,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 	}
 
 	@Test
-	public void assertTransactionalDataAcrossMultipleTablets() throws Exception {
+	public void verifyTransactionalDataAcrossMultipleTablets() throws Exception {
 		// This will lead to 2 tablets of range [lowest, 1000] and (1000, highest]
 		final String createTable =
 			"CREATE TABLE test_table (id INT, PRIMARY KEY(id ASC)) SPLIT AT VALUES ((1000));";
