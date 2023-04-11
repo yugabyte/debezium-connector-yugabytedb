@@ -135,13 +135,15 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 		start(YugabyteDBConnector.class, configBuilder.build());
 		awaitUntilConnectorIsReady();
 
-		TestHelper.execute("INSERT INTO test_table VALUES (generate_series(990, 1010));");
+		final String statementBatch = "BEGIN; " 
+			+ "INSERT INTO test_table VALUES (generate_series(1,10)); "
+			+ "INSERT INTO test_table VALUES (generate_series(1011, 1020)); " + "COMMIT;";
+		TestHelper.execute(statementBatch);
 
-		waitForAvailableRecords(10000, TimeUnit.MILLISECONDS);
+		waitForAvailableRecords(15000, TimeUnit.MILLISECONDS);
 
 		// Consume records
-		SourceRecords records = consumeRecordsByTopic(
-			24 /* BEGIN + 5 INSERT + COMMIT + BEGIN + 15 INSERT + COMMIT*/);
+		SourceRecords records = consumeRecordsByTopic(24 /* BEGIN + 20 INSERT + COMMIT*/);
 
 		// Assert for records in the transaction topic.
 		List<SourceRecord> metadataRecords = records.recordsForTopic(transactionTopicName);
