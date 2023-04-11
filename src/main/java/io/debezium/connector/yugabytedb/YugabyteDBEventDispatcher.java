@@ -173,7 +173,6 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
 
     @Override
     public void dispatchTransactionStartedEvent(YBPartition partition, String transactionId, OffsetContext offset) throws InterruptedException {
-        LOGGER.info("Called dispatchTransactionStartedEvent in dispatcher");
         this.transactionMonitor.transactionStartedEvent(partition, transactionId, offset);
     }
 

@@ -413,7 +413,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                             try {
                                 // Tx BEGIN/END event
                                 if (message.isTransactionalMessage()) {
-                                    LOGGER.info("Yes, message is a transactional message");
                                     if (!connectorConfig.shouldProvideTransactionMetadata()) {
                                         LOGGER.debug("Received transactional message {}", record);
                                         // Don't skip on BEGIN message as it would flush LSN for the whole transaction
