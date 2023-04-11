@@ -152,6 +152,7 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 		final Struct value = new Struct(transactionValueSchema);
 		value.put(DEBEZIUM_TRANSACTION_STATUS_KEY, TransactionStatus.BEGIN.name());
 		value.put(DEBEZIUM_TRANSACTION_ID_KEY, transactionContext.getTransactionId(partition));
+		value.put(PARTITION_ID_KEY, partition.getId());
 
 		sender.accept(new SourceRecord(partition.getSourcePartition(), offsetContext.getOffset(),
 			topicName, null, key.schema(), key, value.schema(), value));
