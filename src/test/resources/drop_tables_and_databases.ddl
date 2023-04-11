@@ -1,5 +1,6 @@
 DROP TABLE IF EXISTS t1;
 DROP TABLE IF EXISTS all_types;
 DROP TABLE IF EXISTS test_enum;
+DROP TYPE IF EXISTS enum_type;
 DROP DATABASE IF EXISTS secondary_database;
 

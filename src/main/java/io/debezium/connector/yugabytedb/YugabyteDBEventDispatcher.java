@@ -39,7 +39,7 @@ import java.util.Optional;
 /**
  * Custom extension of the {@link EventDispatcher} to accommodate routing {@link LogicalDecodingMessage} events to the change event queue.
  *
- * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
+ * @author Rajat Venkatesh, Vaibhav Kushwaha
  */
 public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends EventDispatcher<YBPartition, T> {
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBEventDispatcher.class);
@@ -145,11 +145,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
                 handled = true;
             }
 
-            // TODO Vaibhav: Remove this as we do not use any heartbeat events
-//            heartbeat.heartbeat(
-//              changeRecordEmitter.getPartition().getSourcePartition(),
-//              changeRecordEmitter.getOffset().getOffset(),
-//              this::enqueueHeartbeat);
+            // TODO: Add heartbeat event processing here if required.
 
             return handled;
         } catch (Exception e) {
@@ -182,10 +178,6 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
     }
 
     private void enqueueTransactionMessage(SourceRecord record) throws InterruptedException {
-        queue.enqueue(new DataChangeEvent(record));
-    }
-
-    private void enqueueHeartbeat(SourceRecord record) throws InterruptedException {
         queue.enqueue(new DataChangeEvent(record));
     }
 

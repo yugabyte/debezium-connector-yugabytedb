@@ -97,10 +97,6 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 			LOGGER.info("Received a different transaction ID ({}) for the partition {} " +
 									"with another transaction ({}) in progress", txId, partition.getId(),
 									transactionContext.getTransactionId(partition));
-//			endTransaction(partition, offset);
-//			transactionContext.endTransaction();
-//			transactionContext.beginTransaction(txId);
-//			beginTransaction(partition, offset);
 		}
 		transactionEvent(partition, offset, source, value);
 	}
@@ -168,16 +164,7 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 		value.put(DEBEZIUM_TRANSACTION_EVENT_COUNT_KEY, transactionContext.getTotalEventCount(partition));
 		value.put(PARTITION_ID_KEY, partition.getId());
 
-		// TODO: Skip the block for adding the per table event count unless actual mechanism figured out.
-		// final Set<Map.Entry<String, Long>> perTableEventCount = offsetContext.getTransactionContext().getPerTableEventCount().entrySet();
-		// final List<Struct> valuePerTableCount = new ArrayList<>(perTableEventCount.size());
-//		for (Map.Entry<String, Long> tableEventCount : perTableEventCount) {
-//			final Struct perTable = new Struct(EVENT_COUNT_PER_DATA_COLLECTION_SCHEMA);
-//			perTable.put(TRANSACTION_COLLECTION_KEY, tableEventCount.getKey());
-//			perTable.put(TRANSACTION_EVENT_COUNT_KEY, tableEventCount.getValue());
-//			valuePerTableCount.add(perTable);
-//		}
-		// value.put(DEBEZIUM_TRANSACTION_DATA_COLLECTIONS_KEY, valuePerTableCount);
+		// TODO: Process and add per table event count here if required.
 
 		sender.accept(new SourceRecord(partition.getSourcePartition(), offsetContext.getOffset(),
 			topicName, null, key.schema(), key, value.schema(), value));

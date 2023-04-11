@@ -4,7 +4,6 @@ import io.debezium.pipeline.txmetadata.TransactionContext;
 import io.debezium.pipeline.txmetadata.TransactionMonitor;
 import io.debezium.schema.DataCollectionId;
 
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -27,8 +26,6 @@ public class YugabyteDBTransactionContext extends TransactionContext {
 
 	private Map<String, String> partitionTransactions = new HashMap<>();
 	private Map<String, Long> partitionTotalEventCount = new HashMap<>();
-//	private final Map<String, Long> perTableEventCount = new HashMap<>();
-//	private final Map<String, Long> viewPerTableEventCount = Collections.unmodifiableMap(perTableEventCount);
 
 	private void reset(String partitionId) {
 		partitionTransactions.put(partitionId, null);
@@ -39,16 +36,6 @@ public class YugabyteDBTransactionContext extends TransactionContext {
 		// TODO Vaibhav: Do we actually load any transaction context from offsets? If not, remove this.
 		final Map<String, Object> o = (Map<String, Object>) offsets;
 		final YugabyteDBTransactionContext context = new YugabyteDBTransactionContext();
-
-//		context.transactionId = (String) o.get(OFFSET_TRANSACTION_ID);
-//
-//		for (final Map.Entry<String, Object> offset : o.entrySet()) {
-//			if (offset.getKey().startsWith(OFFSET_TABLE_COUNT_PREFIX)) {
-//				final String dataCollectionId = offset.getKey().substring(OFFSET_TABLE_COUNT_PREFIX_LENGTH);
-//				final Long count = (Long) offset.getValue();
-//				context.perTableEventCount.put(dataCollectionId, count);
-//			}
-//		}
 
 		return context;
 	}

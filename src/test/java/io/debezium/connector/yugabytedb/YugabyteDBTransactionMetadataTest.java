@@ -52,7 +52,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 	@ValueSource(booleans = {true, false})
 	public void shouldPublishTransactionMetadata(boolean customTopicName) throws Exception {
 		String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1");
-		Configuration.Builder configBuilder = getConfigBuilderForMetadata(dbStreamId);
+		Configuration.Builder configBuilder = getConfigBuilderForMetadata(dbStreamId, "public.t1");
 
 		String transactionTopicName = TestHelper.TEST_SERVER + ".transaction";
 		if (customTopicName) {
@@ -83,7 +83,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 	@Test
 	public void assertMultipleTransactions() throws Exception {
 		String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1");
-		Configuration.Builder configBuilder = getConfigBuilderForMetadata(dbStreamId);
+		Configuration.Builder configBuilder = getConfigBuilderForMetadata(dbStreamId, "public.t1");
 
 		String transactionTopicName = TestHelper.TEST_SERVER + ".transaction";
 
@@ -127,7 +127,8 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 		TestHelper.execute(createTable);
 
 		String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "test_table");
-		Configuration.Builder configBuilder = getConfigBuilderForMetadata(dbStreamId);
+		Configuration.Builder configBuilder =
+			getConfigBuilderForMetadata(dbStreamId, "public.test_table");
 
 		String transactionTopicName = TestHelper.TEST_SERVER + ".transaction";
 
@@ -162,8 +163,9 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 		assertEquals(transactionId1, transactionId2);
 	}
 
-	private Configuration.Builder getConfigBuilderForMetadata(String dbStreamId) throws Exception {
-		Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+	private Configuration.Builder getConfigBuilderForMetadata(String dbStreamId, String tableName)
+			throws Exception {
+		Configuration.Builder configBuilder = TestHelper.getConfigBuilder(tableName, dbStreamId);
 		configBuilder.with(YugabyteDBConnectorConfig.PROVIDE_TRANSACTION_METADATA, true);
 		return configBuilder;
 	}
