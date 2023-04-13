@@ -6,9 +6,6 @@
 
 package io.debezium.connector.yugabytedb;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.fail;
-
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
@@ -56,6 +53,8 @@ import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection.YugabyteDBValueConverterBuilder;
 import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * A utility for integration test cases to connect the YugabyteDB instance running in the Docker 
@@ -466,7 +465,8 @@ public final class TestHelper {
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
-                                          boolean withBeforeImage) throws Exception {
+                                          boolean withBeforeImage, boolean explicitCheckpointing)
+            throws Exception {
         YBClient syncClient = getYbClient(MASTER_ADDRESS);
 
         YBTable placeholderTable = getYbTable(syncClient, tableName);
@@ -478,13 +478,18 @@ public final class TestHelper {
         String dbStreamId;
         try {
             dbStreamId = syncClient.createCDCStream(placeholderTable, namespaceName,
-                                                    "PROTO", "IMPLICIT",
+                                                    "PROTO", explicitCheckpointing ? "EXPLICIT" : "IMPLICIT",
                                                     withBeforeImage ? "ALL" : null).getStreamId();
         } finally {
             syncClient.close();
         }
 
         return dbStreamId;
+    }
+
+    public static String getNewDbStreamId(String namespaceName, String tableName,
+                                          boolean withBeforeImage) throws Exception {
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, false /* explicit x*/);
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName) throws Exception {

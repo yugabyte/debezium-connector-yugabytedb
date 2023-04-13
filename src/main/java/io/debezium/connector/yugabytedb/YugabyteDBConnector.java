@@ -11,12 +11,12 @@ import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.util.*;
 
+import io.debezium.connector.yugabytedb.util.YugabyteDBConnectorUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigValue;
 import org.apache.kafka.connect.connector.Task;
-import org.apache.kafka.connect.util.ConnectorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService.TabletCheckpointPair;
@@ -145,7 +145,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         int numGroups = Math.min(this.tabletIds.size(), maxTasks);
         LOGGER.debug("The tabletIds size are " + tabletIds.size() + " maxTasks" + maxTasks);
 
-        List<List<Pair<String, String>>> tabletIdsGrouped = ConnectorUtils.groupPartitions(this.tabletIds, numGroups);
+        List<List<Pair<String, String>>> tabletIdsGrouped = YugabyteDBConnectorUtils.groupPartitionsSmartly(this.tabletIds, numGroups);
         LOGGER.debug("The grouped tabletIds are " + tabletIdsGrouped.size());
         List<Map<String, String>> taskConfigs = new ArrayList<>(tabletIdsGrouped.size());
 
@@ -354,7 +354,9 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             Collections.sort(this.tabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));
         }
         catch (Exception e) {
-            LOGGER.error("Error while fetching all the tablets", e);
+            final String errorMessage = "Error while fetching all the tablets";
+            LOGGER.error(errorMessage, e);
+            throw new DebeziumException(errorMessage, e);
         }
     }
 }

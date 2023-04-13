@@ -16,6 +16,7 @@ public class Message implements Comparable<Message> {
     private static final Logger LOGGER = LoggerFactory.getLogger(Message.class);
 
     public final CdcService.CDCSDKProtoRecordPB record;
+    public final String tableId;
     public final String tablet;
     public final String txn;
     public final BigInteger commitTime;
@@ -23,9 +24,10 @@ public class Message implements Comparable<Message> {
     public final BigInteger snapShotTime;
     public final long sequence;
 
-    public Message(CdcService.CDCSDKProtoRecordPB record, String tablet, String txn,
+    public Message(CdcService.CDCSDKProtoRecordPB record, String tableId, String tablet, String txn,
                    BigInteger commitTime, BigInteger recordTime, BigInteger snapShotTime, long sequence) {
         this.record = record;
+        this.tableId = tableId;
         this.tablet = tablet;
         this.txn = txn;
         this.commitTime = commitTime;
@@ -119,6 +121,8 @@ public class Message implements Comparable<Message> {
 
     public static class Builder {
         private CdcService.CDCSDKProtoRecordPB record;
+
+        private String tableId;
         private String tabletId;
         private long snapshotTime;
 
@@ -126,6 +130,11 @@ public class Message implements Comparable<Message> {
 
         public Builder setRecord(CdcService.CDCSDKProtoRecordPB record) {
             this.record = record;
+            return this;
+        }
+
+        public Builder setTableId(String tableId) {
+            this.tableId = tableId;
             return this;
         }
 
@@ -141,7 +150,7 @@ public class Message implements Comparable<Message> {
 
         public Message build() {
             CdcService.RowMessage m = record.getRowMessage();
-            return new Message(this.record, this.tabletId,
+            return new Message(this.record, this.tableId, this.tabletId,
                     String.valueOf(m.getTransactionId()),
                     toUnsignedBigInteger(m.getCommitTime()), toUnsignedBigInteger(m.getRecordTime()), toUnsignedBigInteger(this.snapshotTime),
                     sequence.incrementAndGet());

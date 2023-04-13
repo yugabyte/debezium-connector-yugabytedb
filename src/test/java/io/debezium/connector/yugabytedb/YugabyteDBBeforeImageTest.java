@@ -14,14 +14,11 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
 public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
-  private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBPartitionTest.class);
   private final String formatInsertString =
       "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 12.345);";
 

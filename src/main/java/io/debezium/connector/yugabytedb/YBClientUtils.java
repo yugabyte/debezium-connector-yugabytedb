@@ -317,6 +317,6 @@ public class YBClientUtils {
       Objects.requireNonNull(cdcStreamInfo);
 
       return cdcStreamInfo.getOptions().get("checkpoint_type")
-               .equals(CdcService.CDCCheckpointType.EXPLICIT);
+              .equals(CdcService.CDCCheckpointType.EXPLICIT.name());
   }
 }
