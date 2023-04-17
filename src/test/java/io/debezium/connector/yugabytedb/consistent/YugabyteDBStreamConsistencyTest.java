@@ -12,15 +12,17 @@ import io.debezium.connector.yugabytedb.TestHelper;
 import io.debezium.connector.yugabytedb.YugabyteDBConnector;
 import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,7 +34,7 @@ import io.debezium.config.Configuration;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 
-public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
     private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBStreamConsistencyTest.class);
 
     private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
@@ -44,13 +46,14 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
             "CREATE TABLE s1.a (pk SERIAL, aa integer, PRIMARY KEY(pk));" +
             "CREATE TABLE s2.a (pk SERIAL, aa integer, bb varchar(20), PRIMARY KEY(pk));";
     private static final String SETUP_TABLES_STMT = CREATE_TABLES_STMT + INSERT_STMT;
-    @BeforeClass
+    
+    @BeforeAll
     public static void beforeClass() throws SQLException {
         initializeYBContainer(null, "cdc_max_stream_intent_records=10,cdc_populate_safepoint_record=true");
         TestHelper.dropAllSchemas();
     }
 
-    @Before
+    @BeforeEach
     public void before() {
         initializeConnectorTestFramework();
 
@@ -61,7 +64,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
         TestHelper.execute("DROP TABLE IF EXISTS department;");
     }
 
-    @After
+    @AfterEach
     public void after() throws Exception {
         stopConnector();
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
@@ -72,7 +75,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
         TestHelper.execute("DROP TABLE IF EXISTS department;");
     }
 
-    @AfterClass
+    @AfterAll
     public static void afterClass() throws Exception {
         shutdownYBContainer();
     }

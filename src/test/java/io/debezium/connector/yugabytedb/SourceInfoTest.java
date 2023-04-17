@@ -22,6 +22,7 @@ public class SourceInfoTest extends YugabyteDBContainerTestBase {
     private SourceInfo source;
 
     private final String DUMMY_TABLE_NAME = "dummy_table";
+    private final String DUMMY_TABLE_ID = "tableId";
     private final String DUMMY_TABLET_ID = "tabletId";
 
     @BeforeEach
@@ -35,7 +36,9 @@ public class SourceInfoTest extends YugabyteDBContainerTestBase {
             fail();
         }
 
-        source.update(DUMMY_TABLET_ID, OpId.valueOf("1:2:keyStrValue:4:5"), 123L, "txId",
+        YBPartition partition = new YBPartition(DUMMY_TABLE_ID, DUMMY_TABLET_ID, false);
+
+        source.update(partition, OpId.valueOf("1:2:keyStrValue:4:5"), 123L, "txId",
                       new TableId("yugabyte", "public", DUMMY_TABLE_NAME), 123L, 123L);
     }
 

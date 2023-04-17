@@ -11,6 +11,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MergerTest {
+    private final String DUMMY_TABLE_ID = "dummy_table_id";
     @Test
     public void addAndPollTest() {
         Merger merger = new Merger(List.of("3fe122ffe3f24ad39c2cf8a57fa124b3"));
@@ -18,7 +19,7 @@ class MergerTest {
         CdcService.CDCSDKProtoRecordPB beginProtoRecord = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.BEGIN).build())
                 .build();
-        Message begin = new Message(beginProtoRecord, "3fe122ffe3f24ad39c2cf8a57fa124b3",
+        Message begin = new Message(beginProtoRecord, DUMMY_TABLE_ID, "3fe122ffe3f24ad39c2cf8a57fa124b3",
                 "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.ZERO,
@@ -28,7 +29,7 @@ class MergerTest {
         CdcService.CDCSDKProtoRecordPB insertProtoRecord = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.INSERT).build())
                 .build();
-        Message insert = new Message(insertProtoRecord, "3fe122ffe3f24ad39c2cf8a57fa124b3",
+        Message insert = new Message(insertProtoRecord, DUMMY_TABLE_ID, "3fe122ffe3f24ad39c2cf8a57fa124b3",
                 "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
                 BigInteger.valueOf(6822178296477519872L),
                 BigInteger.valueOf(6822178296477519872L),
@@ -37,7 +38,7 @@ class MergerTest {
         CdcService.CDCSDKProtoRecordPB commitProtoRecord = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.COMMIT).build())
                 .build();
-        Message commit = new Message(commitProtoRecord, "3fe122ffe3f24ad39c2cf8a57fa124b3",
+        Message commit = new Message(commitProtoRecord, DUMMY_TABLE_ID, "3fe122ffe3f24ad39c2cf8a57fa124b3",
                 "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.ZERO,
@@ -64,7 +65,7 @@ class MergerTest {
         CdcService.CDCSDKProtoRecordPB parentProtoRecord = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.INSERT).build())
                 .build();
-        Message parent = new Message(parentProtoRecord, tabletOne, "9820053e-1597-42cb-a1aa-6f0ebe8237ca",
+        Message parent = new Message(parentProtoRecord, DUMMY_TABLE_ID, tabletOne, "9820053e-1597-42cb-a1aa-6f0ebe8237ca",
                 BigInteger.valueOf(6863526294757593088L),
                 BigInteger.valueOf(6863526294428749824L),
                 BigInteger.ZERO,
@@ -73,7 +74,7 @@ class MergerTest {
         CdcService.CDCSDKProtoRecordPB childProtoRecord = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.INSERT).build())
                 .build();
-        Message child = new Message(childProtoRecord, tabletTwo, "be309af9-0a7d-40c2-b855-79e2e73b2daa",
+        Message child = new Message(childProtoRecord, DUMMY_TABLE_ID, tabletTwo, "be309af9-0a7d-40c2-b855-79e2e73b2daa",
                 BigInteger.valueOf(6863526294757593088L),
                 BigInteger.valueOf(6863526294462816256L),
                 BigInteger.ZERO,
@@ -100,7 +101,7 @@ class MergerTest {
         CdcService.CDCSDKProtoRecordPB proto1 = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.INSERT).build())
                 .build();
-        Message m1 = new Message(proto1, dummyTablet, "9820053e-1597-42cb-a1aa-6f0ebe8237ca",
+        Message m1 = new Message(proto1, DUMMY_TABLE_ID, dummyTablet, "9820053e-1597-42cb-a1aa-6f0ebe8237ca",
                 BigInteger.valueOf(6863526294757593088L),
                 BigInteger.valueOf(6863526294428749824L),
                 BigInteger.ZERO,
@@ -109,7 +110,7 @@ class MergerTest {
         CdcService.CDCSDKProtoRecordPB proto2 = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.INSERT).build())
                 .build();
-        Message m2 = new Message(proto2, dummyTablet, "be309af9-0a7d-40c2-b855-79e2e73b2daa",
+        Message m2 = new Message(proto2, DUMMY_TABLE_ID, dummyTablet, "be309af9-0a7d-40c2-b855-79e2e73b2daa",
                 BigInteger.valueOf(68635262947L), // Lower commit time than previous record.
                 BigInteger.valueOf(6863526294462816256L),
                 BigInteger.ZERO,

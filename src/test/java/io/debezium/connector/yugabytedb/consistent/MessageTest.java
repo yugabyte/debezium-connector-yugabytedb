@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class MessageTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(MessageTest.class);
+    private final String DUMMY_TABLE_ID = "dummy_table_id";
     private final static long lowCommitTime = 12345L;
     private final static long highCommitTime = 123456L;
     private final static long lowRecordTime = 12345L;
@@ -32,7 +33,7 @@ public class MessageTest {
         CdcService.CDCSDKProtoRecordPB beginRecord = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder()
                         .setOp(CdcService.RowMessage.Op.BEGIN).build()).build();
-        Message begin = new Message(beginRecord, "3fe122ffe3f24ad39c2cf8a57fa124b3",
+        Message begin = new Message(beginRecord, DUMMY_TABLE_ID, "3fe122ffe3f24ad39c2cf8a57fa124b3",
                 "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.ZERO,
@@ -42,7 +43,7 @@ public class MessageTest {
         CdcService.CDCSDKProtoRecordPB insertRecord = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder()
                         .setOp(CdcService.RowMessage.Op.INSERT).build()).build();
-        Message insert = new Message(insertRecord, "3fe122ffe3f24ad39c2cf8a57fa124b3",
+        Message insert = new Message(insertRecord, DUMMY_TABLE_ID, "3fe122ffe3f24ad39c2cf8a57fa124b3",
                 "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.valueOf(6822178296477519872L),
@@ -51,7 +52,7 @@ public class MessageTest {
         CdcService.CDCSDKProtoRecordPB commitRecord = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder()
                         .setOp(CdcService.RowMessage.Op.COMMIT).build()).build();
-        Message commit = new Message(commitRecord, "3fe122ffe3f24ad39c2cf8a57fa124b3",
+        Message commit = new Message(commitRecord, DUMMY_TABLE_ID, "3fe122ffe3f24ad39c2cf8a57fa124b3",
                 "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.ZERO,
@@ -73,7 +74,7 @@ public class MessageTest {
                 .setRowMessage(CdcService.RowMessage.newBuilder()
                         .setOp(CdcService.RowMessage.Op.INSERT).build()).build();
 
-        Message m1 = new Message(dummyRecord, "3fe122ffe3f24ad39c2cf8a57fa124b3",
+        Message m1 = new Message(dummyRecord, DUMMY_TABLE_ID, "3fe122ffe3f24ad39c2cf8a57fa124b3",
                 "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.ZERO,
@@ -83,7 +84,7 @@ public class MessageTest {
         CdcService.CDCSDKProtoRecordPB record = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder()
                         .setOp(op).build()).build();
-        Message m2 = new Message(record, tabletId, txn, commitTime, recordTime, snapshotTime, 35);
+        Message m2 = new Message(record, DUMMY_TABLE_ID, tabletId, txn, commitTime, recordTime, snapshotTime, 35);
 
         assertFalse(m1.equals(m2));
     }
@@ -96,14 +97,14 @@ public class MessageTest {
                 .setRowMessage(CdcService.RowMessage.newBuilder()
                         .setOp(CdcService.RowMessage.Op.INSERT).build()).build();
 
-        Message m1 = new Message(dummyRecord, "3fe122ffe3f24ad39c2cf8a57fa124b3",
+        Message m1 = new Message(dummyRecord, DUMMY_TABLE_ID, "3fe122ffe3f24ad39c2cf8a57fa124b3",
                 "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.ZERO,
                 BigInteger.ZERO,
                 34);
 
-        Message m2 = new Message(dummyRecord, "3fe122ffe3f24ad39c2cf8a57fa124b3",
+        Message m2 = new Message(dummyRecord, DUMMY_TABLE_ID, "3fe122ffe3f24ad39c2cf8a57fa124b3",
                 "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.ZERO,
@@ -146,7 +147,7 @@ public class MessageTest {
                 .setRowMessage(rowMessage).build();
 
         Message m = new Message.Builder().setRecord(record).setTabletId("dummyTabletId")
-                .setSnapshotTime(0).build();
+                .setTableId(DUMMY_TABLE_ID).setSnapshotTime(0).build();
 
         assertTrue(Message.isCommit(m));
     }
@@ -165,9 +166,9 @@ public class MessageTest {
                 .setRowMessage(rowMessage).build();
 
         Message m1 = new Message.Builder().setRecord(record).setTabletId("dummyTabletId")
-                .setSnapshotTime(0).build();
+                .setTableId(DUMMY_TABLE_ID).setSnapshotTime(0).build();
         Message m2 = new Message.Builder().setRecord(record).setTabletId("anotherDummyTablet")
-                .setSnapshotTime(0).build();
+                .setTableId(DUMMY_TABLE_ID).setSnapshotTime(0).build();
 
         assertTrue(Message.notBeginCommit(m1, m2));
     }
@@ -191,7 +192,7 @@ public class MessageTest {
                                 .setOp(op2)
                                 .setRecordTime(recordTime2)
                                 .setCommitTime(commitTime2)
-                                .build()).build()).setTabletId("tablet2").build();
+                                .build()).build()).setTableId(DUMMY_TABLE_ID).setTabletId("tablet2").build();
 
         assertEquals(m1.compareTo(m2), expectedResult);
     }
