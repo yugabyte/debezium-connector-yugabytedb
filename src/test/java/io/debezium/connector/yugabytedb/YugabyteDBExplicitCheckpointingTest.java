@@ -111,7 +111,7 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
 
         awaitUntilConnectorIsReady();
 
-        TestHelper.execute("INSERT INTO t1 VALUES (1, 'Vaibhav', 'Kushwaha', 12.34)");
+        TestHelper.execute("BEGIN; INSERT INTO t1 VALUES (1, 'Vaibhav', 'Kushwaha', 12.34); COMMIT;");
         TestHelper.waitFor(Duration.ofSeconds(15));
 
         // The last update to the offsetMap will be the offset being committed on the server side.
@@ -140,5 +140,9 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
 
         // Stop the engine started in this test.
         engine.stop();
+
+        // Wait for a while and then check if intents have come down to 0.
+        TestHelper.waitFor(Duration.ofSeconds(30));
+        assertEquals(0, getIntentsCount());
     }
 }

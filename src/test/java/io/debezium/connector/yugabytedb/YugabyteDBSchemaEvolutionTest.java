@@ -43,9 +43,6 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
   @AfterEach
   public void after() throws Exception {
       stopConnector();
-
-      // Assert that there are no intents remaining after the test.
-      assertEquals(0, getIntentsCount());
       TestHelper.executeDDL("drop_tables_and_databases.ddl");
   }
 
