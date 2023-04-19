@@ -1,5 +1,7 @@
 package io.debezium.connector.yugabytedb.common;
 
+import org.testcontainers.containers.Container.ExecResult;
+
 import io.debezium.connector.yugabytedb.TestHelper;
 
 /**
@@ -27,5 +29,13 @@ public class YugabyteDBContainerTestBase extends TestBaseClass {
 
     protected static String getMasterAddress() {
         return ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100);
+    }
+
+    @Override
+    protected long getIntentsCount() throws Exception {
+        ExecResult result = ybContainer.execInContainer("/home/yugabyte/bin/yb-ts-cli", "--server_address", "0.0.0.0", "count_intents");
+
+        // Assuming the result is just a number, so simply convert the string to long and return.
+        return Long.valueOf(result.getStdout().split("\n")[0]);
     }
 }

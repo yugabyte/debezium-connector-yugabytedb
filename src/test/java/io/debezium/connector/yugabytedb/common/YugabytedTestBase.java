@@ -34,4 +34,11 @@ public class YugabytedTestBase extends TestBaseClass {
     public String getMasterAddress() {
         return "127.0.0.1:7100";
     }
+
+    @Override
+    protected long getIntentsCount() throws Exception {
+        LOGGER.warn("Method getIntentsCount is not implemented for testing "
+                + "with local yugabyted deployment");
+        return 0;
+    }
 }

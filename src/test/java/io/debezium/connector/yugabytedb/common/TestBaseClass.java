@@ -32,4 +32,8 @@ public class TestBaseClass extends AbstractConnectorTest {
                     return engine.isRunning();
                 });
     }
+
+    protected long getIntentsCount() throws Exception {
+        throw new UnsupportedOperationException("Method getIntentCount is not implemented for " + TestBaseClass.class.toString());
+    }
 }
