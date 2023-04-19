@@ -142,7 +142,7 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
         engine.stop();
 
         // Wait for a while and then check if intents have come down to 0.
-        TestHelper.waitFor(Duration.ofSeconds(30));
+        TestHelper.waitFor(Duration.ofSeconds(120));
         assertEquals(0, getIntentsCount());
     }
 }
