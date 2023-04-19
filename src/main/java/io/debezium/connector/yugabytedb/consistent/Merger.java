@@ -21,6 +21,9 @@ public class Merger {
     private final Map<String, List<Message>> mergeSlots = new HashMap<>();
     private final Map<String, BigInteger> tabletSafeTime = new HashMap<>();
 
+    // This is a workaround to store the last record for the tablet.
+    private final Map<String, Message> lastRecord = new HashMap<>();
+
     public Merger(List<String> tabletList) {
         tabletList.forEach(tabletId -> {
             mergeSlots.put(tabletId, new ArrayList<>());
@@ -38,7 +41,8 @@ public class Merger {
     public synchronized void addMessage(Message message) {
         assert message.record.getRowMessage().getOp() != CdcService.RowMessage.Op.DDL;
 
-        setTabletSafeTime(message.tablet, message.commitTime);
+        setTabletSafeTime(message.tablet, message.commitTime, message);
+        lastRecord.put(message.tablet, message);
         if (message.record.getRowMessage().getOp() == CdcService.RowMessage.Op.SAFEPOINT) {
             LOGGER.debug("Received safe point message {}", message);
             return;
@@ -67,7 +71,7 @@ public class Merger {
      * @param tabletId the tablet UUID for which the safetime needs to be set
      * @param safeTime the safetime to be set
      */
-    public void setTabletSafeTime(String tabletId, BigInteger safeTime) {
+    public void setTabletSafeTime(String tabletId, BigInteger safeTime, Message m) {
         // TODO: Wrap this assert under the flag.
         // If the safetime we are setting is less than the already set value then it would indicate
         // that we are moving backward in time, which is wrong. Throw an assertion error in that case.
@@ -76,6 +80,8 @@ public class Merger {
                                         + tabletId + " Current safetime value: "
                                         + this.tabletSafeTime.get(tabletId).toString()
                                         + " Attempted set value: " + safeTime.toString();
+            LOGGER.error("VKVK record which attempted to set the value {}", m);
+            LOGGER.error("VKVK last record: {}", lastRecord.get(tabletId));
             throw new AssertionError(errorMessage);
         }
         LOGGER.info("Updating safetime for tablet {}:{}, verifying {}", tabletId, safeTime, this.tabletSafeTime.get(tabletId));
@@ -133,7 +139,7 @@ public class Merger {
     public synchronized Optional<Message> poll() {
         Optional<Message> message = this.peek();
 
-        if (message.isEmpty()) {
+        if (!message.isPresent()) {
             LOGGER.warn("Empty message is being returned from poll (may indicate issues)");
             return message;
         }

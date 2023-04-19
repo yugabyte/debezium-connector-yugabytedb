@@ -93,6 +93,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 opId = YugabyteDBOffsetContext.streamingStartLsn();
             }
 
+            LOGGER.info("Tablet {} belongs to table {}", entry.getValue(), tableIdToTable.get(entry.getKey()).getName());
+
             YBPartition partition = new YBPartition(entry.getKey(), entry.getValue(), false);
             offsetContext.initSourceInfo(partition, this.connectorConfig, opId);
             schemaNeeded.put(partition.getId(), Boolean.TRUE);
@@ -182,7 +184,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                             try {
                                 response = this.syncClient.getChangesCDCSDK(
                                         table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
-                                        cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId));
+                                        cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
+                                        taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null);
                             } catch (CDCErrorException cdcException) {
                                 // Check if exception indicates a tablet split.
                                 if (cdcException.getCDCError().getCode() == CdcService.CDCErrorPB.Code.TABLET_SPLIT) {
@@ -206,6 +209,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                     .getResp()
                                     .getCdcSdkProtoRecordsList()) {
                                 CdcService.RowMessage.Op op = record.getRowMessage().getOp();
+                                LOGGER.info("Record seen: {}", record.getRowMessage());
 
                                 if (record.getRowMessage().getOp() == CdcService.RowMessage.Op.DDL) {
                                     YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(record.getRowMessage(), this.yugabyteDBTypeRegistry);
@@ -229,6 +233,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                 offsetContext.getSourceInfo(part).updateLastCommit(finalOpid);
                                 LOGGER.debug("The final opid is " + finalOpid);
                             }
+                        } else {
+                            LOGGER.info("Merge slot not empty for {}", tabletId);
                         }
 
                         probeConnectionIfNeeded();
@@ -249,6 +255,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                         CdcService.RowMessage m = message.record.getRowMessage();
                         YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(
                                 m, this.yugabyteDBTypeRegistry);
+                        LOGGER.info("Dispatching record: {}", message.record.getRowMessage());
                         dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
                                 beginCountForTablet, message.tablet, new YBPartition(message.tableId, message.tablet, false),
                                 message.snapShotTime.longValue(), message.record, m, ybMessage);
