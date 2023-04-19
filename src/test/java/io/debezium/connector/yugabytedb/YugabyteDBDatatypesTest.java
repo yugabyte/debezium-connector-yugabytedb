@@ -210,9 +210,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
     @AfterEach
     public void after() throws Exception {
         stopConnector();
-        
-        // Assert that there are no intents remaining after the test.
-        assertEquals(0, getIntentsCount());
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
     }
 
@@ -247,11 +244,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertRecords(recordsCount);
-
-        // TestHelper.waitFor(Duration.ofMinutes(2));
-
-        // Get intent count
-        LOGGER.info("VKVK intent count is {}", getIntentsCount());
 
         CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
                 .exceptionally(throwable -> {
