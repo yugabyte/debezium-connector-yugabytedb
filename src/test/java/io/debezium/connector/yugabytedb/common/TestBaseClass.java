@@ -32,4 +32,16 @@ public class TestBaseClass extends AbstractConnectorTest {
                     return engine.isRunning();
                 });
     }
+
+    protected void stopYugabyteDB() throws Exception {
+        throw new UnsupportedOperationException("Method stopYugabyteDB not implemented for base test class");
+    }
+
+    protected void startYugabyteDB() throws Exception {
+        throw new UnsupportedOperationException("Method startYugabyteDB not implemented for base test class");
+    }
+
+    protected void restartYugabyteDB(long milliseconds) throws Exception {
+        throw new UnsupportedOperationException("Method restartYugabyteDB not implemented for base test class");
+    }
 }

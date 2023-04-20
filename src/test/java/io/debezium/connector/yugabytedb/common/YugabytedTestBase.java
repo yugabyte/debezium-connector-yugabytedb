@@ -34,4 +34,22 @@ public class YugabytedTestBase extends TestBaseClass {
     public String getMasterAddress() {
         return "127.0.0.1:7100";
     }
+
+    @Override
+    protected void stopYugabyteDB() throws Exception {
+        LOGGER.warn("Method stopYugabyteDB not implemented to be run against local "
+                + "deployment of yugabyted");
+    }
+
+    @Override
+    protected void startYugabyteDB() throws Exception {
+        LOGGER.warn("Method startYugabyteDB not implemented to be run against local "
+                + "deployment of yugabyted");
+    }
+
+    @Override
+    protected void restartYugabyteDB(long milliseconds) throws Exception {
+        LOGGER.warn("Method restartYugabyteDB not implemented to be run against local "
+                + "deployment of yugabyted");
+    }
 }
