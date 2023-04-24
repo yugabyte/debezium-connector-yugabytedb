@@ -425,12 +425,6 @@ public final class TestHelper {
         return container;
     }
 
-    public static String startupCommandString;
-
-    public static String getYBStart() {
-        return startupCommandString;
-    }
-
     public static YugabyteYSQLContainer getYbContainer() {
         return getYbContainer(null, null);
     }
