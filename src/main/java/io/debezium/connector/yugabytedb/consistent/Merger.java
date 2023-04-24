@@ -21,9 +21,6 @@ public class Merger {
     private final Map<String, List<Message>> mergeSlots = new HashMap<>();
     private final Map<String, BigInteger> tabletSafeTime = new HashMap<>();
 
-    // This is a workaround to store the last record for the tablet.
-    private final Map<String, Message> lastRecord = new HashMap<>();
-
     public Merger(List<String> tabletList) {
         tabletList.forEach(tabletId -> {
             mergeSlots.put(tabletId, new ArrayList<>());
@@ -42,7 +39,6 @@ public class Merger {
         assert message.record.getRowMessage().getOp() != CdcService.RowMessage.Op.DDL;
 
         setTabletSafeTime(message.tablet, message.commitTime, message);
-        lastRecord.put(message.tablet, message);
         if (message.record.getRowMessage().getOp() == CdcService.RowMessage.Op.SAFEPOINT) {
             LOGGER.debug("Received safe point message {}", message);
             return;
@@ -80,8 +76,7 @@ public class Merger {
                                         + tabletId + " Current safetime value: "
                                         + this.tabletSafeTime.get(tabletId).toString()
                                         + " Attempted set value: " + safeTime.toString();
-            LOGGER.error("VKVK record which attempted to set the value {}", m);
-            LOGGER.error("VKVK last record: {}", lastRecord.get(tabletId));
+            LOGGER.error("Record which attempted to set the value {}", m);
             throw new AssertionError(errorMessage);
         }
         LOGGER.info("Updating safetime for tablet {}:{}, verifying {}", tabletId, safeTime, this.tabletSafeTime.get(tabletId));

@@ -62,7 +62,6 @@ public abstract class ExtractTopic<R extends ConnectRecord<R>> implements Transf
     @Override
     public R apply(final R record) {
         final SchemaAndValue schemaAndValue = getSchemaAndValue(record);
-        log.info("Picking record " + record);
         if (schemaAndValue.schema() == null) {
             throw new DataException(dataPlace() + " schema can't be null: " + record);
         }
