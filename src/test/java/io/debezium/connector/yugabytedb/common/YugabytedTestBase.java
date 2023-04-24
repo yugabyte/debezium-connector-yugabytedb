@@ -48,7 +48,7 @@ public class YugabytedTestBase extends TestBaseClass {
     }
 
     @Override
-    protected void restartYugabyteDB(long milliseconds) throws Exception {
+    protected void restartYugabyteDB(long millisecondsToWait) throws Exception {
         LOGGER.warn("Method restartYugabyteDB not implemented to be run against local "
                 + "deployment of yugabyted");
     }

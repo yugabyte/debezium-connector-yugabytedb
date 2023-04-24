@@ -33,6 +33,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.JdbcDatabaseContainer;
 import org.testcontainers.containers.YugabyteYSQLContainer;
+import org.testcontainers.containers.wait.strategy.WaitStrategy;
 import org.testcontainers.utility.DockerImageName;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.ListTablesResponse;
@@ -51,6 +52,8 @@ import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig.SecureConnecti
 import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection.YugabyteDBValueConverterBuilder;
+import io.debezium.connector.yugabytedb.container.CustomContainerWaitStrategy;
+import io.debezium.connector.yugabytedb.container.YugabyteCustomContainer;
 import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
 
@@ -390,7 +393,7 @@ public final class TestHelper {
      * @param tserverFlags comma separated value of tserver flags in form flag1=val2,flag2=val2
      * @return a {@link YugabyteYSQLContainer}
      */
-    public static YugabyteYSQLContainer getYbContainer(String masterFlags, String tserverFlags) {
+    public static YugabyteCustomContainer getYbContainer(String masterFlags, String tserverFlags) {
         String dockerImageName = System.getenv("YB_DOCKER_IMAGE");
         
         if (dockerImageName == null || dockerImageName.isEmpty()) {
@@ -399,23 +402,8 @@ public final class TestHelper {
         }
 
         LOGGER.info("Using docker image in test: {}", dockerImageName);
-
-        if (tserverFlags == null || tserverFlags.isEmpty()) {
-            tserverFlags = "";
-        } else {
-            tserverFlags = " --tserver_flags=" + tserverFlags;
-        }
-
-        if (masterFlags == null || masterFlags.isEmpty()) {
-            masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0";
-        } else {
-            masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0," + masterFlags;
-        }
-
-        LOGGER.info("tserver flags: {}", tserverFlags);
-        LOGGER.info("master flags: {}", masterFlags);
         
-        YugabyteYSQLContainer container = new YugabyteYSQLContainer(
+        YugabyteCustomContainer container = new YugabyteCustomContainer(
             DockerImageName.parse(dockerImageName)
             .asCompatibleSubstituteFor("yugabytedb/yugabyte"));
         container.withPassword("yugabyte");
@@ -430,10 +418,17 @@ public final class TestHelper {
                 add(new PortBinding(Ports.Binding.bindPort(9042), new ExposedPort(9042)));
             }
         }));
-        String startupCommand = "bin/yugabyted start --listen=0.0.0.0 " + masterFlags + tserverFlags + " --daemon=false";
-        LOGGER.info("Container startup command: {}", startupCommand);
-        container.withCommand(startupCommand);
+
+        String[] commandArray = {"/bin/bash", "-c", "while :; do sleep 1; done"};
+        container.withCommand(commandArray);
+        container.waitingFor(new CustomContainerWaitStrategy());
         return container;
+    }
+
+    public static String startupCommandString;
+
+    public static String getYBStart() {
+        return startupCommandString;
     }
 
     public static YugabyteYSQLContainer getYbContainer() {

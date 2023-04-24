@@ -15,7 +15,6 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
-import org.yb.client.AsyncYBClient;
 import org.yb.client.GetDBStreamInfoResponse;
 import org.yb.client.YBClient;
 
@@ -264,21 +263,10 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         start(YugabyteDBConnector.class, configBuilder.build());
         awaitUntilConnectorIsReady();
 
-        AsyncYBClient asyncClient = new AsyncYBClient.AsyncYBClientBuilder(getMasterAddress())
-                .defaultAdminOperationTimeoutMs(10000)
-                .defaultOperationTimeoutMs(10000)
-                .defaultSocketReadTimeoutMs(10000)
-                .numTablets(YugabyteDBConnectorConfig.DEFAULT_MAX_NUM_TABLETS)
-                .build();
-
-        YBClient ybClient = new YBClient(asyncClient);
-
-        // Stop manually
-        LOGGER.info("Stop manually");
-        TestHelper.waitFor(Duration.ofMinutes(2));
+        YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
 
         // Stop YugabyteDB instance, this should result in failure of yb-client APIs as well
-        restartYugabyteDB(500);
+        restartYugabyteDB(5000);
 
         GetDBStreamInfoResponse response = ybClient.getDBStreamInfo(dbStreamId);
         assertNotNull(response.getNamespaceId());

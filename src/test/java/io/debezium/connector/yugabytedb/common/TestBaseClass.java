@@ -1,5 +1,6 @@
 package io.debezium.connector.yugabytedb.common;
 
+import io.debezium.connector.yugabytedb.container.YugabyteCustomContainer;
 import io.debezium.connector.yugabytedb.rules.YugabyteDBLogTestName;
 import io.debezium.embedded.AbstractConnectorTest;
 import org.awaitility.Awaitility;
@@ -19,10 +20,12 @@ import java.time.Duration;
 @ExtendWith(YugabyteDBLogTestName.class)
 public class TestBaseClass extends AbstractConnectorTest {
     public Logger LOGGER = LoggerFactory.getLogger(getClass());
-    protected static YugabyteYSQLContainer ybContainer;
+    protected static YugabyteCustomContainer ybContainer;
 
     protected final String DEFAULT_DB_NAME = "yugabyte";
     protected final String DEFAULT_COLOCATED_DB_NAME = "colocated_database";
+
+    protected static String yugabytedStartCommand = "";
 
     protected void awaitUntilConnectorIsReady() throws Exception {
         Awaitility.await()
@@ -41,7 +44,11 @@ public class TestBaseClass extends AbstractConnectorTest {
         throw new UnsupportedOperationException("Method startYugabyteDB not implemented for base test class");
     }
 
-    protected void restartYugabyteDB(long milliseconds) throws Exception {
+    protected void restartYugabyteDB(long millisecondsToWait) throws Exception {
         throw new UnsupportedOperationException("Method restartYugabyteDB not implemented for base test class");
+    }
+
+    protected static String getYugabytedStartCommand() {
+        return yugabytedStartCommand;
     }
 }
