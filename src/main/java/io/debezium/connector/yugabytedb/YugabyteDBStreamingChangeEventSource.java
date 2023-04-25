@@ -36,6 +36,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.DataChangeEvent;
@@ -88,6 +89,10 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     protected Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
 
+    // This set will contain the list of partition IDs for the tablets which have been split
+    // and waiting for the callback from Kafka.
+    protected Set<String> splitTabletsWaitingForCallback;
+
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
                                                 YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
                                                 YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection,
@@ -118,6 +123,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         yugabyteDBTypeRegistry = taskContext.schema().getTypeRegistry();
         this.queue = queue;
         this.tabletToExplicitCheckpoint = new HashMap<>();
+        this.splitTabletsWaitingForCallback = new HashSet<>();
     }
 
     @Override
@@ -337,6 +343,28 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                       OpId cp = offsetContext.lsn(part);
 
+                      if (taskContext.shouldEnableExplicitCheckpointing()
+                            && splitTabletsWaitingForCallback.contains(part.getId())) {
+                        // We do not want to process anything related to the tablets which have
+                        // sent the tablet split message but we have not received an explicit
+                        // callback for the tablet. At this stage, check if the explicit
+                        // checkpoint is the same as from_op_id, if yes then handle the tablet
+                        // for split.
+                        CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
+                        if (explicitCheckpoint != null
+                              && (explicitCheckpoint.getTerm() == cp.getTerm())
+                              && (explicitCheckpoint.getIndex() == cp.getIndex())) {
+                            // At this position, we know we have received a callback for split tablet
+                            // handle tablet split and delete the tablet from the waiting list.
+                            LOGGER.info("Handling tablet split for enqueued tablet {} as we have now received the commit callback",
+                                        part.getTabletId());
+                            handleTabletSplit(part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
+                            splitTabletsWaitingForCallback.remove(part.getId());
+                        } else {
+                            continue;
+                        }
+                      }
+
                       YBTable table = tableIdToTable.get(entry.getKey());
 
                       if (LOGGER.isDebugEnabled()
@@ -372,7 +400,27 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 cdcException.printStackTrace();
                             }
 
-                            handleTabletSplit(cdcException, tabletPairList, offsetContext, streamId, schemaNeeded);
+                            if (taskContext.shouldEnableExplicitCheckpointing()) {
+                                // If explicit checkpointing is enabled then we should check if we have the explicit checkpoint
+                                // the same as from_op_id, if yes then handle tablet split directly, if not, add the partition ID
+                                // (table.tablet) to be processed later.
+                                CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
+                                if (explicitCheckpoint != null
+                                      && (cp.getTerm() == explicitCheckpoint.getTerm())
+                                      && (cp.getIndex() == explicitCheckpoint.getIndex())) {
+                                    LOGGER.info("Explicit checkpoint same as from_op_id, handling tablet split immediately, explicit checkpoint {}:{} from_op_id: {}.{}",
+                                                explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), cp.getTerm(), cp.getIndex());
+                                    handleTabletSplit(cdcException, tabletPairList, offsetContext, streamId, schemaNeeded);
+                                } else {
+                                    // Add the tablet for being processed later, this will mark the tablet as locked.
+                                    splitTabletsWaitingForCallback.add(part.getId());
+                                }
+                            } else {
+                                // TODO Vaibhav: Since we have access to tablet ID at this stage, and we can assume that we will only receive
+                                // tablet split error message on the tablet we will call GetChanges on, then instead of passing the exception
+                                // we can directly pass the tablet ID of the split tablet.
+                                handleTabletSplit(cdcException, tabletPairList, offsetContext, streamId, schemaNeeded);
+                            }
 
                             // Break out of the loop so that the iteration can start afresh on the modified list.
                             break;
@@ -791,13 +839,20 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
-    private void handleTabletSplit(CDCErrorException cdcErrorException,
+    private void handleTabletSplit(
+      CDCErrorException cdcErrorException, List<Pair<String,String>> tabletPairList,
+      YugabyteDBOffsetContext offsetContext, String streamId,
+      Map<String, Boolean> schemaNeeded) throws Exception {
+        // Obtain the tablet ID of the split tablet from the exception.
+        String splitTabletId = getTabletIdFromSplitMessage(cdcErrorException.getMessage());
+        handleTabletSplit(splitTabletId, tabletPairList, offsetContext, streamId, schemaNeeded);
+    }
+
+    private void handleTabletSplit(String splitTabletId,
                                    List<Pair<String,String>> tabletPairList,
                                    YugabyteDBOffsetContext offsetContext,
                                    String streamId,
                                    Map<String, Boolean> schemaNeeded) throws Exception {
-        // Obtain the tablet ID of the split tablet from the message.
-        String splitTabletId = getTabletIdFromSplitMessage(cdcErrorException.getMessage());
         LOGGER.info("Removing the tablet {} from the list to get the changes since it has been split", splitTabletId);
 
         Pair<String, String> entryToBeDeleted = getEntryToDelete(tabletPairList, splitTabletId);
