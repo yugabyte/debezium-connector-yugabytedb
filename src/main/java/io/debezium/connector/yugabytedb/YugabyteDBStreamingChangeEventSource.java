@@ -408,11 +408,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 if (explicitCheckpoint != null
                                       && (cp.getTerm() == explicitCheckpoint.getTerm())
                                       && (cp.getIndex() == explicitCheckpoint.getIndex())) {
-                                    LOGGER.info("Explicit checkpoint same as from_op_id, handling tablet split immediately, explicit checkpoint {}:{} from_op_id: {}.{}",
-                                                explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), cp.getTerm(), cp.getIndex());
+                                    LOGGER.info("Explicit checkpoint same as from_op_id, handling tablet split immediately for partition {}, explicit checkpoint {}:{} from_op_id: {}.{}",
+                                                part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), cp.getTerm(), cp.getIndex());
                                     handleTabletSplit(cdcException, tabletPairList, offsetContext, streamId, schemaNeeded);
                                 } else {
                                     // Add the tablet for being processed later, this will mark the tablet as locked.
+                                    LOGGER.info("Adding partition {} to wait-list since the explicit checkpoint ({}.{}) and from_op_id are not the same ({}.{})",
+                                                part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), cp.getTerm(), cp.getIndex());
                                     splitTabletsWaitingForCallback.add(part.getId());
                                 }
                             } else {
