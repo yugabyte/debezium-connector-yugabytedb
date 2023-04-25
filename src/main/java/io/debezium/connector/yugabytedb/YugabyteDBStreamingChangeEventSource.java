@@ -356,6 +356,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                               && (explicitCheckpoint.getIndex() == cp.getIndex())) {
                             // At this position, we know we have received a callback for split tablet
                             // handle tablet split and delete the tablet from the waiting list.
+
+                            // Call getChanges to make sure checkpoint is set on the cdc_state table.
+                            GetChangesResponse resp = this.syncClient.getChangesCDCSDK(
+                              tableIdToTable.get(part.getTableId()), streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
+                              cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()), explicitCheckpoint);
                             LOGGER.info("Handling tablet split for enqueued tablet {} as we have now received the commit callback",
                                         part.getTabletId());
                             handleTabletSplit(part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
