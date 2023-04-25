@@ -360,6 +360,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         part.getTabletId());
                             handleTabletSplit(part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
                             splitTabletsWaitingForCallback.remove(part.getId());
+
+                            // Break out of the loop so that processing can happen on the modified list.
+                            break;
                         } else {
                             continue;
                         }
