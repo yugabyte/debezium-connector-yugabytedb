@@ -7,6 +7,7 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.embedded.EmbeddedEngine;
+import io.debezium.engine.DebeziumEngine;
 import io.debezium.engine.spi.OffsetCommitPolicy;
 import io.debezium.util.LoggingContext;
 import io.debezium.util.Testing;
@@ -22,10 +23,7 @@ import org.yb.client.YBTable;
 
 import java.sql.SQLException;
 import java.time.Duration;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -157,9 +155,11 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
 
         final long startTime = System.currentTimeMillis();
 
+        Properties prop = new Properties();
+        prop.setProperty(DebeziumEngine.OFFSET_FLUSH_INTERVAL_MS_PROP, String.valueOf(300000));
         engine = EmbeddedEngine.create()
                    .using(config)
-                   .using(OffsetCommitPolicy.always())
+                   .using(OffsetCommitPolicy.periodic(prop))
                    .notifying((records, committer) -> {
                        for (SourceRecord record : records) {
                            committer.markProcessed(record);
@@ -171,11 +171,7 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
 
                        // This function call is responsible for calling task.commit() later on which
                        // then invokes the callback commitOffset().
-
-                       // Only commitOffset if it has been greater than 5 minutes.
-                       if(System.currentTimeMillis() - startTime >= 300_000) {
-                           committer.markBatchFinished();
-                       }
+                       committer.markBatchFinished();
                    })
                    .using(this.getClass().getClassLoader())
                    .using((success, message, error) -> {
