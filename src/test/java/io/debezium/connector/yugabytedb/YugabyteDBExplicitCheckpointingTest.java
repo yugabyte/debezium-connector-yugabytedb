@@ -1,7 +1,6 @@
 package io.debezium.connector.yugabytedb;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.annotations.PreviewOnly;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
@@ -13,8 +12,6 @@ import io.debezium.util.LoggingContext;
 import io.debezium.util.Testing;
 import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.awaitility.Awaitility;
-import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,7 +26,6 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -157,8 +153,6 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
 
         CountDownLatch firstLatch = new CountDownLatch(1);
 
-        final long startTime = System.currentTimeMillis();
-
         Properties prop = new Properties();
         prop.setProperty(DebeziumEngine.OFFSET_FLUSH_INTERVAL_MS_PROP, String.valueOf(600000));
         engine = EmbeddedEngine.create()
@@ -193,9 +187,8 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
         });
 
         awaitUntilConnectorIsReady();
-        // LOGGER.info("Waiting for 10 more seconds");
 
-        LOGGER.info("Inserting records");
+        LOGGER.info("Inserting records into the table");
         TestHelper.execute("INSERT INTO t1 VALUES (generate_series(1, 2000), 'Vaibhav', 'Kushwaha', 12.34)");
         TestHelper.waitFor(Duration.ofSeconds(20));
 
@@ -204,85 +197,30 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
         // Flush the table and split it.
         YBTable table = TestHelper.getYbTable(ybClient, "t1");
         
-        LOGGER.info("Doing first tablet split");
+        LOGGER.info("Splitting tablets now");
         Set<String> tablets = ybClient.getTabletUUIDs(table);
-        LOGGER.info("Tablets for first split: {}", tablets);
         assertEquals(1, tablets.size());
         ybClient.flushTable(table.getTableId());
         TestHelper.waitFor(Duration.ofSeconds(20));
         String tabletToBeSplit = tablets.iterator().next();
         ybClient.splitTablet(tabletToBeSplit);
-
         TestHelper.waitFor(Duration.ofSeconds(10));
 
-        LOGGER.info("Doing second tablet split");
         Set<String> newTablets = ybClient.getTabletUUIDs(table);
-        LOGGER.info("Tablets for second split: {}", newTablets);
         assertEquals(2, newTablets.size());
         ybClient.flushTable(table.getTableId());
         TestHelper.waitFor(Duration.ofSeconds(15));
         String splitTablet2 = newTablets.iterator().next();
-        LOGGER.info("Splitting tablet: {}", splitTablet2);
         ybClient.splitTablet(splitTablet2);
 
-        LOGGER.info("Wait for 13 minutes");
-        TestHelper.waitFor(Duration.ofMinutes(13));
-        // waitAndFailIfCannotConsume(new ArrayList<>(), 2000, 1000 * 60 * 12);
-
-        // The last update to the offsetMap will be the offset being committed on the server side.
-        // Get the checkpoints from the server and match them with the value from offset map.
-//        for (Map.Entry<String, ?> entry : offsetMap.entrySet()) {
-//            if (!entry.getKey().equals("transaction_id")) {
-//                String[] splitString = entry.getKey().split(Pattern.quote("."));
-//
-//                // If string doesn't split, that means we have only received the tabletId in the
-//                // response, if it splits then we will have two elements - tableId and tabletId.
-//                String tabletId = splitString.length == 1 ? splitString[0] : splitString[1];
-//                CdcSdkCheckpoint cp = OpId.valueOf((String) entry.getValue()).toCdcSdkCheckpoint();
-//
-//                GetCheckpointResponse resp = ybClient.getCheckpoint(
-//                  TestHelper.getYbTable(ybClient, "t1"), dbStreamId, tabletId);
-//                LOGGER.info("Offset op_id: {}.{} and response op_id: {}.{}", cp.getTerm(),
-//                  cp.getIndex(), resp.getTerm(), resp.getIndex());
-//                assertEquals(cp.getTerm(), resp.getTerm());
-//                assertEquals(cp.getIndex(), resp.getIndex());
-//            }
-//        }
+        // Stop the execution of this thread so that the connector can keep polling and hit issue.
+        LOGGER.info("Waiting for 15 minutes");
+        TestHelper.waitFor(Duration.ofMinutes(15));
 
         // Close the YBClient instance.
         ybClient.close();
 
         // Stop the engine started in this test.
         engine.stop();
-    }
-
-    private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
-                                            long milliSecondsToWait) {
-        AtomicLong totalConsumedRecords = new AtomicLong();
-        long seconds = milliSecondsToWait / 1000;
-        try {
-            Awaitility.await()
-                .atMost(Duration.ofSeconds(seconds))
-                .until(() -> {
-                    int consumed = consumeAvailableRecords(record -> {
-                        LOGGER.debug("The record being consumed is " + record);
-                        records.add(record);
-                    });
-                    if (consumed > 0) {
-                        totalConsumedRecords.addAndGet(consumed);
-                        LOGGER.info("Consumed " + totalConsumedRecords + " records");
-                    }
-
-                    return totalConsumedRecords.get() == recordsCount;
-                });
-        } catch (ConditionTimeoutException exception) {
-            fail("Failed to consume " + recordsCount + " in " + seconds + " seconds", exception);
-        }
-
-        assertEquals(recordsCount, totalConsumedRecords.get());
-    }
-
-    private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
-        waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
     }
 }

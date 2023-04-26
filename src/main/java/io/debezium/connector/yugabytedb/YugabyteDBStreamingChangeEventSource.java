@@ -431,9 +431,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                 part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), cp.getTerm(), cp.getIndex());
                                     handleTabletSplit(cdcException, tabletPairList, offsetContext, streamId, schemaNeeded);
                                 } else {
-                                    // Add the tablet for being processed later, this will mark the tablet as locked.
-                                    LOGGER.info("Adding partition {} to wait-list since the explicit checkpoint ({}.{}) and from_op_id are not the same ({}.{})",
-                                                part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), cp.getTerm(), cp.getIndex());
+                                    // Add the tablet for being processed later, this will mark the tablet as locked. There is a chance that explicit checkpoint may
+                                    // be null, in that case, just to avoid NullPointerException in the log, simply log a null value.
+                                    final String explicitString = (explicitCheckpoint == null) ? null : (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex());
+                                    LOGGER.info("Adding partition {} to wait-list since the explicit checkpoint ({}) and from_op_id ({}.{}) are not the same",
+                                                part.getId(), explicitString, cp.getTerm(), cp.getIndex());
                                     splitTabletsWaitingForCallback.add(part.getId());
                                 }
                             } else {
