@@ -384,6 +384,15 @@ public class YugabyteDBStreamingChangeEventSource implements
                         lastLoggedTimeForGetChanges = System.currentTimeMillis();
                       }
 
+                      if (taskContext.shouldEnableExplicitCheckpointing()) {
+                        CdcSdkCheckpoint ecp = tabletToExplicitCheckpoint.get(part.getId());
+                        if (ecp != null) {
+                            LOGGER.info("Requesting changes, explicit checkpointing: {}.{} from_op_id: {}.{}", ecp.getTerm(), ecp.getIndex(), cp.getTerm(), cp.getIndex());
+                        } else {
+                            LOGGER.info("Requesting changes, explicit checkpoint is null and from_op_id: {}.{}", cp.getTerm(), cp.getIndex());
+                        }
+                      }
+
                       // Check again if the thread has been interrupted.
                       if (!context.isRunning()) {
                         LOGGER.info("Connector has been stopped");
