@@ -395,7 +395,8 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                             // This is a hack to skip tables in case of colocated tables
                             TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-                            if (!new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
+                            if (!message.isDDLMessage() && !message.isTransactionalMessage()
+                                  && !new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
                                 continue;
                             }
 
@@ -622,7 +623,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         lastCompletelyProcessedLsn = lsn;
         offsetContext.updateCommitPosition(lsn, lastCompletelyProcessedLsn);
         maybeWarnAboutGrowingWalBacklog(false);
-        dispatcher.dispatchHeartbeatEvent(partition, offsetContext);
+        // dispatcher.dispatchHeartbeatEvent(partition, offsetContext);
     }
 
     /**
