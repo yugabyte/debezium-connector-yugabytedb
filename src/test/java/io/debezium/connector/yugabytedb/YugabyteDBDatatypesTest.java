@@ -15,6 +15,8 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
+import org.yb.client.GetDBStreamInfoResponse;
+import org.yb.client.YBClient;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState;
@@ -249,6 +251,34 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
                 .exceptionally(throwable -> {
                     throw new RuntimeException(throwable);
                 }).get();
+    }
+
+    @Test
+    public void verifyConsumptionAfterRestart() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        start(YugabyteDBConnector.class, configBuilder.build());
+        awaitUntilConnectorIsReady();
+
+        YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
+
+        // Stop YugabyteDB instance, this should result in failure of yb-client APIs as well
+        restartYugabyteDB(5000);
+
+        GetDBStreamInfoResponse response = ybClient.getDBStreamInfo(dbStreamId);
+        assertNotNull(response.getNamespaceId());
+        
+        final int recordsCount = 1;
+        insertRecords(recordsCount);
+        CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
+                .exceptionally(throwable -> {
+                    throw new RuntimeException(throwable);
+                }).get();
+
+        ybClient.close();
     }
 
     @Test
