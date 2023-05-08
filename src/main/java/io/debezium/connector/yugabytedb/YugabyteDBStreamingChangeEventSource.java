@@ -394,6 +394,15 @@ public class YugabyteDBStreamingChangeEventSource implements
                         lastLoggedTimeForGetChanges = System.currentTimeMillis();
                       }
 
+                      if (taskContext.shouldEnableExplicitCheckpointing()) {
+                        CdcSdkCheckpoint ecp = tabletToExplicitCheckpoint.get(part.getId());
+                        if (ecp != null) {
+                            LOGGER.info("Requesting changes, explicit checkpointing: {}.{} from_op_id: {}.{}", ecp.getTerm(), ecp.getIndex(), cp.getTerm(), cp.getIndex());
+                        } else {
+                            LOGGER.info("Requesting changes, explicit checkpoint is null and from_op_id: {}.{}", cp.getTerm(), cp.getIndex());
+                        }
+                      }
+
                       // Check again if the thread has been interrupted.
                       if (!context.isRunning()) {
                         LOGGER.info("Connector has been stopped");
@@ -467,7 +476,8 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                             // This is a hack to skip tables in case of colocated tables
                             TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-                            if (!new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
+                            if (!message.isDDLMessage() && !message.isTransactionalMessage()
+                                  && !new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
                                 continue;
                             }
 
@@ -694,7 +704,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         lastCompletelyProcessedLsn = lsn;
         offsetContext.updateCommitPosition(lsn, lastCompletelyProcessedLsn);
         maybeWarnAboutGrowingWalBacklog(false);
-        dispatcher.dispatchHeartbeatEvent(partition, offsetContext);
+        // dispatcher.dispatchHeartbeatEvent(partition, offsetContext);
     }
 
     /**
