@@ -81,6 +81,7 @@ public final class TestHelper {
     // Set the localhost value as the defaults for now
     private static String CONTAINER_YSQL_HOST = "127.0.0.1";
     private static int CONTAINER_YSQL_PORT = 5433;
+    private static int CONTAINER_YCQL_PORT = 9042;
     private static String CONTAINER_MASTER_PORT = "7100";
     private static String MASTER_ADDRESS = "127.0.0.1:7100";
     private static String DEFAULT_DATABASE_NAME = "yugabyte";
@@ -380,9 +381,10 @@ public final class TestHelper {
                 .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId);
     }
 
-    public static void setContainerHostPort(String host, int port) {
+    public static void setContainerHostPort(String host, int sqlPort, int cqlPort) {
         CONTAINER_YSQL_HOST = host;
-        CONTAINER_YSQL_PORT = port;
+        CONTAINER_YSQL_PORT = sqlPort;
+        CONTAINER_YCQL_PORT = cqlPort;
     }
 
     public static void setContainerMasterPort(int masterPort) {
