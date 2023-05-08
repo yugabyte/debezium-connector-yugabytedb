@@ -359,9 +359,19 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                             // Call getChanges to make sure checkpoint is set on the cdc_state table.
                             LOGGER.info("Calling GetChanges to ensure explicit checkpoint is set to {}.{}", explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex());
-                            GetChangesResponse resp = this.syncClient.getChangesCDCSDK(
-                              tableIdToTable.get(part.getTableId()), streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
-                              cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()), explicitCheckpoint);
+                            try {
+                                // This will throw an error saying tablet split detected as we are calling GetChanges again on the
+                                // same checkpoint - handle the error and move ahead.
+                                GetChangesResponse resp = this.syncClient.getChangesCDCSDK(
+                                  tableIdToTable.get(part.getTableId()), streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
+                                  cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()), explicitCheckpoint);
+                            } catch (CDCErrorException cdcErrorException) {
+                                if (cdcErrorException.getCDCError().getCode() == Code.TABLET_SPLIT) {
+                                    LOGGER.debug("Handling tablet split error gracefully for enqueued tablet {}", part.getTabletId());
+                                } else {
+                                    throw cdcErrorException;
+                                }
+                            }
 
                             LOGGER.info("Handling tablet split for enqueued tablet {} as we have now received the commit callback",
                                         part.getTabletId());
@@ -448,7 +458,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             // Break out of the loop so that the iteration can start afresh on the modified list.
                             break;
                         } else {
-                            LOGGER.warn("Throwing error because error code did not match. Expected split code: {}, code received: {}", Code.TABLET_SPLIT, cdcException.getCDCError().getCode());
+                            LOGGER.warn("Throwing error because error code did not match. Code received: {}", cdcException.getCDCError().getCode());
                             throw cdcException;
                         }
                       }
