@@ -1,12 +1,12 @@
 package io.debezium.connector.yugabytedb;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.annotations.PreviewOnly;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.embedded.EmbeddedEngine;
+import io.debezium.engine.DebeziumEngine;
 import io.debezium.engine.spi.OffsetCommitPolicy;
 import io.debezium.util.LoggingContext;
 import io.debezium.util.Testing;
@@ -18,12 +18,11 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.CdcSdkCheckpoint;
 import org.yb.client.GetCheckpointResponse;
 import org.yb.client.YBClient;
+import org.yb.client.YBTable;
 
 import java.sql.SQLException;
 import java.time.Duration;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -37,7 +36,6 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-@PreviewOnly
 public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTestBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBExplicitCheckpointingTest.class);
 
@@ -134,6 +132,90 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
                 assertEquals(cp.getIndex(), resp.getIndex());
             }
         }
+
+        // Close the YBClient instance.
+        ybClient.close();
+
+        // Stop the engine started in this test.
+        engine.stop();
+    }
+
+    @Test
+    public void shouldWorkWithTabletSplit() throws Exception {
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false /* before image */, true /* explicit checkpointing */);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId)
+                                                .with(EmbeddedEngine.ENGINE_NAME, CONNECTOR_NAME)
+                                                .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG, Testing.Files.createTestingFile("file-connector-offsets.txt").getAbsolutePath())
+                                                .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
+                                                .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBConnector.class)
+                                                .with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 60_000);
+        final Configuration config = configBuilder.build();
+
+        CountDownLatch firstLatch = new CountDownLatch(1);
+
+        Properties prop = new Properties();
+        prop.setProperty(DebeziumEngine.OFFSET_FLUSH_INTERVAL_MS_PROP, String.valueOf(600000));
+        engine = EmbeddedEngine.create()
+                   .using(config)
+                   .using(OffsetCommitPolicy.periodic(prop))
+                   .notifying((records, committer) -> {
+                       for (SourceRecord record : records) {
+                           committer.markProcessed(record);
+
+                           // Use this offset map and call GetCheckpoint on the server
+                           // to see if this offset and the one set on the cdc_state table are the same.
+                           this.offsetMap = record.sourceOffset();
+                       }
+
+                       // This function call is responsible for calling task.commit() later on which
+                       // then invokes the callback commitOffset().
+                       committer.markBatchFinished();
+                   })
+                   .using(this.getClass().getClassLoader())
+                   .using((success, message, error) -> {
+                       if (error != null) {
+                           LOGGER.error("Error while shutting down", error);
+                       }
+                       firstLatch.countDown();
+                   })
+                   .build();
+
+        ExecutorService exec = Executors.newFixedThreadPool(1);
+        exec.execute(() -> {
+            LoggingContext.forConnector(getClass().getSimpleName(), "", "engine");
+            engine.run();
+        });
+
+        awaitUntilConnectorIsReady();
+
+        LOGGER.info("Inserting records into the table");
+        TestHelper.execute("INSERT INTO t1 VALUES (generate_series(1, 2000), 'Vaibhav', 'Kushwaha', 12.34)");
+        TestHelper.waitFor(Duration.ofSeconds(20));
+
+        YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
+
+        // Flush the table and split it.
+        YBTable table = TestHelper.getYbTable(ybClient, "t1");
+        
+        LOGGER.info("Splitting tablets now");
+        Set<String> tablets = ybClient.getTabletUUIDs(table);
+        assertEquals(1, tablets.size());
+        ybClient.flushTable(table.getTableId());
+        TestHelper.waitFor(Duration.ofSeconds(20));
+        String tabletToBeSplit = tablets.iterator().next();
+        ybClient.splitTablet(tabletToBeSplit);
+        TestHelper.waitFor(Duration.ofSeconds(10));
+
+        Set<String> newTablets = ybClient.getTabletUUIDs(table);
+        assertEquals(2, newTablets.size());
+        ybClient.flushTable(table.getTableId());
+        TestHelper.waitFor(Duration.ofSeconds(15));
+        String splitTablet2 = newTablets.iterator().next();
+        ybClient.splitTablet(splitTablet2);
+
+        // Stop the execution of this thread so that the connector can keep polling and hit issue.
+        LOGGER.info("Waiting for 15 minutes");
+        TestHelper.waitFor(Duration.ofMinutes(15));
 
         // Close the YBClient instance.
         ybClient.close();

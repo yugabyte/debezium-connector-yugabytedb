@@ -42,7 +42,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     private OpId lastCompletelyProcessedLsn;
     private OpId lastCommitLsn;
     private OpId streamingStoppingLsn = null;
-    private TransactionContext transactionContext;
+    private YugabyteDBTransactionContext transactionContext;
     private IncrementalSnapshotContext<TableId> incrementalSnapshotContext;
     private YugabyteDBConnectorConfig connectorConfig;
 
@@ -53,7 +53,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                                     Instant time,
                                     boolean snapshot,
                                     boolean lastSnapshotRecord,
-                                    TransactionContext transactionContext,
+                                    YugabyteDBTransactionContext transactionContext,
                                     IncrementalSnapshotContext<TableId> incrementalSnapshotContext) {
         sourceInfo = new SourceInfo(connectorConfig);
         this.tabletSourceInfo = new ConcurrentHashMap();
@@ -92,7 +92,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
             }
         }
         LOGGER.debug("Populating the tabletsourceinfo with " + this.getTabletSourceInfo());
-        this.transactionContext = new TransactionContext();
+        this.transactionContext = new YugabyteDBTransactionContext();
         this.incrementalSnapshotContext = new SignalBasedIncrementalSnapshotContext<>();
         this.connectorConfig = config;
     }
@@ -133,7 +133,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                 clock.currentTimeAsInstant(),
                 false,
                 false,
-                new TransactionContext(),
+                new YugabyteDBTransactionContext(),
                 new SignalBasedIncrementalSnapshotContext<>());
         for (YBPartition p : partitions) {
             if (context.getTabletSourceInfo().get(p.getId()) == null) {
@@ -434,7 +434,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                     lastCompletelyProcessedLsn,
                     lastCompletelyProcessedLsn,
                     "txId", Instant.MIN, false, false,
-                    TransactionContext.load(offset),
+                    YugabyteDBTransactionContext.load(offset),
                     SignalBasedIncrementalSnapshotContext.load(offset));
 
         }
