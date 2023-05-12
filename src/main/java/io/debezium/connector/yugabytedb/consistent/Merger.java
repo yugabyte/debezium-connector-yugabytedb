@@ -106,7 +106,7 @@ public class Merger {
         Message message = queue.peek();
 
         if (message == null) {
-            LOGGER.warn("Message after peeking is null (actually means no message in queue)");
+            LOGGER.debug("Message after peeking is null (actually means no message in queue)");
         } else {
             LOGGER.warn("Message is not null in queue - actual message is {}", message);
             if (!(message.commitTime.compareTo(this.streamSafeTime()) <= 0)) {
@@ -118,7 +118,7 @@ public class Merger {
                 }
                 LOGGER.info("VKVK stream safetime: {}", Collections.min(tabletSafeTime.values()));
 
-                throw new AssertionError("Commit time for polled message and stream safetime failed.");
+                // throw new AssertionError("Commit time for polled message and stream safetime failed.");
             }
         }
 

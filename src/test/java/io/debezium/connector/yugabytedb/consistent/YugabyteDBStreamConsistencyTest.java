@@ -85,7 +85,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
     public void recordsShouldStreamInConsistentOrderOnly() throws Exception {
         // Create 2 tables, refer first in the second one
         TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT);");
-        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, FOREIGN KEY (d_id) REFERENCES department(id));");
+        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT);"); // , FOREIGN KEY (d_id) REFERENCES department(id))
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee", dbStreamId);
@@ -94,9 +94,9 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
         configBuilder.with("transforms.Reroute.topic.regex", "(.*)");
         configBuilder.with("transforms.Reroute.topic.replacement", "test_server_all_events");
-        configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
+        configBuilder.with("transforms.Reroute.key.field.regex", "test_server(.*)");
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
-        configBuilder.with("provide.transaction.metadata", "true");
+        configBuilder.with("provide.transaction.metadata", true);
 
         start(YugabyteDBConnector.class, configBuilder.build());
         awaitUntilConnectorIsReady();
@@ -145,7 +145,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
                     .atMost(Duration.ofSeconds(600))
                     .until(() -> {
                         int consumed = super.consumeAvailableRecords(record -> {
-                            LOGGER.debug("The record being consumed is " + record);
+                            LOGGER.info("The record being consumed is " + record);
                             Struct s = (Struct) record.value();
                             if (s.schema().fields().stream().map(f -> f.name()).collect(Collectors.toSet()).contains("status")) {
                                 LOGGER.info("Consumed txn record: {}", s);

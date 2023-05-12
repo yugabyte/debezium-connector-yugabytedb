@@ -245,7 +245,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
                     Optional<Message> pollMessage = merger.poll();
                     while (pollMessage.isPresent()) {
-                        LOGGER.info("Merger has records");
+                        LOGGER.debug("Merger has records");
                         Message message = pollMessage.get();
                         CdcService.RowMessage m = message.record.getRowMessage();
                         YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(
@@ -302,7 +302,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
         // This is a hack to skip tables in case of colocated tables
         TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-        if (!new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
+        if (!message.isDDLMessage() && !message.isTransactionalMessage()
+            && !new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
             return;
         }
 
@@ -319,8 +320,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
         try {
             // Tx BEGIN/END event
             if (message.isTransactionalMessage()) {
+                LOGGER.debug("Received transactional message {}" + record);
                 if (!connectorConfig.shouldProvideTransactionMetadata()) {
-                    LOGGER.debug("Received transactional message {}", record);
                     // Don't skip on BEGIN message as it would flush LSN for the whole transaction
                     // too early
                     if (message.getOperation() == ReplicationMessage.Operation.BEGIN) {
