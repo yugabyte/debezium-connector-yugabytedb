@@ -7,6 +7,7 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 import io.debezium.connector.yugabytedb.TestHelper;
 import io.debezium.connector.yugabytedb.YugabyteDBConnector;
@@ -95,6 +96,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         configBuilder.with("transforms.Reroute.topic.replacement", "test_server_all_events");
         configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
+        configBuilder.with("provide.transaction.metadata", "true");
 
         start(YugabyteDBConnector.class, configBuilder.build());
         awaitUntilConnectorIsReady();
@@ -110,7 +112,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         List<Integer> indicesOfParentAdditions = new ArrayList<>();
         for (int i = 0; i < iterations; ++i) {
             // Insert records into the first table
-            TestHelper.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d');", departmentId, departmentId));
+            TestHelper.execute(String.format("BEGIN; INSERT INTO department VALUES (%d, 'my department no %d'); COMMIT;", departmentId, departmentId));
 
             // Hack to add the indices of the required records
             indicesOfParentAdditions.add((int) totalCount);
@@ -145,6 +147,10 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
                         int consumed = super.consumeAvailableRecords(record -> {
                             LOGGER.debug("The record being consumed is " + record);
                             Struct s = (Struct) record.value();
+                            if (s.schema().fields().stream().map(f -> f.name()).collect(Collectors.toSet()).contains("status")) {
+                                LOGGER.info("Consumed txn record: {}", s);
+                                return;
+                            }
                             int id = s.getStruct("after").getStruct("id").getInt32("value");
 
                             if (recordPkSet.contains(id)) {

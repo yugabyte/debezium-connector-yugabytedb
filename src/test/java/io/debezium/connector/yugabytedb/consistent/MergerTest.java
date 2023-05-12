@@ -2,6 +2,8 @@ package io.debezium.connector.yugabytedb.consistent;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 
 import java.math.BigInteger;
@@ -11,6 +13,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MergerTest {
+    private static final Logger LOGGER = LoggerFactory.getLogger(MergerTest.class);
     private final String DUMMY_TABLE_ID = "dummy_table_id";
     @Test
     public void addAndPollTest() {
@@ -126,6 +129,123 @@ class MergerTest {
             // An assertion error will be thrown saying that commit time of incoming message is less
             // than that of the last record in the merge slot.
             assertTrue(ae.getMessage().contains("Commit time of the newly added message is less than the last message in the merge slot"));
+        }
+    }
+
+    @Test
+    public void testMultipleMessagesOrdering() throws Exception {
+        final String txn = "be309af9-0a7d-40c2-b855-79e2e73b2daa";
+
+        final String tablet1 = "tablet_1";
+        final String tablet2 = "tablet_2";
+
+        final long commitTime1 = 12345L;
+        final long commitTime2 = 23456L;
+
+        CdcService.CDCSDKProtoRecordPB begin1 = CdcService.CDCSDKProtoRecordPB.newBuilder()
+                                                   .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.BEGIN).build())
+                                                   .build();
+        CdcService.CDCSDKProtoRecordPB insert1 = CdcService.CDCSDKProtoRecordPB.newBuilder()
+                                                  .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.INSERT).build())
+                                                  .build();
+        CdcService.CDCSDKProtoRecordPB commit1 = CdcService.CDCSDKProtoRecordPB.newBuilder()
+                                                   .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.COMMIT).build())
+                                                   .build();
+
+        CdcService.CDCSDKProtoRecordPB begin2 = CdcService.CDCSDKProtoRecordPB.newBuilder()
+                                                  .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.BEGIN).build())
+                                                  .build();
+        CdcService.CDCSDKProtoRecordPB insert2 = CdcService.CDCSDKProtoRecordPB.newBuilder()
+                                                  .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.INSERT).build())
+                                                  .build();
+        CdcService.CDCSDKProtoRecordPB commit2 = CdcService.CDCSDKProtoRecordPB.newBuilder()
+                                                   .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.COMMIT).build())
+                                                   .build();
+
+        CdcService.CDCSDKProtoRecordPB begin3 = CdcService.CDCSDKProtoRecordPB.newBuilder()
+                                                  .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.BEGIN).build())
+                                                  .build();
+        CdcService.CDCSDKProtoRecordPB insert3 = CdcService.CDCSDKProtoRecordPB.newBuilder()
+                                                  .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.INSERT).build())
+                                                  .build();
+        CdcService.CDCSDKProtoRecordPB commit3 = CdcService.CDCSDKProtoRecordPB.newBuilder()
+                                                   .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.COMMIT).build())
+                                                   .build();
+
+        Merger merger = new Merger(List.of(tablet1, tablet2));
+
+        Message m1 = new Message(begin1, DUMMY_TABLE_ID, tablet1, txn,
+          BigInteger.valueOf(commitTime1),
+          BigInteger.ZERO,
+          BigInteger.ZERO,
+          1);
+        Message m2 = new Message(insert1, DUMMY_TABLE_ID, tablet1, txn,
+          BigInteger.valueOf(commitTime1),
+          BigInteger.ZERO,
+          BigInteger.ZERO,
+          2);
+        Message m3 = new Message(commit1, DUMMY_TABLE_ID, tablet1, txn,
+          BigInteger.valueOf(commitTime1),
+          BigInteger.ZERO,
+          BigInteger.ZERO,
+          3);
+
+        Message m4 = new Message(begin2, DUMMY_TABLE_ID, tablet1, txn,
+          BigInteger.valueOf(commitTime2),
+          BigInteger.ZERO,
+          BigInteger.ZERO,
+          4);
+        Message m5 = new Message(insert2, DUMMY_TABLE_ID, tablet1, txn,
+          BigInteger.valueOf(commitTime2),
+          BigInteger.ZERO,
+          BigInteger.ZERO,
+          5);
+        Message m6 = new Message(commit2, DUMMY_TABLE_ID, tablet1, txn,
+          BigInteger.valueOf(commitTime2),
+          BigInteger.ZERO,
+          BigInteger.ZERO,
+          6);
+
+        Message m7 = new Message(begin3, DUMMY_TABLE_ID, tablet2, txn,
+          BigInteger.valueOf(commitTime1),
+          BigInteger.ZERO,
+          BigInteger.ZERO,
+          7);
+        Message m8 = new Message(insert3, DUMMY_TABLE_ID, tablet2, txn,
+          BigInteger.valueOf(commitTime1),
+          BigInteger.ZERO,
+          BigInteger.ZERO,
+          8);
+        Message m9 = new Message(commit3, DUMMY_TABLE_ID, tablet2, txn,
+          BigInteger.valueOf(commitTime1),
+          BigInteger.ZERO,
+          BigInteger.ZERO,
+          9);
+
+        CdcService.CDCSDKProtoRecordPB sp = CdcService.CDCSDKProtoRecordPB.newBuilder()
+                                                   .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.SAFEPOINT)
+                                                                    .setCommitTime(commitTime2).build())
+                                                   .build();
+        Message safepoint = new Message(sp, DUMMY_TABLE_ID, tablet2, txn, BigInteger.valueOf(commitTime2), BigInteger.ZERO, BigInteger.ZERO, 10);
+
+        merger.addMessage(m1);
+        merger.addMessage(m2);
+        merger.addMessage(m3);
+        merger.addMessage(m4);
+        merger.addMessage(m5);
+        merger.addMessage(m6);
+        merger.addMessage(m7);
+        merger.addMessage(m8);
+        merger.addMessage(m9);
+        merger.addMessage(safepoint);
+
+
+
+        LOGGER.info("Done putting all the messages");
+
+        while (!merger.isEmpty()) {
+            Optional<Message> opt = merger.poll();
+            opt.ifPresent(message -> LOGGER.info("VKVK {}", message));
         }
     }
 }

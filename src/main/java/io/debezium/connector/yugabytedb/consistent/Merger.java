@@ -112,6 +112,13 @@ public class Merger {
             if (!(message.commitTime.compareTo(this.streamSafeTime()) <= 0)) {
                 LOGGER.warn("Comparison commit time for message and stream safetime failed (may indicate issues)");
                 LOGGER.warn("Stream safetime {} and message commit time {}", this.streamSafeTime(), message.commitTime);
+
+                for (Map.Entry<String, BigInteger> entry : tabletSafeTime.entrySet()) {
+                    LOGGER.info("Tablet: {}, safetime {}", entry.getKey(), entry.getValue());
+                }
+                LOGGER.info("VKVK stream safetime: {}", Collections.min(tabletSafeTime.values()));
+
+                throw new AssertionError("Commit time for polled message and stream safetime failed.");
             }
         }
 
