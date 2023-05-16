@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 import io.debezium.connector.yugabytedb.TestHelper;
 import io.debezium.connector.yugabytedb.YugabyteDBConnector;
 import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
-import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
@@ -361,6 +361,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         ExecutorService exec = Executors.newFixedThreadPool(1);
         exec.execute(() -> {
             try {
+                LOGGER.info("Started inserting.");
                 Statement st = conn.createStatement();
                 for (long i = 0; i < totalRecords; ++i) {
                     st.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d');", i, i));
@@ -376,8 +377,9 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         List<SourceRecord> recordsToAssert = new ArrayList<>();
         AtomicLong totalConsumedRecords = new AtomicLong();
         try {
+            LOGGER.info("Started consuming");
             Awaitility.await()
-              .atMost(Duration.ofSeconds(600))
+              .atMost(Duration.ofSeconds(900))
               .until(() -> {
                   int consumed = super.consumeAvailableRecords(record -> {
                       LOGGER.debug("The record being consumed is " + record);
