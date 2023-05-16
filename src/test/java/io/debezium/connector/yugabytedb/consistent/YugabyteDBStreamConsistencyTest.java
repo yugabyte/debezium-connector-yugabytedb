@@ -569,7 +569,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         Connection conn = c.connection();
 
         final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department", dbStreamId);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
         configBuilder.with("transforms", "Reroute");
         configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
