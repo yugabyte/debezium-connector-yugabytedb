@@ -409,7 +409,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
 
     @Test
     public void singleTableTwoTablet() throws Exception {
-        TestHelper.execute("CREATE TABLE department (id INT, dept_name TEXT, serial_no INT, PRIMARY KEY (id ASC) SPLIT AT VALUES ((500000));");
+        TestHelper.execute("CREATE TABLE department (id INT, dept_name TEXT, serial_no INT, PRIMARY KEY (id ASC)) SPLIT AT VALUES ((500000));");
 
         YugabyteDBConnection c = TestHelper.create();
         Connection conn = c.connection();
