@@ -400,7 +400,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         long expectedId = 0;
         for (int i = 0; i < recordsToAssert.size(); ++i) {
             Struct value = (Struct) recordsToAssert.get(i).value();
-            long id = value.getStruct("after").getStruct("id").getInt64("value");
+            long id = value.getStruct("after").getStruct("id").getInt32("value");
 
             assertEquals("Expected id " + expectedId + " but got id " + id + " at index " + i, expectedId, id);
         }
@@ -477,7 +477,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         long expectedSerial = 0;
         for (int i = 0; i < recordsToAssert.size(); ++i) {
             Struct value = (Struct) recordsToAssert.get(i).value();
-            long serialNo = value.getStruct("after").getStruct("serial_no").getInt64("value");
+            long serialNo = value.getStruct("after").getStruct("serial_no").getInt32("value");
 
             assertEquals("Expected serial " + expectedSerial + " but got serial " + serialNo + " at index " + i, expectedSerial, serialNo);
         }
@@ -550,7 +550,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         long expectedId = 0;
         for (int i = 0; i < recordsToAssert.size(); ++i) {
             Struct value = (Struct) recordsToAssert.get(i).value();
-            long id = value.getStruct("after").getStruct("id").getInt64("value");
+            long id = value.getStruct("after").getStruct("id").getInt32("value");
 
             assertEquals("Expected id " + expectedId + " but got id " + id + " at index " + i, expectedId, id);
         }
