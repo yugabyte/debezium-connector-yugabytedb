@@ -407,6 +407,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         }
     }
 
+    // TODO: Can we make this insert into 50 tablets randomly maybe?
     @Test
     public void singleTableTwoTablet() throws Exception {
         TestHelper.execute("CREATE TABLE department (id INT, dept_name TEXT, serial_no INT, PRIMARY KEY (id ASC)) SPLIT AT VALUES ((500000));");
@@ -440,6 +441,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
                 for (long i = 0; i < totalRecords / 2; ++i) {
                     st.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d', %d);", i, i, serialNo));
                     ++serialNo;
+                    conn.commit();
                     st.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d', %d);", i + delta, i + delta, serialNo));
                     ++serialNo;
                     conn.commit();
@@ -567,6 +569,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
 
         YugabyteDBConnection c = TestHelper.create();
         Connection conn = c.connection();
+        conn.setAutoCommit(false);
 
         final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee", dbStreamId);
@@ -589,8 +592,10 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
                 LOGGER.info("Started inserting.");
                 Statement st = conn.createStatement();
                 for (long i = 0; i < totalRecords; ++i) {
-                    st.execute(String.format("BEGIN; INSERT INTO department VALUES (%d, 'my department no %d'); COMMIT;", i, i));
-                    st.execute(String.format("BEGIN; INSERT INTO employee VALUES (%d, 'emp no %d', %d); COMMIT;", i, i, i));
+                    // TODO: Add a serial number column in the table so that the ordering can be verified across all the tests.
+                    st.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d');", i, i));
+                    st.execute(String.format("INSERT INTO employee VALUES (%d, 'emp no %d', %d);", i, i, i));
+                    conn.commit();
                 }
             } catch (Exception e) {
                 LOGGER.error("Exception caught: ", e);
@@ -601,7 +606,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         final long total = 2 * totalRecords; // There are 2 tables each having totalRecords count.
         List<SourceRecord> recordsToAssert = new ArrayList<>();
         AtomicLong totalConsumedRecords = new AtomicLong();
-        final int seconds = 900;
+        final int seconds = 1200;
         try {
             LOGGER.info("Started consuming");
             Awaitility.await()
