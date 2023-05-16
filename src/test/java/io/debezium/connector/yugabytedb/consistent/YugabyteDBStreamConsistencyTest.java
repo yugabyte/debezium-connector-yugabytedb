@@ -3,9 +3,13 @@ package io.debezium.connector.yugabytedb.consistent;
 import static org.junit.Assert.*;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
@@ -15,6 +19,7 @@ import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
+import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -330,6 +335,73 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         assertTableNameInIndexList(recordsToAssert, contractIndices, "contract");
         assertTableNameInIndexList(recordsToAssert, addressIndices, "address");
         assertTableNameInIndexList(recordsToAssert, localityIndices, "locality");
+    }
+
+    @Test
+    public void singleTableSingleTablet() throws Exception {
+        TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT);");
+
+        YugabyteDBConnection c = TestHelper.create();
+        Connection conn = c.connection();
+        conn.setAutoCommit(false);
+
+        final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
+        configBuilder.with("transforms", "Reroute");
+        configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
+        configBuilder.with("transforms.Reroute.topic.regex", "(.*)");
+        configBuilder.with("transforms.Reroute.topic.replacement", "test_server_all_events");
+        configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
+        configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
+
+        start(YugabyteDBConnector.class, configBuilder.build());
+
+        long totalRecords = 10_00_000;
+        ExecutorService exec = Executors.newFixedThreadPool(1);
+        exec.execute(() -> {
+            try {
+                Statement st = conn.createStatement();
+                for (long i = 0; i < totalRecords; ++i) {
+                    st.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d');", i, i));
+                    conn.commit();
+                }
+            } catch (Exception e) {
+                LOGGER.error("Exception caught: ", e);
+                throw new RuntimeException(e);
+            }
+        });
+
+        final long total = totalRecords;
+        List<SourceRecord> recordsToAssert = new ArrayList<>();
+        AtomicLong totalConsumedRecords = new AtomicLong();
+        try {
+            Awaitility.await()
+              .atMost(Duration.ofSeconds(600))
+              .until(() -> {
+                  int consumed = super.consumeAvailableRecords(record -> {
+                      LOGGER.debug("The record being consumed is " + record);
+                      recordsToAssert.add(record);
+                  });
+                  if (consumed > 0) {
+                      totalConsumedRecords.addAndGet(consumed);
+                      LOGGER.info("Consumed " + totalConsumedRecords.get() + " records");
+                  }
+
+                  return recordsToAssert.size() == total;
+              });
+        } catch (ConditionTimeoutException exception) {
+            fail("Failed to consume " + totalRecords + " records in 600 seconds, consumed only " + totalConsumedRecords.get(), exception);
+        }
+
+        // Verify the consumed records now.
+        long expectedId = 0;
+        for (int i = 0; i < recordsToAssert.size(); ++i) {
+            Struct value = (Struct) recordsToAssert.get(i).value();
+            long id = value.getStruct("after").getStruct("id").getInt64("value");
+
+            assertEquals("Expected id " + expectedId + " but got id " + id + " at index " + i, expectedId, id);
+        }
     }
 
     private void assertTableNameInIndexList(List<SourceRecord> sourceRecords, List<Integer> indicesList, String tableName) {
