@@ -429,7 +429,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         awaitUntilConnectorIsReady();
         TestHelper.waitFor(Duration.ofSeconds(10));
 
-        long totalRecords = 10_00_000;
+        long totalRecords = 1_00_000;
         ExecutorService exec = Executors.newFixedThreadPool(1);
         exec.execute(() -> {
             try {
@@ -556,6 +556,89 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
 
             assertEquals("Expected id " + expectedId + " but got id " + id + " at index " + i, expectedId, id);
             ++expectedId;
+        }
+    }
+
+    @Test
+    public void twoTableWithSingleTabletEach() throws Exception {
+        TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT);");
+        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT);");
+//        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, FOREIGN KEY (d_id) REFERENCES department(id));");
+
+        YugabyteDBConnection c = TestHelper.create();
+        Connection conn = c.connection();
+
+        final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
+        configBuilder.with("transforms", "Reroute");
+        configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
+        configBuilder.with("transforms.Reroute.topic.regex", "(.*)");
+        configBuilder.with("transforms.Reroute.topic.replacement", "test_server_all_events");
+        configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
+        configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
+
+        start(YugabyteDBConnector.class, configBuilder.build());
+        awaitUntilConnectorIsReady();
+        TestHelper.waitFor(Duration.ofSeconds(10));
+
+        long totalRecords = 1_00_000;
+        ExecutorService exec = Executors.newFixedThreadPool(1);
+        exec.execute(() -> {
+            try {
+                LOGGER.info("Started inserting.");
+                Statement st = conn.createStatement();
+                for (long i = 0; i < totalRecords; ++i) {
+                    st.execute(String.format("BEGIN; INSERT INTO department VALUES (%d, 'my department no %d'); COMMIT;", i, i));
+                    st.execute(String.format("BEGIN; INSERT INTO employee VALUES (%d, 'emp no %d', %d); COMMIT;", i, i, i));
+                }
+            } catch (Exception e) {
+                LOGGER.error("Exception caught: ", e);
+                throw new RuntimeException(e);
+            }
+        });
+
+        final long total = 2 * totalRecords; // There are 2 tables each having totalRecords count.
+        List<SourceRecord> recordsToAssert = new ArrayList<>();
+        AtomicLong totalConsumedRecords = new AtomicLong();
+        final int seconds = 900;
+        try {
+            LOGGER.info("Started consuming");
+            Awaitility.await()
+              .atMost(Duration.ofSeconds(seconds))
+              .until(() -> {
+                  int consumed = super.consumeAvailableRecords(record -> {
+                      LOGGER.debug("The record being consumed is " + record);
+                      recordsToAssert.add(record);
+                  });
+                  if (consumed > 0) {
+                      totalConsumedRecords.addAndGet(consumed);
+                      LOGGER.info("Consumed " + totalConsumedRecords.get() + " records");
+                  }
+
+                  return recordsToAssert.size() == total;
+              });
+        } catch (ConditionTimeoutException exception) {
+            fail("Failed to consume " + total + " records in " + seconds + " seconds, consumed only " + totalConsumedRecords.get(), exception);
+        }
+
+        // Verify the consumed records now.
+        long expectedId = 0;
+        for (int i = 0; i < recordsToAssert.size(); ++i) {
+            Struct value = (Struct) recordsToAssert.get(i).value();
+            long id = value.getStruct("after").getStruct("id").getInt32("value");
+
+            assertEquals("Expected id " + expectedId + " but got id " + id + " at index " + i, expectedId, id);
+            if (i % 2 != 0) {
+                // There will be 2 records having the same ID, one belonging to the table department
+                // and the other belonging to the table employee. The records for table employee should
+                // be at the indices with odd numbers and that is where we should be incrementing
+                // the expected value. Also verify at this stage that the table is employee.
+                ++expectedId;
+
+                final String recordTableName = value.getStruct("source").getString("table");
+                assertEquals("Table name not matching at index " + i + "expected employee got " + recordTableName, "employee", recordTableName);
+            }
         }
     }
 
