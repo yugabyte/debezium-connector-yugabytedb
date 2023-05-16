@@ -353,6 +353,8 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
 
         start(YugabyteDBConnector.class, configBuilder.build());
+        awaitUntilConnectorIsReady();
+        TestHelper.waitFor(Duration.ofSeconds(10));
 
         long totalRecords = 1_00_000;
         ExecutorService exec = Executors.newFixedThreadPool(1);
@@ -423,6 +425,8 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
 
         start(YugabyteDBConnector.class, configBuilder.build());
+        awaitUntilConnectorIsReady();
+        TestHelper.waitFor(Duration.ofSeconds(10));
 
         long totalRecords = 10_00_000;
         ExecutorService exec = Executors.newFixedThreadPool(1);
@@ -476,6 +480,79 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
             long serialNo = value.getStruct("after").getStruct("serial_no").getInt64("value");
 
             assertEquals("Expected serial " + expectedSerial + " but got serial " + serialNo + " at index " + i, expectedSerial, serialNo);
+        }
+    }
+
+    @Test
+    public void singleTableSingleTabletTwoRecord() throws Exception {
+        TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT);");
+
+        YugabyteDBConnection c = TestHelper.create();
+        Connection conn = c.connection();
+        conn.setAutoCommit(false);
+
+        final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
+        configBuilder.with("transforms", "Reroute");
+        configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
+        configBuilder.with("transforms.Reroute.topic.regex", "(.*)");
+        configBuilder.with("transforms.Reroute.topic.replacement", "test_server_all_events");
+        configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
+        configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
+
+        start(YugabyteDBConnector.class, configBuilder.build());
+        awaitUntilConnectorIsReady();
+        TestHelper.waitFor(Duration.ofSeconds(10));
+
+        long totalRecords = 1_00_000;
+        ExecutorService exec = Executors.newFixedThreadPool(1);
+        exec.execute(() -> {
+            try {
+                LOGGER.info("Started inserting.");
+                Statement st = conn.createStatement();
+                for (long i = 0; i < totalRecords; i += 2) {
+                    st.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d');", i, i));
+                    st.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d');", i+1, i+1));
+                    conn.commit();
+                }
+            } catch (Exception e) {
+                LOGGER.error("Exception caught: ", e);
+                throw new RuntimeException(e);
+            }
+        });
+
+        final long total = totalRecords;
+        List<SourceRecord> recordsToAssert = new ArrayList<>();
+        AtomicLong totalConsumedRecords = new AtomicLong();
+        final int seconds = 900;
+        try {
+            LOGGER.info("Started consuming");
+            Awaitility.await()
+              .atMost(Duration.ofSeconds(seconds))
+              .until(() -> {
+                  int consumed = super.consumeAvailableRecords(record -> {
+                      LOGGER.debug("The record being consumed is " + record);
+                      recordsToAssert.add(record);
+                  });
+                  if (consumed > 0) {
+                      totalConsumedRecords.addAndGet(consumed);
+                      LOGGER.info("Consumed " + totalConsumedRecords.get() + " records");
+                  }
+
+                  return recordsToAssert.size() == total;
+              });
+        } catch (ConditionTimeoutException exception) {
+            fail("Failed to consume " + totalRecords + " records in " + seconds + " seconds, consumed only " + totalConsumedRecords.get(), exception);
+        }
+
+        // Verify the consumed records now.
+        long expectedId = 0;
+        for (int i = 0; i < recordsToAssert.size(); ++i) {
+            Struct value = (Struct) recordsToAssert.get(i).value();
+            long id = value.getStruct("after").getStruct("id").getInt64("value");
+
+            assertEquals("Expected id " + expectedId + " but got id " + id + " at index " + i, expectedId, id);
         }
     }
 
