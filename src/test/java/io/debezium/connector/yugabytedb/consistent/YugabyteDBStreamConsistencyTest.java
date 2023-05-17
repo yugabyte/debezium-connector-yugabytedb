@@ -793,10 +793,12 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
             } catch (SQLException e) {
                 ++tryCount;
                 if (tryCount >= totalRetries) {
+                    LOGGER.error("Throwing error: ", e);
                     throw e;
                 }
 
                 // If need to be retried, wait for sometime before retrying.
+                LOGGER.info("Error encountered: {}, retrying", e.getMessage());
                 TestHelper.waitFor(Duration.ofSeconds(3));
             }
         }
