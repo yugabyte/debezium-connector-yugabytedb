@@ -680,7 +680,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         // If this test needs to be run more for higher duration, this scale factor can be changed
         // accordingly.
         final int scaleFactor = 1;
-        final int iterations = 5 * scaleFactor;
+        final int iterations = 50 * scaleFactor;
         AtomicInteger departmentId = new AtomicInteger(1);
 
         AtomicInteger employeeId = new AtomicInteger(1);
@@ -763,6 +763,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
                       final int serialVal = value.getStruct("after").getStruct("serial_no").getInt32("value");
                       Assertions.assertEquals(expectedSerial.get(), serialVal,
                                               "Expected serial: " + expectedSerial.get() + " but received " + serialVal + " at index " + recordsToAssert.size());
+                      expectedSerial.incrementAndGet();
                       recordsToAssert.add(record);
                   });
                   if (consumed > 0) {
