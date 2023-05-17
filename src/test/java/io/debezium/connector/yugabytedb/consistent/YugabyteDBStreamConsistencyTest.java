@@ -656,11 +656,11 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
 //        TestHelper.execute("CREATE TABLE contract (id INT PRIMARY KEY, contract_name TEXT, c_id INT, FOREIGN KEY (c_id) REFERENCES employee(id));");
 //        TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT, FOREIGN KEY (a_id) REFERENCES contract(id));");
 //        TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, l_id INT, FOREIGN KEY (l_id) REFERENCES address(id));");
-         TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT, serial_no INT);");
-         TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, serial_no INT);");
-         TestHelper.execute("CREATE TABLE contract (id INT PRIMARY KEY, contract_name TEXT, c_id INT, serial_no INT);");
-         TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT, serial_no INT);");
-         TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, l_id INT, serial_no INT);");
+         TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT, serial_no INT) SPLIT INTO 1 TABLETS;");
+         TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, serial_no INT) SPLIT INTO 1 TABLETS;");
+         TestHelper.execute("CREATE TABLE contract (id INT PRIMARY KEY, contract_name TEXT, c_id INT, serial_no INT) SPLIT INTO 1 TABLETS;");
+         TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT, serial_no INT) SPLIT INTO 1 TABLETS;");
+         TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, l_id INT, serial_no INT) SPLIT INTO 1 TABLETS;");
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department", false, true);
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee,public.contract,public.address", dbStreamId);
@@ -712,18 +712,18 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
             try {
                 Statement st = conn.createStatement();
                 for (int i = 0; i < iterations; ++i) {
-                    st.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d', %d);", departmentId.get(), departmentId.get(), serial.getAndIncrement()));
+                    executeWithRetry(st, String.format("INSERT INTO department VALUES (%d, 'my department no %d', %d);", departmentId.get(), departmentId.get(), serial.getAndIncrement()));
 
                     for (int j = employeeId.get(); j <= employeeId.get() + employeeBatchSize - 1; ++j) {
-                        st.execute(String.format("INSERT INTO employee VALUES (%d, 'emp no %d', %d, %d);", j, j, departmentId.get(), serial.getAndIncrement()));
+                        executeWithRetry(st, String.format("INSERT INTO employee VALUES (%d, 'emp no %d', %d, %d);", j, j, departmentId.get(), serial.getAndIncrement()));
                         for (int k = contractId.get(); k <= contractId.get() + contractBatchSize - 1; ++k) {
-                            st.execute(String.format("INSERT INTO contract VALUES (%d, 'contract no %d', %d, %d);", k, k, j /* employee fKey */, serial.getAndIncrement()));
+                            executeWithRetry(st, String.format("INSERT INTO contract VALUES (%d, 'contract no %d', %d, %d);", k, k, j /* employee fKey */, serial.getAndIncrement()));
 
                             for (int l = addressId.get(); l <= addressId.get() + addressBatchSize - 1; ++l) {
-                                st.execute(String.format("INSERT INTO address VALUES (%d, 'address no %d', %d, %d);", l, l, k /* contract fKey */, serial.getAndIncrement()));
+                                executeWithRetry(st, String.format("INSERT INTO address VALUES (%d, 'address no %d', %d, %d);", l, l, k /* contract fKey */, serial.getAndIncrement()));
 
                                 for (int m = localityId.get(); m <= localityId.get() + localityBatchSize - 1; ++m) {
-                                    st.execute(String.format("INSERT INTO locality VALUES (%d, 'locality no %d', %d, %d);", m, m, l /* address fKey */, serial.getAndIncrement()));
+                                    executeWithRetry(st, String.format("INSERT INTO locality VALUES (%d, 'locality no %d', %d, %d);", m, m, l /* address fKey */, serial.getAndIncrement()));
                                 }
                                 // Increment localityId for next iteration.
                                 localityId.addAndGet(localityBatchSize);
@@ -758,7 +758,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         AtomicLong totalConsumedRecords = new AtomicLong();
         try {
             Awaitility.await()
-              .atMost(Duration.ofSeconds(1200))
+              .atMost(Duration.ofSeconds(seconds))
               .until(() -> {
                   int consumed = super.consumeAvailableRecords(record -> {
                       LOGGER.debug("The record being consumed is " + record);
@@ -781,6 +781,25 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         }
 
         ybConn.close();
+    }
+
+    public void executeWithRetry (Statement st, String statement) throws SQLException {
+        final int totalRetries = 3;
+
+        int tryCount = 0;
+        while (tryCount < totalRetries) {
+            try {
+                st.execute(statement);
+            } catch (SQLException e) {
+                ++tryCount;
+                if (tryCount >= totalRetries) {
+                    throw e;
+                }
+
+                // If need to be retried, wait for sometime before retrying.
+                TestHelper.waitFor(Duration.ofSeconds(3));
+            }
+        }
     }
 
     private void assertTableNameInIndexList(List<SourceRecord> sourceRecords, List<Integer> indicesList, String tableName) {
