@@ -677,10 +677,14 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
 
         TestHelper.waitFor(Duration.ofSeconds(25));
 
+        final boolean runIndefinitely = false;
+
         // If this test needs to be run more for higher duration, this scale factor can be changed
         // accordingly.
         final int scaleFactor = 1;
-        final int iterations = 50 * scaleFactor;
+        final int iterations = runIndefinitely ? Integer.MAX_VALUE : 50 * scaleFactor;
+        final int seconds = runIndefinitely ? Integer.MAX_VALUE : 1200;
+
         AtomicInteger departmentId = new AtomicInteger(1);
 
         AtomicInteger employeeId = new AtomicInteger(1);
@@ -752,7 +756,6 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         final long total = serial.get();
         AtomicInteger expectedSerial = new AtomicInteger(0);
         AtomicLong totalConsumedRecords = new AtomicLong();
-        final int seconds = 1200;
         try {
             Awaitility.await()
               .atMost(Duration.ofSeconds(1200))
