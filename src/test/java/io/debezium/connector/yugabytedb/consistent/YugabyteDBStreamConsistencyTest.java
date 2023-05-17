@@ -662,7 +662,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
          TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT, serial_no INT);");
          TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, l_id INT, serial_no INT);");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department", false, true);
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee,public.contract,public.address", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
         configBuilder.with("transforms", "Reroute");
@@ -711,14 +711,11 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
                     st.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d', %d);", departmentId.get(), departmentId.get(), serial.getAndIncrement()));
 
                     for (int j = employeeId.get(); j <= employeeId.get() + employeeBatchSize - 1; ++j) {
-                        LOGGER.info("inserting into employee with id {}", j);
                         st.execute(String.format("INSERT INTO employee VALUES (%d, 'emp no %d', %d, %d);", j, j, departmentId.get(), serial.getAndIncrement()));
                         for (int k = contractId.get(); k <= contractId.get() + contractBatchSize - 1; ++k) {
-                            LOGGER.info("inserting into contract with id {}", k);
                             st.execute(String.format("INSERT INTO contract VALUES (%d, 'contract no %d', %d, %d);", k, k, j /* employee fKey */, serial.getAndIncrement()));
 
                             for (int l = addressId.get(); l <= addressId.get() + addressBatchSize - 1; ++l) {
-                                LOGGER.info("inserting into address with id {}", l);
                                 st.execute(String.format("INSERT INTO address VALUES (%d, 'address no %d', %d, %d);", l, l, k /* contract fKey */, serial.getAndIncrement()));
 
                                 for (int m = localityId.get(); m <= localityId.get() + localityBatchSize - 1; ++m) {
@@ -739,6 +736,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
 
                     // Increment department ID for more iterations
                     departmentId.incrementAndGet();
+                    conn.commit();
                 }
             } catch (Exception e) {
                 LOGGER.error("Exception caught: ", e);
@@ -777,6 +775,8 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         } catch (ConditionTimeoutException exception) {
             fail("Failed to consume " + total + " records in " + seconds + " seconds, consumed " + totalConsumedRecords.get(), exception);
         }
+
+        ybConn.close();
     }
 
     private void assertTableNameInIndexList(List<SourceRecord> sourceRecords, List<Integer> indicesList, String tableName) {
