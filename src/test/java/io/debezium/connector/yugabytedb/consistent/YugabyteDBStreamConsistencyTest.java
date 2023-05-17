@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
@@ -25,7 +26,6 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Assertions.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -644,6 +644,138 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
                 final String recordTableName = value.getStruct("source").getString("table");
                 assertEquals("Table name not matching at index " + i + "expected employee got " + recordTableName, "employee", recordTableName);
             }
+        }
+    }
+
+    @Test
+    public void fiveTablesSingleTabletEach() throws Exception {
+        // Create multiple tables, each having a dependency on the former one so that we can form
+        // a hierarchy of FK dependencies.
+//        TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT);");
+//        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, FOREIGN KEY (d_id) REFERENCES department(id));");
+//        TestHelper.execute("CREATE TABLE contract (id INT PRIMARY KEY, contract_name TEXT, c_id INT, FOREIGN KEY (c_id) REFERENCES employee(id));");
+//        TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT, FOREIGN KEY (a_id) REFERENCES contract(id));");
+//        TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, l_id INT, FOREIGN KEY (l_id) REFERENCES address(id));");
+         TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT, serial_no INT);");
+         TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, serial_no INT);");
+         TestHelper.execute("CREATE TABLE contract (id INT PRIMARY KEY, contract_name TEXT, c_id INT, serial_no INT);");
+         TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT, serial_no INT);");
+         TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, l_id INT, serial_no INT);");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee,public.contract,public.address", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
+        configBuilder.with("transforms", "Reroute");
+        configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
+        configBuilder.with("transforms.Reroute.topic.regex", "(.*)");
+        configBuilder.with("transforms.Reroute.topic.replacement", "test_server_all_events");
+        configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
+        configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
+
+        start(YugabyteDBConnector.class, configBuilder.build());
+        awaitUntilConnectorIsReady();
+
+        TestHelper.waitFor(Duration.ofSeconds(25));
+
+        // If this test needs to be run more for higher duration, this scale factor can be changed
+        // accordingly.
+        final int scaleFactor = 1;
+        final int iterations = 5 * scaleFactor;
+        AtomicInteger departmentId = new AtomicInteger(1);
+
+        AtomicInteger employeeId = new AtomicInteger(1);
+        final int employeeBatchSize = 5 * scaleFactor;
+
+        AtomicInteger contractId = new AtomicInteger(1);
+        final int contractBatchSize = 6 * scaleFactor;
+
+        AtomicInteger addressId = new AtomicInteger(1);
+        final int addressBatchSize = 7 * scaleFactor;
+
+        AtomicInteger localityId = new AtomicInteger(1);
+        final int localityBatchSize = 8 * scaleFactor;
+
+        YugabyteDBConnection ybConn = TestHelper.create();
+        Connection conn = ybConn.connection();
+        conn.setAutoCommit(false);
+
+        // Lists to store the expected indices of the elements of respective tables in the final
+        // list of messages we will be receiving after streaming.
+
+        ExecutorService exec = Executors.newFixedThreadPool(1);
+        AtomicInteger serial = new AtomicInteger();
+        exec.execute(() -> {
+            try {
+                Statement st = conn.createStatement();
+                for (int i = 0; i < iterations; ++i) {
+                    st.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d', %d);", departmentId.get(), departmentId.get(), serial.getAndIncrement()));
+
+                    for (int j = employeeId.get(); j <= employeeId.get() + employeeBatchSize - 1; ++j) {
+                        LOGGER.info("inserting into employee with id {}", j);
+                        st.execute(String.format("INSERT INTO employee VALUES (%d, 'emp no %d', %d, %d);", j, j, departmentId.get(), serial.getAndIncrement()));
+                        for (int k = contractId.get(); k <= contractId.get() + contractBatchSize - 1; ++k) {
+                            LOGGER.info("inserting into contract with id {}", k);
+                            st.execute(String.format("INSERT INTO contract VALUES (%d, 'contract no %d', %d, %d);", k, k, j /* employee fKey */, serial.getAndIncrement()));
+
+                            for (int l = addressId.get(); l <= addressId.get() + addressBatchSize - 1; ++l) {
+                                LOGGER.info("inserting into address with id {}", l);
+                                st.execute(String.format("INSERT INTO address VALUES (%d, 'address no %d', %d, %d);", l, l, k /* contract fKey */, serial.getAndIncrement()));
+
+                                for (int m = localityId.get(); m <= localityId.get() + localityBatchSize - 1; ++m) {
+                                    st.execute(String.format("INSERT INTO locality VALUES (%d, 'locality no %d', %d, %d);", m, m, l /* address fKey */, serial.getAndIncrement()));
+                                }
+                                // Increment localityId for next iteration.
+                                localityId.addAndGet(localityBatchSize);
+                            }
+                            // Increment addressId for next iteration.
+                            addressId.addAndGet(addressBatchSize);
+                        }
+                        // Increment contractId for next iteration.
+                        contractId.addAndGet(contractBatchSize);
+                    }
+
+                    // Increment employeeId for the next iteration
+                    employeeId.addAndGet(employeeBatchSize);
+
+                    // Increment department ID for more iterations
+                    departmentId.incrementAndGet();
+                }
+            } catch (Exception e) {
+                LOGGER.error("Exception caught: ", e);
+                throw new RuntimeException(e);
+            }
+        });
+
+        // Dummy wait
+        TestHelper.waitFor(Duration.ofSeconds(25));
+
+        List<SourceRecord> recordsToAssert = new ArrayList<>();
+
+        final long total = serial.get();
+        AtomicInteger expectedSerial = new AtomicInteger(0);
+        AtomicLong totalConsumedRecords = new AtomicLong();
+        final int seconds = 1200;
+        try {
+            Awaitility.await()
+              .atMost(Duration.ofSeconds(1200))
+              .until(() -> {
+                  int consumed = super.consumeAvailableRecords(record -> {
+                      LOGGER.debug("The record being consumed is " + record);
+                      Struct value = (Struct) record.value();
+                      final int serialVal = value.getStruct("after").getStruct("serial_no").getInt32("value");
+                      Assertions.assertEquals(expectedSerial.get(), serialVal,
+                                              "Expected serial: " + expectedSerial.get() + " but received " + serialVal + " at index " + recordsToAssert.size());
+                      recordsToAssert.add(record);
+                  });
+                  if (consumed > 0) {
+                      totalConsumedRecords.addAndGet(consumed);
+                      LOGGER.info("Consumed " + totalConsumedRecords.get() + " records");
+                  }
+
+                  return recordsToAssert.size() == total;
+              });
+        } catch (ConditionTimeoutException exception) {
+            fail("Failed to consume " + total + " records in " + seconds + " seconds, consumed " + totalConsumedRecords.get(), exception);
         }
     }
 
