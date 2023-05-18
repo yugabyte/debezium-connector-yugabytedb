@@ -133,7 +133,7 @@ class MergerTest {
     }
 
     @Test
-    public void testMultipleMessagesOrdering() throws Exception {
+    public void orderingOfMultipleMessages() throws Exception {
         final String txn = "be309af9-0a7d-40c2-b855-79e2e73b2daa";
 
         final String tablet1 = "tablet_1";
@@ -223,9 +223,8 @@ class MergerTest {
           9);
 
         CdcService.CDCSDKProtoRecordPB sp = CdcService.CDCSDKProtoRecordPB.newBuilder()
-                                                   .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.SAFEPOINT)
-                                                                    .setCommitTime(commitTime2).build())
-                                                   .build();
+                                                .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.SAFEPOINT)
+                                                   .setCommitTime(commitTime2).build()).build();
         Message safepoint = new Message(sp, DUMMY_TABLE_ID, tablet2, txn, BigInteger.valueOf(commitTime2), BigInteger.ZERO, BigInteger.ZERO, 10);
 
         merger.addMessage(m1);
@@ -239,13 +238,15 @@ class MergerTest {
         merger.addMessage(m9);
         merger.addMessage(safepoint);
 
-
-
         LOGGER.info("Done putting all the messages");
 
+        List<Message> listOfMessages = List.of(m1, m7, m2, m8, m3, m9, m4, m5, m6);
+
+        int ind = 0;
         while (!merger.isEmpty()) {
             Optional<Message> opt = merger.poll();
-            opt.ifPresent(message -> LOGGER.info("VKVK {}", message));
+            Message expectedMessage = listOfMessages.get(ind++);
+            opt.ifPresent(message -> assertEquals(expectedMessage, message));
         }
     }
 }

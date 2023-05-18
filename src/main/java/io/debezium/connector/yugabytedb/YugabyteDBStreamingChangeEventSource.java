@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.TabletCheckpointPair;
 import org.yb.cdc.CdcService.CDCErrorPB.Code;
+import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.client.*;
 
 import java.io.IOException;
@@ -36,7 +37,6 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.DataChangeEvent;
@@ -471,6 +471,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                             CdcService.RowMessage m = record.getRowMessage();
                             YbProtoReplicationMessage message = new YbProtoReplicationMessage(
                                     m, this.yugabyteDBTypeRegistry);
+
+                            // Ignore safepoint record as they are not meant to be processed here.
+                            if (m.getOp() == Op.SAFEPOINT) {
+                                continue;
+                            }
 
                             String pgSchemaNameInRecord = m.getPgschemaName();
 

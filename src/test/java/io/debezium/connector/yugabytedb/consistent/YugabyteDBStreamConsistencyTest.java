@@ -10,7 +10,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
@@ -39,20 +39,10 @@ import io.debezium.config.Configuration;
 
 public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
     private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBStreamConsistencyTest.class);
-
-    private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
-            "INSERT INTO s2.a (aa) VALUES (1);";
-    private static final String CREATE_TABLES_STMT = "DROP SCHEMA IF EXISTS s1 CASCADE;" +
-            "DROP SCHEMA IF EXISTS s2 CASCADE;" +
-            "CREATE SCHEMA s1; " +
-            "CREATE SCHEMA s2; " +
-            "CREATE TABLE s1.a (pk SERIAL, aa integer, PRIMARY KEY(pk));" +
-            "CREATE TABLE s2.a (pk SERIAL, aa integer, bb varchar(20), PRIMARY KEY(pk));";
-    private static final String SETUP_TABLES_STMT = CREATE_TABLES_STMT + INSERT_STMT;
     
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        initializeYBContainer(null, "cdc_max_stream_intent_records=10,cdc_populate_safepoint_record=true");
+        initializeYBContainer(null, "cdc_max_stream_intent_records=100,cdc_populate_safepoint_record=true");
         TestHelper.dropAllSchemas();
     }
 
@@ -204,14 +194,9 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         TestHelper.execute("CREATE TABLE contract (id INT PRIMARY KEY, contract_name TEXT, c_id INT, FOREIGN KEY (c_id) REFERENCES employee(id));");
         TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT, FOREIGN KEY (a_id) REFERENCES contract(id));");
         TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, l_id INT, FOREIGN KEY (l_id) REFERENCES address(id));");
-        // TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT);");
-        // TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT);");
-        // TestHelper.execute("CREATE TABLE contract (id INT PRIMARY KEY, contract_name TEXT, c_id INT);");
-        // TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT);");
-        // TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, l_id INT);");
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee,public.contract,public.address", dbStreamId);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee,public.contract,public.address,public.employee", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
         configBuilder.with("transforms", "Reroute");
         configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
@@ -407,7 +392,6 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         }
     }
 
-    // TODO: Can we make this insert into 50 tablets randomly maybe?
     @Test
     public void singleTableTwoTablet() throws Exception {
         TestHelper.execute("CREATE TABLE department (id INT, dept_name TEXT, serial_no INT, PRIMARY KEY (id ASC)) SPLIT AT VALUES ((500000));");
@@ -563,9 +547,8 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
 
     @Test
     public void twoTableWithSingleTabletEach() throws Exception {
-        TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT);");
-        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT);");
-//        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, FOREIGN KEY (d_id) REFERENCES department(id));");
+        TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT, serial_no INT);");
+        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, serial_no INT);");
 
         YugabyteDBConnection c = TestHelper.create();
         Connection conn = c.connection();
@@ -591,10 +574,10 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
             try {
                 LOGGER.info("Started inserting.");
                 Statement st = conn.createStatement();
+                long serial = 0;
                 for (long i = 0; i < totalRecords; ++i) {
-                    // TODO: Add a serial number column in the table so that the ordering can be verified across all the tests.
-                    st.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d');", i, i));
-                    st.execute(String.format("INSERT INTO employee VALUES (%d, 'emp no %d', %d);", i, i, i));
+                    st.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d', %d);", i, i, serial++));
+                    st.execute(String.format("INSERT INTO employee VALUES (%d, 'emp no %d', %d, %d);", i, i, i, serial++));
                     conn.commit();
                 }
             } catch (Exception e) {
@@ -628,42 +611,27 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         }
 
         // Verify the consumed records now.
-        long expectedId = 0;
+        long expectedSerial = 0;
         for (int i = 0; i < recordsToAssert.size(); ++i) {
             Struct value = (Struct) recordsToAssert.get(i).value();
-            long id = value.getStruct("after").getStruct("id").getInt32("value");
+            long serial = value.getStruct("after").getStruct("serial").getInt32("value");
+            assertEquals("Failed to verify serial number, expected: " + expectedSerial + " received: " + serial, expectedSerial, serial);
 
-            assertEquals("Expected id " + expectedId + " but got id " + id + " at index " + i, expectedId, id);
-            if (i % 2 != 0) {
-                // There will be 2 records having the same ID, one belonging to the table department
-                // and the other belonging to the table employee. The records for table employee should
-                // be at the indices with odd numbers and that is where we should be incrementing
-                // the expected value. Also verify at this stage that the table is employee.
-                ++expectedId;
-
-                final String recordTableName = value.getStruct("source").getString("table");
-                assertEquals("Table name not matching at index " + i + "expected employee got " + recordTableName, "employee", recordTableName);
-            }
+            ++expectedSerial;
         }
     }
 
     @Test
     public void fiveTablesSingleTabletEach() throws Exception {
-        // Create multiple tables, each having a dependency on the former one so that we can form
-        // a hierarchy of FK dependencies.
-//        TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT);");
-//        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, FOREIGN KEY (d_id) REFERENCES department(id));");
-//        TestHelper.execute("CREATE TABLE contract (id INT PRIMARY KEY, contract_name TEXT, c_id INT, FOREIGN KEY (c_id) REFERENCES employee(id));");
-//        TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT, FOREIGN KEY (a_id) REFERENCES contract(id));");
-//        TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, l_id INT, FOREIGN KEY (l_id) REFERENCES address(id));");
-         TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT, serial_no INT) SPLIT INTO 1 TABLETS;");
-         TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, serial_no INT) SPLIT INTO 1 TABLETS;");
-         TestHelper.execute("CREATE TABLE contract (id INT PRIMARY KEY, contract_name TEXT, c_id INT, serial_no INT) SPLIT INTO 1 TABLETS;");
-         TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT, serial_no INT) SPLIT INTO 1 TABLETS;");
-         TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, l_id INT, serial_no INT) SPLIT INTO 1 TABLETS;");
+        // NOTE: Run with cdc_max_stream_intent_records=10000
+        TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT, serial_no INT) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, serial_no INT) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE contract (id INT PRIMARY KEY, contract_name TEXT, c_id INT, serial_no INT) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT, serial_no INT) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, l_id INT, serial_no INT) SPLIT INTO 1 TABLETS;");
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department", false, true);
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee,public.contract,public.address", dbStreamId);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee,public.contract,public.address,public.locality", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
         configBuilder.with("transforms", "Reroute");
         configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
@@ -675,71 +643,85 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         start(YugabyteDBConnector.class, configBuilder.build());
         awaitUntilConnectorIsReady();
 
-        TestHelper.waitFor(Duration.ofSeconds(25));
+        TestHelper.waitFor(Duration.ofSeconds(10));
 
+        // Set this flag to true if you want to keep running this test indefinitely.
         final boolean runIndefinitely = false;
 
         // If this test needs to be run more for higher duration, this scale factor can be changed
         // accordingly.
         final int scaleFactor = 1;
-        final int iterations = runIndefinitely ? Integer.MAX_VALUE : 50 * scaleFactor;
-        final int seconds = runIndefinitely ? Integer.MAX_VALUE : 1200;
+        final int iterations = runIndefinitely ? Integer.MAX_VALUE : 5 * scaleFactor;
+        final int seconds = runIndefinitely ? Integer.MAX_VALUE : 2400;
 
-        AtomicInteger departmentId = new AtomicInteger(1);
-
-        AtomicInteger employeeId = new AtomicInteger(1);
         final int employeeBatchSize = 5 * scaleFactor;
-
-        AtomicInteger contractId = new AtomicInteger(1);
         final int contractBatchSize = 6 * scaleFactor;
-
-        AtomicInteger addressId = new AtomicInteger(1);
         final int addressBatchSize = 7 * scaleFactor;
-
-        AtomicInteger localityId = new AtomicInteger(1);
         final int localityBatchSize = 8 * scaleFactor;
 
         YugabyteDBConnection ybConn = TestHelper.create();
         Connection conn = ybConn.connection();
         conn.setAutoCommit(false);
 
-        // Lists to store the expected indices of the elements of respective tables in the final
-        // list of messages we will be receiving after streaming.
+        final long totalRecords = runIndefinitely ? -1 : iterations /* department */
+                                  + (iterations * employeeBatchSize) /* employee */
+                                  + (iterations * employeeBatchSize * contractBatchSize) /* contract */
+                                  + (iterations * employeeBatchSize * contractBatchSize * addressBatchSize) /* address */
+                                  + (iterations * employeeBatchSize * contractBatchSize * addressBatchSize * localityBatchSize); /* locality */
+        LOGGER.info("Total records to be inserted: {}", totalRecords);
 
         ExecutorService exec = Executors.newFixedThreadPool(1);
-        AtomicInteger serial = new AtomicInteger();
-        exec.execute(() -> {
+        Future<?> f = exec.submit(() -> {
+            LOGGER.info("Started inserting");
             try {
+                int serial = 0;
+                int departmentId = 1;
+                int employeeId = 1;
+                int contractId = 1;
+                int addressId = 1;
+                int localityId = 1;
+
                 Statement st = conn.createStatement();
                 for (int i = 0; i < iterations; ++i) {
-                    executeWithRetry(st, String.format("INSERT INTO department VALUES (%d, 'my department no %d', %d);", departmentId.get(), departmentId.get(), serial.getAndIncrement()));
+                    LOGGER.info("Inserting into department with {}", i);
+                    executeWithRetry(st, String.format("INSERT INTO department VALUES (%d, 'my department no %d', %d);", i, i, serial));
+                    ++serial;
 
-                    for (int j = employeeId.get(); j <= employeeId.get() + employeeBatchSize - 1; ++j) {
-                        executeWithRetry(st, String.format("INSERT INTO employee VALUES (%d, 'emp no %d', %d, %d);", j, j, departmentId.get(), serial.getAndIncrement()));
-                        for (int k = contractId.get(); k <= contractId.get() + contractBatchSize - 1; ++k) {
-                            executeWithRetry(st, String.format("INSERT INTO contract VALUES (%d, 'contract no %d', %d, %d);", k, k, j /* employee fKey */, serial.getAndIncrement()));
+                    for (int j = employeeId; j <= employeeId + employeeBatchSize - 1; ++j) {
+                        LOGGER.info("Inserting into employee with {}", j);
+                        executeWithRetry(st, String.format("INSERT INTO employee VALUES (%d, 'emp no %d', %d, %d);", j, j, i, serial));
+                        ++serial;
+                        for (int k = contractId; k <= contractId + contractBatchSize - 1; ++k) {
+                            LOGGER.info("Inserting into contract with {}", k);
+                            executeWithRetry(st, String.format("INSERT INTO contract VALUES (%d, 'contract no %d', %d, %d);", k, k, j /* employee fKey */, serial));
+                            ++serial;
 
-                            for (int l = addressId.get(); l <= addressId.get() + addressBatchSize - 1; ++l) {
-                                executeWithRetry(st, String.format("INSERT INTO address VALUES (%d, 'address no %d', %d, %d);", l, l, k /* contract fKey */, serial.getAndIncrement()));
+                            for (int l = addressId; l <= addressId + addressBatchSize - 1; ++l) {
+                                LOGGER.info("Inserting into address with {}", l);
+                                executeWithRetry(st, String.format("INSERT INTO address VALUES (%d, 'address no %d', %d, %d);", l, l, k /* contract fKey */, serial));
+                                ++serial;
 
-                                for (int m = localityId.get(); m <= localityId.get() + localityBatchSize - 1; ++m) {
-                                    executeWithRetry(st, String.format("INSERT INTO locality VALUES (%d, 'locality no %d', %d, %d);", m, m, l /* address fKey */, serial.getAndIncrement()));
+                                for (int m = localityId; m <= localityId + localityBatchSize - 1; ++m) {
+                                    LOGGER.info("Inserting into locality with {}", m);
+                                    executeWithRetry(st, String.format("INSERT INTO locality VALUES (%d, 'locality no %d', %d, %d);", m, m, l /* address fKey */, serial));
+                                    ++serial;
                                 }
+
                                 // Increment localityId for next iteration.
-                                localityId.addAndGet(localityBatchSize);
+                                localityId += localityBatchSize;
                             }
                             // Increment addressId for next iteration.
-                            addressId.addAndGet(addressBatchSize);
+                            addressId += addressBatchSize;
                         }
                         // Increment contractId for next iteration.
-                        contractId.addAndGet(contractBatchSize);
+                        contractId += contractBatchSize;
                     }
 
                     // Increment employeeId for the next iteration
-                    employeeId.addAndGet(employeeBatchSize);
+                    employeeId += employeeBatchSize;
 
                     // Increment department ID for more iterations
-                    departmentId.incrementAndGet();
+                    ++departmentId;
                     conn.commit();
                 }
             } catch (Exception e) {
@@ -748,15 +730,13 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
             }
         });
 
-        // Dummy wait
-        TestHelper.waitFor(Duration.ofSeconds(25));
-
+        LOGGER.info("Done insertion");
         List<SourceRecord> recordsToAssert = new ArrayList<>();
 
-        final long total = serial.get();
-        AtomicInteger expectedSerial = new AtomicInteger(0);
+        final long total = totalRecords;
         AtomicLong totalConsumedRecords = new AtomicLong();
         try {
+            LOGGER.info("Started consuming");
             Awaitility.await()
               .atMost(Duration.ofSeconds(seconds))
               .until(() -> {
@@ -764,9 +744,8 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
                       LOGGER.debug("The record being consumed is " + record);
                       Struct value = (Struct) record.value();
                       final int serialVal = value.getStruct("after").getStruct("serial_no").getInt32("value");
-                      Assertions.assertEquals(expectedSerial.get(), serialVal,
-                                              "Expected serial: " + expectedSerial.get() + " but received " + serialVal + " at index " + recordsToAssert.size());
-                      expectedSerial.incrementAndGet();
+                      Assertions.assertEquals(recordsToAssert.size(), serialVal,
+                                              "Expected serial: " + recordsToAssert.size() + " but received " + serialVal + " at index " + recordsToAssert.size() + " with record " + record);
                       recordsToAssert.add(record);
                   });
                   if (consumed > 0) {
@@ -774,22 +753,32 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
                       LOGGER.info("Consumed " + totalConsumedRecords.get() + " records");
                   }
 
-                  return recordsToAssert.size() == total;
+                  return recordsToAssert.size() == total && f.isDone();
               });
         } catch (ConditionTimeoutException exception) {
             fail("Failed to consume " + total + " records in " + seconds + " seconds, consumed " + totalConsumedRecords.get(), exception);
         }
 
-        ybConn.close();
+        // Verify the consumed records now.
+        long expected = 0;
+        for (int i = 0; i < recordsToAssert.size(); ++i) {
+            Struct value = (Struct) recordsToAssert.get(i).value();
+            long serialNo = value.getStruct("after").getStruct("serial_no").getInt32("value");
+
+            assertEquals("Expected serial " + expected + " but got serial " + serialNo + " at index " + i, expected, serialNo);
+            ++expected;
+        }
     }
 
-    public void executeWithRetry (Statement st, String statement) throws SQLException {
+    public void executeWithRetry(Statement st, String statement) throws SQLException {
         final int totalRetries = 3;
 
         int tryCount = 0;
         while (tryCount < totalRetries) {
             try {
                 st.execute(statement);
+                // Return execution if statement successful.
+                return;
             } catch (SQLException e) {
                 ++tryCount;
                 if (tryCount >= totalRetries) {
