@@ -614,7 +614,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         long expectedSerial = 0;
         for (int i = 0; i < recordsToAssert.size(); ++i) {
             Struct value = (Struct) recordsToAssert.get(i).value();
-            long serial = value.getStruct("after").getStruct("serial").getInt32("value");
+            long serial = value.getStruct("after").getStruct("serial_no").getInt32("value");
             assertEquals("Failed to verify serial number, expected: " + expectedSerial + " received: " + serial, expectedSerial, serial);
 
             ++expectedSerial;
