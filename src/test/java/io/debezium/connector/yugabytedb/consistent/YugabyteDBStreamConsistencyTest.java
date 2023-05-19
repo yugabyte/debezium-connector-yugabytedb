@@ -186,17 +186,17 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
     }
 
     @Test
-    public void verifyRecordOrderWithHierarchicalTables() throws Exception {
+    public void fiveTablesWithForeignKeys() throws Exception {
         // Create multiple tables, each having a dependency on the former one so that we can form
         // a hierarchy of FK dependencies.
-        TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT);");
-        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, FOREIGN KEY (d_id) REFERENCES department(id));");
-        TestHelper.execute("CREATE TABLE contract (id INT PRIMARY KEY, contract_name TEXT, c_id INT, FOREIGN KEY (c_id) REFERENCES employee(id));");
-        TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT, FOREIGN KEY (a_id) REFERENCES contract(id));");
-        TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, l_id INT, FOREIGN KEY (l_id) REFERENCES address(id));");
+        TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT, serial_no INT);");
+        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, serial_no INT, FOREIGN KEY (d_id) REFERENCES department(id));");
+        TestHelper.execute("CREATE TABLE contract (id INT PRIMARY KEY, contract_name TEXT, c_id INT, serial_no INT, FOREIGN KEY (c_id) REFERENCES employee(id));");
+        TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT, serial_no INT, FOREIGN KEY (a_id) REFERENCES contract(id));");
+        TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, l_id INT, serial_no INT, FOREIGN KEY (l_id) REFERENCES address(id));");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee,public.contract,public.address,public.employee", dbStreamId);
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department", false, true);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee,public.contract,public.address,public.locality", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
         configBuilder.with("transforms", "Reroute");
         configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
@@ -210,88 +210,96 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
 
         TestHelper.waitFor(Duration.ofSeconds(25));
 
+        YugabyteDBConnection ybConn = TestHelper.create();
+        Connection conn = ybConn.connection();
+        conn.setAutoCommit(false);
+
         // If this test needs to be run more for higher duration, this scale factor can be changed
         // accordingly.
         final int scaleFactor = 1;
         final int iterations = 5 * scaleFactor;
-        int departmentId = 1;
-        int employeeId = 1, employeeBatchSize = 5 * scaleFactor;
-        int contractId = 1, contractBatchSize = 6 * scaleFactor;
-        int addressId = 1, addressBatchSize = 7 * scaleFactor;
-        int localityId = 1, localityBatchSize = 8 * scaleFactor;
+        int employeeBatchSize = 5 * scaleFactor;
+        int contractBatchSize = 6 * scaleFactor;
+        int addressBatchSize = 7 * scaleFactor;
+        int localityBatchSize = 8 * scaleFactor;
 
         // This counter will also indicate the final index of the inserted record while streaming.
-        long totalCount = 0;
+        long totalCount = iterations /* department */
+                            + (iterations * employeeBatchSize) /* employee */
+                            + (iterations * employeeBatchSize * contractBatchSize) /* contract */
+                            + (iterations * employeeBatchSize * contractBatchSize * addressBatchSize) /* address */
+                            + (iterations * employeeBatchSize * contractBatchSize * addressBatchSize * localityBatchSize); /* locality */
+        LOGGER.info("Total records to be inserted: {}", totalCount);
 
-        // Lists to store the expected indices of the elements of respective tables in the final
-        // list of messages we will be receiving after streaming.
-        List<Integer> departmentIndices = new ArrayList<>();
-        List<Integer> employeeIndices = new ArrayList<>();
-        List<Integer> contractIndices = new ArrayList<>();
-        List<Integer> addressIndices = new ArrayList<>();
-        List<Integer> localityIndices = new ArrayList<>();
-
-        for (int i = 0; i < iterations; ++i) {
-            TestHelper.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d');", departmentId, departmentId));
-
-            // Inserting the index of the record for department table at its appropriate position.
-            departmentIndices.add((int) totalCount);
-            ++totalCount;
-
-            for (int j = employeeId; j <= employeeId + employeeBatchSize - 1; ++j) {
-                LOGGER.info("inserting into employee with id {}", j);
-                TestHelper.execute(String.format("INSERT INTO employee VALUES (%d, 'emp no %d', %d);", j, j, departmentId));
-                employeeIndices.add((int) totalCount);
-                ++totalCount;
-                for (int k = contractId; k <= contractId + contractBatchSize - 1; ++k) {
-                    LOGGER.info("inserting into contract with id {}", k);
-                    TestHelper.execute(String.format("INSERT INTO contract VALUES (%d, 'contract no %d', %d);", k, k, j /* employee fKey */));
-                    contractIndices.add((int) totalCount);
-                    ++totalCount;
-
-                    for (int l = addressId; l <= addressId + addressBatchSize - 1; ++l) {
-                        LOGGER.info("inserting into address with id {}", l);
-                        TestHelper.execute(String.format("INSERT INTO address VALUES (%d, 'address no %d', %d);", l, l, k /* contract fKey */));
-                        addressIndices.add((int) totalCount);
-                        ++totalCount;
-
-                        for (int m = localityId; m <= localityId + localityBatchSize - 1; ++m) {
-                            LOGGER.info("inserting into locality with id {}", m);
-                            TestHelper.execute(String.format("INSERT INTO locality VALUES (%d, 'locality no %d', %d);", m, m, l /* address fKey */));
-                            localityIndices.add((int) totalCount);
-                            ++totalCount;
+        ExecutorService exec = Executors.newFixedThreadPool(1);
+        Future<?> future = exec.submit(() -> {
+            int departmentId = 1;
+            int employeeId = 1;
+            int contractId = 1;
+            int addressId = 1;
+            int localityId = 1;
+            long serial = 0;
+            
+            LOGGER.info("Started inserting");
+            try {
+                Statement st = conn.createStatement();
+                for (int i = 0; i < iterations; ++i) {
+                    st.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d', %d);", departmentId, departmentId, serial++));
+        
+                    for (int j = employeeId; j <= employeeId + employeeBatchSize - 1; ++j) {
+                        LOGGER.info("inserting into employee with id {}", j);
+                        st.execute(String.format("INSERT INTO employee VALUES (%d, 'emp no %d', %d, %d);", j, j, departmentId, serial++));
+                        for (int k = contractId; k <= contractId + contractBatchSize - 1; ++k) {
+                            LOGGER.info("inserting into contract with id {}", k);
+                            st.execute(String.format("INSERT INTO contract VALUES (%d, 'contract no %d', %d, %d);", k, k, j /* employee fKey */, serial++));
+        
+                            for (int l = addressId; l <= addressId + addressBatchSize - 1; ++l) {
+                                LOGGER.info("inserting into address with id {}", l);
+                                st.execute(String.format("INSERT INTO address VALUES (%d, 'address no %d', %d, %d);", l, l, k /* contract fKey */, serial++));
+        
+                                for (int m = localityId; m <= localityId + localityBatchSize - 1; ++m) {
+                                    LOGGER.info("inserting into locality with id {}", m);
+                                    st.execute(String.format("INSERT INTO locality VALUES (%d, 'locality no %d', %d, %d);", m, m, l /* address fKey */, serial++));
+                                }
+                                // Increment localityId for next iteration.
+                                localityId += localityBatchSize;
+                            }
+                            // Increment addressId for next iteration.
+                            addressId += addressBatchSize;
                         }
-                        // Increment localityId for next iteration.
-                        localityId += localityBatchSize;
+                        // Increment contractId for next iteration.
+                        contractId += contractBatchSize;
                     }
-                    // Increment addressId for next iteration.
-                    addressId += addressBatchSize;
-                }
-                // Increment contractId for next iteration.
-                contractId += contractBatchSize;
+    
+                    // Increment employeeId for the next iteration
+                    employeeId += employeeBatchSize;
+        
+                    // Increment department ID for more iterations
+                    ++departmentId;
+                    conn.commit();
             }
+            } catch (Exception e) {
+                LOGGER.error("Exception caught: ", e);
+                throw new RuntimeException(e);
+            }
+        });
 
-            // Increment employeeId for the next iteration
-            employeeId += employeeBatchSize;
-
-            // Increment department ID for more iterations
-            ++departmentId;
-        }
-
-        // Dummy wait
-        TestHelper.waitFor(Duration.ofSeconds(25));
 
         List<SourceRecord> recordsToAssert = new ArrayList<>();
 
         final long total = totalCount;
         AtomicLong totalConsumedRecords = new AtomicLong();
         try {
+            LOGGER.info("Started consuming");
             Awaitility.await()
                     .atMost(Duration.ofSeconds(600))
                     .until(() -> {
                         int consumed = super.consumeAvailableRecords(record -> {
                             LOGGER.debug("The record being consumed is " + record);
-                            Struct s = (Struct) record.value();
+                            Struct value = (Struct) record.value();
+                            final int serialVal = value.getStruct("after").getStruct("serial_no").getInt32("value");
+                            Assertions.assertEquals(recordsToAssert.size(), serialVal,
+                                                    "Expected serial: " + recordsToAssert.size() + " but received " + serialVal + " at index " + recordsToAssert.size() + " with record " + record);
                             recordsToAssert.add(record);
                         });
                         if (consumed > 0) {
@@ -299,24 +307,23 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
                             LOGGER.info("Consumed " + totalConsumedRecords.get() + " records");
                         }
 
-                        return recordsToAssert.size() == total;
+                        return recordsToAssert.size() == total && future.isDone();
                     });
         } catch (ConditionTimeoutException exception) {
             fail("Failed to consume " + totalCount + " records in 600 seconds, consumed " + totalConsumedRecords.get(), exception);
         }
 
         assertEquals(total, recordsToAssert.size());
-        LOGGER.info("department records: {}", departmentIndices.size());
-        LOGGER.info("employee records: {}", employeeIndices.size());
-        LOGGER.info("contract record: {}", contractIndices.size());
-        LOGGER.info("address record: {}", addressIndices.size());
-        LOGGER.info("total records: {},  total records added in list for assertions: {}", totalCount, recordsToAssert.size());
+        
+        // Verify the consumed records now.
+        long expectedSerial = 0;
+        for (int i = 0; i < recordsToAssert.size(); ++i) {
+            Struct value = (Struct) recordsToAssert.get(i).value();
+            long serial = value.getStruct("after").getStruct("serial_no").getInt32("value");
+            assertEquals("Failed to verify serial number, expected: " + expectedSerial + " received: " + serial, expectedSerial, serial);
 
-        assertTableNameInIndexList(recordsToAssert, departmentIndices, "department");
-        assertTableNameInIndexList(recordsToAssert, employeeIndices, "employee");
-        assertTableNameInIndexList(recordsToAssert, contractIndices, "contract");
-        assertTableNameInIndexList(recordsToAssert, addressIndices, "address");
-        assertTableNameInIndexList(recordsToAssert, localityIndices, "locality");
+            ++expectedSerial;
+        }
     }
 
     @Test
