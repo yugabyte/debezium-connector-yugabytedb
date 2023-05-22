@@ -74,7 +74,7 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
 
     @Override
     public String getTransactionId() {
-        return rawMessage.getTransactionId() == null ? null : String.valueOf(rawMessage.getTransactionId());
+        return rawMessage.getTransactionId() == null ? null : rawMessage.getTransactionId().toStringUtf8();
     }
 
     @Override
