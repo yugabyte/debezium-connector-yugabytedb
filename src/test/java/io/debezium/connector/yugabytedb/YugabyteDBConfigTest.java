@@ -11,6 +11,11 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Unit tests to verify various configuration settings.
+ *
+ * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
+ */
 public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
 
     @BeforeAll
@@ -269,6 +274,24 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
             assertFalse(success);
 
             assertTrue(error.getMessage().contains("The provided stream ID is not associated with any table"));
+        });
+
+        assertConnectorNotRunning();
+    }
+
+    @Test
+    public void throwExceptionIfExplicitCheckpointingNotConfiguredWithConsistency() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        // Create a stream ID with IMPLICIT checkpointing and then deploy it in a consistent streaming setup.
+        final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false, false);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
+
+        start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+           assertFalse(success);
+
+           assertTrue(error.getMessage().contains("Explicit checkpointing not enabled in consistent streaming mode"));
         });
 
         assertConnectorNotRunning();
