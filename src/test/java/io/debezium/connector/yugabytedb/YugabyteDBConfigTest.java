@@ -284,8 +284,9 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
         TestHelper.dropAllSchemas();
 
         // Create a stream ID with IMPLICIT checkpointing and then deploy it in a consistent streaming setup.
-        final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false, false);
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        TestHelper.execute("CREATE TABLE dummy_table (id INT PRIMARY KEY);");
+        final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "dummy_table", false, false);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.dummy_table", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
 
         start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
