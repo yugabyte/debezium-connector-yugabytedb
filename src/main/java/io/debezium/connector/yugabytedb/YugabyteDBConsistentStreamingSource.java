@@ -80,6 +80,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
         // Initialize the offsetContext and other supporting flags
         Map<String, Boolean> schemaNeeded = new HashMap<>();
+        Map<String, Long> tabletSafeTime = new HashMap<>();
         for (Pair<String, String> entry : tabletPairList) {
             // entry.getValue() will give the tabletId
             OpId opId = YBClientUtils.getOpIdFromGetTabletListResponse(
@@ -183,7 +184,9 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                 response = this.syncClient.getChangesCDCSDK(
                                         table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                                         cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
-                                        taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null);
+                                        taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
+                                        tabletSafeTime.get(part.getId()));
+                                tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
                             } catch (CDCErrorException cdcException) {
                                 // Check if exception indicates a tablet split.
                                 if (cdcException.getCDCError().getCode() == CdcService.CDCErrorPB.Code.TABLET_SPLIT) {
