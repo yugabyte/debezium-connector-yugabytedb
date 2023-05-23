@@ -140,7 +140,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
                         int consumed = super.consumeAvailableRecords(record -> {
                             LOGGER.info("The record being consumed is " + record);
                             Struct s = (Struct) record.value();
-                            if (s.schema().fields().stream().map(Field::name).collect(Collectors.toSet()).contains("status")) {
+                            if (s.schema().fields().stream().map(f -> f.name()).collect(Collectors.toSet()).contains("status")) {
                                 LOGGER.info("Consumed txn record: {}", s);
                                 return;
                             }
