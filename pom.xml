@@ -5,14 +5,14 @@
     <groupId>io.debezium</groupId>
     <artifactId>debezium-connector-yugabytedb</artifactId>
     <name>YugabyteDB Source Connector</name>
-    <version>1.9.5.y.17-SNAPSHOT</version>
+    <version>1.5.y.22-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <scm>
         <connection>scm:git:git@github.com:yugabyte/debezium-connector-yugabytedb.git</connection>
         <developerConnection>scm:git:git@github.com:yugabyte/debezium-connector-yugabytedb.git</developerConnection>
         <url>https://github.com/yugabyte/debezium-connector-yugabytedb</url>
-        <tag>v1.9.5.y.7</tag>
+        <tag>v1.9.5.y.20</tag>
     </scm>
 
 
@@ -47,7 +47,7 @@
         <version.kafka>3.3.1</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
-        <version.ybclient>0.8.41-20230306.042125-1</version.ybclient>
+        <version.ybclient>0.8.54-20230522.234617-1</version.ybclient>
         <version.gson>2.8.9</version.gson>
 
         <!--
@@ -59,7 +59,7 @@
         <protobuf.output.directory>${project.basedir}/generated-sources</protobuf.output.directory>
 
         <!-- Test -->
-        <version.junit>5.9.0</version.junit>
+        <version.junit>5.9.2</version.junit>
 
         <!-- Deploy -->
         <version.s3.wagon>0.1.3</version.s3.wagon>
@@ -567,7 +567,7 @@
                 <configuration>
                     <images>
                         <image>
-                            <name>debezium-connector</name>
+                            <name>quay.io/yugabyte/debezium-connector</name>
                             <build>
                                 <contextDir>${project.basedir}</contextDir>
                                 <tags>

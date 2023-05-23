@@ -30,6 +30,7 @@ public class YugabyteDBSourceInfoStructMaker extends AbstractSourceInfoStructMak
                 .field(SourceInfo.COMMIT_TIME, Schema.OPTIONAL_INT64_SCHEMA)
                 .field(SourceInfo.RECORD_TIME, Schema.INT64_SCHEMA)
                 .field(SourceInfo.TABLET_ID, Schema.STRING_SCHEMA)
+                .field(SourceInfo.PARTITION_ID_KEY, Schema.STRING_SCHEMA)
                 .build();
     }
 
@@ -52,6 +53,8 @@ public class YugabyteDBSourceInfoStructMaker extends AbstractSourceInfoStructMak
 
         if (sourceInfo.tabletId() != null) {
             result.put(SourceInfo.TABLET_ID, sourceInfo.tabletId());
+            result.put(SourceInfo.PARTITION_ID_KEY,
+                       sourceInfo.tableUUID() + "." + sourceInfo.tabletId());
         }
 
         if (sourceInfo.txId() != null) {

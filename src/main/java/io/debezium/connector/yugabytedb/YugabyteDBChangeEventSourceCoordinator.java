@@ -109,6 +109,12 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
 
             if (snapshotResult.isCompletedOrSkipped()) {
                 streamingOffsets.getOffsets().put(partition, snapshotResult.getOffset());
+
+                // Further down the processing unit, we are retrieving all the partitions even
+                // though we pass just one at this level, so in case the snapshot gets completed
+                // for one, it would be safe to break out of this loop to avoid processing things
+                // again.
+                break;
             }
         }
 
@@ -143,9 +149,17 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
 
     @Override
     public void commitOffset(Map<String, ?> offset) {
+        // Check if snapshotter is enabled, if it is not then callback should go to the
+        // streaming source only. If snapshot is complete, even then the callback should go to the
+        // streaming source as in case of a finished snapshot, we do not want to do a duplicate call
+        // for commitOffset.
+        if (!commitOffsetLock.isLocked() && snapshotter.shouldSnapshot() && !snapshotSource.isSnapshotComplete()) {
+            snapshotSource.commitOffset(offset);
+            return;
+        }
+
         if (!commitOffsetLock.isLocked() && streamingSource != null && offset != null) {
             streamingSource.commitOffset(offset);
-            snapshotSource.commitOffset(offset);
         }
     }
 

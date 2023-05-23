@@ -1,6 +1,10 @@
 package io.debezium.connector.yugabytedb;
 
 public class HelperStrings {
+    public static String CREATE_ALL_TYPES = "CREATE TABLE all_types (id serial PRIMARY KEY, bigintcol bigint, bitcol bit(5), varbitcol varbit(5), booleanval boolean, byteaval bytea, ch char(5), vchar varchar(25), " +
+                                             "cidrval cidr, dt date, dp double precision, inetval inet, intervalval interval, jsonval json, jsonbval jsonb, mc macaddr, mc8 macaddr8, mn money, nm numeric, rl real, " +
+                                             "si smallint, i4r int4range, i8r int8range, nr numrange, tsr tsrange, tstzr tstzrange, dr daterange, txt text, tm time, tmtz timetz, ts timestamp, tstz timestamptz, " +
+                                             "uuidval uuid) WITH (COLOCATION = false);";
     public static String INSERT_ALL_TYPES = "INSERT INTO all_types (bigintcol, bitcol, varbitcol, booleanval, byteaval, ch, vchar, cidrval, dt, dp, inetval, "
             + "intervalval, jsonval, jsonbval, mc, mc8, mn, nm, rl, si, i4r, i8r, nr, tsr, tstzr, dr, txt, tm, tmtz, ts, tstz, uuidval) VALUES "
             + "(123456, '11011', '10101', FALSE, E'\\\\001', 'five5', 'sample_text', '10.1.0.0/16', '2022-02-24', 12.345, '127.0.0.1', "

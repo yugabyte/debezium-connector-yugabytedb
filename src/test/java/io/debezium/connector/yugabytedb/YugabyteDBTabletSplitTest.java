@@ -14,9 +14,6 @@ import java.util.stream.Collectors;
 import org.apache.kafka.connect.data.Struct;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.YugabyteYSQLContainer;
 import org.yb.client.GetTabletListToPollForCDCResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
@@ -30,7 +27,7 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
-  private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBPartitionTest.class);
+
   private static String masterAddresses;
 
   @BeforeAll
@@ -146,6 +143,12 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
     String tserverFlags = "enable_automatic_tablet_splitting=true";
     ybContainer = TestHelper.getYbContainer(masterFlags, tserverFlags);
     ybContainer.start();
+
+    try {
+      ybContainer.execInContainer(getYugabytedStartCommand().split("\\s+"));
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
 
     TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
     TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));

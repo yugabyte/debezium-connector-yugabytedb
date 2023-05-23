@@ -38,7 +38,9 @@ public final class SourceInfo extends BaseSourceInfo {
 
     public static final String RECORD_TIME = "record_time";
 
+    public static final String TABLE_ID = "table_id";
     public static final String TABLET_ID = "tablet_id";
+    public static final String PARTITION_ID_KEY = "partition_id";
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -51,6 +53,8 @@ public final class SourceInfo extends BaseSourceInfo {
     private Instant timestamp;
     private String schemaName;
     private String tableName;
+
+    private String tableUUID;
     private String tabletId;
 
     private Long commitTime;
@@ -82,13 +86,16 @@ public final class SourceInfo extends BaseSourceInfo {
      * @param recordTime Hybrid Time Stamp Time of the statement within the transaction.
      * @return this instance
      */
-    protected SourceInfo update(String tabletId, OpId lsn, long commitTime, String txId,
-                                TableId tableId, Long xmin, Long recordTime) {
+    protected SourceInfo update(YBPartition partition, OpId lsn, long commitTime, String txId,
+                                TableId tableId,
+                                Long xmin, Long recordTime) {
         this.lsn = lsn;
         this.commitTime = commitTime;
         this.txId = txId;
         this.xmin = xmin;
         this.recordTime = recordTime;
+        this.tableUUID = partition.getTableId();
+        this.tabletId = partition.getTabletId();
 
         // The commit time of the record is technically the timestamp of the record.
         this.timestamp = Conversions.toInstantFromMicros(commitTime);
@@ -99,7 +106,6 @@ public final class SourceInfo extends BaseSourceInfo {
         if (tableId != null && tableId.table() != null) {
             this.tableName = tableId.table();
         }
-        this.tabletId = tabletId;
         return this;
     }
 
@@ -171,15 +177,20 @@ public final class SourceInfo extends BaseSourceInfo {
         return txId;
     }
 
-    protected String tabletId() {
-        return this.tabletId;
-    }
     protected Long commitTime() {
         return this.commitTime;
     }
 
     protected Long recordTime() {
         return this.recordTime;
+    }
+
+    protected String tabletId() {
+        return this.tabletId;
+    }
+
+    protected String tableUUID() {
+        return this.tableUUID;
     }
 
     @Override

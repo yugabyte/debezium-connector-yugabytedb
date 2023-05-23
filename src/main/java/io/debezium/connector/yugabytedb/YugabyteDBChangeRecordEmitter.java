@@ -101,7 +101,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
 
     @Override
     protected void emitTruncateRecord(Receiver receiver, TableSchema tableSchema) throws InterruptedException {
-        Struct envelope = tableSchema.getEnvelopeSchema().truncate(offsetContext.getSourceInfoForTablet(tabletId), getClock().currentTimeAsInstant());
+        Struct envelope = tableSchema.getEnvelopeSchema().truncate(offsetContext.getSourceInfoForTablet(getPartition()), getClock().currentTimeAsInstant());
         receiver.changeRecord(getPartition(), tableSchema, Operation.TRUNCATE, null, envelope, getOffset(), null);
     }
 
@@ -311,11 +311,11 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         Object[] newColumnValues = getNewColumnValues();
         Struct newKey = tableSchema.keyFromColumnData(newColumnValues);
         Struct newValue = tableSchema.valueFromColumnData(newColumnValues);
-        Struct envelope = tableSchema.getEnvelopeSchema().create(newValue, offsetContext.getSourceInfoForTablet(tabletId), getClock().currentTimeAsInstant());
+        Struct envelope = tableSchema.getEnvelopeSchema().create(newValue, offsetContext.getSourceInfoForTablet(getPartition()), getClock().currentTimeAsInstant());
 
         if (skipEmptyMessages() && (newColumnValues == null || newColumnValues.length == 0)) {
             // This case can be hit on UPDATE / DELETE when there's no primary key defined while using certain decoders
-            LOGGER.warn("no new values found for table '{}' from create message at '{}'; skipping record", tableSchema, offsetContext.getSourceInfoForTablet(tabletId));
+            LOGGER.warn("no new values found for table '{}' from create message at '{}'; skipping record", tableSchema, offsetContext.getSourceInfoForTablet(getPartition()));
             return;
         }
         receiver.changeRecord(getPartition(), tableSchema, Operation.CREATE, newKey, envelope, getOffset(), null);
@@ -326,7 +326,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         Object[] newColumnValues = getNewColumnValues();
         Struct newKey = tableSchema.keyFromColumnData(newColumnValues);
         Struct newValue = tableSchema.valueFromColumnData(newColumnValues);
-        Struct envelope = tableSchema.getEnvelopeSchema().read(newValue, offsetContext.getSourceInfoForTablet(tabletId), getClock().currentTimeAsInstant());
+        Struct envelope = tableSchema.getEnvelopeSchema().read(newValue, offsetContext.getSourceInfoForTablet(getPartition()), getClock().currentTimeAsInstant());
 
         receiver.changeRecord(getPartition(), tableSchema, Operation.READ, newKey, envelope, getOffset(), null);
     }
@@ -352,7 +352,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         // some configurations does not provide old values in case of updates
         // in this case we handle all updates as regular ones
         if (oldKey == null || Objects.equals(oldKey, newKey)) {
-            Struct envelope = tableSchema.getEnvelopeSchema().update(oldValue, newValue, offsetContext.getSourceInfoForTablet(getPartition().getTabletId()), getClock().currentTimeAsInstant());
+            Struct envelope = tableSchema.getEnvelopeSchema().update(oldValue, newValue, offsetContext.getSourceInfoForTablet(getPartition()), getClock().currentTimeAsInstant());
             receiver.changeRecord(getPartition(), tableSchema, Operation.UPDATE, newKey, envelope, getOffset(), null);
         }
         // PK update -> emit as delete and re-insert with new key
@@ -360,13 +360,13 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
             ConnectHeaders headers = new ConnectHeaders();
             headers.add(PK_UPDATE_NEWKEY_FIELD, newKey, tableSchema.keySchema());
 
-            Struct envelope = tableSchema.getEnvelopeSchema().delete(oldValue, offsetContext.getSourceInfoForTablet(tabletId), getClock().currentTimeAsInstant());
+            Struct envelope = tableSchema.getEnvelopeSchema().delete(oldValue, offsetContext.getSourceInfoForTablet(getPartition()), getClock().currentTimeAsInstant());
             receiver.changeRecord(getPartition(), tableSchema, Operation.DELETE, oldKey, envelope, getOffset(), headers);
 
             headers = new ConnectHeaders();
             headers.add(PK_UPDATE_OLDKEY_FIELD, oldKey, tableSchema.keySchema());
 
-            envelope = tableSchema.getEnvelopeSchema().create(newValue, offsetContext.getSourceInfoForTablet(tabletId), getClock().currentTimeAsInstant());
+            envelope = tableSchema.getEnvelopeSchema().create(newValue, offsetContext.getSourceInfoForTablet(getPartition()), getClock().currentTimeAsInstant());
             receiver.changeRecord(getPartition(), tableSchema, Operation.CREATE, newKey, envelope, getOffset(), headers);
         }
     }
@@ -378,11 +378,11 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         Struct oldValue = tableSchema.valueFromColumnData(oldColumnValues);
 
         if (skipEmptyMessages() && (oldColumnValues == null || oldColumnValues.length == 0)) {
-            LOGGER.warn("no old values found for table '{}' from delete message at '{}'; skipping record", tableSchema, offsetContext.getSourceInfoForTablet(tabletId));
+            LOGGER.warn("no old values found for table '{}' from delete message at '{}'; skipping record", tableSchema, offsetContext.getSourceInfoForTablet(getPartition()));
             return;
         }
 
-        Struct envelope = tableSchema.getEnvelopeSchema().delete(oldValue, offsetContext.getSourceInfoForTablet(tabletId), getClock().currentTimeAsInstant());
+        Struct envelope = tableSchema.getEnvelopeSchema().delete(oldValue, offsetContext.getSourceInfoForTablet(getPartition()), getClock().currentTimeAsInstant());
         receiver.changeRecord(getPartition(), tableSchema, Operation.DELETE, oldKey, envelope, getOffset(), null);
     }
 }

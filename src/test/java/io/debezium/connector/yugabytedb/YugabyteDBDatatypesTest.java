@@ -12,10 +12,11 @@ import java.util.concurrent.atomic.AtomicLong;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.apache.log4j.Logger;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
+import org.yb.client.GetDBStreamInfoResponse;
+import org.yb.client.YBClient;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState;
@@ -30,8 +31,6 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 
 public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
-    private final static Logger LOGGER = Logger.getLogger(YugabyteDBDatatypesTest.class);
-
     private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
             "INSERT INTO s2.a (aa) VALUES (1);";
     private static final String CREATE_TABLES_STMT = "DROP SCHEMA IF EXISTS s1 CASCADE;" +
@@ -252,6 +251,34 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
                 .exceptionally(throwable -> {
                     throw new RuntimeException(throwable);
                 }).get();
+    }
+
+    @Test
+    public void verifyConsumptionAfterRestart() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        start(YugabyteDBConnector.class, configBuilder.build());
+        awaitUntilConnectorIsReady();
+
+        YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
+
+        // Stop YugabyteDB instance, this should result in failure of yb-client APIs as well
+        restartYugabyteDB(5000);
+
+        GetDBStreamInfoResponse response = ybClient.getDBStreamInfo(dbStreamId);
+        assertNotNull(response.getNamespaceId());
+        
+        final int recordsCount = 1;
+        insertRecords(recordsCount);
+        CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
+                .exceptionally(throwable -> {
+                    throw new RuntimeException(throwable);
+                }).get();
+
+        ybClient.close();
     }
 
     @Test

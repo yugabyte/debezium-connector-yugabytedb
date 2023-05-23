@@ -36,9 +36,14 @@ public class Merger {
      * @see Message
      */
     public synchronized void addMessage(Message message) {
+        // if (message.record.getRowMessage().getOp() == CdcService.RowMessage.Op.SAFEPOINT) {
+        //     LOGGER.info("Received safepoint for tablet {} : {}, returning without setting", message.tablet, message.commitTime);
+        //     return;
+        // }
+
         assert message.record.getRowMessage().getOp() != CdcService.RowMessage.Op.DDL;
 
-        setTabletSafeTime(message.tablet, message.commitTime);
+        setTabletSafeTime(message.tablet, message.commitTime, message);
         if (message.record.getRowMessage().getOp() == CdcService.RowMessage.Op.SAFEPOINT) {
             LOGGER.debug("Received safe point message {}", message);
             return;
@@ -67,7 +72,7 @@ public class Merger {
      * @param tabletId the tablet UUID for which the safetime needs to be set
      * @param safeTime the safetime to be set
      */
-    public void setTabletSafeTime(String tabletId, BigInteger safeTime) {
+    public void setTabletSafeTime(String tabletId, BigInteger safeTime, Message m) {
         // TODO: Wrap this assert under the flag.
         // If the safetime we are setting is less than the already set value then it would indicate
         // that we are moving backward in time, which is wrong. Throw an assertion error in that case.
@@ -76,6 +81,7 @@ public class Merger {
                                         + tabletId + " Current safetime value: "
                                         + this.tabletSafeTime.get(tabletId).toString()
                                         + " Attempted set value: " + safeTime.toString();
+            LOGGER.error("Record which attempted to set the value {}", m);
             throw new AssertionError(errorMessage);
         }
         LOGGER.info("Updating safetime for tablet {}:{}, verifying {}", tabletId, safeTime, this.tabletSafeTime.get(tabletId));
@@ -105,7 +111,7 @@ public class Merger {
         Message message = queue.peek();
 
         if (message == null) {
-            LOGGER.warn("Message after peeking is null (actually means no message in queue)");
+            LOGGER.debug("Message after peeking is null (actually means no message in queue)");
         } else {
             LOGGER.warn("Message is not null in queue - actual message is {}", message);
             if (!(message.commitTime.compareTo(this.streamSafeTime()) <= 0)) {
@@ -133,7 +139,7 @@ public class Merger {
     public synchronized Optional<Message> poll() {
         Optional<Message> message = this.peek();
 
-        if (message.isEmpty()) {
+        if (!message.isPresent()) {
             LOGGER.warn("Empty message is being returned from poll (may indicate issues)");
             return message;
         }
