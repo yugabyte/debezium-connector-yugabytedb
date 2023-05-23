@@ -284,6 +284,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       Map<String, Boolean> schemaNeeded = new HashMap<>();
       Set<String> snapshotCompletedTablets = new HashSet<>();
       Set<String> snapshotCompletedPreviously = new HashSet<>();
+      Map<String, Long> tabletSafeTime = new HashMap<>();
 
       for (Pair<String, String> entry : tableToTabletIds) {
         // We can use tableIdToTable.get(entry.getKey()).isColocated() to get actual status.
@@ -395,7 +396,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 GetChangesResponse resp = this.syncClient.getChangesCDCSDK(table,
                     connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
-                    taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null);
+                    taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
+                    tabletSafeTime.get(part.getId()));
+
+                tabletSafeTime.put(part.getId(), resp.getResp().getSafeHybridTime());
 
                 // Process the response
                 for (CdcService.CDCSDKProtoRecordPB record :
