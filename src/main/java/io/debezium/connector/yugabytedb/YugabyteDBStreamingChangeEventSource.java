@@ -422,7 +422,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                             cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
                             taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
-                            tabletSafeTime.get(part.getId()));
+                            tabletSafeTime.getOrDefault(part.getId(), -1L));
 
                         tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
                       } catch (CDCErrorException cdcException) {
