@@ -21,6 +21,7 @@ import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
+import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -298,8 +299,8 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
                             LOGGER.debug("The record being consumed is " + record);
                             Struct value = (Struct) record.value();
                             final int serialVal = value.getStruct("after").getStruct("serial_no").getInt32("value");
-                            // Assertions.assertEquals(recordsToAssert.size(), serialVal,
-                            //                         "Expected serial: " + recordsToAssert.size() + " but received " + serialVal + " at index " + recordsToAssert.size() + " with record " + record);
+                            Assertions.assertEquals(recordsToAssert.size(), serialVal,
+                                                    "Expected serial: " + recordsToAssert.size() + " but received " + serialVal + " at index " + recordsToAssert.size() + " with record " + record);
                             recordsToAssert.add(record);
                         });
                         if (consumed > 0) {
