@@ -190,11 +190,11 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
     public void fiveTablesWithForeignKeys() throws Exception {
         // Create multiple tables, each having a dependency on the former one so that we can form
         // a hierarchy of FK dependencies.
-        TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT, serial_no INT);");
-        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, serial_no INT, FOREIGN KEY (d_id) REFERENCES department(id));");
-        TestHelper.execute("CREATE TABLE contract (id INT PRIMARY KEY, contract_name TEXT, c_id INT, serial_no INT, FOREIGN KEY (c_id) REFERENCES employee(id));");
-        TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT, serial_no INT, FOREIGN KEY (a_id) REFERENCES contract(id));");
-        TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, l_id INT, serial_no INT, FOREIGN KEY (l_id) REFERENCES address(id));");
+        TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT, serial_no INT) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, serial_no INT, FOREIGN KEY (d_id) REFERENCES department(id)) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE contract (id INT PRIMARY KEY, contract_name TEXT, c_id INT, serial_no INT, FOREIGN KEY (c_id) REFERENCES employee(id)) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE address (id INT PRIMARY KEY, area_name TEXT, a_id INT, serial_no INT, FOREIGN KEY (a_id) REFERENCES contract(id)) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE locality (id INT PRIMARY KEY, loc_name TEXT, l_id INT, serial_no INT, FOREIGN KEY (l_id) REFERENCES address(id)) SPLIT INTO 1 TABLETS;");
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department", false, true);
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee,public.contract,public.address,public.locality", dbStreamId);
@@ -218,7 +218,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         // If this test needs to be run more for higher duration, this scale factor can be changed
         // accordingly.
         final int scaleFactor = 1;
-        final int iterations = 5 * scaleFactor;
+        final int iterations = 10 * scaleFactor;
         int employeeBatchSize = 5 * scaleFactor;
         int contractBatchSize = 6 * scaleFactor;
         int addressBatchSize = 7 * scaleFactor;
@@ -321,7 +321,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         for (int i = 0; i < recordsToAssert.size(); ++i) {
             Struct value = (Struct) recordsToAssert.get(i).value();
             long serial = value.getStruct("after").getStruct("serial_no").getInt32("value");
-            assertEquals("Failed to verify serial number, expected: " + expectedSerial + " received: " + serial, expectedSerial, serial);
+            assertEquals("Failed to verify serial number, expected: " + expectedSerial + " received: " + serial + " at index " + i + " with record " + recordsToAssert.get(i), expectedSerial, serial);
 
             ++expectedSerial;
         }
