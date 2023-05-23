@@ -367,6 +367,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                                   tableIdToTable.get(part.getTableId()), streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                                   cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()), explicitCheckpoint,
                                   tabletSafeTime.getOrDefault(part.getId(), -1L));
+
+                                // We are not updating the tablet safetime we get from the response here because the previous
+                                // GetChanges call is supposed to throw an exception for tablet split which will then be
+                                // handled further.
                             } catch (CDCErrorException cdcErrorException) {
                                 if (cdcErrorException.getCDCError().getCode() == Code.TABLET_SPLIT) {
                                     LOGGER.debug("Handling tablet split error gracefully for enqueued tablet {}", part.getTabletId());
