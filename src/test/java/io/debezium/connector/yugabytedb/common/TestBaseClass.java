@@ -39,10 +39,6 @@ public class TestBaseClass extends AbstractConnectorTest {
                 });
     }
 
-    protected long getIntentsCount() throws Exception {
-      throw new UnsupportedOperationException("Method getIntentCount is not implemented for " + TestBaseClass.class.toString());
-    }
-
     @Override
     protected String assertBeginTransaction(SourceRecord record) {
       final Struct begin = (Struct) record.value();
@@ -95,5 +91,9 @@ public class TestBaseClass extends AbstractConnectorTest {
     }
     protected static String getYugabytedStartCommand() {
       return yugabytedStartCommand;
+    }
+
+    protected long getIntentsCount() throws Exception {
+        throw new UnsupportedOperationException("Method getIntentCount is not implemented for " + TestBaseClass.class.toString());
     }
 }
