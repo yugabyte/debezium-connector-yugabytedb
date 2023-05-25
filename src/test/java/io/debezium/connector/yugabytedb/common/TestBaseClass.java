@@ -79,22 +79,22 @@ public class TestBaseClass extends AbstractConnectorTest {
   }
 
   protected void stopYugabyteDB() throws Exception {
-    throw new UnsupportedOperationException("Method stopYugabyteDB not implemented for base test class");
+      throw new UnsupportedOperationException("Method stopYugabyteDB not implemented for base test class");
   }
 
   protected void startYugabyteDB() throws Exception {
-    throw new UnsupportedOperationException("Method startYugabyteDB not implemented for base test class");
+      throw new UnsupportedOperationException("Method startYugabyteDB not implemented for base test class");
   }
 
   protected void restartYugabyteDB(long millisecondsToWait) throws Exception {
-    throw new UnsupportedOperationException("Method restartYugabyteDB not implemented for base test class");
+      throw new UnsupportedOperationException("Method restartYugabyteDB not implemented for base test class");
   }
 
   protected static String getYugabytedStartCommand() {
-    return yugabytedStartCommand;
+      return yugabytedStartCommand;
   }
 
   protected long getIntentsCount() throws Exception {
-    throw new UnsupportedOperationException("Method getIntentCount is not implemented for " + TestBaseClass.class.toString());
+      throw new UnsupportedOperationException("Method getIntentCount is not implemented for " + TestBaseClass.class.toString());
   }
 }
