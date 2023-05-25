@@ -91,6 +91,10 @@ public class TestBaseClass extends AbstractConnectorTest {
   }
 
   protected static String getYugabytedStartCommand() {
-        return yugabytedStartCommand;
-    }
+      return yugabytedStartCommand;
+  }
+
+  protected long getIntentsCount() throws Exception {
+      throw new UnsupportedOperationException("Method getIntentCount is not implemented for " + TestBaseClass.class.toString());
+  }
 }
