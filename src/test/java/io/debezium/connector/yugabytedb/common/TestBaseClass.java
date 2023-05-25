@@ -39,62 +39,62 @@ public class TestBaseClass extends AbstractConnectorTest {
                 });
     }
 
-    @Override
-    protected String assertBeginTransaction(SourceRecord record) {
-      final Struct begin = (Struct) record.value();
-      final Struct beginKey = (Struct) record.key();
+  @Override
+  protected String assertBeginTransaction(SourceRecord record) {
+    final Struct begin = (Struct) record.value();
+    final Struct beginKey = (Struct) record.key();
 
-      assertEquals("BEGIN", begin.getString("status"));
-      assertNull(begin.getInt64("event_count"));
+    assertEquals("BEGIN", begin.getString("status"));
+    assertNull(begin.getInt64("event_count"));
 
-      final String txId = begin.getString("id");
-      assertEquals(txId, beginKey.getString("id"));
+    final String txId = begin.getString("id");
+    assertEquals(txId, beginKey.getString("id"));
 
-      assertNotNull(begin.getString("partition_id"));
+    assertNotNull(begin.getString("partition_id"));
 
-      return txId;
+    return txId;
+  }
+
+  /**
+   * Assert that the passed {@link SourceRecord} is a record for END transaction
+   * @param record the record to assert
+   * @param expectedTxId expected transaction ID this record should have
+   * @param expectedEventCount expected event count in the transaction
+   * @param partitionId the partition to which the record belongs, pass null if this assertion needs
+   *                    to be skipped
+   */
+  protected void assertEndTransaction(SourceRecord record, String expectedTxId, long expectedEventCount, String partitionId) {
+    final Struct end = (Struct) record.value();
+    final Struct endKey = (Struct) record.key();
+
+    assertEquals("END", end.getString("status"));
+    assertEquals(expectedTxId, end.getString("id"));
+    assertEquals(expectedEventCount, end.getInt64("event_count"));
+
+    if (partitionId != null) {
+      assertNotNull(end.getString("partition_id"));
     }
 
-    /**
-     * Assert that the passed {@link SourceRecord} is a record for END transaction
-     * @param record the record to assert
-     * @param expectedTxId expected transaction ID this record should have
-     * @param expectedEventCount expected event count in the transaction
-     * @param partitionId the partition to which the record belongs, pass null if this assertion needs
-     *                    to be skipped
-     */
-    protected void assertEndTransaction(SourceRecord record, String expectedTxId, long expectedEventCount, String partitionId) {
-      final Struct end = (Struct) record.value();
-      final Struct endKey = (Struct) record.key();
+    assertEquals(expectedTxId, endKey.getString("id"));
+  }
 
-      assertEquals("END", end.getString("status"));
-      assertEquals(expectedTxId, end.getString("id"));
-      assertEquals(expectedEventCount, end.getInt64("event_count"));
+  protected void stopYugabyteDB() throws Exception {
+    throw new UnsupportedOperationException("Method stopYugabyteDB not implemented for base test class");
+  }
 
-      if (partitionId != null) {
-        assertNotNull(end.getString("partition_id"));
-      }
+  protected void startYugabyteDB() throws Exception {
+    throw new UnsupportedOperationException("Method startYugabyteDB not implemented for base test class");
+  }
 
-      assertEquals(expectedTxId, endKey.getString("id"));
-    }
+  protected void restartYugabyteDB(long millisecondsToWait) throws Exception {
+    throw new UnsupportedOperationException("Method restartYugabyteDB not implemented for base test class");
+  }
 
-    protected void stopYugabyteDB() throws Exception {
-        throw new UnsupportedOperationException("Method stopYugabyteDB not implemented for base test class");
-    }
+  protected static String getYugabytedStartCommand() {
+    return yugabytedStartCommand;
+  }
 
-    protected void startYugabyteDB() throws Exception {
-        throw new UnsupportedOperationException("Method startYugabyteDB not implemented for base test class");
-    }
-
-    protected void restartYugabyteDB(long millisecondsToWait) throws Exception {
-        throw new UnsupportedOperationException("Method restartYugabyteDB not implemented for base test class");
-    }
-
-    protected static String getYugabytedStartCommand() {
-      return yugabytedStartCommand;
-    }
-
-    protected long getIntentsCount() throws Exception {
-        throw new UnsupportedOperationException("Method getIntentCount is not implemented for " + TestBaseClass.class.toString());
-    }
+  protected long getIntentsCount() throws Exception {
+    throw new UnsupportedOperationException("Method getIntentCount is not implemented for " + TestBaseClass.class.toString());
+  }
 }
