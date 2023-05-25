@@ -89,6 +89,7 @@ public class TestBaseClass extends AbstractConnectorTest {
     protected void restartYugabyteDB(long millisecondsToWait) throws Exception {
         throw new UnsupportedOperationException("Method restartYugabyteDB not implemented for base test class");
     }
+
     protected static String getYugabytedStartCommand() {
       return yugabytedStartCommand;
     }
