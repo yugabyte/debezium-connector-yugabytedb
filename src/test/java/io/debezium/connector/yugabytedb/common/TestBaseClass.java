@@ -2,7 +2,6 @@ package io.debezium.connector.yugabytedb.common;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.YugabyteDBConnector;
-import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import io.debezium.connector.yugabytedb.container.YugabyteCustomContainer;
 import io.debezium.connector.yugabytedb.rules.YugabyteDBLogTestName;
 import io.debezium.embedded.AbstractConnectorTest;
@@ -13,7 +12,6 @@ import io.debezium.util.LoggingContext;
 import io.debezium.util.Testing;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
-import org.apache.kafka.connect.source.SourceConnector;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 

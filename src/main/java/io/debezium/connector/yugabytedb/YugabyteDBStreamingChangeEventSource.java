@@ -397,9 +397,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                       if (taskContext.shouldEnableExplicitCheckpointing()) {
                         CdcSdkCheckpoint ecp = tabletToExplicitCheckpoint.get(part.getId());
                         if (ecp != null) {
-                            LOGGER.info("Requesting changes, explicit checkpointing: {}.{} from_op_id: {}.{}", ecp.getTerm(), ecp.getIndex(), cp.getTerm(), cp.getIndex());
+                            LOGGER.info("Requesting changes for tablet {}, explicit checkpointing: {}.{} from_op_id: {}.{}", part.getId(), ecp.getTerm(), ecp.getIndex(), cp.getTerm(), cp.getIndex());
                         } else {
-                            LOGGER.info("Requesting changes, explicit checkpoint is null and from_op_id: {}.{}", cp.getTerm(), cp.getIndex());
+                            LOGGER.info("Requesting changes for tablet {}, explicit checkpoint is null and from_op_id: {}.{}", part.getId(), cp.getTerm(), cp.getIndex());
                         }
                       }
 

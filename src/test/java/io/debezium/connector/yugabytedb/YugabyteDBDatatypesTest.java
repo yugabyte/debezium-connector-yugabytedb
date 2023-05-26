@@ -10,6 +10,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -30,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 
-public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBDatatypesTest extends YugabytedTestBase {
     private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
             "INSERT INTO s2.a (aa) VALUES (1);";
     private static final String CREATE_TABLES_STMT = "DROP SCHEMA IF EXISTS s1 CASCADE;" +
@@ -239,7 +241,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-        startEngine(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
         final long recordsCount = 1;
 
         awaitUntilConnectorIsReady();
