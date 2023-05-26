@@ -8,8 +8,10 @@ import io.debezium.embedded.AbstractConnectorTest;
 import io.debezium.embedded.EmbeddedEngine;
 import io.debezium.engine.DebeziumEngine;
 import io.debezium.engine.spi.OffsetCommitPolicy;
+import io.debezium.relational.history.HistoryRecord;
 import io.debezium.util.LoggingContext;
 import io.debezium.util.Testing;
+import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.source.SourceRecord;
@@ -21,10 +23,7 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
@@ -194,5 +193,59 @@ public class TestBaseClass extends AbstractConnectorTest {
         records.forEach(recordConsumer);
     }
     return records.size();
+  }
+
+  protected SourceRecords consumeByTopic(int numRecords) throws InterruptedException {
+    SourceRecords records = new SourceRecords();
+    int recordsConsumed = 0;
+    while (recordsConsumed <= numRecords) {
+      if (!consumedLines.isEmpty()) {
+        records.add(consumedLines.poll());
+        ++recordsConsumed;
+      }
+    }
+
+    return records;
+  }
+
+  protected class SourceRecords {
+    private final List<SourceRecord> records = new ArrayList<>();
+    private final Map<String, List<SourceRecord>> recordsByTopic = new HashMap<>();
+
+    public void add(SourceRecord record) {
+      records.add(record);
+      recordsByTopic.computeIfAbsent(record.topic(), (topicName) -> new ArrayList<SourceRecord>()).add(record);
+    }
+
+    /**
+     * Get the records on the given topic.
+     *
+     * @param topicName the name of the topic.
+     * @return the records for the topic; possibly null if there were no records produced on the topic
+     */
+    public List<SourceRecord> recordsForTopic(String topicName) {
+      return recordsByTopic.get(topicName);
+    }
+
+    /**
+     * Get the set of topics for which records were received.
+     *
+     * @return the names of the topics; never null
+     */
+    public Set<String> topics() {
+      return recordsByTopic.keySet();
+    }
+
+    public void forEachInTopic(String topic, Consumer<SourceRecord> consumer) {
+      recordsForTopic(topic).forEach(consumer);
+    }
+
+    public void forEach(Consumer<SourceRecord> consumer) {
+      records.forEach(consumer);
+    }
+
+    public List<SourceRecord> allRecordsInOrder() {
+      return Collections.unmodifiableList(records);
+    }
   }
 }

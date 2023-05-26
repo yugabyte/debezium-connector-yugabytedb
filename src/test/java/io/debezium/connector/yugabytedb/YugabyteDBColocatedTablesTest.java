@@ -73,7 +73,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords records = consumeRecordsByTopic(10);
+    SourceRecords records = consumeByTopic(10);
 
     assertNotNull(records);
 
@@ -106,7 +106,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords records = consumeRecordsByTopic(20);
+    SourceRecords records = consumeByTopic(20);
 
     assertNotNull(records);
 
@@ -141,7 +141,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords records = consumeRecordsByTopic(30);
+    SourceRecords records = consumeByTopic(30);
 
     assertNotNull(records);
 
@@ -175,7 +175,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords records = consumeRecordsByTopic(20);
+    SourceRecords records = consumeByTopic(20);
 
     assertNotNull(records);
 
@@ -207,7 +207,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Dummy wait for 10 more seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords recordsAfterRestart = consumeRecordsByTopic(30);
+    SourceRecords recordsAfterRestart = consumeByTopic(30);
 
     assertNotNull(recordsAfterRestart);
 

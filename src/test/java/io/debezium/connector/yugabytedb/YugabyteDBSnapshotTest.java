@@ -105,7 +105,7 @@ public class YugabyteDBSnapshotTest extends YugabytedTestBase {
         // Dummy wait condition to wait for another 15 seconds
         TestHelper.waitFor(Duration.ofSeconds(15));
 
-        SourceRecords records = consumeRecordsByTopic(recordCountT1);
+        SourceRecords records = consumeByTopic(recordCountT1);
 
         assertNotNull(records);
 

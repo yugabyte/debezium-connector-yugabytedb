@@ -109,7 +109,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
     }
 
     // Consume the records now - there will be 100 records in total.
-    SourceRecords records = consumeRecordsByTopic(100);
+    SourceRecords records = consumeByTopic(100);
     
     // Verify that the records are there in the topic.
     assertEquals(100, records.recordsForTopic("test_server.public.t1").size());
