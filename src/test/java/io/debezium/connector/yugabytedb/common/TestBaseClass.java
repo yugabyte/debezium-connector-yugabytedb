@@ -14,7 +14,7 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
-
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,10 +22,15 @@ import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -44,6 +49,7 @@ public class TestBaseClass extends AbstractConnectorTest {
     protected static String yugabytedStartCommand = "";
     protected Map<String, ?> offsetMapForRecords = new HashMap<>();
     protected ExecutorService engineExecutor;
+    protected static BlockingQueue<SourceRecord> consumedLines;
 
     protected void awaitUntilConnectorIsReady() throws Exception {
         Awaitility.await()
@@ -53,6 +59,18 @@ public class TestBaseClass extends AbstractConnectorTest {
                     return engine.isRunning();
                 });
     }
+
+  @BeforeAll
+  public static void initializeTestFramework() {
+    LoggingContext.forConnector(YugabyteDBConnector.class.getSimpleName(), "", "test");
+        consumedLines = new ArrayBlockingQueue<>(getMaximumRecordCount());
+        Testing.Files.delete(OFFSET_STORE_PATH);
+        OFFSET_STORE_PATH.getParent().toFile().mkdirs();
+  }
+
+  protected static int getMaximumRecordCount() {
+      return 200;
+  }
 
   @Override
   protected String assertBeginTransaction(SourceRecord record) {
@@ -169,4 +187,13 @@ public class TestBaseClass extends AbstractConnectorTest {
       engine.run();
     });
   }
+
+  protected int consumeAvailableRecords(Consumer<SourceRecord> recordConsumer) {
+    List<SourceRecord> records = new LinkedList<>();
+    consumedLines.drainTo(records);
+    if (recordConsumer != null) {
+        records.forEach(recordConsumer);
+    }
+    return records.size();
+}
 }

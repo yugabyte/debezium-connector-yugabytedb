@@ -134,8 +134,8 @@ public class YugabyteDBDatatypesTest extends YugabytedTestBase {
             Awaitility.await()
                 .atMost(Duration.ofSeconds(seconds))
                 .until(() -> {
-                    int consumed = super.consumeAvailableRecords(record -> {
-                        LOGGER.debug("The record being consumed is " + record);
+                    int consumed = consumeAvailableRecords(record -> {
+                        LOGGER.info("The record being consumed is " + record);
                         records.add(record);
                     });
                     if (consumed > 0) {
