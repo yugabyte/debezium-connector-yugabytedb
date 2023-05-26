@@ -11,6 +11,7 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
@@ -955,26 +956,34 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         final long totalRecords = iterations /* department */
                                     + iterations * employeeBatchSize; /* employee */
 
+        final String newColumnName = "added_col";
+        final int newColumnDefaultValue = 400;
         ExecutorService exec = Executors.newFixedThreadPool(1);
         Future<?> future = exec.submit(() -> {
             int employeeId = 1;
+            boolean addColumn = false;
+
             try (Statement st = conn.createStatement()) {
                 long serial = 0;
-                String departmentColumnName = "department_col_";
-                String employeeColumnName = "employee_col_";
 
                 for (int i = 0; i < iterations; ++i) {
+                    if (serial != 0 && serial % 10 == 0) {
+                        addColumn = !addColumn;
+                        if (addColumn) {
+                            st.execute("ALTER TABLE department ADD COLUMN " + newColumnName + i + " INT DEFAULT " + newColumnDefaultValue + ";");
+                            st.execute("ALTER TABLE employee ADD COLUMN " + newColumnName + i + " INT DEFAULT " + newColumnDefaultValue + ";");
+                        } else {
+                            st.execute("ALTER TABLE department DROP COLUMN " + newColumnName + ";");
+                            st.execute("ALTER TABLE employee DROP COLUMN " + newColumnName + ";");
+                        }
+                    }
+
                     st.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d', %d);", i, i, serial++));
                     for (int j = employeeId; j <= employeeId + employeeBatchSize - 1; ++j) {
                         st.execute(String.format("INSERT INTO employee VALUES (%d, 'emp no %d', %d, %d);", j, j, i, serial++));
                     }
 
                     conn.commit();
-
-                    if (i != 0 && i % 5 == 0) {
-                        // TODO: Find a logic to smartly issue alter commands and then verify the same while consuming.
-                        st.execute("ALTER TABLE department ADD COLUMN " + departmentColumnName + i + " INT DEFAULT " + i + ";");
-                    }
 
                     employeeId += employeeBatchSize;
                 }
@@ -987,12 +996,17 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         List<SourceRecord> recordsToAssert = new ArrayList<>();
 
         AtomicLong totalConsumedRecords = new AtomicLong();
+        AtomicBoolean shouldContainExtraColumn = new AtomicBoolean();
         try {
             LOGGER.info("Started consuming");
             Awaitility.await()
               .atMost(Duration.ofSeconds(seconds))
               .until(() -> {
                   int consumed = super.consumeAvailableRecords(record -> {
+                      if (recordsToAssert.size() != 0 && recordsToAssert.size() % 10 == 0) {
+                        shouldContainExtraColumn.set(!shouldContainExtraColumn.get());
+                      }
+
                       LOGGER.debug("The record being consumed is " + record);
                       Struct value = (Struct) record.value();
                       final int serialVal = value.getStruct("after").getStruct("serial_no").getInt32("value");
@@ -1000,6 +1014,17 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
                         "Expected serial: " + recordsToAssert.size() + " but received "
                           + serialVal + " at index " + recordsToAssert.size()
                           + " with record " + record);
+
+                      if (shouldContainExtraColumn.get()) {
+                          final int newColVal = value.getStruct("after").getStruct(newColumnName).getInt32("value");
+                          Assertions.assertEquals(newColumnDefaultValue, newColVal);
+                      } else {
+                          boolean hasNewColumn = value.getStruct("after").schema().fields()
+                                                   .stream().map(Field::name)
+                                                   .collect(Collectors.toSet())
+                                                   .contains(newColumnName);
+                          Assertions.assertFalse(hasNewColumn);
+                      }
 
                       recordsToAssert.add(record);
                   });
