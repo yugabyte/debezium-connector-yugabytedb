@@ -1,6 +1,8 @@
 package io.debezium.connector.yugabytedb.common;
 
 import io.debezium.config.Configuration;
+import io.debezium.connector.yugabytedb.YugabyteDBConnector;
+import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import io.debezium.connector.yugabytedb.container.YugabyteCustomContainer;
 import io.debezium.connector.yugabytedb.rules.YugabyteDBLogTestName;
 import io.debezium.embedded.AbstractConnectorTest;
@@ -10,6 +12,7 @@ import io.debezium.engine.spi.OffsetCommitPolicy;
 import io.debezium.util.LoggingContext;
 import io.debezium.util.Testing;
 import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.source.SourceConnector;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -108,13 +111,18 @@ public class TestBaseClass extends AbstractConnectorTest {
         return yugabytedStartCommand;
   }
 
-  public void startEngine(Class<? extends SourceConnector> connectorClass, Configuration configuration) {
-    startEngine(connectorClass, configuration, (success, message, error) -> {});
+  public void startEngine(Configuration.Builder configBuilder) {
+    startEngine(configBuilder, (success, message, error) -> {});
   }
 
-  public void startEngine(Class<? extends SourceConnector> connectorClass,
-                          Configuration configuration,
+  public void startEngine(Configuration.Builder configBuilder,
                           DebeziumEngine.CompletionCallback callback) {
+    configBuilder
+      .with(EmbeddedEngine.ENGINE_NAME, "test-connector")
+      .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG, Testing.Files.createTestingFile("file-connector-offsets.txt").getAbsolutePath())
+      .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
+      .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBConnector.class);
+
     countDownLatch = new CountDownLatch(1);
     DebeziumEngine.CompletionCallback wrapperCallback = (success, msg, error) -> {
       try {
@@ -140,6 +148,7 @@ public class TestBaseClass extends AbstractConnectorTest {
     };
 
     engine = (EmbeddedEngine) EmbeddedEngine.create()
+               .using(configBuilder.build())
                .using(OffsetCommitPolicy.always())
                .using(wrapperCallback)
                .using(connectorCallback)
