@@ -478,7 +478,7 @@ public final class TestHelper {
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
                                           boolean withBeforeImage) throws Exception {
-        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, false /* explicit x*/);
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, true /* explicit */);
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName) throws Exception {

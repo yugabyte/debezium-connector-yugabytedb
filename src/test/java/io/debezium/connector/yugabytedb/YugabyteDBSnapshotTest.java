@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBSnapshotTest extends YugabytedTestBase {
     @BeforeAll
     public static void beforeClass() throws Exception {
         initializeYBContainer();
