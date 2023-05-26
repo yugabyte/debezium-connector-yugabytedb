@@ -63,9 +63,7 @@ public class TestBaseClass extends AbstractConnectorTest {
   @BeforeAll
   public static void initializeTestFramework() {
     LoggingContext.forConnector(YugabyteDBConnector.class.getSimpleName(), "", "test");
-        consumedLines = new ArrayBlockingQueue<>(getMaximumRecordCount());
-        Testing.Files.delete(OFFSET_STORE_PATH);
-        OFFSET_STORE_PATH.getParent().toFile().mkdirs();
+    consumedLines = new ArrayBlockingQueue<>(getMaximumRecordCount());
   }
 
   protected static int getMaximumRecordCount() {
@@ -171,6 +169,7 @@ public class TestBaseClass extends AbstractConnectorTest {
                .using(this.getClass().getClassLoader())
                .notifying((records, committer) -> {
                  for (SourceRecord record: records) {
+                   consumedLines.offer(record);
                    committer.markProcessed(record);
 
                    offsetMapForRecords = record.sourceOffset();
@@ -195,5 +194,5 @@ public class TestBaseClass extends AbstractConnectorTest {
         records.forEach(recordConsumer);
     }
     return records.size();
-}
+  }
 }
