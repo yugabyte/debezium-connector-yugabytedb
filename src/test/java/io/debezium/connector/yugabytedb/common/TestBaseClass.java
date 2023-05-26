@@ -29,6 +29,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -206,6 +207,24 @@ public class TestBaseClass extends AbstractConnectorTest {
     }
 
     return records;
+  }
+
+  @Override
+  protected void assertNoRecordsToConsume() {
+    assertTrue(consumedLines.isEmpty());
+  }
+
+  @Override
+  protected boolean waitForAvailableRecords(long timeout, TimeUnit unit) {
+    assertTrue(timeout >= 0);
+    long now = System.currentTimeMillis();
+    long stop = now + unit.toMillis(timeout);
+    while (System.currentTimeMillis() < stop) {
+        if (!consumedLines.isEmpty()) {
+            break;
+        }
+    }
+    return !consumedLines.isEmpty();
   }
 
   protected class SourceRecords {

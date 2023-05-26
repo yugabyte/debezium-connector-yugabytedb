@@ -60,7 +60,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 			configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_TOPIC, transactionTopicName);
 		}
 
-		start(YugabyteDBConnector.class, configBuilder.build());
+		startEngine(configBuilder);
 		awaitUntilConnectorIsReady();
 
 		TestHelper.execute(String.format(INSERT_FORMAT, 1, 5));
@@ -87,7 +87,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 
 		String transactionTopicName = TestHelper.TEST_SERVER + ".transaction";
 
-		start(YugabyteDBConnector.class, configBuilder.build());
+		startEngine(configBuilder);
 		awaitUntilConnectorIsReady();
 
 		TestHelper.execute(String.format(INSERT_FORMAT, 1, 5));
@@ -132,7 +132,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 
 		String transactionTopicName = TestHelper.TEST_SERVER + ".transaction";
 
-		start(YugabyteDBConnector.class, configBuilder.build());
+		startEngine(configBuilder);
 		awaitUntilConnectorIsReady();
 
 		final String statementBatch = "BEGIN; " 
