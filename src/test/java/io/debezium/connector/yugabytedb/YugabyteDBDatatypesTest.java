@@ -239,7 +239,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(YugabyteDBConnector.class, configBuilder.build());
         final long recordsCount = 1;
 
         awaitUntilConnectorIsReady();
