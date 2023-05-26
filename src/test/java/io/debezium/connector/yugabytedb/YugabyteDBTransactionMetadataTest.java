@@ -98,7 +98,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 		waitForAvailableRecords(10000, TimeUnit.MILLISECONDS);
 
 		// Consume records
-		SourceRecords records = consumeRecordsByTopic(
+		SourceRecords records = consumeByTopic(
 			24 /* BEGIN + 5 INSERT + COMMIT + BEGIN + 15 INSERT + COMMIT*/);
 
 		// Assert for records in the transaction topic.
@@ -143,7 +143,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 		waitForAvailableRecords(15000, TimeUnit.MILLISECONDS);
 
 		// Consume records
-		SourceRecords records = consumeRecordsByTopic(24 /* BEGIN + 20 INSERT + COMMIT*/);
+		SourceRecords records = consumeByTopic(24 /* BEGIN + 20 INSERT + COMMIT*/);
 
 		// Assert for records in the transaction topic.
 		List<SourceRecord> metadataRecords = records.recordsForTopic(transactionTopicName);
