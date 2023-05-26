@@ -37,6 +37,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.DataChangeEvent;
@@ -366,7 +367,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 GetChangesResponse resp = this.syncClient.getChangesCDCSDK(
                                   tableIdToTable.get(part.getTableId()), streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                                   cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()), explicitCheckpoint,
-                                  tabletSafeTime.get(part.getId()));
+                                  tabletSafeTime.getOrDefault(part.getId(), -1L));
+
+                                // We do not update the tablet safetime we get from the response at this
+                                // point because the previous GetChanges call is supposed to throw
+                                // an exception which will be handled further.
                             } catch (CDCErrorException cdcErrorException) {
                                 if (cdcErrorException.getCDCError().getCode() == Code.TABLET_SPLIT) {
                                     LOGGER.debug("Handling tablet split error gracefully for enqueued tablet {}", part.getTabletId());

@@ -64,6 +64,13 @@ public class YugabyteDBContainerTestBase extends TestBaseClass {
     }
 
     @Override
+    protected long getIntentsCount() throws Exception {
+        ExecResult result = ybContainer.execInContainer("/home/yugabyte/bin/yb-ts-cli", "--server_address", "0.0.0.0", "count_intents");
+
+        // Assuming the result is just a number, so simply convert the string to long and return.
+        return Long.valueOf(result.getStdout().split("\n")[0]);
+    }
+
     protected void stopYugabyteDB() throws Exception {
         ExecResult stopResult = ybContainer.execInContainer("/sbin/tini", "-s", "--", "/home/yugabyte/bin/yugabyted", "stop");
         LOGGER.debug("YugabyteDB stopped with output: {} error: {} toString: {}", stopResult.getStdout(), stopResult.getStderr(), stopResult.toString());
@@ -82,8 +89,8 @@ public class YugabyteDBContainerTestBase extends TestBaseClass {
 
     /**
      * Restart the yugabyted process running in the TestContainer
-     * 
-     * @param milliseconds amount of time (in ms) to wait before starting after stopping
+     *
+     * @param millisecondsToWait amount of time (in ms) to wait before starting after stopping
      */
     @Override
     protected void restartYugabyteDB(long millisecondsToWait) throws Exception {
