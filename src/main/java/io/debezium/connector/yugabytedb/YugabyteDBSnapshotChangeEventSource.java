@@ -553,10 +553,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           }
 
           LOGGER.warn("Error while trying to get the snapshot from the server; will attempt " 
-                      + "retry {} of {} after {} milli-seconds. Exception message: {}", retryCount, 
+                      + "retry {} of {} after {} milli-seconds. Exception: {}", retryCount, 
                        this.connectorConfig.maxConnectorRetries(), 
-                       this.connectorConfig.connectorRetryDelayMs(), e.getMessage());
-          LOGGER.debug("Stacktrace: ", e);
+                       this.connectorConfig.connectorRetryDelayMs(), e);
 
           try {
             final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
