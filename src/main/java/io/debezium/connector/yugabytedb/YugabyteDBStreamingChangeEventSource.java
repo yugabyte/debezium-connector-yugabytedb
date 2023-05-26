@@ -366,7 +366,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 GetChangesResponse resp = this.syncClient.getChangesCDCSDK(
                                   tableIdToTable.get(part.getTableId()), streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                                   cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()), explicitCheckpoint,
-                                  tabletSafeTime.get(part.getId()));
+                                  tabletSafeTime.getOrDefault(part.getId(), -1L));
+
+                                // We do not update the tablet safetime we get from the response at this
+                                // point because the previous GetChanges call is supposed to throw
+                                // an exception which will be handled further.
                             } catch (CDCErrorException cdcErrorException) {
                                 if (cdcErrorException.getCDCError().getCode() == Code.TABLET_SPLIT) {
                                     LOGGER.debug("Handling tablet split error gracefully for enqueued tablet {}", part.getTabletId());
@@ -422,7 +426,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                             table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                             cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
                             taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
-                            tabletSafeTime.get(part.getId()));
+                            tabletSafeTime.getOrDefault(part.getId(), -1L));
+
                         tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
                       } catch (CDCErrorException cdcException) {
                         // Check if exception indicates a tablet split.
