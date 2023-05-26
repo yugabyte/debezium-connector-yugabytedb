@@ -53,10 +53,8 @@ public final class SourceInfo extends BaseSourceInfo {
     private Instant timestamp;
     private String schemaName;
     private String tableName;
-
     private String tableUUID;
     private String tabletId;
-
     private Long commitTime;
     private Long recordTime;
 

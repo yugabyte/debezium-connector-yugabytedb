@@ -185,7 +185,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                         table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                                         cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
                                         taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
-                                        tabletSafeTime.get(part.getId()));
+                                        tabletSafeTime.getOrDefault(part.getId(), -1L));
+
                                 tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
                             } catch (CDCErrorException cdcException) {
                                 // Check if exception indicates a tablet split.
