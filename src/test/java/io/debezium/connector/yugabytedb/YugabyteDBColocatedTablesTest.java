@@ -322,7 +322,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
       Awaitility.await()
               .atMost(Duration.ofSeconds(seconds))
               .until(() -> {
-                int consumed = super.consumeAvailableRecords(record -> {
+                int consumed = consumeAvailableRecords(record -> {
                   LOGGER.debug("The record being consumed is " + record);
                   records.add(record);
                 });
