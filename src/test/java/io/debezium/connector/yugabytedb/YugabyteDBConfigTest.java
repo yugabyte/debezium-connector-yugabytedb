@@ -8,6 +8,7 @@ import org.junit.jupiter.api.*;
 import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -49,7 +50,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
     private void verifyRecordCount(int recordsCount) {
         int totalConsumedRecords = 0;
         while (totalConsumedRecords < recordsCount) {
-            int consumed = super.consumeAvailableRecords(record -> {
+            int consumed = consumeAvailableRecords(record -> {
             });
             if (consumed > 0) {
                 totalConsumedRecords += consumed;
@@ -74,7 +75,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.all_types,public.not_part_of_stream", dbStreamId);
 
         // This should throw a DebeziumException saying the table not_part_of_stream is not a part of stream ID
-        start(YugabyteDBConnector.class, configBuilder.build(), (success, msg, error) -> {
+        startEngine(configBuilder, (success, msg, error) -> {
             assertFalse(success);
             assertTrue(error instanceof DebeziumException);
 
@@ -105,7 +106,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
         // The config builder returns a default config with the database as "postgres"
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
 
         awaitUntilConnectorIsReady();
 
@@ -127,7 +128,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
         String invalidStreamId = "someInvalidDbStreamId";
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", invalidStreamId);
-        start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+        startEngine(configBuilder, (success, message, error) -> {
             assertFalse(success);
 
             String expectedErrorMessageLine = String.format("Could not find CDC stream: db_stream_id: \"%s\"", invalidStreamId);
@@ -148,7 +149,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
 
         String wrongNamespaceName = "wrong_namespace";
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder(wrongNamespaceName, "public.t1", dbStreamId);
-        start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+        startEngine(configBuilder, (success, message, error) -> {
             assertFalse(success);
 
             String expectedErrorMessageLine = String.format("FATAL: database \"%s\" does not exist", wrongNamespaceName);
@@ -169,7 +170,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
 
         Configuration.Builder configBuilderWithWrongUser = TestHelper.getConfigBuilder("public.t1", dbStreamId);
         configBuilderWithWrongUser.with(YugabyteDBConnectorConfig.USER, "wrong_username");
-        start(YugabyteDBConnector.class, configBuilderWithWrongUser.build(), (success, message, error) -> {
+        startEngine(configBuilderWithWrongUser, (success, message, error) -> {
             assertFalse(success);
 
             assertTrue(error.getCause().getMessage().contains("authentication failed for user \"wrong_username\""));
@@ -189,7 +190,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
 
         Configuration.Builder configBuilderWithWrongPassword = TestHelper.getConfigBuilder("public.t1", dbStreamId);
         configBuilderWithWrongPassword.with(YugabyteDBConnectorConfig.PASSWORD, "wrong_password");
-        start(YugabyteDBConnector.class, configBuilderWithWrongPassword.build(), (success, message, error) -> {
+        startEngine(configBuilderWithWrongPassword, (success, message, error) -> {
             assertFalse(success);
 
             assertTrue(error.getCause().getMessage().contains("password authentication failed for user \"yugabyte\""));
@@ -208,7 +209,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
 
         Configuration.Builder configBuilderWithWrongPassword = TestHelper.getConfigBuilder("", dbStreamId);
-        start(YugabyteDBConnector.class, configBuilderWithWrongPassword.build(), (success, message, error) -> {
+        startEngine(configBuilderWithWrongPassword, (success, message, error) -> {
             assertFalse(success);
 
             assertTrue(error.getMessage().contains("The table.include.list is empty, please provide a list of tables to get the changes from"));
@@ -227,7 +228,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
 
         Configuration.Builder configBuilderWithWrongPassword = TestHelper.getConfigBuilder("public.non_existent_table", dbStreamId);
-        start(YugabyteDBConnector.class, configBuilderWithWrongPassword.build(), (success, message, error) -> {
+        startEngine(configBuilderWithWrongPassword, (success, message, error) -> {
             assertFalse(success);
 
             assertTrue(error.getMessage().contains("The tables provided in table.include.list do not exist"));
@@ -246,7 +247,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
         String dbStreamId = "";
 
         Configuration.Builder configBuilderWithWrongPassword = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-        start(YugabyteDBConnector.class, configBuilderWithWrongPassword.build(), (success, message, error) -> {
+        startEngine(configBuilderWithWrongPassword, (success, message, error) -> {
             assertFalse(success);
 
             assertTrue(error.getMessage().contains("DB Stream ID not provided, please provide a DB stream ID to proceed"));
@@ -265,7 +266,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
         Configuration.Builder configBuilderWithHollowStreamId = 
             TestHelper.getConfigBuilder("public.dummy_table", dbStreamId);
         
-        start(YugabyteDBConnector.class, configBuilderWithHollowStreamId.build(), (success, message, error) -> {
+        startEngine(configBuilderWithHollowStreamId, (success, message, error) -> {
             assertFalse(success);
 
             assertTrue(error.getMessage().contains("The provided stream ID is not associated with any table"));

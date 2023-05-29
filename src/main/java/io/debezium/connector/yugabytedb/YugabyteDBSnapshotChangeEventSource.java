@@ -512,7 +512,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   // tabletId to snapshotCompletedTablets - there is a chance that when the
                   // connector crashes, we may lose some data since we may not have published them
                   // to Kafka yet.
-                  if (isSnapshotCompleteMarker(OpId.from(this.tabletToExplicitCheckpoint.get(part.getId())))) {
+                  CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
+                  if (explicitCheckpoint != null && isSnapshotCompleteMarker(OpId.from(explicitCheckpoint))) {
                     // This will mark the snapshot completed for the tablet
                     snapshotCompletedTablets.add(part.getId());
 
@@ -523,6 +524,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   } else if (isSnapshotCompleteMarker(finalOpId)) {
                     // Add it to tablets waiting for callback so that the connector doesn't end up
                     // calling GetChanges for the same again.
+                    LOGGER.info("Adding tablet {} of table {} ({}) to wait-list",
+                      part.getTabletId(), table.getName(), part.getTableId());
                     tabletsWaitingForCallback.add(part.getId());
                   }
                 } else if (!taskContext.shouldEnableExplicitCheckpointing() && isSnapshotCompleteMarker(finalOpId)) {

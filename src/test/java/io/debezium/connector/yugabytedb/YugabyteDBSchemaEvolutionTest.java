@@ -70,7 +70,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
     configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 10_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
 
-    start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+    startEngine(configBuilder, (success, message, error) -> {
       assertTrue(success);
     });
 
@@ -119,7 +119,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
     configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 5_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
 
-    start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+    startEngine(configBuilder, (success, message, error) -> {
       assertTrue(success);
     });
 
@@ -166,7 +166,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
     configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 5_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
 
-    start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+    startEngine(configBuilder, (success, message, error) -> {
       assertTrue(success);
     });
 
@@ -205,7 +205,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
     configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 10_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
 
-    start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+    startEngine(configBuilder, (success, message, error) -> {
       assertTrue(success);
     });
 
@@ -256,7 +256,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
           Awaitility.await()
               .atMost(Duration.ofSeconds(seconds))
               .until(() -> {
-                  int consumed = super.consumeAvailableRecords(record -> {
+                  int consumed = consumeAvailableRecords(record -> {
                       LOGGER.debug("The record being consumed is " + record);
                       records.add(record);
                   });
