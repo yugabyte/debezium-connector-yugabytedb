@@ -140,13 +140,13 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
                     });
                     if (consumed > 0) {
                         totalConsumedRecords.addAndGet(consumed);
-                        LOGGER.debug("Consumed " + totalConsumedRecords + " records");
+                        LOGGER.info("Consumed " + totalConsumedRecords + " records");
                     }
 
-                    return totalConsumedRecords.get() == recordsCount;
+                    return totalConsumedRecords.get() >= recordsCount;
                 });
         } catch (ConditionTimeoutException exception) {
-            fail("Failed to consume " + recordsCount + " in " + seconds + " seconds", exception);
+            fail("Failed to consume " + recordsCount + " in " + seconds + " seconds, consumed only " + totalConsumedRecords.get(), exception);
         }
 
         assertEquals(recordsCount, totalConsumedRecords.get());
@@ -435,5 +435,35 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         assertEquals("c", TestHelper.getOpValue(records.get(0)));
         assertEquals("d", TestHelper.getOpValue(records.get(1)));
         assertEquals("c", TestHelper.getOpValue(records.get(2)));
+    }
+
+    @Test
+    public void nullValuesShouldBeHandled() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1");
+
+        String insertFormatString = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha');";
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        TestHelper.waitFor(Duration.ofSeconds(15));
+
+        List<SourceRecord> records = new ArrayList<>();
+
+        int recordsToBeInserted = 100;
+        for (int i = 0; i < recordsToBeInserted; ++i) {
+            TestHelper.execute(String.format(insertFormatString, i));
+        }
+
+        waitAndFailIfCannotConsume(records, recordsToBeInserted);
+
+        for (int i = 0; i < records.size(); ++i) {
+            assertValueField(records.get(i), "after/id/value", i);
+            assertValueField(records.get(i), "after/hours/value", null);
+        }
     }
 }
