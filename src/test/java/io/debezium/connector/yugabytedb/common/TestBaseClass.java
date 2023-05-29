@@ -138,7 +138,7 @@ public class TestBaseClass extends AbstractConnectorTest {
                           DebeziumEngine.CompletionCallback callback) {
     configBuilder
       .with(EmbeddedEngine.ENGINE_NAME, "test-connector")
-      .with(EmbeddedEngine.OFFSET_STORAGE, MemoryOffsetBackingStore.class.getSimpleName())
+      .with(EmbeddedEngine.OFFSET_STORAGE, MemoryOffsetBackingStore.class.getName())
       .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
       .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBConnector.class);
 
