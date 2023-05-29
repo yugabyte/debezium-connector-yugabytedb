@@ -125,6 +125,10 @@ public class TestBaseClass extends AbstractConnectorTest {
         return yugabytedStartCommand;
   }
 
+  protected long getIntentsCount() throws Exception {
+    throw new UnsupportedOperationException("Method getIntentCount is not implemented for " + TestBaseClass.class.toString());
+  }
+
   public void startEngine(Configuration.Builder configBuilder) {
     startEngine(configBuilder, (success, message, error) -> {});
   }
