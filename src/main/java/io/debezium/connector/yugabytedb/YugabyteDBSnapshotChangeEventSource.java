@@ -524,6 +524,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   } else if (isSnapshotCompleteMarker(finalOpId)) {
                     // Add it to tablets waiting for callback so that the connector doesn't end up
                     // calling GetChanges for the same again.
+                    LOGGER.info("Adding tablet {} of table {} ({}) to wait-list",
+                      part.getTabletId(), table.getName(), part.getTableId());
                     tabletsWaitingForCallback.add(part.getId());
                   }
                 } else if (!taskContext.shouldEnableExplicitCheckpointing() && isSnapshotCompleteMarker(finalOpId)) {
