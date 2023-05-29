@@ -438,7 +438,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
     }
 
     @Test
-    public void nullValuesShouldBeHandled() throws Exception {
+    public void shouldWorkWithNullValues() throws Exception {
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
