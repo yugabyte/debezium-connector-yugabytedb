@@ -15,6 +15,7 @@ import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.source.SourceRecord;
+import org.apache.kafka.connect.storage.MemoryOffsetBackingStore;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -133,7 +134,7 @@ public class TestBaseClass extends AbstractConnectorTest {
                           DebeziumEngine.CompletionCallback callback) {
     configBuilder
       .with(EmbeddedEngine.ENGINE_NAME, "test-connector")
-      .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG, Testing.Files.createTestingFile("file-connector-offsets.txt").getAbsolutePath())
+      .with(EmbeddedEngine.OFFSET_STORAGE, MemoryOffsetBackingStore.class.getSimpleName())
       .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
       .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBConnector.class);
 
