@@ -54,6 +54,7 @@ public class YugabyteDBTransactionContext extends TransactionContext {
 
 	public void beginTransaction(YBPartition partition, String txId) {
 		partitionTransactions.put(partition.getId(), txId);
+		partitionTotalEventCount.put(partition.getId(), 0L);
 	}
 
 	public void endTransaction(YBPartition partition) {
