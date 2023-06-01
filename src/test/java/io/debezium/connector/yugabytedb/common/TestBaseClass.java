@@ -181,17 +181,15 @@ public class TestBaseClass extends AbstractConnectorTest {
   }
 
   protected int consumeAvailableRecords(Consumer<SourceRecord> recordConsumer) {
-    List<SourceRecord> records = new LinkedList<>();
-
-    // Add all the consumed records to the list.
-    while (!consumedLines.isEmpty()) {
-      records.add(consumedLines.poll());
-    }
-
     if (recordConsumer != null) {
-        records.forEach(recordConsumer);
+        consumedLines.forEach(recordConsumer);
     }
-    return records.size();
+
+    // Read the size of the queue to return later and clear it.
+    final int queueSize = consumedLines.size();
+    consumedLines.clear();
+
+    return queueSize;
   }
 
   protected SourceRecords consumeByTopic(int numRecords) throws InterruptedException {
