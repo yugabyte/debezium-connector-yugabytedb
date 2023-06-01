@@ -8,12 +8,9 @@ import io.debezium.embedded.AbstractConnectorTest;
 import io.debezium.embedded.EmbeddedEngine;
 import io.debezium.engine.DebeziumEngine;
 import io.debezium.engine.spi.OffsetCommitPolicy;
-import io.debezium.relational.history.HistoryRecord;
 import io.debezium.util.LoggingContext;
 import io.debezium.util.Testing;
-import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
-import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.storage.MemoryOffsetBackingStore;
 import org.awaitility.Awaitility;
@@ -25,12 +22,7 @@ import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -50,7 +42,7 @@ public class TestBaseClass extends AbstractConnectorTest {
     protected static String yugabytedStartCommand = "";
     protected Map<String, ?> offsetMapForRecords = new HashMap<>();
     protected ExecutorService engineExecutor;
-    protected static BlockingQueue<SourceRecord> consumedLines;
+    protected static Queue<SourceRecord> consumedLines;
 
     protected void awaitUntilConnectorIsReady() throws Exception {
         Awaitility.await()
@@ -64,11 +56,7 @@ public class TestBaseClass extends AbstractConnectorTest {
   @BeforeAll
   public static void initializeTestFramework() {
     LoggingContext.forConnector(YugabyteDBConnector.class.getSimpleName(), "", "test");
-    consumedLines = new ArrayBlockingQueue<>(getMaximumRecordCount());
-  }
-
-  protected static int getMaximumRecordCount() {
-      return 200;
+    consumedLines = new LinkedList<>();
   }
 
   @Override
@@ -174,7 +162,7 @@ public class TestBaseClass extends AbstractConnectorTest {
                .using(this.getClass().getClassLoader())
                .notifying((records, committer) -> {
                  for (SourceRecord record: records) {
-                   consumedLines.offer(record);
+                   consumedLines.add(record);
                    committer.markProcessed(record);
 
                    offsetMapForRecords = record.sourceOffset();
@@ -194,7 +182,12 @@ public class TestBaseClass extends AbstractConnectorTest {
 
   protected int consumeAvailableRecords(Consumer<SourceRecord> recordConsumer) {
     List<SourceRecord> records = new LinkedList<>();
-    consumedLines.drainTo(records);
+
+    // Add all the consumed records to the list.
+    while (!consumedLines.isEmpty()) {
+      records.add(consumedLines.poll());
+    }
+
     if (recordConsumer != null) {
         records.forEach(recordConsumer);
     }
