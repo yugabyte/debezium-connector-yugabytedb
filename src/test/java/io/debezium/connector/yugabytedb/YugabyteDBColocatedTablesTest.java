@@ -6,6 +6,7 @@ import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.annotations.PreviewOnly;
 import io.debezium.connector.yugabytedb.common.TestBaseClass;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -24,7 +25,6 @@ import org.junit.jupiter.api.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-@PreviewOnly
 public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
   private final String INSERT_TEST_1 = "INSERT INTO test_1 VALUES (%d, 'sample insert');";
   private final String INSERT_TEST_2 = "INSERT INTO test_2 VALUES (%d::text);";
@@ -64,7 +64,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME,
         "public.test_1", dbStreamId);
 
-    start(YugabyteDBConnector.class, configBuilder.build());
+    startEngine(configBuilder);
 
     awaitUntilConnectorIsReady();
 
@@ -73,7 +73,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords records = consumeRecordsByTopic(10);
+    SourceRecords records = consumeByTopic(10);
 
     assertNotNull(records);
 
@@ -95,7 +95,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME,
         "public.test_1,public.test_2", dbStreamId);
 
-    start(YugabyteDBConnector.class, configBuilder.build());
+    startEngine(configBuilder);
 
     awaitUntilConnectorIsReady();
 
@@ -106,7 +106,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords records = consumeRecordsByTopic(20);
+    SourceRecords records = consumeByTopic(20);
 
     assertNotNull(records);
 
@@ -129,7 +129,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME,
         "public.test_1,public.test_2,public.test_no_colocated", dbStreamId);
 
-    start(YugabyteDBConnector.class, configBuilder.build());
+    startEngine(configBuilder);
 
     awaitUntilConnectorIsReady();
 
@@ -141,7 +141,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords records = consumeRecordsByTopic(30);
+    SourceRecords records = consumeByTopic(30);
 
     assertNotNull(records);
 
@@ -163,7 +163,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME,
         "public.test_1,public.test_2", dbStreamId);
 
-    start(YugabyteDBConnector.class, configBuilder.build());
+    startEngine(configBuilder);
 
     awaitUntilConnectorIsReady();
 
@@ -175,7 +175,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords records = consumeRecordsByTopic(20);
+    SourceRecords records = consumeByTopic(20);
 
     assertNotNull(records);
 
@@ -195,7 +195,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // The connector would now start polling for the included tables. Note that the earlier data for
     // table test_3 won't be streamed since it might have gotten garbage collected since it resides
     // on the same tablet i.e. colocated
-    start(YugabyteDBConnector.class, configBuilder.build());
+    startEngine(configBuilder);
     awaitUntilConnectorIsReady();
 
     // The below statements will insert records of the respective types with keys in the
@@ -207,7 +207,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Dummy wait for 10 more seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords recordsAfterRestart = consumeRecordsByTopic(30);
+    SourceRecords recordsAfterRestart = consumeByTopic(30);
 
     assertNotNull(recordsAfterRestart);
 
@@ -322,7 +322,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
       Awaitility.await()
               .atMost(Duration.ofSeconds(seconds))
               .until(() -> {
-                int consumed = super.consumeAvailableRecords(record -> {
+                int consumed = consumeAvailableRecords(record -> {
                   LOGGER.debug("The record being consumed is " + record);
                   records.add(record);
                 });

@@ -2,6 +2,8 @@ package io.debezium.connector.yugabytedb;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+
 import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.jupiter.api.*;
 
@@ -20,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha
  */
-public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBTransactionMetadataTest extends YugabytedTestBase {
 	// By using generate_series(), we are ensuring that there are explicit transactions.
 	private static final String INSERT_FORMAT =
 		"INSERT INTO t1 VALUES (generate_series(%d,%d), 'fname', 'lname', 12.34);";
@@ -60,7 +62,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 			configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_TOPIC, transactionTopicName);
 		}
 
-		start(YugabyteDBConnector.class, configBuilder.build());
+		startEngine(configBuilder);
 		awaitUntilConnectorIsReady();
 
 		TestHelper.execute(String.format(INSERT_FORMAT, 1, 5));
@@ -69,7 +71,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 		waitForAvailableRecords(10000, TimeUnit.MILLISECONDS);
 
 		// Consume records
-		SourceRecords records = consumeRecordsByTopic(7 /* BEGIN + 5 INSERT + COMMIT */);
+		SourceRecords records = consumeByTopic(7 /* BEGIN + 5 INSERT + COMMIT */);
 
 		// Assert for records in the transaction topic.
 		List<SourceRecord> metadataRecords = records.recordsForTopic(transactionTopicName);
@@ -87,7 +89,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 
 		String transactionTopicName = TestHelper.TEST_SERVER + ".transaction";
 
-		start(YugabyteDBConnector.class, configBuilder.build());
+		startEngine(configBuilder);
 		awaitUntilConnectorIsReady();
 
 		TestHelper.execute(String.format(INSERT_FORMAT, 1, 5));
@@ -98,7 +100,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 		waitForAvailableRecords(10000, TimeUnit.MILLISECONDS);
 
 		// Consume records
-		SourceRecords records = consumeRecordsByTopic(
+		SourceRecords records = consumeByTopic(
 			24 /* BEGIN + 5 INSERT + COMMIT + BEGIN + 15 INSERT + COMMIT*/);
 
 		// Assert for records in the transaction topic.
@@ -132,7 +134,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 
 		String transactionTopicName = TestHelper.TEST_SERVER + ".transaction";
 
-		start(YugabyteDBConnector.class, configBuilder.build());
+		startEngine(configBuilder);
 		awaitUntilConnectorIsReady();
 
 		final String statementBatch = "BEGIN; " 
@@ -143,7 +145,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 		waitForAvailableRecords(15000, TimeUnit.MILLISECONDS);
 
 		// Consume records
-		SourceRecords records = consumeRecordsByTopic(24 /* BEGIN + 20 INSERT + COMMIT*/);
+		SourceRecords records = consumeByTopic(24 /* BEGIN + 20 INSERT + COMMIT*/);
 
 		// Assert for records in the transaction topic.
 		List<SourceRecord> metadataRecords = records.recordsForTopic(transactionTopicName);

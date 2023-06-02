@@ -10,6 +10,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -132,19 +134,19 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
             Awaitility.await()
                 .atMost(Duration.ofSeconds(seconds))
                 .until(() -> {
-                    int consumed = super.consumeAvailableRecords(record -> {
+                    int consumed = consumeAvailableRecords(record -> {
                         LOGGER.debug("The record being consumed is " + record);
                         records.add(record);
                     });
                     if (consumed > 0) {
                         totalConsumedRecords.addAndGet(consumed);
-                        LOGGER.debug("Consumed " + totalConsumedRecords + " records");
+                        LOGGER.info("Consumed " + totalConsumedRecords + " records");
                     }
 
-                    return totalConsumedRecords.get() == recordsCount;
+                    return totalConsumedRecords.get() >= recordsCount;
                 });
         } catch (ConditionTimeoutException exception) {
-            fail("Failed to consume " + recordsCount + " in " + seconds + " seconds", exception);
+            fail("Failed to consume " + recordsCount + " in " + seconds + " seconds, consumed only " + totalConsumedRecords.get(), exception);
         }
 
         assertEquals(recordsCount, totalConsumedRecords.get());
@@ -219,6 +221,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
     public static void afterClass() {
         shutdownYBContainer();
     }
+
     // This test will just verify that the TestContainers are up and running
     // and it will also verify that the unit tests are able to make API calls.
     @Test
@@ -239,7 +242,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
         final long recordsCount = 1;
 
         awaitUntilConnectorIsReady();
@@ -260,7 +263,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
         awaitUntilConnectorIsReady();
 
         YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
@@ -295,7 +298,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
         final long rowsCount = 1;
 
         awaitUntilConnectorIsReady();
@@ -326,7 +329,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
         final long recordsCount = 75;
 
         awaitUntilConnectorIsReady();
@@ -346,7 +349,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
         final long recordsCount = 1;
 
         awaitUntilConnectorIsReady();
@@ -368,7 +371,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_enum");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_enum", dbStreamId);
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
         assertConnectorIsRunning();
 
         // 3 because there are 3 enum values in the enum type
@@ -392,7 +395,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "table_in_schema");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("test_schema.table_in_schema", dbStreamId);
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
         final long recordsCount = 1;
 
         awaitUntilConnectorIsReady();
@@ -416,7 +419,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         // Ignore tombstones since we will not need them for verification.
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.TOMBSTONES_ON_DELETE, false);
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
 
         awaitUntilConnectorIsReady();
 
@@ -432,5 +435,35 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         assertEquals("c", TestHelper.getOpValue(records.get(0)));
         assertEquals("d", TestHelper.getOpValue(records.get(1)));
         assertEquals("c", TestHelper.getOpValue(records.get(2)));
+    }
+
+    @Test
+    public void shouldWorkWithNullValues() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1");
+
+        String insertFormatString = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha');";
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        TestHelper.waitFor(Duration.ofSeconds(15));
+
+        List<SourceRecord> records = new ArrayList<>();
+
+        int recordsToBeInserted = 100;
+        for (int i = 0; i < recordsToBeInserted; ++i) {
+            TestHelper.execute(String.format(insertFormatString, i));
+        }
+
+        waitAndFailIfCannotConsume(records, recordsToBeInserted);
+
+        for (int i = 0; i < records.size(); ++i) {
+            assertValueField(records.get(i), "after/id/value", i);
+            assertValueField(records.get(i), "after/hours/value", null);
+        }
     }
 }

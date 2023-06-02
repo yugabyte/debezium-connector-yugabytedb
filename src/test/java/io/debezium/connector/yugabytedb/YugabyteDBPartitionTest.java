@@ -7,6 +7,7 @@ import org.junit.jupiter.api.*;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import io.debezium.util.Strings;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -50,7 +51,7 @@ public class YugabyteDBPartitionTest extends YugabyteDBContainerTestBase {
     String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 
-    start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+    startEngine(configBuilder, (success, message, error) -> {
       assertTrue(success);
     });
 
@@ -72,7 +73,7 @@ public class YugabyteDBPartitionTest extends YugabyteDBContainerTestBase {
     int totalConsumedRecords = 0;
     long start = System.currentTimeMillis();
     while (totalConsumedRecords < recordsCount) {
-        int consumed = super.consumeAvailableRecords(record -> {
+        int consumed = consumeAvailableRecords(record -> {
             LOGGER.info("The record being consumed is " + record);
         });
         if (consumed > 0) {
