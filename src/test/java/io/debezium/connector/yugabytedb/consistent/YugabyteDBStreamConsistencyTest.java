@@ -89,7 +89,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
         configBuilder.with("provide.transaction.metadata", true);
 
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
         awaitUntilConnectorIsReady();
 
         TestHelper.waitFor(Duration.ofSeconds(25));
@@ -135,7 +135,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
             Awaitility.await()
                     .atMost(Duration.ofSeconds(600))
                     .until(() -> {
-                        int consumed = super.consumeAvailableRecords(record -> {
+                        int consumed = consumeAvailableRecords(record -> {
                             LOGGER.info("The record being consumed is " + record);
                             Struct s = (Struct) record.value();
                             if (s.schema().fields().stream().map(f -> f.name()).collect(Collectors.toSet()).contains("status")) {
@@ -204,7 +204,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
 
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
         awaitUntilConnectorIsReady();
 
         TestHelper.waitFor(Duration.ofSeconds(25));
@@ -293,7 +293,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
             Awaitility.await()
                     .atMost(Duration.ofSeconds(600))
                     .until(() -> {
-                        int consumed = super.consumeAvailableRecords(record -> {
+                        int consumed = consumeAvailableRecords(record -> {
                             LOGGER.debug("The record being consumed is " + record);
                             Struct value = (Struct) record.value();
                             final int serialVal = value.getStruct("after").getStruct("serial_no").getInt32("value");
@@ -343,7 +343,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
 
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
         awaitUntilConnectorIsReady();
         TestHelper.waitFor(Duration.ofSeconds(10));
 
@@ -372,7 +372,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
             Awaitility.await()
               .atMost(Duration.ofSeconds(seconds))
               .until(() -> {
-                  int consumed = super.consumeAvailableRecords(record -> {
+                  int consumed = consumeAvailableRecords(record -> {
                       LOGGER.debug("The record being consumed is " + record);
                       recordsToAssert.add(record);
                   });
@@ -416,7 +416,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
 
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
         awaitUntilConnectorIsReady();
         TestHelper.waitFor(Duration.ofSeconds(10));
 
@@ -451,7 +451,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
             Awaitility.await()
               .atMost(Duration.ofSeconds(seconds))
               .until(() -> {
-                  int consumed = super.consumeAvailableRecords(record -> {
+                  int consumed = consumeAvailableRecords(record -> {
                       LOGGER.debug("The record being consumed is " + record);
                       recordsToAssert.add(record);
                   });
@@ -495,7 +495,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
 
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
         awaitUntilConnectorIsReady();
         TestHelper.waitFor(Duration.ofSeconds(10));
 
@@ -525,7 +525,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
             Awaitility.await()
               .atMost(Duration.ofSeconds(seconds))
               .until(() -> {
-                  int consumed = super.consumeAvailableRecords(record -> {
+                  int consumed = consumeAvailableRecords(record -> {
                       LOGGER.debug("The record being consumed is " + record);
                       recordsToAssert.add(record);
                   });
@@ -570,7 +570,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
 
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
         awaitUntilConnectorIsReady();
         TestHelper.waitFor(Duration.ofSeconds(10));
 
@@ -601,7 +601,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
             Awaitility.await()
               .atMost(Duration.ofSeconds(seconds))
               .until(() -> {
-                  int consumed = super.consumeAvailableRecords(record -> {
+                  int consumed = consumeAvailableRecords(record -> {
                       LOGGER.debug("The record being consumed is " + record);
                       recordsToAssert.add(record);
                   });
@@ -646,7 +646,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
 
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
         awaitUntilConnectorIsReady();
 
         TestHelper.waitFor(Duration.ofSeconds(10));
@@ -746,7 +746,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
             Awaitility.await()
               .atMost(Duration.ofSeconds(seconds))
               .until(() -> {
-                  int consumed = super.consumeAvailableRecords(record -> {
+                  int consumed = consumeAvailableRecords(record -> {
                       LOGGER.debug("The record being consumed is " + record);
                       Struct value = (Struct) record.value();
                       final int serialVal = value.getStruct("after").getStruct("serial_no").getInt32("value");
