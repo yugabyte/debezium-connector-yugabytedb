@@ -8,6 +8,8 @@ import java.util.concurrent.CompletableFuture;
 
 import io.debezium.util.HexConverter;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+
 import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.jupiter.api.*;
 
@@ -43,7 +45,7 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
         long start = System.currentTimeMillis();
         List<SourceRecord> records = new ArrayList<>();
         while (totalConsumedRecords < recordsCount) {
-            int consumed = super.consumeAvailableRecords(record -> {
+            int consumed = consumeAvailableRecords(record -> {
                 LOGGER.debug("The record being consumed is " + record);
                 records.add(record);
             });
@@ -103,7 +105,7 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.all_types", dbStreamId);
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
 
         awaitUntilConnectorIsReady();
 

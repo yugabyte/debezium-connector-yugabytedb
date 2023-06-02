@@ -17,6 +17,7 @@ import org.junit.jupiter.api.*;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
   private final String formatInsertString =
@@ -50,7 +51,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
       String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */);
       Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-      start(YugabyteDBConnector.class, configBuilder.build());
+      startEngine(configBuilder);
 
       awaitUntilConnectorIsReady();
 
@@ -79,7 +80,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
       String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */);
       Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-      start(YugabyteDBConnector.class, configBuilder.build());
+      startEngine(configBuilder);
 
       awaitUntilConnectorIsReady();
 
@@ -114,7 +115,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
     String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-    start(YugabyteDBConnector.class, configBuilder.build());
+    startEngine(configBuilder);
 
     awaitUntilConnectorIsReady();
 
@@ -172,7 +173,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
     String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-    start(YugabyteDBConnector.class, configBuilder.build());
+    startEngine(configBuilder);
 
     awaitUntilConnectorIsReady();
 
@@ -204,7 +205,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
     String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-    start(YugabyteDBConnector.class, configBuilder.build());
+    startEngine(configBuilder);
 
     awaitUntilConnectorIsReady();
 
@@ -253,7 +254,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
                                                     true /* withBeforeImage */);
     Configuration.Builder configBuilder =
         TestHelper.getConfigBuilder("public.table_with_defaults", dbStreamId);
-    start(YugabyteDBConnector.class, configBuilder.build());
+    startEngine(configBuilder);
 
     awaitUntilConnectorIsReady();
 
@@ -306,7 +307,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
           Awaitility.await()
               .atMost(Duration.ofSeconds(seconds))
               .until(() -> {
-                  int consumed = super.consumeAvailableRecords(record -> {
+                  int consumed = consumeAvailableRecords(record -> {
                       LOGGER.debug("The record being consumed is " + record);
                       records.add(record);
                   });
