@@ -8,6 +8,8 @@ import java.math.BigInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
+ * Wrapper class to hold the change event along with other metadata pertaining to the message.
+ *
  * Assumptions made here are:<br>
  * 1. If commitTime1 == commitTime2 then recordTime1 SHOULD NOT be equal to recordTime2
  * @author Rajat Venkatesh
@@ -111,17 +113,24 @@ public class Message implements Comparable<Message> {
         return !isBegin(a) && !isBegin(b) && !isCommit(a) && !isCommit(b);
     }
 
+    /**
+     * @param m the {@link Message} object
+     * @return true if the message is a BEGIN message, false otherwise
+     */
     public static boolean isBegin(Message m) {
         return m.record.getRowMessage().getOp() == CdcService.RowMessage.Op.BEGIN;
     }
 
+    /**
+     * @param m the {@link Message} object
+     * @return true if the message is a COMMIT message, false otherwise
+     */
     public static boolean isCommit(Message m) {
         return m.record.getRowMessage().getOp() == CdcService.RowMessage.Op.COMMIT;
     }
 
     public static class Builder {
         private CdcService.CDCSDKProtoRecordPB record;
-
         private String tableId;
         private String tabletId;
         private long snapshotTime;
