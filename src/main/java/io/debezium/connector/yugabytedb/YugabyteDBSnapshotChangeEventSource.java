@@ -399,7 +399,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
                     taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
-                    tabletSafeTime.getOrDefault(part.getId(), -1L), previousOffset.getWalSegmentIndex(part));
+                    tabletSafeTime.getOrDefault(part.getId(), -1L));
 
                 tabletSafeTime.put(part.getId(), resp.getResp().getSafeHybridTime());
 
@@ -535,7 +535,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 }
 
                 previousOffset.getSourceInfo(part).updateLastCommit(finalOpId);
-                previousOffset.updateWalSegmentIndex(part, resp.getResp().getWalSegmentIndex());
             }
             
             // Reset the retry count here indicating that if the flow has reached here then
