@@ -97,6 +97,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         this.transactionContext = new YugabyteDBTransactionContext();
         this.incrementalSnapshotContext = new SignalBasedIncrementalSnapshotContext<>();
         this.connectorConfig = config;
+        this.tabletWalSegmentIndex = new ConcurrentHashMap<>();
     }
 
     public static YugabyteDBOffsetContext initialContextForSnapshot(YugabyteDBConnectorConfig connectorConfig,
