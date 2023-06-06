@@ -185,7 +185,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                         table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                                         cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
                                         taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
-                                        tabletSafeTime.getOrDefault(part.getId(), -1L));
+                                        tabletSafeTime.getOrDefault(part.getId(), -1L), offsetContext.getWalSegmentIndex(part));
 
                                 tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
                             } catch (CDCErrorException cdcException) {
@@ -232,6 +232,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                         response.getWriteId(),
                                         response.getSnapshotTime());
                                 offsetContext.getSourceInfo(part).updateLastCommit(finalOpid);
+                                offsetContext.updateWalSegmentIndex(part, response.getWalSegmentIndex());
                                 LOGGER.debug("The final opid is " + finalOpid);
                             }
                         }

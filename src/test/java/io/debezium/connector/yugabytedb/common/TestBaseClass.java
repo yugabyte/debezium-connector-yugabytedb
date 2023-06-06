@@ -14,6 +14,7 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.storage.MemoryOffsetBackingStore;
 import org.awaitility.Awaitility;
+import org.eclipse.jetty.util.BlockingArrayQueue;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
@@ -42,7 +43,7 @@ public class TestBaseClass extends AbstractConnectorTest {
     protected static String yugabytedStartCommand = "";
     protected Map<String, ?> offsetMapForRecords = new HashMap<>();
     protected ExecutorService engineExecutor;
-    protected static Queue<SourceRecord> consumedLines;
+    protected static BlockingArrayQueue<SourceRecord> consumedLines;
 
     protected void awaitUntilConnectorIsReady() throws Exception {
         Awaitility.await()
@@ -56,7 +57,7 @@ public class TestBaseClass extends AbstractConnectorTest {
   @BeforeAll
   public static void initializeTestFramework() {
     LoggingContext.forConnector(YugabyteDBConnector.class.getSimpleName(), "", "test");
-    consumedLines = new LinkedList<>();
+    consumedLines = new BlockingArrayQueue<>();
   }
 
   @Override
@@ -181,15 +182,14 @@ public class TestBaseClass extends AbstractConnectorTest {
   }
 
   protected int consumeAvailableRecords(Consumer<SourceRecord> recordConsumer) {
+    List<SourceRecord> records = new ArrayList<>();
+    consumedLines.drainTo(records);
+
     if (recordConsumer != null) {
-        consumedLines.forEach(recordConsumer);
+        records.forEach(recordConsumer);
     }
 
-    // Read the size of the queue to return later and clear it.
-    final int queueSize = consumedLines.size();
-    consumedLines.clear();
-
-    return queueSize;
+    return records.size();
   }
 
   protected SourceRecords consumeByTopic(int numRecords) throws InterruptedException {

@@ -652,7 +652,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         TestHelper.waitFor(Duration.ofSeconds(10));
 
         // Set this flag to true if you want to keep running this test indefinitely.
-        final boolean runIndefinitely = false;
+        final boolean runIndefinitely = true;
 
         // If this test needs to be run more for higher duration, this scale factor can be changed
         // accordingly.
