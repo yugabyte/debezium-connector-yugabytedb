@@ -192,7 +192,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     }
 
     public Integer getWalSegmentIndex(YBPartition partition) {
-        return this.tabletWalSegmentIndex.get(partition.getId());
+        return this.tabletWalSegmentIndex.getOrDefault(partition.getId(), 0);
     }
 
     @Override
