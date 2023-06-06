@@ -366,7 +366,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 GetChangesResponse resp = this.syncClient.getChangesCDCSDK(
                                   tableIdToTable.get(part.getTableId()), streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                                   cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()), explicitCheckpoint,
-                                  tabletSafeTime.getOrDefault(part.getId(), -1L));
+                                  tabletSafeTime.getOrDefault(part.getId(), -1L), offsetContext.getWalSegmentIndex(part));
 
                                 // We do not update the tablet safetime we get from the response at this
                                 // point because the previous GetChanges call is supposed to throw
@@ -643,6 +643,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 response.getWriteId(),
                                 response.getSnapshotTime());
                         offsetContext.getSourceInfo(part).updateLastCommit(finalOpid);
+                        offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
 
                         LOGGER.debug("The final opid is " + finalOpid);
                     }

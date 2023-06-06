@@ -45,6 +45,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     private YugabyteDBTransactionContext transactionContext;
     private IncrementalSnapshotContext<TableId> incrementalSnapshotContext;
     private YugabyteDBConnectorConfig connectorConfig;
+    private final Map<String, Integer> tabletWalSegmentIndex;
 
     private YugabyteDBOffsetContext(YugabyteDBConnectorConfig connectorConfig,
                                     OpId lsn, OpId lastCompletelyProcessedLsn,
@@ -73,6 +74,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         this.transactionContext = transactionContext;
         this.incrementalSnapshotContext = incrementalSnapshotContext;
         this.connectorConfig = connectorConfig;
+        this.tabletWalSegmentIndex = new ConcurrentHashMap<>();
     }
 
     public YugabyteDBOffsetContext(Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets,
@@ -95,6 +97,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         this.transactionContext = new YugabyteDBTransactionContext();
         this.incrementalSnapshotContext = new SignalBasedIncrementalSnapshotContext<>();
         this.connectorConfig = config;
+        this.tabletWalSegmentIndex = new ConcurrentHashMap<>();
     }
 
     public static YugabyteDBOffsetContext initialContextForSnapshot(YugabyteDBConnectorConfig connectorConfig,
@@ -182,6 +185,14 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     public Struct getSourceInfoForTablet(YBPartition partition) {
         return this.tabletSourceInfo.get(partition.getId()).struct();
+    }
+
+    public void updateWalSegmentIndex(YBPartition partition, int index) {
+        this.tabletWalSegmentIndex.put(partition.getId(), index);
+    }
+
+    public Integer getWalSegmentIndex(YBPartition partition) {
+        return this.tabletWalSegmentIndex.get(partition.getId());
     }
 
     @Override
