@@ -17,7 +17,7 @@ pipeline {
     }
     environment {
         RELEASE_BUCKET_PATH = "s3://releases.yugabyte.com/debezium-connector-yugabytedb"
-        YB_VERSION = params.YB_VERSION
+        YB_VERSION = "${params.YB_VERSION}"
     }
     stages {
         stage('Clone Project') {
