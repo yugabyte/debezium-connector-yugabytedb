@@ -3,7 +3,7 @@
 properties([
     parameters([
         string(defaultValue: 'main', description: 'Specify the Branch name', name: 'BRANCH'),
-        string(defaultValue: 'YB_VERSION', description: 'YB DB version', name: '2.19.1.0'),
+        string(defaultValue: '2.19.1.0', description: 'YB DB version', name: 'YB_VERSION'),
         booleanParam(defaultValue: false, description: 'If checked release builds are uploaded to s3 bucket. (debezium-connector -> s3://releases.yugabyte.com/debezium-connector-yugabytedb)', name: 'PUBLISH_TO_S3')
     ])
 ])
