@@ -601,7 +601,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         Objects.requireNonNull(tableId);
                                     }
                                     // If you need to print the received record, change debug level to info
-                                    LOGGER.debug("Received DML record {}", record);
+                                    LOGGER.info("Received DML record {}", record);
 
                                     offsetContext.updateWalPosition(part, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
                                             String.valueOf(message.getTransactionId()), tableId, null/* taskContext.getSlotXmin(connection) */);
