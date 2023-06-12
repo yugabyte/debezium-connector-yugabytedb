@@ -321,10 +321,10 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
             return;
         }
 
-        final OpId lsn = new OpId(record.getCdcSdkOpId().getTerm(),
-                record.getCdcSdkOpId().getIndex(),
-                record.getCdcSdkOpId().getWriteIdKey().toByteArray(),
-                record.getCdcSdkOpId().getWriteId(),
+        final OpId lsn = new OpId(record.getFromOpId().getTerm(),
+                record.getFromOpId().getIndex(),
+                record.getFromOpId().getWriteIdKey().toByteArray(),
+                record.getFromOpId().getWriteId(),
                 snapshotTime);
 
         if (message.isLastEventForLsn()) {
