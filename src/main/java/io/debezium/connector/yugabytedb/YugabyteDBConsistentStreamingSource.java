@@ -29,30 +29,38 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChangeEventSource {
-
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBConsistentStreamingSource.class);
 
-    public YugabyteDBConsistentStreamingSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter, YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock, YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection, ChangeEventQueue<DataChangeEvent> queue) {
-        super(connectorConfig, snapshotter, connection, dispatcher, errorHandler, clock, schema, taskContext, replicationConnection, queue);
+    public YugabyteDBConsistentStreamingSource(YugabyteDBConnectorConfig connectorConfig,
+                                               Snapshotter snapshotter,
+                                               YugabyteDBConnection connection,
+                                               YugabyteDBEventDispatcher<TableId> dispatcher,
+                                               ErrorHandler errorHandler, Clock clock,
+                                               YugabyteDBSchema schema,
+                                               YugabyteDBTaskContext taskContext,
+                                               ReplicationConnection replicationConnection,
+                                               ChangeEventQueue<DataChangeEvent> queue) {
+        super(connectorConfig, snapshotter, connection, dispatcher, errorHandler, clock, schema,
+              taskContext, replicationConnection, queue);
     }
 
     @Override
-    protected void getChanges2(ChangeEventSourceContext context,
-                               YBPartition partitionn,
+    protected void getChanges2(ChangeEventSourceContext context, YBPartition ybPartition,
                                YugabyteDBOffsetContext offsetContext,
-                               boolean previousOffsetPresent)
-            throws Exception {
+                               boolean previousOffsetPresent) throws Exception {
         LOGGER.debug("The offset is " + offsetContext.getOffset());
 
-        LOGGER.info("Processing messages");
+        LOGGER.info("Processing consistent messages");
 
-        String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
+        String tabletList =
+            this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
 
         // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
         // and the value is tablet UUID
         List<Pair<String, String>> tabletPairList = null;
         try {
-            tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
+            tabletPairList =
+                (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
             LOGGER.debug("The tablet list is " + tabletPairList);
         } catch (IOException | ClassNotFoundException e) {
             LOGGER.error("Exception while deserializing tablet pair list", e);
@@ -65,7 +73,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
         LOGGER.info("Using DB stream ID: " + streamId);
 
-        Set<String> tIds = tabletPairList.stream().map(pair -> pair.getLeft()).collect(Collectors.toSet());
+        Set<String> tIds =
+            tabletPairList.stream().map(pair -> pair.getLeft()).collect(Collectors.toSet());
         for (String tId : tIds) {
             LOGGER.debug("Table UUID: " + tIds);
             YBTable table = this.syncClient.openTableByUUID(tId);
@@ -161,7 +170,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                         YBTable table = tableIdToTable.get(entry.getKey());
 
                         if (LOGGER.isDebugEnabled()
-                                || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
+                              || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
                             LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
                                     tabletId, cp, table.getName());
                             lastLoggedTimeForGetChanges = System.currentTimeMillis();
@@ -281,8 +290,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 }
 
                 // If there are retries left, perform them after the specified delay.
-                LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
-                        retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
+                LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
+                        retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e);
                 LOGGER.warn("Stacktrace", e);
 
                 try {
@@ -325,7 +334,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
         try {
             // Tx BEGIN/END event
             if (message.isTransactionalMessage()) {
-                LOGGER.debug("Received transactional message {}" + record);
+                LOGGER.debug("Received transactional message {}", record);
                 if (!connectorConfig.shouldProvideTransactionMetadata()) {
                     // Don't skip on BEGIN message as it would flush LSN for the whole transaction
                     // too early
@@ -334,11 +343,10 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
                         recordsInTransactionalBlock.put(part.getId(), 0);
                         beginCountForTablet.merge(part.getId(), 1, Integer::sum);
-                    }
-                    if (message.getOperation() == ReplicationMessage.Operation.COMMIT) {
+                    } else if (message.getOperation() == ReplicationMessage.Operation.COMMIT) {
                         LOGGER.debug("LSN in case of COMMIT is " + lsn);
                         offsetContext.updateWalPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                                String.valueOf(message.getTransactionId()), null, null,/* taskContext.getSlotXmin(connection) */
+                                String.valueOf(message.getTransactionId()), null, null /* taskContext.getSlotXmin(connection) */,
                                 message.getRecordTime());
                         commitMessage(part, offsetContext, lsn);
 
@@ -357,6 +365,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                         recordsInTransactionalBlock.remove(part.getId());
                         beginCountForTablet.merge(part.getId(), -1, Integer::sum);
                     }
+
                     return;
                 }
 
@@ -367,11 +376,10 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
                     recordsInTransactionalBlock.put(part.getId(), 0);
                     beginCountForTablet.merge(part.getId(), 1, Integer::sum);
-                }
-                else if (message.getOperation() == ReplicationMessage.Operation.COMMIT) {
+                } else if (message.getOperation() == ReplicationMessage.Operation.COMMIT) {
                     LOGGER.debug("LSN in case of COMMIT is " + lsn);
                     offsetContext.updateWalPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                            String.valueOf(message.getTransactionId()), null, null/* taskContext.getSlotXmin(connection) */,
+                            String.valueOf(message.getTransactionId()), null, null /* taskContext.getSlotXmin(connection) */,
                             message.getRecordTime());
                     commitMessage(part, offsetContext, lsn);
                     dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
@@ -392,8 +400,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                     beginCountForTablet.merge(part.getId(), -1, Integer::sum);
                 }
                 maybeWarnAboutGrowingWalBacklog(true);
-            }
-            else if (message.isDDLMessage()) {
+            } else if (message.isDDLMessage()) {
                 LOGGER.debug("Received DDL message {}", message.getSchema().toString()
                         + " the table is " + message.getTable());
 
@@ -417,9 +424,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                     }
                     schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
                 }
-            }
-            // DML event
-            else {
+            } else {
+                // DML event
                 TableId tableId = null;
                 if (message.getOperation() != ReplicationMessage.Operation.NOOP) {
                     tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
@@ -446,6 +452,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
             LOGGER.error("Interrupted exception while processing change records", ie);
             Thread.currentThread().interrupt();
         }
+
         return;
     }
 }

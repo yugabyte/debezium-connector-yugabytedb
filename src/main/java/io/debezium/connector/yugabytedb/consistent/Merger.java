@@ -8,6 +8,8 @@ import java.math.BigInteger;
 import java.util.*;
 
 /**
+ * Class to ensure we are sorting records in the correct order to be published to the Kafka topic.
+ *
  * @author Rajat Venkatesh, Vaibhav Kushwaha
  */
 public class Merger {
@@ -36,11 +38,6 @@ public class Merger {
      * @see Message
      */
     public synchronized void addMessage(Message message) {
-        // if (message.record.getRowMessage().getOp() == CdcService.RowMessage.Op.SAFEPOINT) {
-        //     LOGGER.info("Received safepoint for tablet {} : {}, returning without setting", message.tablet, message.commitTime);
-        //     return;
-        // }
-
         assert message.record.getRowMessage().getOp() != CdcService.RowMessage.Op.DDL;
 
         setTabletSafeTime(message.tablet, message.commitTime, message); // TODO: Verify what happens if we move this inside the block
@@ -49,7 +46,7 @@ public class Merger {
             return;
         }
 
-        // TODO: Wrap these checks under a flag maybe.
+        // TODO: Wrap these checks under a flag later.
         if (!this.mergeSlots.get(message.tablet).isEmpty()
                 && message.compareTo(this.mergeSlots.get(message.tablet)
                     .get(this.mergeSlots.get(message.tablet).size() - 1)) < 0) {
@@ -59,11 +56,10 @@ public class Merger {
 
         queue.add(message);
         mergeSlots.get(message.tablet).add(message);
-        LOGGER.debug("Add message {}", message);
+        LOGGER.debug("Added message {}", message);
     }
 
     public BigInteger streamSafeTime() {
-        // tabletSafeTime.entrySet().stream().forEach(e -> LOGGER.info("Tablet {}, safe time {}", e.getKey(), e.getValue()));
         return Collections.min(tabletSafeTime.values());
     }
 
@@ -73,7 +69,7 @@ public class Merger {
      * @param safeTime the safetime to be set
      */
     public void setTabletSafeTime(String tabletId, BigInteger safeTime, Message m) {
-        // TODO: Wrap this assert under the flag.
+        // TODO: Wrap this assert under flag.
         // If the safetime we are setting is less than the already set value then it would indicate
         // that we are moving backward in time, which is wrong. Throw an assertion error in that case.
         if (safeTime.compareTo(this.tabletSafeTime.get(tabletId)) < 0) {
@@ -88,14 +84,25 @@ public class Merger {
         this.tabletSafeTime.put(tabletId, safeTime);
     }
 
+    /**
+     * @return the number of records present in the merge queue
+     */
     public long totalQueueSize() {
         return queue.size();
     }
 
+    /**
+     * @param tabletId the tablet UUID to get the pending messages of
+     * @return the number of messages pending in the queue/merge slot for the given tablet
+     */
     public int pendingMessagesInTablet(String tabletId) {
         return mergeSlots.get(tabletId).size();
     }
 
+    /**
+     * @param tabletId tablet UUID
+     * @return the current safetime value for the given tablet
+     */
     public BigInteger safeTimeForTablet(String tabletId) {
         return tabletSafeTime.get(tabletId);
     }
@@ -123,10 +130,6 @@ public class Merger {
         Optional<Message> peeked = message != null && message.commitTime.compareTo(this.streamSafeTime()) <= 0
                 ? Optional.of(message) : Optional.empty();
 
-        if (peeked.isPresent() && peeked.get().record.getRowMessage().getOp() == CdcService.RowMessage.Op.INSERT) {
-            LOGGER.debug("Stream Safe Time {}, Top message is {}", this.streamSafeTime(), peeked);
-        }
-
         return peeked;
     }
 
@@ -144,10 +147,10 @@ public class Merger {
             return message;
         }
 
-        // Remove message from queue as well as mergeSlots
+        // Remove message from queue as well as from mergeSlots.
         queue.poll();
         Message polledMessage = message.get();
-        LOGGER.info("Message is: {}", polledMessage);
+        LOGGER.debug("Message is: {}", polledMessage);
         LOGGER.info("Records for tablet: {}", mergeSlots.get(polledMessage.tablet).size());
         mergeSlots.get(polledMessage.tablet).removeIf(item -> item.compareTo(polledMessage) == 0);
 
@@ -163,10 +166,17 @@ public class Merger {
         return message;
     }
 
+    /**
+     * @return true if the queue is empty, false otherwise
+     */
     public boolean isEmpty() {
         return queue.isEmpty();
     }
 
+    /**
+     * @param tabletId tablet UUID
+     * @return true if the merge slot for the given tablet is empty, false otherwise
+     */
     public boolean isSlotEmpty(String tabletId) {
         return mergeSlots.get(tabletId).isEmpty();
     }
