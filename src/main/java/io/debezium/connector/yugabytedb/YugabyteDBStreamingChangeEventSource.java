@@ -37,7 +37,6 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.DataChangeEvent;
@@ -404,9 +403,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                       if (taskContext.shouldEnableExplicitCheckpointing()) {
                         CdcSdkCheckpoint ecp = tabletToExplicitCheckpoint.get(part.getId());
                         if (ecp != null) {
-                            LOGGER.info("Requesting changes, explicit checkpointing: {}.{} from_op_id: {}.{}", ecp.getTerm(), ecp.getIndex(), cp.getTerm(), cp.getIndex());
+                            LOGGER.info("Requesting changes for tablet {}, explicit checkpointing: {}.{} from_op_id: {}.{}", part.getId(), ecp.getTerm(), ecp.getIndex(), cp.getTerm(), cp.getIndex());
                         } else {
-                            LOGGER.info("Requesting changes, explicit checkpoint is null and from_op_id: {}.{}", cp.getTerm(), cp.getIndex());
+                            LOGGER.info("Requesting changes for tablet {}, explicit checkpoint is null and from_op_id: {}.{}", part.getId(), cp.getTerm(), cp.getIndex());
                         }
                       }
 
@@ -660,9 +659,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                 }
 
                 // If there are retries left, perform them after the specified delay.
-                LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
-                        retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
-                LOGGER.warn("Stacktrace", e);
+                LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
+                        retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e);
 
                 try {
                     final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
