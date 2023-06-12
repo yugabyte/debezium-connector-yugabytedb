@@ -7,6 +7,8 @@ import org.apache.kafka.common.config.ConfigDef;
 import io.debezium.config.Configuration;
 import io.debezium.config.Field;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,11 +50,11 @@ public class YugabyteDBConnectorIT extends YugabyteDBContainerTestBase {
     @Test
     public void shouldNotStartWithInvalidConfiguration() {
         // use an empty configuration which should be invalid because of the lack of DB connection details
-        Configuration config = Configuration.create().build();
+        Configuration.Builder configBuilder = Configuration.create();
 
         // we expect the engine will log at least one error, so preface it ...
         LOGGER.info("Attempting to start the connector with an INVALID configuration, so MULTIPLE error messages & one exception will appear in the log");
-        start(YugabyteDBConnector.class, config, (success, msg, error) -> {
+        startEngine(configBuilder, (success, msg, error) -> {
             assertThat(success).isFalse();
             assertThat(error).isNotNull();
         });
