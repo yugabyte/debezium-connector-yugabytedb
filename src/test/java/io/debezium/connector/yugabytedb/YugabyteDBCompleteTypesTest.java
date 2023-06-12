@@ -134,6 +134,7 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types");
         Configuration.Builder configBuilder =
           TestHelper.getConfigBuilder("public.all_types", dbStreamId);
+        configBuilder.with("time.precision.mode", temporalPrecisionMode);
         startEngine(configBuilder);
 
         awaitUntilConnectorIsReady();

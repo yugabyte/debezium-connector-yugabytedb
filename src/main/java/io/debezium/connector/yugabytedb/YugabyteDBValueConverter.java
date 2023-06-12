@@ -180,9 +180,9 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
                 return intervalMode == IntervalHandlingMode.STRING ? Interval.builder() : MicroDuration.builder();
             case PgOid.TIMESTAMP:
                 if (adaptiveTimePrecisionMode || adaptiveTimeMicrosecondsPrecisionMode) {
-                    return MicroTime.builder();
+                    return MicroTimestamp.builder();
                 }
-                return org.apache.kafka.connect.data.Timestamp.builder();
+                return io.debezium.time.Timestamp.builder();
             case PgOid.TIMESTAMPTZ:
                 // JDBC reports this as "timestamp" even though it's with tz, so we can't use the base class...
                 return ZonedTimestamp.builder();
