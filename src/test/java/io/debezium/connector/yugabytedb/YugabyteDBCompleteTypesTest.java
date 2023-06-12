@@ -12,6 +12,7 @@ import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
 
 import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
@@ -92,7 +93,7 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
         assertValueField(record, "after/txt/value", "text to verify behaviour");
         assertValueField(record, "after/tm/value", 46052000);
         assertValueField(record, "after/tmtz/value", "06:30:00Z");
-        assertValueField(record, "after/ts/value", 1637841600000L);
+        assertValueField(record, "after/ts/value", 1637841600123456L);
         assertValueField(record, "after/tstz/value", "2021-11-25T06:30:00Z");
         assertValueField(record, "after/uuidval/value", "ffffffff-ffff-ffff-ffff-ffffffffffff");
     }
