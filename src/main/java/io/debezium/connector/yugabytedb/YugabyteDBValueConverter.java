@@ -373,7 +373,10 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
             case PgOid.TIME:
                 return data -> convertTime(column, fieldDefn, data);
             case PgOid.TIMESTAMP:
-                return data -> convertTimestampToEpochMicros(column, fieldDefn, data);
+                if (adaptiveTimePrecisionMode || adaptiveTimeMicrosecondsPrecisionMode) {
+                    return data -> convertTimestampToEpochMicros(column, fieldDefn, data);
+                }
+                return data -> convertTimestampToEpochMillis(column, fieldDefn, data);
             case PgOid.TIMESTAMPTZ:
                 return data -> convertTimestampWithZone(column, fieldDefn, data);
             case PgOid.TIMETZ:
