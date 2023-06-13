@@ -365,7 +365,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
      * streaming phase.
      */
     OpId getStreamingStoppingLsn() {
-        return YugabyteDBOffsetContext.snapshotDoneKeyLsn();
+        return null;
     }
 
     public void setStreamingStoppingLsn(OpId streamingStoppingLsn) {
