@@ -17,10 +17,8 @@ import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.debezium.connector.SnapshotRecord;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
-import io.debezium.connector.yugabytedb.spi.OffsetState;
 import io.debezium.pipeline.source.snapshot.incremental.IncrementalSnapshotContext;
 import io.debezium.pipeline.source.snapshot.incremental.SignalBasedIncrementalSnapshotContext;
 import io.debezium.pipeline.spi.OffsetContext;
@@ -30,32 +28,25 @@ import io.debezium.relational.TableId;
 import io.debezium.schema.DataCollectionId;
 import io.debezium.util.Clock;
 
+/**
+ * Class to manage the offsets of multiple partitions per task.
+ *
+ * @author Suranjan Kumar, Rajat Venkatesh, Vaibhav Kushwaha
+ */
 public class YugabyteDBOffsetContext implements OffsetContext {
     public static final String LAST_COMPLETELY_PROCESSED_LSN_KEY = "lsn_proc";
     public static final String SNAPSHOT_DONE_KEY = "snapshot_done_key";
 
-    private static final Logger LOGGER = LoggerFactory
-            .getLogger(YugabyteDBSnapshotChangeEventSource.class);
-//    private final Schema sourceInfoSchema;
+    private static final Logger LOGGER =
+      LoggerFactory.getLogger(YugabyteDBSnapshotChangeEventSource.class);
     private final Map<String, SourceInfo> tabletSourceInfo;
     private final Map<String, OpId> fromLsn;
-//    private final SourceInfo sourceInfo;
-//    private boolean lastSnapshotRecord;
-//    private OpId lastCompletelyProcessedLsn;
-//    private OpId lastCommitLsn;
-//    private OpId streamingStoppingLsn = null;
     private YugabyteDBTransactionContext transactionContext;
     private IncrementalSnapshotContext<TableId> incrementalSnapshotContext;
     private YugabyteDBConnectorConfig connectorConfig;
     private final Map<String, Integer> tabletWalSegmentIndex;
 
     private YugabyteDBOffsetContext(YugabyteDBConnectorConfig connectorConfig,
-                                    OpId lsn, OpId lastCompletelyProcessedLsn,
-                                    OpId lastCommitLsn,
-                                    String txId,
-                                    Instant time,
-                                    boolean snapshot,
-                                    boolean lastSnapshotRecord,
                                     YugabyteDBTransactionContext transactionContext,
                                     IncrementalSnapshotContext<TableId> incrementalSnapshotContext) {
         this.tabletSourceInfo = new ConcurrentHashMap<>();
@@ -70,15 +61,11 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                                    YugabyteDBConnectorConfig config) {
         this.tabletSourceInfo = new ConcurrentHashMap();
         this.fromLsn = new ConcurrentHashMap<>();
-//        this.sourceInfo = new SourceInfo(config);
-//        this.sourceInfoSchema = sourceInfo.schema();
 
         for (Map.Entry<YBPartition, YugabyteDBOffsetContext> context :
                 previousOffsets.getOffsets().entrySet()) {
             YugabyteDBOffsetContext c = context.getValue();
             if (c != null) {
-//                this.lastCompletelyProcessedLsn = c.lastCompletelyProcessedLsn;
-//                this.lastCommitLsn = c.lastCommitLsn;
 //                initSourceInfo(context.getKey() /* YBPartition */, config, c.lastCompletelyProcessedLsn);
 //                this.updateWalPosition(context.getKey(), this.lastCommitLsn, lastCompletelyProcessedLsn, 0L, null, null, null, 0L);
             }
@@ -119,13 +106,6 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
         YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(
                 connectorConfig,
-                null, /* passing null since this value is not being used anywhere in constructor */
-                lastCompletelyProcessedLsn,
-                lastCommitLsn,
-                String.valueOf(txId),
-                clock.currentTimeAsInstant(),
-                false,
-                false,
                 new YugabyteDBTransactionContext(),
                 new SignalBasedIncrementalSnapshotContext<>());
         // todo: Q: Wouldn't this code cause all the partitions to be initialised with lastCompletelyProcessedLsn
@@ -188,13 +168,11 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     public Schema getSourceInfoSchema() {
         // Return a dummy schema.
         return SchemaBuilder.struct().build();
-//        return sourceInfoSchema;
     }
 
     @Override
     public Struct getSourceInfo() {
         // Return dummy source info.
-        // return sourceInfo
         return (Struct) SchemaBuilder.struct().build();
     }
 
@@ -209,30 +187,25 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     @Override
     public boolean isSnapshotRunning() {
+        // TODO: think about making this work.
         return true;
 //        return sourceInfo.isSnapshot();
     }
 
     @Override
     public void preSnapshotStart() {
-//        sourceInfo.setSnapshot(SnapshotRecord.TRUE);
-//        lastSnapshotRecord = false;
+        // Do nothing.
     }
 
     @Override
     public void preSnapshotCompletion() {
-//        lastSnapshotRecord = true;
+        // Do nothing.
     }
 
     @Override
     public void postSnapshotCompletion() {
         // Do nothing.
-//        sourceInfo.setSnapshot(SnapshotRecord.FALSE);
     }
-
-//    public void updateSnapshotPosition(Instant timestamp, TableId tableId) {
-//        sourceInfo.update(timestamp, tableId);
-//    }
 
     /**
      * Update the offset position which we should use to call the next {@code GetChangesRequest}
@@ -278,23 +251,8 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     }
 
     public void updateCommitPosition(OpId lsn, OpId lastCompletelyProcessedLsn) {
-//        this.lastCompletelyProcessedLsn = lastCompletelyProcessedLsn;
-//        this.lastCommitLsn = lsn;
-//        sourceInfo.updateLastCommit(lsn);
+        // TODO: not required now, can be removed.
     }
-
-//    boolean hasLastKnownPosition() {
-//        return sourceInfo.lsn() != null;
-//    }
-//
-//    boolean hasCompletelyProcessedPosition() {
-//        return this.lastCompletelyProcessedLsn != null;
-//    }
-
-//    OpId lsn() {
-//        return sourceInfo.lsn() == null ? streamingStartLsn()
-//                : sourceInfo.lsn();
-//    }
 
     /**
      * Get the LSN from which the connector should call the GetChangesRequest
@@ -304,7 +262,6 @@ public class YugabyteDBOffsetContext implements OffsetContext {
      */
     OpId lsn(YBPartition partition) {
         return this.fromLsn.getOrDefault(partition.getId(), streamingStartLsn());
-//        return opId == null ? streamingStartLsn() : opId;
     }
 
     /**
@@ -324,20 +281,8 @@ public class YugabyteDBOffsetContext implements OffsetContext {
       return this.fromLsn.getOrDefault(partition.getId(), snapshotStartLsn());
     }
 
-//    OpId lastCompletelyProcessedLsn() {
-//        return lastCompletelyProcessedLsn;
-//    }
-//
-//    OpId lastCompletelyProcessedLsn(String tabletId) {
-//        return lastCompletelyProcessedLsn;
-//    }
-//
-//    OpId lastCommitLsn() {
-//        return lastCommitLsn;
-//    }
-
     /**
-     * todo: see if the javadoc is correct
+     * @deprecated NOT in use at the moment
      * Returns the LSN that the streaming phase should stream events up to or null if
      * a stopping point is not set. If set during the streaming phase, any event with
      * an LSN less than the stopping LSN will be processed and once the stopping LSN
@@ -348,35 +293,13 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         return null;
     }
 
-    public void setStreamingStoppingLsn(OpId streamingStoppingLsn) {
-//        this.streamingStoppingLsn = streamingStoppingLsn;
-    }
-
-//    Long xmin() {
-//        return sourceInfo.xmin();
-//    }
-
     @Override
     public String toString() {
-        return "YugabyteDBOffsetContext [" //sourceInfoSchema=" + sourceInfoSchema
-////                ", sourceInfo=" + sourceInfo
-//                + ", lastSnapshotRecord=" + lastSnapshotRecord
-//                + ", lastCompletelyProcessedLsn=" + lastCompletelyProcessedLsn
-//                + ", lastCommitLsn=" + lastCommitLsn
-//                + ", streamingStoppingLsn=" + streamingStoppingLsn
-                + ", transactionContext=" + transactionContext
+        return "YugabyteDBOffsetContext [transactionContext=" + transactionContext
                 + ", incrementalSnapshotContext=" + incrementalSnapshotContext
+                + ", fromLsn=" + fromLsn
                 + ", tabletSourceInfo=" + tabletSourceInfo + "]";
     }
-
-//    public OffsetState asOffsetState() {
-//        return new OffsetState(
-//                sourceInfo.lsn(),
-//                sourceInfo.txId(),
-//                sourceInfo.xmin(),
-//                sourceInfo.timestamp(),
-//                sourceInfo.isSnapshot());
-//    }
 
     @Override
     public void markLastSnapshotRecord() {
@@ -385,7 +308,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     @Override
     public void event(DataCollectionId tableId, Instant instant) {
-//        sourceInfo.update(instant, (TableId) tableId);
+        // Do nothing.
     }
 
     @Override
@@ -454,10 +377,6 @@ public class YugabyteDBOffsetContext implements OffsetContext {
              */
 
             return new YugabyteDBOffsetContext(connectorConfig,
-                    lastCompletelyProcessedLsn,
-                    lastCompletelyProcessedLsn,
-                    lastCompletelyProcessedLsn,
-                    "txId", Instant.MIN, false, false,
                     YugabyteDBTransactionContext.load(offset),
                     SignalBasedIncrementalSnapshotContext.load(offset));
 
