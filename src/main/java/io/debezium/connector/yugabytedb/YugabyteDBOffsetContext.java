@@ -316,11 +316,15 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 //                : sourceInfo.lsn();
 //    }
 
+    /**
+     * Get the LSN from which the connector should call the GetChangesRequest
+     * @param partition the partition to get the LSN for
+     * @return an {@link OpId} value to be used in {@link org.yb.client.GetChangesRequest} as
+     * from_op_id
+     */
     OpId lsn(YBPartition partition) {
-        // get the sourceInfo of the tablet
-        SourceInfo sourceInfo = getSourceInfo(partition);
-        return sourceInfo.lsn() == null ? streamingStartLsn()
-                : sourceInfo.lsn();
+        return this.fromLsn.getOrDefault(partition.getId(), streamingStartLsn());
+//        return opId == null ? streamingStartLsn() : opId;
     }
 
     /**
@@ -337,10 +341,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
      * @return {@link OpId} from which we need to read the snapshot from the server
      */
     OpId snapshotLSN(YBPartition partition) {
-      // get the sourceInfo of the tablet
-      SourceInfo sourceInfo = getSourceInfo(partition);
-      return sourceInfo.lsn() == null ? snapshotStartLsn()
-        : sourceInfo.lsn();
+      return this.fromLsn.getOrDefault(partition.getId(), snapshotStartLsn());
     }
 
 //    OpId lastCompletelyProcessedLsn() {
