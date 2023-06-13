@@ -39,7 +39,7 @@ public class SourceInfoTest extends YugabyteDBContainerTestBase {
         YBPartition partition = new YBPartition(DUMMY_TABLE_ID, DUMMY_TABLET_ID, false);
 
         source.update(partition, OpId.valueOf("1:2:keyStrValue:4:5"), 123L, "txId",
-                      new TableId("yugabyte", "public", DUMMY_TABLE_NAME), 123L, 123L);
+                      new TableId("yugabyte", "public", DUMMY_TABLE_NAME), 123L);
     }
 
     @Test
@@ -87,7 +87,7 @@ public class SourceInfoTest extends YugabyteDBContainerTestBase {
                 .field(SourceInfo.TABLE_NAME_KEY, Schema.STRING_SCHEMA)
                 .field(SourceInfo.TXID_KEY, Schema.OPTIONAL_STRING_SCHEMA)
                 .field(SourceInfo.LSN_KEY, Schema.OPTIONAL_STRING_SCHEMA)
-                .field(SourceInfo.XMIN_KEY, Schema.OPTIONAL_INT64_SCHEMA)
+//                .field(SourceInfo.XMIN_KEY, Schema.OPTIONAL_INT64_SCHEMA)
                 .field(SourceInfo.COMMIT_TIME, Schema.OPTIONAL_INT64_SCHEMA)
                 .field(SourceInfo.RECORD_TIME, Schema.INT64_SCHEMA)
                 .field(SourceInfo.TABLET_ID, Schema.STRING_SCHEMA)

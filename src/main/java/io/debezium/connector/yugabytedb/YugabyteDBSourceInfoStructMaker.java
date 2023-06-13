@@ -26,7 +26,7 @@ public class YugabyteDBSourceInfoStructMaker extends AbstractSourceInfoStructMak
                 .field(SourceInfo.TABLE_NAME_KEY, Schema.STRING_SCHEMA)
                 .field(SourceInfo.TXID_KEY, Schema.OPTIONAL_STRING_SCHEMA)
                 .field(SourceInfo.LSN_KEY, Schema.OPTIONAL_STRING_SCHEMA)
-                .field(SourceInfo.XMIN_KEY, Schema.OPTIONAL_INT64_SCHEMA)
+//                .field(SourceInfo.XMIN_KEY, Schema.OPTIONAL_INT64_SCHEMA)
                 .field(SourceInfo.COMMIT_TIME, Schema.OPTIONAL_INT64_SCHEMA)
                 .field(SourceInfo.RECORD_TIME, Schema.INT64_SCHEMA)
                 .field(SourceInfo.TABLET_ID, Schema.STRING_SCHEMA)
