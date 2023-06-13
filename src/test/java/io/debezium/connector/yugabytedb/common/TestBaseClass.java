@@ -14,6 +14,7 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.storage.MemoryOffsetBackingStore;
 import org.awaitility.Awaitility;
+import org.eclipse.jetty.util.BlockingArrayQueue;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
@@ -42,7 +43,7 @@ public class TestBaseClass extends AbstractConnectorTest {
     protected static String yugabytedStartCommand = "";
     protected Map<String, ?> offsetMapForRecords = new HashMap<>();
     protected ExecutorService engineExecutor;
-    protected static Queue<SourceRecord> consumedLines;
+    protected static BlockingArrayQueue<SourceRecord> linesConsumed;
 
     protected void awaitUntilConnectorIsReady() throws Exception {
         Awaitility.await()
@@ -56,7 +57,7 @@ public class TestBaseClass extends AbstractConnectorTest {
   @BeforeAll
   public static void initializeTestFramework() {
     LoggingContext.forConnector(YugabyteDBConnector.class.getSimpleName(), "", "test");
-    consumedLines = new LinkedList<>();
+    linesConsumed = new BlockingArrayQueue<>();
   }
 
   @Override
@@ -162,7 +163,7 @@ public class TestBaseClass extends AbstractConnectorTest {
                .using(this.getClass().getClassLoader())
                .notifying((records, committer) -> {
                  for (SourceRecord record: records) {
-                   consumedLines.add(record);
+                   linesConsumed.add(record);
                    committer.markProcessed(record);
 
                    offsetMapForRecords = record.sourceOffset();
@@ -181,23 +182,22 @@ public class TestBaseClass extends AbstractConnectorTest {
   }
 
   protected int consumeAvailableRecords(Consumer<SourceRecord> recordConsumer) {
+    List<SourceRecord> records = new ArrayList<>();
+    linesConsumed.drainTo(records);
+    
     if (recordConsumer != null) {
-        consumedLines.forEach(recordConsumer);
+        records.forEach(recordConsumer);
     }
 
-    // Read the size of the queue to return later and clear it.
-    final int queueSize = consumedLines.size();
-    consumedLines.clear();
-
-    return queueSize;
+    return records.size();
   }
 
   protected SourceRecords consumeByTopic(int numRecords) throws InterruptedException {
     SourceRecords records = new SourceRecords();
     int recordsConsumed = 0;
     while (recordsConsumed <= numRecords) {
-      if (!consumedLines.isEmpty()) {
-        records.add(consumedLines.poll());
+      if (!linesConsumed.isEmpty()) {
+        records.add(linesConsumed.poll());
         ++recordsConsumed;
       }
     }
@@ -207,7 +207,7 @@ public class TestBaseClass extends AbstractConnectorTest {
 
   @Override
   protected void assertNoRecordsToConsume() {
-    assertTrue(consumedLines.isEmpty());
+    assertTrue(linesConsumed.isEmpty());
   }
 
   @Override
@@ -216,11 +216,11 @@ public class TestBaseClass extends AbstractConnectorTest {
     long now = System.currentTimeMillis();
     long stop = now + unit.toMillis(timeout);
     while (System.currentTimeMillis() < stop) {
-        if (!consumedLines.isEmpty()) {
+        if (!linesConsumed.isEmpty()) {
             break;
         }
     }
-    return !consumedLines.isEmpty();
+    return !linesConsumed.isEmpty();
   }
 
   protected class SourceRecords {
