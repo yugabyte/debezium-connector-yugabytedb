@@ -645,7 +645,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 response.getWriteId(),
                                 response.getSnapshotTime());
                         offsetContext.updateWalPosition(part, finalOpid);
-                        offsetContext.getSourceInfo(part).updateLastCommit(finalOpid);
+//                        offsetContext.getSourceInfo(part).updateLastCommit(finalOpid);
                         offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
 
                         LOGGER.debug("The final opid is " + finalOpid);
