@@ -48,8 +48,7 @@ public class Merger {
 
         // TODO: Wrap these checks under a flag later.
         if (!this.mergeSlots.get(message.tablet).isEmpty()
-                && message.compareTo(this.mergeSlots.get(message.tablet)
-                    .get(this.mergeSlots.get(message.tablet).size() - 1)) < 0) {
+                && message.commitTime.compareTo(this.mergeSlots.get(message.tablet).get(this.mergeSlots.get(message.tablet).size() - 1).commitTime) < 0) {
             throw new AssertionError("Commit time of the newly added message is less than the " +
                                      "last message in the merge slot");
         }
