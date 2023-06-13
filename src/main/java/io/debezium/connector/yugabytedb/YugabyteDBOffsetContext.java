@@ -58,22 +58,8 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                                     boolean lastSnapshotRecord,
                                     YugabyteDBTransactionContext transactionContext,
                                     IncrementalSnapshotContext<TableId> incrementalSnapshotContext) {
-//        sourceInfo = new SourceInfo(connectorConfig);
         this.tabletSourceInfo = new ConcurrentHashMap<>();
         this.fromLsn = new ConcurrentHashMap<>();
-//        this.lastCompletelyProcessedLsn = lastCompletelyProcessedLsn;
-//        this.lastCommitLsn = lastCommitLsn;
-        // sourceInfo.update(lsn, time, txId, null, sourceInfo.xmin());
-//        sourceInfo.updateLastCommit(lastCommitLsn);
-//        sourceInfoSchema = sourceInfo.schema();
-
-//        this.lastSnapshotRecord = lastSnapshotRecord;
-//        if (this.lastSnapshotRecord) {
-//            postSnapshotCompletion();
-//        }
-//        else {
-//            sourceInfo.setSnapshot(snapshot ? SnapshotRecord.TRUE : SnapshotRecord.FALSE);
-//        }
         this.transactionContext = transactionContext;
         this.incrementalSnapshotContext = incrementalSnapshotContext;
         this.connectorConfig = connectorConfig;
@@ -184,9 +170,6 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         }
 
         return result;
-//        return sourceInfo.isSnapshot() ? result
-//                : incrementalSnapshotContext
-//                        .store(transactionContext.store(result));
     }
 
     public Struct getSourceInfoForTablet(YBPartition partition) {
@@ -203,12 +186,14 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     @Override
     public Schema getSourceInfoSchema() {
+        // Return a dummy schema.
         return SchemaBuilder.struct().build();
 //        return sourceInfoSchema;
     }
 
     @Override
     public Struct getSourceInfo() {
+        // Return dummy source info.
         // return sourceInfo
         return (Struct) SchemaBuilder.struct().build();
     }
@@ -241,6 +226,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     @Override
     public void postSnapshotCompletion() {
+        // Do nothing.
 //        sourceInfo.setSnapshot(SnapshotRecord.FALSE);
     }
 
@@ -254,13 +240,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
      * @param lsn the {@link OpId} to update the offset with
      */
     public void updateWalPosition(YBPartition partition, OpId lsn) {
-        OpId opId = this.fromLsn.get(partition.getId());
-
-        if (opId == null) {
-            opId = lsn;
-        }
-
-        this.fromLsn.put(partition.getId(), opId);
+        this.fromLsn.put(partition.getId(), lsn);
     }
 
     /**
@@ -400,7 +380,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     @Override
     public void markLastSnapshotRecord() {
-//        sourceInfo.setSnapshot(SnapshotRecord.LAST);
+        // Do nothing.
     }
 
     @Override
@@ -415,7 +395,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     @Override
     public void incrementalSnapshotEvents() {
-//        sourceInfo.setSnapshot(SnapshotRecord.INCREMENTAL);
+        // Do nothing.
     }
 
     @Override

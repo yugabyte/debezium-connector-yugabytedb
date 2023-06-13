@@ -638,6 +638,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             // for the snapshot, this block must not commit during catch up streaming.
                             // CDCSDK Find out why this fails : connection.commit();
                         }
+
                         OpId finalOpid = new OpId(
                                 response.getTerm(),
                                 response.getIndex(),
@@ -645,7 +646,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 response.getWriteId(),
                                 response.getSnapshotTime());
                         offsetContext.updateWalPosition(part, finalOpid);
-//                        offsetContext.getSourceInfo(part).updateLastCommit(finalOpid);
+
                         offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
 
                         LOGGER.debug("The final opid is " + finalOpid);
