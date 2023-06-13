@@ -63,9 +63,9 @@ public class YugabyteDBSourceInfoStructMaker extends AbstractSourceInfoStructMak
         if (sourceInfo.lsn() != null) {
             result.put(SourceInfo.LSN_KEY, sourceInfo.lsn().toSerString());
         }
-        if (sourceInfo.xmin() != null) {
-            result.put(SourceInfo.XMIN_KEY, sourceInfo.xmin());
-        }
+//        if (sourceInfo.xmin() != null) {
+//            result.put(SourceInfo.XMIN_KEY, sourceInfo.xmin());
+//        }
         return result;
     }
 }

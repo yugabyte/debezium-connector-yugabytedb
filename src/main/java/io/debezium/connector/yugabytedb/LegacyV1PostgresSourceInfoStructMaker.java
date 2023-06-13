@@ -62,9 +62,9 @@ public class LegacyV1PostgresSourceInfoStructMaker extends LegacyV1AbstractSourc
         if (sourceInfo.lsn() != null) {
             result.put(SourceInfo.LSN_KEY, sourceInfo.lsn());
         }
-        if (sourceInfo.xmin() != null) {
-            result.put(SourceInfo.XMIN_KEY, sourceInfo.xmin());
-        }
+//        if (sourceInfo.xmin() != null) {
+//            result.put(SourceInfo.XMIN_KEY, sourceInfo.xmin());
+//        }
         if (sourceInfo.isSnapshot()) {
             result.put(SourceInfo.SNAPSHOT_KEY, true);
             result.put(SourceInfo.LAST_SNAPSHOT_RECORD_KEY, sourceInfo.snapshot() == SnapshotRecord.LAST);

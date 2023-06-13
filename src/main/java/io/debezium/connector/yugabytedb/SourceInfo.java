@@ -49,7 +49,6 @@ public final class SourceInfo extends BaseSourceInfo {
     private OpId lsn;
     private OpId lastCommitLsn;
     private String txId;
-    private Long xmin;
     private Instant timestamp;
     private String schemaName;
     private String tableName;
@@ -80,17 +79,14 @@ public final class SourceInfo extends BaseSourceInfo {
      * may be null indicating that this information is not available
      * @param txId the ID of the transaction that generated the transaction; may be null if this information is not available
      * @param tableId the table that should be included in the source info; may be null
-     * @param xmin the xmin of the slot, may be null
      * @param recordTime Hybrid Time Stamp Time of the statement within the transaction.
      * @return this instance
      */
     protected SourceInfo update(YBPartition partition, OpId lsn, long commitTime, String txId,
-                                TableId tableId,
-                                Long xmin, Long recordTime) {
+                                TableId tableId, Long recordTime) {
         this.lsn = lsn;
         this.commitTime = commitTime;
         this.txId = txId;
-        this.xmin = xmin;
         this.recordTime = recordTime;
         this.tableUUID = partition.getTableId();
         this.tabletId = partition.getTabletId();
@@ -129,10 +125,6 @@ public final class SourceInfo extends BaseSourceInfo {
 
     public OpId lsn() {
         return this.lsn;
-    }
-
-    public Long xmin() {
-        return this.xmin;
     }
 
     public String sequence() {
@@ -206,9 +198,6 @@ public final class SourceInfo extends BaseSourceInfo {
         }
         if (txId != null) {
             sb.append(", txId=").append(txId);
-        }
-        if (xmin != null) {
-            sb.append(", xmin=").append(xmin);
         }
         if (lastCommitLsn != null) {
             sb.append(", lastCommitLsn=").append(lastCommitLsn);

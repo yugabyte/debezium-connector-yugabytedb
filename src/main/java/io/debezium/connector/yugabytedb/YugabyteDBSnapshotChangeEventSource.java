@@ -457,10 +457,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                       // In case of snapshots, we do not want to ignore tableUUID while updating
                       // OpId value for a table-tablet pair.
-                      previousOffset.updateWalPosition(part, lsn, lastCompletelyProcessedLsn,
-                                                       message.getRawCommitTime(),
-                                                       String.valueOf(message.getTransactionId()),
-                                                       tId, null, message.getRecordTime());
+                      previousOffset.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn,
+                                                          message.getRawCommitTime(),
+                                                          String.valueOf(message.getTransactionId()),
+                                                          tId, message.getRecordTime());
 
                       boolean dispatched = (message.getOperation() != Operation.NOOP) &&
                           dispatcher.dispatchDataChangeEvent(part, tId,
@@ -532,7 +532,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     part.getTabletId(), table.getName(), part.getTableId());
                 }
 
-                previousOffset.getSourceInfo(part).updateLastCommit(finalOpId);
+                previousOffset.updateWalPosition(part, finalOpId);
             }
             
             // Reset the retry count here indicating that if the flow has reached here then
