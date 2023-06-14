@@ -1064,6 +1064,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
     private Configuration.Builder getConsistentConfigurationBuilder(String tableIncludeList, String dbStreamId) throws Exception {
         return getConsistentConfigurationBuilder(DEFAULT_DB_NAME, tableIncludeList, dbStreamId);
     }
+
     private Configuration.Builder getConsistentConfigurationBuilder(String databaseName, String tableIncludeList, String dbStreamId) throws Exception {
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder(databaseName, tableIncludeList, dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
@@ -1075,13 +1076,5 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
 
         return configBuilder;
-    }
-
-    private void assertTableNameInIndexList(List<SourceRecord> sourceRecords, List<Integer> indicesList, String tableName) {
-        for (int index : indicesList) {
-            SourceRecord record = sourceRecords.get(index);
-            Struct s = (Struct) record.value();
-            assertEquals(tableName, s.getStruct("source").getString("table"));
-        }
     }
 }
