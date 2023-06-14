@@ -21,6 +21,7 @@ import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 
+import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
