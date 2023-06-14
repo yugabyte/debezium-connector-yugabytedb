@@ -242,7 +242,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                         response.getSnapshotTime());
                                 offsetContext.updateWalPosition(part, finalOpid);
                                 offsetContext.updateWalSegmentIndex(part, response.getWalSegmentIndex());
-                                LOGGER.debug("The final opid is " + finalOpid);
+                                LOGGER.debug("The final opid for tablet {} is {}", part.getTabletId(), finalOpid);
                             }
                         }
 
@@ -321,10 +321,10 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
             return;
         }
 
-        final OpId lsn = new OpId(record.getCdcSdkOpId().getTerm(),
-                record.getCdcSdkOpId().getIndex(),
-                record.getCdcSdkOpId().getWriteIdKey().toByteArray(),
-                record.getCdcSdkOpId().getWriteId(),
+        final OpId lsn = new OpId(record.getFromOpId().getTerm(),
+                record.getFromOpId().getIndex(),
+                record.getFromOpId().getWriteIdKey().toByteArray(),
+                record.getFromOpId().getWriteId(),
                 snapshotTime);
 
         if (message.isLastEventForLsn()) {
@@ -347,7 +347,6 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                         LOGGER.debug("LSN in case of COMMIT is " + lsn);
                         offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                 String.valueOf(message.getTransactionId()), null, message.getRecordTime());
-                        commitMessage(part, offsetContext, lsn);
 
                         if (recordsInTransactionalBlock.containsKey(part.getId())) {
                             if (recordsInTransactionalBlock.get(part.getId()) == 0) {
@@ -379,7 +378,6 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                     LOGGER.debug("LSN in case of COMMIT is " + lsn);
                     offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                             String.valueOf(message.getTransactionId()), null, message.getRecordTime());
-                    commitMessage(part, offsetContext, lsn);
                     dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
 
                     if (recordsInTransactionalBlock.containsKey(part.getId())) {

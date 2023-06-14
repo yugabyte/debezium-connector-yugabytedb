@@ -522,8 +522,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             LOGGER.debug("LSN in case of COMMIT is " + lsn);
                                             offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                     String.valueOf(message.getTransactionId()), null, message.getRecordTime());
-                                            // todo: May not be needed now
-                                            commitMessage(part, offsetContext, lsn);
 
                                             if (recordsInTransactionalBlock.containsKey(part.getId())) {
                                                 if (recordsInTransactionalBlock.get(part.getId()) == 0) {
@@ -554,8 +552,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         LOGGER.debug("LSN in case of COMMIT is " + lsn);
                                         offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                 String.valueOf(message.getTransactionId()), null, message.getRecordTime());
-                                        // todo: May not be needed now
-                                        commitMessage(part, offsetContext, lsn);
                                         dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
 
                                         if (recordsInTransactionalBlock.containsKey(part.getId())) {
@@ -647,7 +643,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 response.getSnapshotTime());
                         offsetContext.updateWalPosition(part, finalOpid);
 
-                        offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
+                        offsetContext.updateWalSegmentIndex(part, response.getWalSegmentIndex());
 
                         LOGGER.debug("The final opid is " + finalOpid);
                     }

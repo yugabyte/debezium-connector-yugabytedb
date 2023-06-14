@@ -59,15 +59,15 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     public YugabyteDBOffsetContext(Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets,
                                    YugabyteDBConnectorConfig config) {
-        this.tabletSourceInfo = new ConcurrentHashMap();
+        this.tabletSourceInfo = new ConcurrentHashMap<>();
         this.fromLsn = new ConcurrentHashMap<>();
 
         for (Map.Entry<YBPartition, YugabyteDBOffsetContext> context :
                 previousOffsets.getOffsets().entrySet()) {
             YugabyteDBOffsetContext c = context.getValue();
             if (c != null) {
-//                initSourceInfo(context.getKey() /* YBPartition */, config, c.lastCompletelyProcessedLsn);
-//                this.updateWalPosition(context.getKey(), this.lastCommitLsn, lastCompletelyProcessedLsn, 0L, null, null, null, 0L);
+               initSourceInfo(context.getKey() /* YBPartition */, config, streamingStartLsn());
+               this.updateRecordPosition(context.getKey(), streamingStartLsn(), streamingStartLsn(), 0L, null, null, 0L);
             }
         }
         LOGGER.debug("Populating the tabletsourceinfo with " + this.getTabletSourceInfo());
@@ -248,10 +248,6 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     public Map<String, SourceInfo> getTabletSourceInfo() {
         return tabletSourceInfo;
-    }
-
-    public void updateCommitPosition(OpId lsn, OpId lastCompletelyProcessedLsn) {
-        // TODO: not required now, can be removed.
     }
 
     /**

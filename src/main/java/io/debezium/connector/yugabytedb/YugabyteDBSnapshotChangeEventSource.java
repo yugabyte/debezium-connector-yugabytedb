@@ -480,7 +480,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 OpId finalOpId = new OpId(resp.getTerm(), resp.getIndex(), resp.getKey(),
                                           resp.getWriteId(), resp.getSnapshotTime());
-                LOGGER.debug("Final OpId is {}", finalOpId);
+                LOGGER.debug("Final OpId for tablet {} is {}", part.getId(), finalOpId);
 
                 /*
                    This block checks and validates for two scenarios:
