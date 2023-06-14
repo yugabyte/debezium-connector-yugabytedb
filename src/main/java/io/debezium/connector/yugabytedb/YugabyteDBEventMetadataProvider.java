@@ -45,13 +45,9 @@ class YugabyteDBEventMetadataProvider implements EventMetadataProvider {
         if (source == null) {
             return null;
         }
-//        Long xmin = sourceInfo.getInt64(SourceInfo.XMIN_KEY);
 
         Map<String, String> r = Collect.hashMapOf(
                 SourceInfo.LSN_KEY, sourceInfo.getString(SourceInfo.LSN_KEY));
-//        if (xmin != null) {
-//            r.put(SourceInfo.XMIN_KEY, Long.toString(xmin));
-//        }
         return r;
     }
 

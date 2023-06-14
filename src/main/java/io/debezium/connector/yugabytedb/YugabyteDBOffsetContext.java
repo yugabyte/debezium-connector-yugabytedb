@@ -163,12 +163,22 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         return this.tabletWalSegmentIndex.getOrDefault(partition.getId(), 0);
     }
 
+    /**
+     * [NOT MEANT FOR USAGES] This method simply returns a dummy schema since we have to override
+     * this method while implementing the class, otherwise we are not using this method anywhere.
+     * @return a dummy {@link Schema} object
+     */
     @Override
     public Schema getSourceInfoSchema() {
         // Return a dummy schema.
         return SchemaBuilder.struct().build();
     }
 
+    /**
+     * [NOT MEANT FOR USAGES] This method simply returns a dummy Struct since we have to override
+     * this method while implementing the class, otherwise we are not using this method anywhere.
+     * @return a dummy {@link Struct} object
+     */
     @Override
     public Struct getSourceInfo() {
         // Return dummy source info.
