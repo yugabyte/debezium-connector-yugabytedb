@@ -716,9 +716,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                final OpId lsn)
             throws SQLException, InterruptedException {
         lastCompletelyProcessedLsn = lsn;
-        offsetContext.updateCommitPosition(lsn, lastCompletelyProcessedLsn);
         maybeWarnAboutGrowingWalBacklog(false);
-        // dispatcher.dispatchHeartbeatEvent(partition, offsetContext);
     }
 
     /**

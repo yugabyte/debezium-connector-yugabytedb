@@ -11,6 +11,7 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
@@ -138,7 +139,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
                         int consumed = consumeAvailableRecords(record -> {
                             LOGGER.info("The record being consumed is " + record);
                             Struct s = (Struct) record.value();
-                            if (s.schema().fields().stream().map(f -> f.name()).collect(Collectors.toSet()).contains("status")) {
+                            if (s.schema().fields().stream().map(Field::name).collect(Collectors.toSet()).contains("status")) {
                                 LOGGER.info("Consumed txn record: {}", s);
                                 return;
                             }
@@ -776,6 +777,267 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         }
     }
 
+    @Test
+    public void beforeImageWithConsistency() throws Exception {
+        TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT, serial_no INT) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, serial_no INT) SPLIT INTO 1 TABLETS;");
+
+        YugabyteDBConnection c = TestHelper.create();
+        Connection conn = c.connection();
+        conn.setAutoCommit(false);
+
+        final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department", true, true);
+        Configuration.Builder configBuilder = getConsistentConfigurationBuilder("public.department,public.employee",dbStreamId);
+
+        final boolean runIndefinitely = false;
+        final int iterations = runIndefinitely ? Integer.MAX_VALUE : 10;
+        final int seconds = 900;
+
+        // Assuming there will be 2 records in every iteration - one for each update.
+        // Plus there will be 2 more for the initial inserts.
+        final long totalRecords = 2 + (2 * iterations);
+
+        ExecutorService exec = Executors.newFixedThreadPool(1);
+        Future<?> future = exec.submit(() -> {
+            try (Statement st = conn.createStatement()) {
+                long serial = 0;
+                // Insert two records
+                st.execute(String.format("INSERT INTO department VALUES (1, 'my department no 1', %d);", serial++));
+                st.execute(String.format("INSERT INTO employee VALUES (1, 'emp no 1', 1, %d);", serial++));
+                conn.commit();
+
+                // Now simply keep updating all the values.
+                for (int i = 0; i < iterations; ++i) {
+                    st.execute(String.format("UPDATE department SET serial_no = %d WHERE id = 1;", serial++));
+                    st.execute(String.format("UPDATE employee SET serial_no = %d WHERE id = 1;", serial++));
+
+                    conn.commit();
+                }
+            } catch (Exception e) {
+                LOGGER.error("Exception caught: ", e);
+                throw new RuntimeException(e);
+            }
+        });
+
+        List<SourceRecord> recordsToAssert = new ArrayList<>();
+
+        AtomicLong totalConsumedRecords = new AtomicLong();
+        try {
+            LOGGER.info("Started consuming");
+            Awaitility.await()
+              .atMost(Duration.ofSeconds(seconds))
+              .until(() -> {
+                  int consumed = super.consumeAvailableRecords(record -> {
+                      LOGGER.debug("The record being consumed is " + record);
+                      Struct value = (Struct) record.value();
+                      final int serialVal = value.getStruct("after").getStruct("serial_no").getInt32("value");
+                      Assertions.assertEquals(recordsToAssert.size(), serialVal,
+                            "Expected serial: " + recordsToAssert.size() + " but received "
+                                + serialVal + " at index " + recordsToAssert.size()
+                                + " with record " + record);
+
+                      if (value.getStruct("before") != null) {
+                          // Assert before image in this case - the before image would be one less
+                          // then the current serial value received.
+                          final int beforeSerial = value.getStruct("before").getStruct("serial_no").getInt32("value");
+                          Assertions.assertEquals(serialVal - 1, beforeSerial,
+                            "Wrong before image found at index " + recordsToAssert.size() + " expected serial: "
+                            + (serialVal - 1) + " received serial: " + beforeSerial);
+                      }
+
+                      recordsToAssert.add(record);
+                  });
+                  if (consumed > 0) {
+                      totalConsumedRecords.addAndGet(consumed);
+                      LOGGER.info("Consumed " + totalConsumedRecords.get() + " records");
+                  }
+
+                  return recordsToAssert.size() == (long) totalRecords && future.isDone();
+              });
+        } catch (ConditionTimeoutException exception) {
+            fail("Failed to consume " + (long) totalRecords + " records in " + seconds + " seconds, consumed " + totalConsumedRecords.get(), exception);
+        }
+    }
+
+    @Test
+    public void consistencyWithColocatedTables() throws Exception {
+        TestHelper.executeInDatabase("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT, serial_no INT) WITH (colocated = true) SPLIT INTO 1 TABLETS;", DEFAULT_COLOCATED_DB_NAME);
+        TestHelper.executeInDatabase("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, serial_no INT) WITH (colocated = true) SPLIT INTO 1 TABLETS;", DEFAULT_COLOCATED_DB_NAME);
+
+        YugabyteDBConnection c = TestHelper.createConnectionTo(DEFAULT_COLOCATED_DB_NAME);
+        Connection conn = c.connection();
+        conn.setAutoCommit(false);
+
+        final String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "department", false, true);
+        Configuration.Builder configBuilder = getConsistentConfigurationBuilder(DEFAULT_COLOCATED_DB_NAME, "public.department,public.employee",dbStreamId);
+
+        final boolean runIndefinitely = false;
+        final int iterations = runIndefinitely ? Integer.MAX_VALUE : 10;
+        final int seconds = 900;
+
+        final int employeeBatchSize = 5;
+
+        final long totalRecords = iterations /* department */
+                                  + iterations * employeeBatchSize; /* employee */
+
+        ExecutorService exec = Executors.newFixedThreadPool(1);
+        Future<?> future = exec.submit(() -> {
+            int employeeId = 1;
+            try (Statement st = conn.createStatement()) {
+                long serial = 0;
+
+                for (int i = 0; i < iterations; ++i) {
+                    st.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d', %d);", i, i, serial++));
+                    for (int j = employeeId; j <= employeeId + employeeBatchSize - 1; ++j) {
+                        st.execute(String.format("INSERT INTO employee VALUES (%d, 'emp no %d', %d, %d);", j, j, i, serial++));
+                    }
+
+                    conn.commit();
+
+                    employeeId += employeeBatchSize;
+                }
+            } catch (Exception e) {
+                LOGGER.error("Exception caught: ", e);
+                throw new RuntimeException(e);
+            }
+        });
+
+        List<SourceRecord> recordsToAssert = new ArrayList<>();
+
+        AtomicLong totalConsumedRecords = new AtomicLong();
+        try {
+            LOGGER.info("Started consuming");
+            Awaitility.await()
+              .atMost(Duration.ofSeconds(seconds))
+              .until(() -> {
+                  int consumed = super.consumeAvailableRecords(record -> {
+                      LOGGER.debug("The record being consumed is " + record);
+                      Struct value = (Struct) record.value();
+                      final int serialVal = value.getStruct("after").getStruct("serial_no").getInt32("value");
+                      Assertions.assertEquals(recordsToAssert.size(), serialVal,
+                        "Expected serial: " + recordsToAssert.size() + " but received "
+                          + serialVal + " at index " + recordsToAssert.size()
+                          + " with record " + record);
+
+                      recordsToAssert.add(record);
+                  });
+                  if (consumed > 0) {
+                      totalConsumedRecords.addAndGet(consumed);
+                      LOGGER.info("Consumed " + totalConsumedRecords.get() + " records");
+                  }
+
+                  return recordsToAssert.size() == (long) totalRecords && future.isDone();
+              });
+        } catch (ConditionTimeoutException exception) {
+            fail("Failed to consume " + (long) totalRecords + " records in " + seconds + " seconds, consumed " + totalConsumedRecords.get(), exception);
+        }
+    }
+
+    @Test
+    public void consistencyWithColumnAdditions() throws Exception {
+        TestHelper.execute("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT, serial_no INT) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, serial_no INT) SPLIT INTO 1 TABLETS;");
+
+        YugabyteDBConnection c = TestHelper.create();
+        Connection conn = c.connection();
+        conn.setAutoCommit(false);
+
+        final String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "department", false, true);
+        Configuration.Builder configBuilder = getConsistentConfigurationBuilder("public.department,public.employee",dbStreamId);
+
+        final boolean runIndefinitely = false;
+        final int iterations = runIndefinitely ? Integer.MAX_VALUE : 100;
+        final int seconds = 900;
+
+        final int employeeBatchSize = 5;
+
+        final long totalRecords = iterations /* department */
+                                    + iterations * employeeBatchSize; /* employee */
+
+        final String newColumnName = "added_col";
+        final int newColumnDefaultValue = 400;
+        ExecutorService exec = Executors.newFixedThreadPool(1);
+        Future<?> future = exec.submit(() -> {
+            int employeeId = 1;
+            boolean addColumn = false;
+
+            try (Statement st = conn.createStatement()) {
+                long serial = 0;
+
+                for (int i = 0; i < iterations; ++i) {
+                    if (serial != 0 && serial % 10 == 0) {
+                        addColumn = !addColumn;
+                        if (addColumn) {
+                            st.execute("ALTER TABLE department ADD COLUMN " + newColumnName + i + " INT DEFAULT " + newColumnDefaultValue + ";");
+                            st.execute("ALTER TABLE employee ADD COLUMN " + newColumnName + i + " INT DEFAULT " + newColumnDefaultValue + ";");
+                        } else {
+                            st.execute("ALTER TABLE department DROP COLUMN " + newColumnName + ";");
+                            st.execute("ALTER TABLE employee DROP COLUMN " + newColumnName + ";");
+                        }
+                    }
+
+                    st.execute(String.format("INSERT INTO department VALUES (%d, 'my department no %d', %d);", i, i, serial++));
+                    for (int j = employeeId; j <= employeeId + employeeBatchSize - 1; ++j) {
+                        st.execute(String.format("INSERT INTO employee VALUES (%d, 'emp no %d', %d, %d);", j, j, i, serial++));
+                    }
+
+                    conn.commit();
+
+                    employeeId += employeeBatchSize;
+                }
+            } catch (Exception e) {
+                LOGGER.error("Exception caught: ", e);
+                throw new RuntimeException(e);
+            }
+        });
+
+        List<SourceRecord> recordsToAssert = new ArrayList<>();
+
+        AtomicLong totalConsumedRecords = new AtomicLong();
+        AtomicBoolean shouldContainExtraColumn = new AtomicBoolean();
+        try {
+            LOGGER.info("Started consuming");
+            Awaitility.await()
+              .atMost(Duration.ofSeconds(seconds))
+              .until(() -> {
+                  int consumed = super.consumeAvailableRecords(record -> {
+                      if (recordsToAssert.size() != 0 && recordsToAssert.size() % 10 == 0) {
+                        shouldContainExtraColumn.set(!shouldContainExtraColumn.get());
+                      }
+
+                      LOGGER.debug("The record being consumed is " + record);
+                      Struct value = (Struct) record.value();
+                      final int serialVal = value.getStruct("after").getStruct("serial_no").getInt32("value");
+                      Assertions.assertEquals(recordsToAssert.size(), serialVal,
+                        "Expected serial: " + recordsToAssert.size() + " but received "
+                          + serialVal + " at index " + recordsToAssert.size()
+                          + " with record " + record);
+
+                      if (shouldContainExtraColumn.get()) {
+                          final int newColVal = value.getStruct("after").getStruct(newColumnName).getInt32("value");
+                          Assertions.assertEquals(newColumnDefaultValue, newColVal);
+                      } else {
+                          boolean hasNewColumn = value.getStruct("after").schema().fields()
+                                                   .stream().map(Field::name)
+                                                   .collect(Collectors.toSet())
+                                                   .contains(newColumnName);
+                          Assertions.assertFalse(hasNewColumn);
+                      }
+
+                      recordsToAssert.add(record);
+                  });
+                  if (consumed > 0) {
+                      totalConsumedRecords.addAndGet(consumed);
+                      LOGGER.info("Consumed " + totalConsumedRecords.get() + " records");
+                  }
+
+                  return recordsToAssert.size() == (long) totalRecords && future.isDone();
+              });
+        } catch (ConditionTimeoutException exception) {
+            fail("Failed to consume " + (long) totalRecords + " records in " + seconds + " seconds, consumed " + totalConsumedRecords.get(), exception);
+        }
+    }
+
     public void executeWithRetry(Statement st, String statement) throws SQLException {
         final int totalRetries = 3;
 
@@ -799,11 +1061,20 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         }
     }
 
-    private void assertTableNameInIndexList(List<SourceRecord> sourceRecords, List<Integer> indicesList, String tableName) {
-        for (int index : indicesList) {
-            SourceRecord record = sourceRecords.get(index);
-            Struct s = (Struct) record.value();
-            assertEquals(tableName, s.getStruct("source").getString("table"));
-        }
+    private Configuration.Builder getConsistentConfigurationBuilder(String tableIncludeList, String dbStreamId) throws Exception {
+        return getConsistentConfigurationBuilder(DEFAULT_DB_NAME, tableIncludeList, dbStreamId);
+    }
+
+    private Configuration.Builder getConsistentConfigurationBuilder(String databaseName, String tableIncludeList, String dbStreamId) throws Exception {
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder(databaseName, tableIncludeList, dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
+        configBuilder.with("transforms", "Reroute");
+        configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
+        configBuilder.with("transforms.Reroute.topic.regex", "(.*)");
+        configBuilder.with("transforms.Reroute.topic.replacement", "test_server_all_events");
+        configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
+        configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
+
+        return configBuilder;
     }
 }
