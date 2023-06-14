@@ -5,7 +5,7 @@
     <groupId>io.debezium</groupId>
     <artifactId>debezium-connector-yugabytedb</artifactId>
     <name>YugabyteDB Source Connector</name>
-    <version>1.9.5.y.24-SNAPSHOT</version>
+    <version>1.9.5.y.25-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <scm>
