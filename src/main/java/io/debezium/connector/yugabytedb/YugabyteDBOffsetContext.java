@@ -108,7 +108,6 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                 connectorConfig,
                 new YugabyteDBTransactionContext(),
                 new SignalBasedIncrementalSnapshotContext<>());
-        // todo: Q: Wouldn't this code cause all the partitions to be initialised with lastCompletelyProcessedLsn
         for (YBPartition p : partitions) {
             if (context.getTabletSourceInfo().get(p.getId()) == null) {
                 context.initSourceInfo(p, connectorConfig, lastCompletelyProcessedLsn);
