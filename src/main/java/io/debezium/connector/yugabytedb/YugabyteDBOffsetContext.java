@@ -39,6 +39,12 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     private static final Logger LOGGER =
       LoggerFactory.getLogger(YugabyteDBSnapshotChangeEventSource.class);
+
+    // The two maps tabletSourceInfo and fromLsn are used to store offsets. However, there are
+    // differences between the offsets they store:
+    // tabletSourceInfo - this has the offset for each processed record and thus these offsets are
+    // used in the commitOffset callback to set checkpoints
+    // fromLsn - stores the OpId we should use to call next GetChangesRequest
     private final Map<String, SourceInfo> tabletSourceInfo;
     private final Map<String, OpId> fromLsn;
     private YugabyteDBTransactionContext transactionContext;
@@ -170,8 +176,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
      */
     @Override
     public Schema getSourceInfoSchema() {
-        // Return a dummy schema.
-        return SchemaBuilder.struct().build();
+        throw new UnsupportedOperationException("This method is not in use and thus not implemented");
     }
 
     /**
@@ -181,8 +186,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
      */
     @Override
     public Struct getSourceInfo() {
-        // Return dummy source info.
-        return (Struct) SchemaBuilder.struct().build();
+        throw new UnsupportedOperationException("This method is not in use and thus not implemented");
     }
 
     public SourceInfo getSourceInfo(YBPartition partition) {
