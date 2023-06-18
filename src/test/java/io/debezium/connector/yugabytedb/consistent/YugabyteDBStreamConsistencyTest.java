@@ -232,6 +232,9 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
                             + (iterations * employeeBatchSize * contractBatchSize * addressBatchSize * localityBatchSize); /* locality */
         LOGGER.info("Total records to be inserted: {}", totalCount);
 
+        /*
+         Take serial out of the thread
+         */
         ExecutorService exec = Executors.newFixedThreadPool(1);
         Future<?> future = exec.submit(() -> {
             int departmentId = 1;
@@ -1049,6 +1052,111 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
               });
         } catch (ConditionTimeoutException exception) {
             fail("Failed to consume " + (long) totalRecords + " records in " + seconds + " seconds, consumed " + totalConsumedRecords.get(), exception);
+        }
+    }
+
+    @Test
+    public void multiThreadedInsertsToVerifyAtomicity() throws Exception {
+        TestHelper.execute("CREATE TABLE table_a (id INT PRIMARY KEY, uuid_col TEXT) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE table_b (id INT PRIMARY KEY, uuid_col TEXT) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE table_c (id INT PRIMARY KEY, uuid_col TEXT) SPLIT INTO 1 TABLETS;");
+
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "table_a");
+        Configuration.Builder configBuilder =
+          getConsistentConfigurationBuilder("public.table_a,public.table_b,public.table_c", dbStreamId);
+        configBuilder.with("provide.transaction.metadata", "true");
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        try (Connection conn = TestHelper.create().connection()) {
+            conn.setAutoCommit(false);
+            Statement st = conn.createStatement();
+
+            final String firstInsertedUUID = UUID.randomUUID().toString();
+            st.execute("INSERT INTO table_a VALUES (1, '" + firstInsertedUUID  + "');");
+            st.execute("INSERT INTO table_a VALUES (2, '" + firstInsertedUUID  + "');");
+            st.execute("INSERT INTO table_a VALUES (3, '" + firstInsertedUUID  + "');");
+
+            conn.commit();
+            st.close();
+        } catch (SQLException sqle) {
+            LOGGER.error("Error while creating connection", sqle);
+            throw sqle;
+        }
+
+        final boolean runIndefinitely = false;
+        final int iterations = runIndefinitely ? Integer.MAX_VALUE : 5;
+        final int seconds = runIndefinitely ? Integer.MAX_VALUE : 900;
+        final long totalRecords = 3 /* number of threads */ * iterations * 3 /* number of updates */;
+
+        Runnable runnable = () -> {
+            try {
+                YugabyteDBConnection ybConn = TestHelper.create();
+                Connection conn = ybConn.connection();
+                conn.setAutoCommit(false);
+                Statement st = conn.createStatement();
+
+                for (int i = 0; i < iterations; ++i) {
+                    final String uuidString = UUID.randomUUID().toString();
+                    st.execute(String.format("UPDATE table_a SET uuid_col = %s WHERE id = 1;", uuidString));
+                    st.execute(String.format("UPDATE table_b SET uuid_col = %s WHERE id = 2;", uuidString));
+                    st.execute(String.format("UPDATE table_c SET uuid_col = %s WHERE id = 3;", uuidString));
+                }
+            } catch (SQLException e) {
+                LOGGER.error("Error thrown while updating in thread {}", Thread.currentThread().getId(), e);
+                fail();
+            }
+        };
+
+        ExecutorService exec = Executors.newFixedThreadPool(3);
+        Future<?> future1 = exec.submit(runnable);
+        Future<?> future2 = exec.submit(runnable);
+        Future<?> future3 = exec.submit(runnable);
+
+        List<SourceRecord> recordsToAssert = new ArrayList<>();
+        AtomicLong totalConsumedRecords = new AtomicLong();
+        try {
+            LOGGER.info("Started consuming");
+            Awaitility.await()
+              .atMost(Duration.ofSeconds(seconds))
+              .until(() -> {
+                  int consumed = super.consumeAvailableRecords(record -> {
+                      Struct value = (Struct) record.value();
+                      if (value.getString("status").equals("END") && recordsToAssert.size() != 0) {
+                          assertRecordsAreAtomic(recordsToAssert);
+                          recordsToAssert.clear();
+                      } else if (!value.getString("status").equals("BEGIN")) {
+                          recordsToAssert.add(record);
+                          totalConsumedRecords.incrementAndGet();
+                      }
+                  });
+
+                  if (consumed > 0) {
+                      LOGGER.info("Consumed " + totalConsumedRecords.get() + " records");
+                  }
+
+                  return totalConsumedRecords.get() == totalRecords && future1.isDone() && future2.isDone() && future3.isDone();
+              });
+        } catch (ConditionTimeoutException exception) {
+            fail("Failed to consume " + (long) totalRecords + " records in " + seconds + " seconds, consumed " + totalConsumedRecords.get(), exception);
+        }
+    }
+
+    /**
+     * Assert that all the records in the batch have the same value of uuid_col - this will help
+     * us in asserting the atomicity of the transaction.
+     * @param records the list records to assert for
+     */
+    public void assertRecordsAreAtomic(List<SourceRecord> records) {
+        Assertions.assertNotEquals(0, records.size());
+
+        Struct value = (Struct) records.get(0).value();
+        final String uuidValue = value.getStruct("after").getStruct("uuid_col").getString("value");
+
+        for (int i = 1; i < records.size(); ++i) {
+            Struct val = (Struct) records.get(i).value();
+            String uuidInRecord = val.getStruct("after").getStruct("uuid_col").getString("value");
+            Assertions.assertEquals(uuidValue, uuidInRecord);
         }
     }
 
