@@ -21,7 +21,6 @@ import org.postgresql.jdbc.PgArray;
 import org.postgresql.util.PGmoney;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.Value;
 import org.yb.Common.DatumMessagePB;
 
 import io.debezium.connector.yugabytedb.PgOid;
@@ -35,9 +34,9 @@ import io.debezium.data.SpecialValueDecimal;
 import io.debezium.time.Conversions;
 
 /**
- * Replication message column sent by <a href="https://github.com/debezium/postgres-decoderbufs">Postgres Decoderbufs</>
+ * Replication message column.
  *
- * @author Chris Cranford
+ * @author Suranjan Kumar
  */
 public class YbProtoColumnValue extends AbstractColumnValue<DatumMessagePB> {
 
@@ -56,7 +55,6 @@ public class YbProtoColumnValue extends AbstractColumnValue<DatumMessagePB> {
     private static final long TIMESTAMP_MAX = 9223371331200000000L;
 
     private DatumMessagePB value;
-
     public YbProtoColumnValue(DatumMessagePB value) {
         this.value = value;
     }
