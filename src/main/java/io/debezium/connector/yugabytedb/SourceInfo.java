@@ -30,9 +30,7 @@ public final class SourceInfo extends BaseSourceInfo {
 
     public static final String TIMESTAMP_USEC_KEY = "ts_usec";
     public static final String TXID_KEY = "txId";
-    public static final String XMIN_KEY = "xmin";
     public static final String LSN_KEY = "lsn";
-    public static final String LAST_SNAPSHOT_RECORD_KEY = "last_snapshot_record";
 
     public static final String COMMIT_TIME = "commit_time";
 
