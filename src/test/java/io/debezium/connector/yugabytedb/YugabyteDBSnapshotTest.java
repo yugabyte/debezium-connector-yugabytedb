@@ -385,40 +385,40 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
     }
 
-    private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
-        waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
-    }
+    // private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
+    //     waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
+    // }
 
-    /**
-     * Consume the records available and add them to a list for further assertion purposes.
-     * @param records list to which we need to add the records we consume, pass a
-     * {@code new ArrayList<>()} if you do not need assertions on the consumed values
-     * @param recordsCount total number of records which should be consumed
-     * @param milliSecondsToWait duration in milliseconds to wait for while consuming
-     */
-    private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
-                                            long milliSecondsToWait) {
-        AtomicLong totalConsumedRecords = new AtomicLong();
-        long seconds = milliSecondsToWait / 1000;
-        try {
-            Awaitility.await()
-              .atMost(Duration.ofSeconds(seconds))
-              .until(() -> {
-                  int consumed = consumeAvailableRecords(record -> {
-                      LOGGER.debug("The record being consumed is " + record);
-                      records.add(record);
-                  });
-                  if (consumed > 0) {
-                      totalConsumedRecords.addAndGet(consumed);
-                      LOGGER.info("Consumed " + totalConsumedRecords + " records");
-                  }
+    // /**
+    //  * Consume the records available and add them to a list for further assertion purposes.
+    //  * @param records list to which we need to add the records we consume, pass a
+    //  * {@code new ArrayList<>()} if you do not need assertions on the consumed values
+    //  * @param recordsCount total number of records which should be consumed
+    //  * @param milliSecondsToWait duration in milliseconds to wait for while consuming
+    //  */
+    // private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
+    //                                         long milliSecondsToWait) {
+    //     AtomicLong totalConsumedRecords = new AtomicLong();
+    //     long seconds = milliSecondsToWait / 1000;
+    //     try {
+    //         Awaitility.await()
+    //           .atMost(Duration.ofSeconds(seconds))
+    //           .until(() -> {
+    //               int consumed = consumeAvailableRecords(record -> {
+    //                   LOGGER.debug("The record being consumed is " + record);
+    //                   records.add(record);
+    //               });
+    //               if (consumed > 0) {
+    //                   totalConsumedRecords.addAndGet(consumed);
+    //                   LOGGER.info("Consumed " + totalConsumedRecords + " records");
+    //               }
 
-                  return totalConsumedRecords.get() == recordsCount;
-              });
-        } catch (ConditionTimeoutException exception) {
-            fail("Failed to consume " + recordsCount + " in " + seconds + " seconds", exception);
-        }
+    //               return totalConsumedRecords.get() == recordsCount;
+    //           });
+    //     } catch (ConditionTimeoutException exception) {
+    //         fail("Failed to consume " + recordsCount + " in " + seconds + " seconds", exception);
+    //     }
 
-        assertEquals(recordsCount, totalConsumedRecords.get());
-    }
+    //     assertEquals(recordsCount, totalConsumedRecords.get());
+    // }
 }
