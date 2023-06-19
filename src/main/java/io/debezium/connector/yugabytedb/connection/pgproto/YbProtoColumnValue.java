@@ -21,7 +21,7 @@ import org.postgresql.jdbc.PgArray;
 import org.postgresql.util.PGmoney;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.Value;
+import org.yb.Common;
 
 import io.debezium.connector.yugabytedb.PgOid;
 import io.debezium.connector.yugabytedb.YugabyteDBStreamingChangeEventSource.PgConnectionSupplier;
@@ -38,7 +38,7 @@ import io.debezium.time.Conversions;
  *
  * @author Chris Cranford
  */
-public class YbProtoColumnValue extends AbstractColumnValue<Value.DatumMessagePB> {
+public class YbProtoColumnValue extends AbstractColumnValue<Common.DatumMessagePB> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(YbProtoColumnValue.class);
 
@@ -54,14 +54,14 @@ public class YbProtoColumnValue extends AbstractColumnValue<Value.DatumMessagePB
      */
     private static final long TIMESTAMP_MAX = 9223371331200000000L;
 
-    private Value.DatumMessagePB value;
+    private Common.DatumMessagePB value;
 
-    public YbProtoColumnValue(Value.DatumMessagePB value) {
+    public YbProtoColumnValue(Common.DatumMessagePB value) {
         this.value = value;
     }
 
     @Override
-    public Value.DatumMessagePB getRawValue() {
+    public Common.DatumMessagePB getRawValue() {
         return value;
     }
 
