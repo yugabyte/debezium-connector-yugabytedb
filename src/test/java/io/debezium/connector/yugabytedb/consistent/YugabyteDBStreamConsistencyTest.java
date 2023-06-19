@@ -1074,8 +1074,8 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
 
             final String firstInsertedUUID = UUID.randomUUID().toString();
             st.execute("INSERT INTO table_a VALUES (1, '" + firstInsertedUUID  + "');");
-            st.execute("INSERT INTO table_a VALUES (2, '" + firstInsertedUUID  + "');");
-            st.execute("INSERT INTO table_a VALUES (3, '" + firstInsertedUUID  + "');");
+            st.execute("INSERT INTO table_b VALUES (2, '" + firstInsertedUUID  + "');");
+            st.execute("INSERT INTO table_c VALUES (3, '" + firstInsertedUUID  + "');");
 
             conn.commit();
             st.close();
@@ -1098,9 +1098,9 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
 
                 for (int i = 0; i < iterations; ++i) {
                     final String uuidString = UUID.randomUUID().toString();
-                    st.execute(String.format("UPDATE table_a SET uuid_col = %s WHERE id = 1;", uuidString));
-                    st.execute(String.format("UPDATE table_b SET uuid_col = %s WHERE id = 2;", uuidString));
-                    st.execute(String.format("UPDATE table_c SET uuid_col = %s WHERE id = 3;", uuidString));
+                    st.execute(String.format("UPDATE table_a SET uuid_col = '%s' WHERE id = 1;", uuidString));
+                    st.execute(String.format("UPDATE table_b SET uuid_col = '%s' WHERE id = 2;", uuidString));
+                    st.execute(String.format("UPDATE table_c SET uuid_col = '%s' WHERE id = 3;", uuidString));
                 }
             } catch (SQLException e) {
                 LOGGER.error("Error thrown while updating in thread {}", Thread.currentThread().getId(), e);
@@ -1122,10 +1122,15 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
               .until(() -> {
                   int consumed = super.consumeAvailableRecords(record -> {
                       Struct value = (Struct) record.value();
-                      if (value.getString("status").equals("END") && recordsToAssert.size() != 0) {
-                          assertRecordsAreAtomic(recordsToAssert);
-                          recordsToAssert.clear();
-                      } else if (!value.getString("status").equals("BEGIN")) {
+                      boolean isTxnRecord = (value != null)
+                            && value.schema().fields().stream().map(Field::name)
+                                .collect(Collectors.toSet()).contains("status");
+                      if (isTxnRecord) {
+                        if (value.getString("status").equals("END") && recordsToAssert.size() != 0) {
+                            assertRecordsAreAtomic(recordsToAssert);
+                            recordsToAssert.clear();
+                        }
+                      } else {
                           recordsToAssert.add(record);
                           totalConsumedRecords.incrementAndGet();
                       }
@@ -1140,6 +1145,10 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         } catch (ConditionTimeoutException exception) {
             fail("Failed to consume " + (long) totalRecords + " records in " + seconds + " seconds, consumed " + totalConsumedRecords.get(), exception);
         }
+
+        TestHelper.execute("DROP TABLE IF EXISTS table_a;");
+        TestHelper.execute("DROP TABLE IF EXISTS table_b;");
+        TestHelper.execute("DROP TABLE IF EXISTS table_c;");
     }
 
     /**
