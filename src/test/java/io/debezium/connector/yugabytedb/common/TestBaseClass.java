@@ -195,7 +195,7 @@ public class TestBaseClass extends AbstractConnectorTest {
   protected SourceRecords consumeByTopic(int numRecords) throws InterruptedException {
     SourceRecords records = new SourceRecords();
     int recordsConsumed = 0;
-    while (recordsConsumed <= numRecords) {
+    while (recordsConsumed < numRecords) {
       if (!linesConsumed.isEmpty()) {
         records.add(linesConsumed.poll());
         ++recordsConsumed;
