@@ -4,8 +4,6 @@ import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.awaitility.Awaitility;
-import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -16,7 +14,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -384,41 +381,4 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     private void verifyRecordCount(long recordsCount) {
         waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
     }
-
-    // private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
-    //     waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
-    // }
-
-    // /**
-    //  * Consume the records available and add them to a list for further assertion purposes.
-    //  * @param records list to which we need to add the records we consume, pass a
-    //  * {@code new ArrayList<>()} if you do not need assertions on the consumed values
-    //  * @param recordsCount total number of records which should be consumed
-    //  * @param milliSecondsToWait duration in milliseconds to wait for while consuming
-    //  */
-    // private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
-    //                                         long milliSecondsToWait) {
-    //     AtomicLong totalConsumedRecords = new AtomicLong();
-    //     long seconds = milliSecondsToWait / 1000;
-    //     try {
-    //         Awaitility.await()
-    //           .atMost(Duration.ofSeconds(seconds))
-    //           .until(() -> {
-    //               int consumed = consumeAvailableRecords(record -> {
-    //                   LOGGER.debug("The record being consumed is " + record);
-    //                   records.add(record);
-    //               });
-    //               if (consumed > 0) {
-    //                   totalConsumedRecords.addAndGet(consumed);
-    //                   LOGGER.info("Consumed " + totalConsumedRecords + " records");
-    //               }
-
-    //               return totalConsumedRecords.get() == recordsCount;
-    //           });
-    //     } catch (ConditionTimeoutException exception) {
-    //         fail("Failed to consume " + recordsCount + " in " + seconds + " seconds", exception);
-    //     }
-
-    //     assertEquals(recordsCount, totalConsumedRecords.get());
-    // }
 }
