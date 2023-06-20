@@ -36,8 +36,9 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     }
 
     @BeforeEach
-    public void before() {
+    public void before() throws Exception {
         initializeConnectorTestFramework();
+        TestHelper.dropAllSchemas();
     }
 
     @AfterEach
@@ -45,6 +46,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         stopConnector();
         dropAllTables();
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
+        TestHelper.dropAllSchemas();
     }
 
     @AfterAll
@@ -55,7 +57,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     public void testSnapshotRecordConsumption(boolean colocation) throws Exception {
-        TestHelper.dropAllSchemas();
         createTables(colocation);
         final int recordsCount = 5000;
         insertBulkRecords(recordsCount, "public.test_1");
@@ -80,7 +81,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     public void shouldOnlySnapshotTablesInList(boolean colocation) throws Exception {
-        TestHelper.dropAllSchemas();
         createTables(colocation);
 
         int recordCountT1 = 5000;
@@ -120,7 +120,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     public void snapshotTableThenStreamData(boolean colocation) throws Exception {
-        TestHelper.dropAllSchemas();
         createTables(colocation);
 
         int recordCountT1 = 5000;
@@ -156,7 +155,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     public void snapshotTableWithCompaction(boolean colocation) throws Exception {
-        TestHelper.dropAllSchemas();
         createTables(colocation);
 
         int recordCount = 5000;
@@ -187,8 +185,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     public void snapshotForMultipleTables(boolean colocation) throws Exception {
-        TestHelper.dropAllSchemas();
-
         // Create colocated tables
         createTables(colocation);
 
@@ -283,8 +279,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
 
     @Test
     public void snapshotColocatedNonColocatedThenStream() throws Exception {
-        TestHelper.dropAllSchemas();
-
         // Create tables.
         createTables(true /* enforce creation of the colocated tables only */);
 
@@ -346,6 +340,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
      * Helper function to create the required tables in the database DEFAULT_COLOCATED_DB_NAME
      */
     private void createTables(boolean colocation) {
+        LOGGER.info("Creating tables for snapshot test with colocation: {}", colocation);
         final String createTest1 = String.format("CREATE TABLE test_1 (id INT PRIMARY KEY," +
                                                  "name TEXT DEFAULT 'Vaibhav Kushwaha') " +
                                                   "WITH (COLOCATION = %b);", colocation);
@@ -384,41 +379,4 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     private void verifyRecordCount(long recordsCount) {
         waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
     }
-
-    // private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
-    //     waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
-    // }
-
-    // /**
-    //  * Consume the records available and add them to a list for further assertion purposes.
-    //  * @param records list to which we need to add the records we consume, pass a
-    //  * {@code new ArrayList<>()} if you do not need assertions on the consumed values
-    //  * @param recordsCount total number of records which should be consumed
-    //  * @param milliSecondsToWait duration in milliseconds to wait for while consuming
-    //  */
-    // private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
-    //                                         long milliSecondsToWait) {
-    //     AtomicLong totalConsumedRecords = new AtomicLong();
-    //     long seconds = milliSecondsToWait / 1000;
-    //     try {
-    //         Awaitility.await()
-    //           .atMost(Duration.ofSeconds(seconds))
-    //           .until(() -> {
-    //               int consumed = consumeAvailableRecords(record -> {
-    //                   LOGGER.debug("The record being consumed is " + record);
-    //                   records.add(record);
-    //               });
-    //               if (consumed > 0) {
-    //                   totalConsumedRecords.addAndGet(consumed);
-    //                   LOGGER.info("Consumed " + totalConsumedRecords + " records");
-    //               }
-
-    //               return totalConsumedRecords.get() == recordsCount;
-    //           });
-    //     } catch (ConditionTimeoutException exception) {
-    //         fail("Failed to consume " + recordsCount + " in " + seconds + " seconds", exception);
-    //     }
-
-    //     assertEquals(recordsCount, totalConsumedRecords.get());
-    // }
 }

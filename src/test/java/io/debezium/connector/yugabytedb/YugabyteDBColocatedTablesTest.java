@@ -314,32 +314,6 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     waitAndFailIfCannotConsume(records, recordsCount, 10 * 60 * 1000);
   }
 
-  // private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
-  //                                         long milliSecondsToWait) {
-  //   AtomicLong totalConsumedRecords = new AtomicLong();
-  //   long seconds = milliSecondsToWait / 1000;
-  //   try {
-  //     Awaitility.await()
-  //             .atMost(Duration.ofSeconds(seconds))
-  //             .until(() -> {
-  //               int consumed = consumeAvailableRecords(record -> {
-  //                 LOGGER.debug("The record being consumed is " + record);
-  //                 records.add(record);
-  //               });
-  //               if (consumed > 0) {
-  //                 totalConsumedRecords.addAndGet(consumed);
-  //                 LOGGER.debug("Consumed " + totalConsumedRecords + " records");
-  //               }
-
-  //               return totalConsumedRecords.get() == recordsCount;
-  //             });
-  //   } catch (ConditionTimeoutException exception) {
-  //     fail("Failed to consume " + recordsCount + " records in " + seconds + " seconds, total consumed: " + totalConsumedRecords.get(), exception);
-  //   }
-
-  //   assertEquals(recordsCount, totalConsumedRecords.get());
-  // }
-
   protected static class Executor extends TestBaseClass implements Runnable {
     private final List<String> tables;
     private final int columnCount;

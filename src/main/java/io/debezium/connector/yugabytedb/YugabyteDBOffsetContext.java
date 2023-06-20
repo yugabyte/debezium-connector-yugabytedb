@@ -162,8 +162,9 @@ public class YugabyteDBOffsetContext implements OffsetContext {
      * @return the {@link OpId} which tells the server that the connector has marked the snapshot
      * as completed, and it is now transitioning towards streaming
      */
-    public static OpId snapshotDoneKeyLsn() {
-        return new OpId(0, 0, SNAPSHOT_DONE_KEY.getBytes(), 0, 0);
+    public OpId snapshotDoneKeyLsn(YBPartition partition) {
+        OpId snapshotLsn = snapshotLSN(partition);
+        return new OpId(snapshotLsn.getTerm(), snapshotLsn.getIndex(), SNAPSHOT_DONE_KEY.getBytes(), 0, 0);
     }
 
     @Override
