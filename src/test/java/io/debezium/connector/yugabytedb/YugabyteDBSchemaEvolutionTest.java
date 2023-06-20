@@ -248,6 +248,32 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
     waitAndFailIfCannotConsume(records, recordsCount, 10 * 60 * 1000);
   }
 
+  // private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
+  //                                           long milliSecondsToWait) {
+  //     AtomicLong totalConsumedRecords = new AtomicLong();
+  //     long seconds = milliSecondsToWait / 1000;
+  //     try {
+  //         Awaitility.await()
+  //             .atMost(Duration.ofSeconds(seconds))
+  //             .until(() -> {
+  //                 int consumed = consumeAvailableRecords(record -> {
+  //                     LOGGER.debug("The record being consumed is " + record);
+  //                     records.add(record);
+  //                 });
+  //                 if (consumed > 0) {
+  //                     totalConsumedRecords.addAndGet(consumed);
+  //                     LOGGER.debug("Consumed " + totalConsumedRecords + " records");
+  //                 }
+
+  //                 return totalConsumedRecords.get() == recordsCount;
+  //             });
+  //     } catch (ConditionTimeoutException exception) {
+  //         fail("Failed to consume " + recordsCount + " records in " + seconds + " seconds, total consumed: " + totalConsumedRecords.get(), exception);
+  //     }
+
+  //     assertEquals(recordsCount, totalConsumedRecords.get());
+  //   }
+
     protected class Executor implements Runnable {
       private final String generateSeries = "INSERT INTO t1 VALUES (generate_series(%d, %d));";
       private final int columnCount;
