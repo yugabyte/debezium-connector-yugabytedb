@@ -485,7 +485,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                             // This is a hack to skip tables in case of colocated tables
                             TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-                            if (!message.isTransactionalMessage()
+                            if (!message.isDDLMessage() && !message.isTransactionalMessage()
                                   && !new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
                                 continue;
                             }
