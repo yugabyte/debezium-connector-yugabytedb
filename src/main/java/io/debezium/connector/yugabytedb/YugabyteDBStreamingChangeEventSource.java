@@ -35,8 +35,6 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.DataChangeEvent;
@@ -515,9 +513,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         }
                                         if (message.getOperation() == Operation.COMMIT) {
                                             LOGGER.debug("LSN in case of COMMIT is " + lsn);
-                                            offsetContext.updateWalPosition(part, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
-                                                    String.valueOf(message.getTransactionId()), null, null/* taskContext.getSlotXmin(connection) */);
-                                            commitMessage(part, offsetContext, lsn);
+                                            offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
+                                                    String.valueOf(message.getTransactionId()), null);
 
                                             if (recordsInTransactionalBlock.containsKey(part.getId())) {
                                                 if (recordsInTransactionalBlock.get(part.getId()) == 0) {
@@ -546,9 +543,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     }
                                     else if (message.getOperation() == Operation.COMMIT) {
                                         LOGGER.debug("LSN in case of COMMIT is " + lsn);
-                                        offsetContext.updateWalPosition(part, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
-                                                String.valueOf(message.getTransactionId()), null, null/* taskContext.getSlotXmin(connection) */);
-                                        commitMessage(part, offsetContext, lsn);
+                                        offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
+                                                String.valueOf(message.getTransactionId()), null);
                                         dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
 
                                         if (recordsInTransactionalBlock.containsKey(part.getId())) {
@@ -603,8 +599,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     // If you need to print the received record, change debug level to info
                                     LOGGER.debug("Received DML record {}", record);
 
-                                    offsetContext.updateWalPosition(part, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
-                                            String.valueOf(message.getTransactionId()), tableId, null/* taskContext.getSlotXmin(connection) */);
+                                    offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
+                                            String.valueOf(message.getTransactionId()), tableId);
 
                                     boolean dispatched = message.getOperation() != Operation.NOOP
                                             && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
@@ -631,16 +627,17 @@ public class YugabyteDBStreamingChangeEventSource implements
                             // for the snapshot, this block must not commit during catch up streaming.
                             // CDCSDK Find out why this fails : connection.commit();
                         }
+
                         OpId finalOpid = new OpId(
                                 response.getTerm(),
                                 response.getIndex(),
                                 response.getKey(),
                                 response.getWriteId(),
                                 response.getSnapshotTime());
-                        offsetContext.getSourceInfo(part).updateLastCommit(finalOpid);
+                        offsetContext.updateWalPosition(part, finalOpid);
                         offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
 
-                        LOGGER.debug("The final opid is " + finalOpid);
+                        LOGGER.debug("The final opid for tablet {} is {}", part.getId(), finalOpid);
                     }
                     // Reset the retry count, because if flow reached at this point, it means that the connection
                     // has succeeded
@@ -670,50 +667,12 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
-    private void searchWalPosition(ChangeEventSourceContext context, final ReplicationStream stream, final WalPositionLocator walPosition)
-            throws SQLException, InterruptedException {
-        AtomicReference<OpId> resumeLsn = new AtomicReference<>();
-        int noMessageIterations = 0;
-
-        LOGGER.info("Searching for WAL resume position");
-        while (context.isRunning() && resumeLsn.get() == null) {
-
-            boolean receivedMessage = stream.readPending(message -> {
-                final OpId lsn = stream.lastReceivedLsn();
-                resumeLsn.set(walPosition.resumeFromLsn(lsn, message).orElse(null));
-            });
-
-            if (receivedMessage) {
-                noMessageIterations = 0;
-            }
-            else {
-                noMessageIterations++;
-                if (noMessageIterations >= THROTTLE_NO_MESSAGE_BEFORE_PAUSE) {
-                    noMessageIterations = 0;
-                    pauseNoMessage.sleepWhen(true);
-                }
-            }
-
-            probeConnectionIfNeeded();
-        }
-        LOGGER.info("WAL resume position '{}' discovered", resumeLsn.get());
-    }
-
     private void probeConnectionIfNeeded() throws SQLException {
         // CDCSDK Find out why it fails.
         // if (connectionProbeTimer.hasElapsed()) {
         // connection.prepareQuery("SELECT 1");
         // connection.commit();
         // }
-    }
-
-    private void commitMessage(YBPartition partition, YugabyteDBOffsetContext offsetContext,
-                               final OpId lsn)
-            throws SQLException, InterruptedException {
-        lastCompletelyProcessedLsn = lsn;
-        offsetContext.updateCommitPosition(lsn, lastCompletelyProcessedLsn);
-        maybeWarnAboutGrowingWalBacklog(false);
-        // dispatcher.dispatchHeartbeatEvent(partition, offsetContext);
     }
 
     /**
