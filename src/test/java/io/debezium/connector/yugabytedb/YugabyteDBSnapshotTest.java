@@ -4,8 +4,6 @@ import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.awaitility.Awaitility;
-import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -16,7 +14,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -228,8 +225,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
 
     @Test
     public void snapshotMixOfColocatedNonColocatedTables() throws Exception {
-        TestHelper.dropAllSchemas();
-
         // Create tables.
         createTables(true /* enforce creation of the colocated tables only */);
 
@@ -340,7 +335,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
      * Helper function to create the required tables in the database DEFAULT_COLOCATED_DB_NAME
      */
     private void createTables(boolean colocation) {
-        LOGGER.info("Creating tables for snapshot test with colocation: {}", colocation);
+        LOGGER.info("Creating tables with colocation: {}", colocation);
         final String createTest1 = String.format("CREATE TABLE test_1 (id INT PRIMARY KEY," +
                                                  "name TEXT DEFAULT 'Vaibhav Kushwaha') " +
                                                   "WITH (COLOCATION = %b);", colocation);
