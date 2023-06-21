@@ -3,7 +3,6 @@ package io.debezium.connector.yugabytedb;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.annotations.PreviewOnly;
 import io.debezium.connector.yugabytedb.common.TestBaseClass;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
@@ -13,11 +12,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.kafka.connect.source.SourceRecord;
-import org.awaitility.Awaitility;
-import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
 
 /**
@@ -312,32 +308,6 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
 
   private void verifyRecordCount(List<SourceRecord> records, long recordsCount) {
     waitAndFailIfCannotConsume(records, recordsCount, 10 * 60 * 1000);
-  }
-
-  private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
-                                          long milliSecondsToWait) {
-    AtomicLong totalConsumedRecords = new AtomicLong();
-    long seconds = milliSecondsToWait / 1000;
-    try {
-      Awaitility.await()
-              .atMost(Duration.ofSeconds(seconds))
-              .until(() -> {
-                int consumed = consumeAvailableRecords(record -> {
-                  LOGGER.debug("The record being consumed is " + record);
-                  records.add(record);
-                });
-                if (consumed > 0) {
-                  totalConsumedRecords.addAndGet(consumed);
-                  LOGGER.debug("Consumed " + totalConsumedRecords + " records");
-                }
-
-                return totalConsumedRecords.get() == recordsCount;
-              });
-    } catch (ConditionTimeoutException exception) {
-      fail("Failed to consume " + recordsCount + " records in " + seconds + " seconds, total consumed: " + totalConsumedRecords.get(), exception);
-    }
-
-    assertEquals(recordsCount, totalConsumedRecords.get());
   }
 
   protected static class Executor extends TestBaseClass implements Runnable {

@@ -1,17 +1,13 @@
 package io.debezium.connector.yugabytedb;
 
 import java.sql.SQLException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicLong;
 
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.awaitility.Awaitility;
-import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
 
 import io.debezium.config.Configuration;
@@ -247,32 +243,6 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
   private void verifyRecordCount(List<SourceRecord> records, long recordsCount) {
     waitAndFailIfCannotConsume(records, recordsCount, 10 * 60 * 1000);
   }
-
-  private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
-                                            long milliSecondsToWait) {
-      AtomicLong totalConsumedRecords = new AtomicLong();
-      long seconds = milliSecondsToWait / 1000;
-      try {
-          Awaitility.await()
-              .atMost(Duration.ofSeconds(seconds))
-              .until(() -> {
-                  int consumed = consumeAvailableRecords(record -> {
-                      LOGGER.debug("The record being consumed is " + record);
-                      records.add(record);
-                  });
-                  if (consumed > 0) {
-                      totalConsumedRecords.addAndGet(consumed);
-                      LOGGER.debug("Consumed " + totalConsumedRecords + " records");
-                  }
-
-                  return totalConsumedRecords.get() == recordsCount;
-              });
-      } catch (ConditionTimeoutException exception) {
-          fail("Failed to consume " + recordsCount + " records in " + seconds + " seconds, total consumed: " + totalConsumedRecords.get(), exception);
-      }
-
-      assertEquals(recordsCount, totalConsumedRecords.get());
-    }
 
     protected class Executor implements Runnable {
       private final String generateSeries = "INSERT INTO t1 VALUES (generate_series(%d, %d));";

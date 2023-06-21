@@ -14,6 +14,7 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.storage.MemoryOffsetBackingStore;
 import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionTimeoutException;
 import org.eclipse.jetty.util.BlockingArrayQueue;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,6 +25,7 @@ import org.testcontainers.containers.YugabyteYSQLContainer;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -195,7 +197,7 @@ public class TestBaseClass extends AbstractConnectorTest {
   protected SourceRecords consumeByTopic(int numRecords) throws InterruptedException {
     SourceRecords records = new SourceRecords();
     int recordsConsumed = 0;
-    while (recordsConsumed <= numRecords) {
+    while (recordsConsumed < numRecords) {
       if (!linesConsumed.isEmpty()) {
         records.add(linesConsumed.poll());
         ++recordsConsumed;
@@ -221,6 +223,43 @@ public class TestBaseClass extends AbstractConnectorTest {
         }
     }
     return !linesConsumed.isEmpty();
+  }
+
+  /**
+   * Consume the records available and add them to a list for further assertion purposes.
+   * @param records list to which we need to add the records we consume, pass a
+   * {@code new ArrayList<>()} if you do not need assertions on the consumed values
+   * @param recordsCount total number of records which should be consumed
+   * @param milliSecondsToWait duration in milliseconds to wait for while consuming
+   */
+  protected void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
+                                            long milliSecondsToWait) {
+      AtomicLong totalConsumedRecords = new AtomicLong();
+      long seconds = milliSecondsToWait / 1000;
+      try {
+          Awaitility.await()
+              .atMost(Duration.ofSeconds(seconds))
+              .until(() -> {
+                  int consumed = consumeAvailableRecords(record -> {
+                      LOGGER.debug("The record being consumed is " + record);
+                      records.add(record);
+                  });
+                  if (consumed > 0) {
+                      totalConsumedRecords.addAndGet(consumed);
+                      LOGGER.info("Consumed " + totalConsumedRecords + " records");
+                  }
+
+                  return totalConsumedRecords.get() >= recordsCount;
+              });
+      } catch (ConditionTimeoutException exception) {
+          fail("Failed to consume " + recordsCount + " in " + seconds + " seconds, consumed only " + totalConsumedRecords.get(), exception);
+      }
+
+      assertEquals(recordsCount, totalConsumedRecords.get());
+  }
+
+  protected void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
+    waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
   }
 
   protected class SourceRecords {
