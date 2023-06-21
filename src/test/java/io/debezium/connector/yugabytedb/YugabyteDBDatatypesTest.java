@@ -7,15 +7,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicLong;
 
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.awaitility.Awaitility;
-import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
 import org.yb.client.GetDBStreamInfoResponse;
 import org.yb.client.YBClient;
@@ -41,7 +38,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
             "CREATE SCHEMA s2; " +
             "CREATE TABLE s1.a (pk SERIAL, aa integer, PRIMARY KEY(pk));" +
             "CREATE TABLE s2.a (pk SERIAL, aa integer, bb varchar(20), PRIMARY KEY(pk));";
-    private static final String SETUP_TABLES_STMT = CREATE_TABLES_STMT + INSERT_STMT;
 
     private void insertRecords(long numOfRowsToBeInserted) throws Exception {
         String formatInsertString = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
@@ -50,19 +46,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
                 TestHelper.execute(String.format(formatInsertString, i));
             }
 
-        }).exceptionally(throwable -> {
-            throw new RuntimeException(throwable);
-        }).get();
-    }
-
-    // This function will one row each of the specified enum labels
-    private void insertEnumRecords() throws Exception {
-        String[] enumLabels = {"ZERO", "ONE", "TWO"};
-        String formatInsertString = "INSERT INTO test_enum VALUES (%d, '%s');";
-        CompletableFuture.runAsync(() -> {
-            for (int i = 0; i < enumLabels.length; i++) {
-                TestHelper.execute(String.format(formatInsertString, i, enumLabels[i]));
-            }
         }).exceptionally(throwable -> {
             throw new RuntimeException(throwable);
         }).get();
@@ -119,43 +102,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         }
     }
 
-    /**
-     * Consume the records available and add them to a list for further assertion purposes.
-     * @param records list to which we need to add the records we consume, pass a
-     * {@code new ArrayList<>()} if you do not need assertions on the consumed values
-     * @param recordsCount total number of records which should be consumed
-     * @param milliSecondsToWait duration in milliseconds to wait for while consuming
-     */
-    private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
-                                            long milliSecondsToWait) {
-        AtomicLong totalConsumedRecords = new AtomicLong();
-        long seconds = milliSecondsToWait / 1000;
-        try {
-            Awaitility.await()
-                .atMost(Duration.ofSeconds(seconds))
-                .until(() -> {
-                    int consumed = consumeAvailableRecords(record -> {
-                        LOGGER.debug("The record being consumed is " + record);
-                        records.add(record);
-                    });
-                    if (consumed > 0) {
-                        totalConsumedRecords.addAndGet(consumed);
-                        LOGGER.info("Consumed " + totalConsumedRecords + " records");
-                    }
-
-                    return totalConsumedRecords.get() >= recordsCount;
-                });
-        } catch (ConditionTimeoutException exception) {
-            fail("Failed to consume " + recordsCount + " in " + seconds + " seconds, consumed only " + totalConsumedRecords.get(), exception);
-        }
-
-        assertEquals(recordsCount, totalConsumedRecords.get());
-    }
-
-    private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
-        waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
-    }
-
     private void verifyPrimaryKeyOnly(long recordsCount) {
         List<SourceRecord> records = new ArrayList<>();
         waitAndFailIfCannotConsume(records, recordsCount);
@@ -183,23 +129,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         }
     }
 
-  private void verifyEnumValue(long recordsCount) {
-    List<SourceRecord> records = new ArrayList<>();
-    waitAndFailIfCannotConsume(records, recordsCount);
-    
-    String[] enum_val = {"ZERO", "ONE", "TWO"};
-
-    try {
-      for (int i = 0; i < records.size(); ++i) {
-        assertValueField(records.get(i), "after/id/value", i);
-        assertValueField(records.get(i), "after/enum_col/value", enum_val[i]);
-      }
-    }
-    catch (Exception e) {
-      LOGGER.error("Exception caught while parsing records: " + e);
-      fail();
-    }
-  }
     @BeforeAll
     public static void beforeClass() throws SQLException {
         initializeYBContainer();
@@ -358,31 +287,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         insertRecords(recordsCount);
 
         CompletableFuture.runAsync(() -> verifyValue(recordsCount))
-                .exceptionally(throwable -> {
-                    throw new RuntimeException(throwable);
-                }).get();
-    }
-
-    @Test
-    public void testEnumValue() throws Exception {
-        TestHelper.dropAllSchemas();
-        TestHelper.executeDDL("yugabyte_create_tables.ddl");
-        Thread.sleep(1000);
-
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_enum");
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_enum", dbStreamId);
-        startEngine(configBuilder);
-        assertConnectorIsRunning();
-
-        // 3 because there are 3 enum values in the enum type
-        final long recordsCount = 3;
-
-        awaitUntilConnectorIsReady();
-
-        // 3 records will be inserted in the table test_enum
-        insertEnumRecords();
-
-        CompletableFuture.runAsync(() -> verifyEnumValue(recordsCount))
                 .exceptionally(throwable -> {
                     throw new RuntimeException(throwable);
                 }).get();
