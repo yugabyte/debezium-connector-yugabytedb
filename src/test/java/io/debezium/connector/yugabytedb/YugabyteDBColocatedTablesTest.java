@@ -6,15 +6,21 @@ import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.TestBaseClass;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+import io.debezium.connector.yugabytedb.connection.OpId;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import org.apache.kafka.connect.source.SourceRecord;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
+import org.yb.client.GetCheckpointResponse;
+import org.yb.client.YBClient;
+import org.yb.client.YBTable;
 
 /**
  * Unit tests to verify connector functionality with colocated tables in YugabyteDB.
@@ -182,6 +188,28 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     assertFalse(records.topics().contains(TestHelper.TEST_SERVER + ".public.test_3"));
     assertFalse(records.topics().contains(TestHelper.TEST_SERVER + ".public.test_no_colocated"));
 
+    // Get the colocated tablet ID by using YBClient.
+    final YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
+    YBTable table = TestHelper.getYbTable(ybClient, "test_1");
+    Set<String> tablets = ybClient.getTabletUUIDs(table);
+
+    // There should be just 1 tablet since this is a colocated tablet.
+    assertEquals(1, tablets.size());
+
+    String colocatedTabletId = tablets.iterator().next();
+
+    // Wait until the checkpoint for this colocated tablet ID doesn't become equal to what we have in our offset map.
+    OpId explicitCheckpoint = getOffset(colocatedTabletId);
+    LOGGER.info("Got OpId from offset map for tabletID {}: {}", colocatedTabletId, explicitCheckpoint);
+
+    Awaitility.await()
+      .atMost(Duration.ofSeconds(20))
+      .pollInterval(Duration.ofSeconds(2))
+      .until(() -> {
+          GetCheckpointResponse resp = ybClient.getCheckpoint(table, dbStreamId, colocatedTabletId);
+          return (resp.getTerm() == explicitCheckpoint.getTerm()) && (resp.getIndex() == explicitCheckpoint.getIndex());
+      });
+
     // Stop the connector and modify the configuration
     stopConnector();
 
@@ -238,8 +266,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 5_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
 
-    start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> assertTrue(success));
-
+    startEngine(configBuilder, (success, message, error) -> assertTrue(success));
     awaitUntilConnectorIsReady();
 
     // Start threads to perform schema change operations on the colocated tables.
