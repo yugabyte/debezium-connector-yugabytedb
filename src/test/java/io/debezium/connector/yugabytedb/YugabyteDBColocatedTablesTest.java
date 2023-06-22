@@ -188,28 +188,6 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     assertFalse(records.topics().contains(TestHelper.TEST_SERVER + ".public.test_3"));
     assertFalse(records.topics().contains(TestHelper.TEST_SERVER + ".public.test_no_colocated"));
 
-    // Get the colocated tablet ID by using YBClient.
-    final YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
-    YBTable table = TestHelper.getYbTable(ybClient, "test_1");
-    Set<String> tablets = ybClient.getTabletUUIDs(table);
-
-    // There should be just 1 tablet since this is a colocated tablet.
-    assertEquals(1, tablets.size());
-
-    String colocatedTabletId = tablets.iterator().next();
-
-    // Wait until the checkpoint for this colocated tablet ID doesn't become equal to what we have in our offset map.
-    OpId explicitCheckpoint = getOffset(colocatedTabletId);
-    LOGGER.info("Got OpId from offset map for tabletID {}: {}", colocatedTabletId, explicitCheckpoint);
-
-    Awaitility.await()
-      .atMost(Duration.ofSeconds(20))
-      .pollInterval(Duration.ofSeconds(2))
-      .until(() -> {
-          GetCheckpointResponse resp = ybClient.getCheckpoint(table, dbStreamId, colocatedTabletId);
-          return (resp.getTerm() == explicitCheckpoint.getTerm()) && (resp.getIndex() == explicitCheckpoint.getIndex());
-      });
-
     // Stop the connector and modify the configuration
     stopConnector();
 

@@ -197,10 +197,6 @@ public interface ReplicationMessage {
         return getOperation() == Operation.DDL;
     }
 
-    default boolean isDMLMessage() {
-        return !isDDLMessage() && !isTransactionalMessage();
-    }
-
     /**
      * A special message type that is used to replace event filtered already at {@link MessageDecoder}.
      * Enables {@link YugabyteDBStreamingChangeEventSource} to advance LSN forward even in case of such messages.

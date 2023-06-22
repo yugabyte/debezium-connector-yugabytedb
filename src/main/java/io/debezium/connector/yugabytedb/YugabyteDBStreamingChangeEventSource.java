@@ -481,23 +481,19 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                             String pgSchemaNameInRecord = m.getPgschemaName();
 
+                            // This is a hack to skip tables in case of colocated tables
+                            TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                            if (!message.isTransactionalMessage()
+                                  && !new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
+                                LOGGER.info("Skipping a record for table {} because it was not included", tempTid.table());
+                                continue;
+                            }
+
                             final OpId lsn = new OpId(record.getCdcSdkOpId().getTerm(),
                                     record.getCdcSdkOpId().getIndex(),
                                     record.getCdcSdkOpId().getWriteIdKey().toByteArray(),
                                     record.getCdcSdkOpId().getWriteId(),
                                     response.getSnapshotTime());
-
-                            // This is a hack to skip tables in case of colocated tables
-                            TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-                            if (!message.isTransactionalMessage()
-                                  && !new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
-                                if (message.isDMLMessage()) {
-                                    LOGGER.info("Record being ignored for partition ID {}: {}", part.getId(), record);
-                                    offsetContext.updateRecordPosition(part, lsn, lsn, message.getCommitTime(),
-                                            String.valueOf(message.getTransactionId()), tempTid);
-                                }
-                                continue;
-                            }
 
                             if (message.isLastEventForLsn()) {
                                 lastCompletelyProcessedLsn = lsn;
