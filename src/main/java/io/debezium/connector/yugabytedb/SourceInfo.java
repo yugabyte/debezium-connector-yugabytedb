@@ -31,7 +31,6 @@ public final class SourceInfo extends BaseSourceInfo {
     public static final String TIMESTAMP_USEC_KEY = "ts_usec";
     public static final String TXID_KEY = "txId";
     public static final String LSN_KEY = "lsn";
-<<<<<<< HEAD
 
     public static final String COMMIT_TIME = "commit_time";
 
@@ -40,8 +39,6 @@ public final class SourceInfo extends BaseSourceInfo {
     public static final String TABLE_ID = "table_id";
     public static final String TABLET_ID = "tablet_id";
     public static final String PARTITION_ID_KEY = "partition_id";
-=======
->>>>>>> main
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -80,22 +77,14 @@ public final class SourceInfo extends BaseSourceInfo {
      * may be null indicating that this information is not available
      * @param txId the ID of the transaction that generated the transaction; may be null if this information is not available
      * @param tableId the table that should be included in the source info; may be null
-<<<<<<< HEAD
      * @param recordTime Hybrid Time Stamp Time of the statement within the transaction.
      * @return this instance
      */
     protected SourceInfo update(YBPartition partition, OpId lsn, long commitTime, String txId,
                                 TableId tableId, Long recordTime) {
-=======
-     * @return this instance
-     */
-    protected SourceInfo update(YBPartition partition, OpId lsn, Instant commitTime, String txId,
-                                TableId tableId) {
->>>>>>> main
         this.lsn = lsn;
         this.commitTime = commitTime;
         this.txId = txId;
-<<<<<<< HEAD
         this.recordTime = recordTime;
         this.tableUUID = partition.getTableId();
         this.tabletId = partition.getTabletId();
@@ -103,8 +92,6 @@ public final class SourceInfo extends BaseSourceInfo {
         // The commit time of the record is technically the timestamp of the record.
         this.timestamp = Conversions.toInstantFromMicros(commitTime);
 
-=======
->>>>>>> main
         if (tableId != null && tableId.schema() != null) {
             this.schemaName = tableId.schema();
         }
