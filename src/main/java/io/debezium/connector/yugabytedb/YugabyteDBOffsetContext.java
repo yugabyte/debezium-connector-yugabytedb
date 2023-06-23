@@ -16,10 +16,8 @@ import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.debezium.connector.SnapshotRecord;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
-import io.debezium.connector.yugabytedb.spi.OffsetState;
 import io.debezium.pipeline.source.snapshot.incremental.IncrementalSnapshotContext;
 import io.debezium.pipeline.source.snapshot.incremental.SignalBasedIncrementalSnapshotContext;
 import io.debezium.pipeline.spi.OffsetContext;
@@ -73,8 +71,8 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                 previousOffsets.getOffsets().entrySet()) {
             YugabyteDBOffsetContext c = context.getValue();
             if (c != null) {
-                initSourceInfo(context.getKey() /* YBPartition */, config, streamingStartLsn());
-                this.updateRecordPosition(context.getKey(), streamingStartLsn(), streamingStartLsn(), null, null, null);
+               initSourceInfo(context.getKey() /* YBPartition */, config, streamingStartLsn());
+               this.updateRecordPosition(context.getKey(), streamingStartLsn(), streamingStartLsn(), 0L, null, null, 0L);
             }
         }
         LOGGER.debug("Populating the tabletsourceinfo with " + this.getTabletSourceInfo());
@@ -118,7 +116,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         for (YBPartition p : partitions) {
             if (context.getTabletSourceInfo().get(p.getId()) == null) {
                 context.initSourceInfo(p, connectorConfig, lastCompletelyProcessedLsn);
-                context.updateRecordPosition(p, lastCommitLsn, lastCompletelyProcessedLsn, clock.currentTimeAsInstant(), String.valueOf(txId), null);
+                context.updateRecordPosition(p, lastCommitLsn, lastCompletelyProcessedLsn, clock.currentTimeInMillis(), String.valueOf(txId), null, 0L);
             }
         }
         return context;
@@ -232,9 +230,19 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         this.fromLsn.put(partition.getId(), lsn);
     }
 
-    public void updateRecordPosition(YBPartition partition, OpId lsn, OpId lastCompletelyProcessedLsn,
-                                     Instant commitTime,
-                                     String txId, TableId tableId) {
+    /**
+     * Update the offsets for the records which are processed by the connector.
+     * @param partition {@link YBPartition} to update the offset for
+     * @param lsn the {@link OpId} value to update with
+     * @param lastCompletelyProcessedLsn {@link OpId}
+     * @param commitTime commit time of the record
+     * @param txId transaction ID to which the record belongs
+     * @param tableId {@link TableId} object to identify the table
+     * @param recordTime record time for the record
+     */
+    public void updateRecordPosition(YBPartition partition, OpId lsn,
+                                     OpId lastCompletelyProcessedLsn, long commitTime,
+                                     String txId, TableId tableId, Long recordTime) {
         SourceInfo info = this.tabletSourceInfo.get(partition.getId());
 
         // There is a possibility upon the transition from snapshot to streaming mode that we try
@@ -244,7 +252,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
             info = new SourceInfo(connectorConfig, lsn);
         }
 
-        info.update(partition, lsn, commitTime, txId, tableId);
+        info.update(partition, lsn, commitTime, txId, tableId, recordTime);
         this.tabletSourceInfo.put(partition.getId(), info);
     }
 
@@ -256,6 +264,12 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         return tabletSourceInfo;
     }
 
+    /**
+     * Get the LSN from which the connector should call the GetChangesRequest
+     * @param partition the partition to get the LSN for
+     * @return an {@link OpId} value to be used in {@link org.yb.client.GetChangesRequest} as
+     * from_op_id
+     */
     OpId lsn(YBPartition partition) {
         return this.fromLsn.getOrDefault(partition.getId(), streamingStartLsn());
     }

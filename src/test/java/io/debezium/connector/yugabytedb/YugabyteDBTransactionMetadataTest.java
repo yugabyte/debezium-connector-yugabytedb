@@ -2,6 +2,8 @@ package io.debezium.connector.yugabytedb;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+
 import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.jupiter.api.*;
 
