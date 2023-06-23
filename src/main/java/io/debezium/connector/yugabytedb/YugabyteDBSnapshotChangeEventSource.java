@@ -64,6 +64,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     private Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
     private Map<String, Long> tabletSafeTime;
     Map<String, YBTable> tableIdToTable;
+    Map<String, Boolean> shouldWaitForCallback;
 
     private boolean snapshotComplete = false;
 
@@ -97,6 +98,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.tabletToExplicitCheckpoint = new HashMap<>();
         this.tabletSafeTime = new HashMap<>();
         this.tableIdToTable = new HashMap<>();
+        this.shouldWaitForCallback = new HashMap<>();
     }
 
     @Override
@@ -305,6 +307,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                             YugabyteDBOffsetContext.snapshotStartLsn() : OpId.from(resp);
         previousOffset.initSourceInfo(p, this.connectorConfig, startLsn);
         schemaNeeded.put(p.getId(), Boolean.TRUE);
+        shouldWaitForCallback.put(p.getId(), Boolean.TRUE);
         LOGGER.debug("Previous offset for table {} tablet {} is {}", p.getTableId(),
                      p.getTabletId(), previousOffset.toString());
       }
@@ -377,8 +380,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 if (snapshotCompletedTablets.contains(part.getId())
                       || tabletsWaitingForCallback.contains(part.getId())) {
                   // Before continuing, check if the tablets waiting for callback have been updated in case of explicit checkpointing.
-                  if (taskContext.shouldEnableExplicitCheckpointing()) {
+                  if (!snapshotCompletedTablets.contains(part.getId()) && taskContext.shouldEnableExplicitCheckpointing()) {
+                    LOGGER.info("Snapshot completed size before check: {}", snapshotCompletedTablets.size());
                     doSnapshotCompletionCheck(part, snapshotCompletedTablets, tabletsWaitingForCallback, previousOffset);
+                    LOGGER.info("Snapshot completed size after check: {}", snapshotCompletedTablets.size());
                   }
                   continue;
                 }
@@ -404,6 +409,13 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     tabletSafeTime.getOrDefault(part.getId(), -1L));
 
                 tabletSafeTime.put(part.getId(), resp.getResp().getSafeHybridTime());
+
+                // If the response doesn't have any record, it is safe to assume that we should not wait
+                // for the callback to come and that we can proceed further in processing this particular tablet.
+                if (resp.getResp().getCdcSdkProtoRecordsCount() == 0) {
+                  LOGGER.info("Should not wait for callback on tablet {}", part.getId());
+                  shouldWaitForCallback.put(part.getId(), Boolean.FALSE);
+                }
 
                 // Process the response
                 for (CdcService.CDCSDKProtoRecordPB record :
@@ -528,9 +540,17 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   } else if (isSnapshotCompleteMarker(finalOpId)) {
                     // Add it to tablets waiting for callback so that the connector doesn't end up
                     // calling GetChanges for the same again.
-                    LOGGER.info("Adding tablet {} of table {} ({}) to wait-list",
-                      part.getTabletId(), table.getName(), part.getTableId());
-                    tabletsWaitingForCallback.add(part.getId());
+                    if (shouldWaitForCallback.get(part.getId())) {
+                      if (!tabletsWaitingForCallback.contains(part.getId())) {
+                        LOGGER.info("Adding tablet {} of table {} ({}) to wait-list",
+                                    part.getId(), table.getName(), part.getTableId());
+                        tabletsWaitingForCallback.add(part.getId());
+                      }
+                    } else {
+                      LOGGER.info("Adding {} to the list of snapshot completed tablets", part.getId());
+                      snapshotCompletedTablets.add(part.getId());
+                      markSnapshotDoneOnServer(partition, previousOffset);
+                    }
                   }
                 } else if (!taskContext.shouldEnableExplicitCheckpointing() && isSnapshotCompleteMarker(finalOpId)) {
                   snapshotCompletedTablets.add(part.getId());
@@ -600,14 +620,15 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
    */
   public void doSnapshotCompletionCheck(YBPartition partition, Set<String> snapshotCompletedTablets,
                                         Set<String> tabletsWaitingForCallback, YugabyteDBOffsetContext offsetContext) {
-      OpId opId = OpId.from(this.tabletToExplicitCheckpoint.get(partition.getId()));
-      if (opId == null) {
+      if (this.tabletToExplicitCheckpoint.get(partition.getId()) == null) {
         // If we have no OpId stored in the explicit checkpoint map then that would indicate that
         // we haven't yet received any callback from Kafka even once and we should wait more.
         return;
       }
 
+      OpId opId = OpId.from(this.tabletToExplicitCheckpoint.get(partition.getId()));
       if (isSnapshotCompleteMarker(opId) && !snapshotCompletedTablets.contains(partition.getId())) {
+        LOGGER.info("Adding tablet {} to snapshot completed list", partition.getId());
         snapshotCompletedTablets.add(partition.getId());
         markSnapshotDoneOnServer(partition, offsetContext);
         tabletsWaitingForCallback.removeIf(t -> t.equals(partition.getId()));
