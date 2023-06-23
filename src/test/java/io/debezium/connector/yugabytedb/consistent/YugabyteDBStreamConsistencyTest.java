@@ -39,7 +39,7 @@ import io.debezium.config.Configuration;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 
-public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
     private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBStreamConsistencyTest.class);
     
     @BeforeAll

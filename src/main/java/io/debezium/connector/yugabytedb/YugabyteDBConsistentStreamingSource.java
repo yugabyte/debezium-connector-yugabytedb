@@ -246,8 +246,6 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                             }
                         }
 
-                        probeConnectionIfNeeded();
-
                         if (!isInPreSnapshotCatchUpStreaming(offsetContext)) {
                             // During catch up streaming, the streaming phase needs to hold a transaction open so that
                             // the phase can stream event up to a specific lsn and the snapshot that occurs after the catch up

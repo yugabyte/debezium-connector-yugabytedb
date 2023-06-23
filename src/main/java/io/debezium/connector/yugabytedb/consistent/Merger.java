@@ -79,7 +79,7 @@ public class Merger {
             LOGGER.error("Record which attempted to set the value {}", m);
             throw new AssertionError(errorMessage);
         }
-        LOGGER.info("Updating safetime for tablet {}:{}, verifying {}", tabletId, safeTime, this.tabletSafeTime.get(tabletId));
+        LOGGER.debug("Updating safetime for tablet {}:{}, verifying {}", tabletId, safeTime, this.tabletSafeTime.get(tabletId));
         this.tabletSafeTime.put(tabletId, safeTime);
     }
 
@@ -119,7 +119,7 @@ public class Merger {
         if (message == null) {
             LOGGER.debug("Message after peeking is null (actually means no message in queue)");
         } else {
-            LOGGER.warn("Message is not null in queue - actual message is {}", message);
+            LOGGER.debug("Message is not null in queue - actual message is {}", message);
             if (!(message.commitTime.compareTo(this.streamSafeTime()) <= 0)) {
                 LOGGER.warn("Comparison commit time for message and stream safetime failed (may indicate issues)");
                 LOGGER.warn("Stream safetime {} and message commit time {}", this.streamSafeTime(), message.commitTime);
@@ -142,7 +142,7 @@ public class Merger {
         Optional<Message> message = this.peek();
 
         if (!message.isPresent()) {
-            LOGGER.warn("Empty message is being returned from poll (may indicate issues)");
+            LOGGER.debug("Empty message is being returned from poll (may indicate issues)");
             return message;
         }
 
@@ -150,7 +150,7 @@ public class Merger {
         queue.poll();
         Message polledMessage = message.get();
         LOGGER.debug("Message is: {}", polledMessage);
-        LOGGER.info("Records for tablet: {}", mergeSlots.get(polledMessage.tablet).size());
+        LOGGER.debug("Records for tablet: {}", mergeSlots.get(polledMessage.tablet).size());
         mergeSlots.get(polledMessage.tablet).removeIf(item -> item.compareTo(polledMessage) == 0);
 
         // After removing the record, if the tablet safetime becomes less than that of the first
@@ -161,7 +161,7 @@ public class Merger {
             throw new AssertionError("Tablet safetime is less than the commit time of first message in merge slot");
         }
 
-        LOGGER.info("Records LEFT for tablet: {}", mergeSlots.get(polledMessage.tablet).size());
+        LOGGER.debug("Records LEFT for tablet: {}", mergeSlots.get(polledMessage.tablet).size());
         return message;
     }
 
