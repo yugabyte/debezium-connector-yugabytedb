@@ -642,10 +642,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 response.getWriteId(),
                                 response.getSnapshotTime());
                         offsetContext.updateWalPosition(part, finalOpid);
+                        offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
 
-                        offsetContext.updateWalSegmentIndex(part, response.getWalSegmentIndex());
-
-                        LOGGER.debug("The final opid is " + finalOpid);
+                        LOGGER.debug("The final opid for tablet {} is {}", part.getId(), finalOpid);
                     }
                     // Reset the retry count, because if flow reached at this point, it means that the connection
                     // has succeeded
@@ -675,48 +674,12 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
-    private void searchWalPosition(ChangeEventSourceContext context, final ReplicationStream stream, final WalPositionLocator walPosition)
-            throws SQLException, InterruptedException {
-        AtomicReference<OpId> resumeLsn = new AtomicReference<>();
-        int noMessageIterations = 0;
-
-        LOGGER.info("Searching for WAL resume position");
-        while (context.isRunning() && resumeLsn.get() == null) {
-
-            boolean receivedMessage = stream.readPending(message -> {
-                final OpId lsn = stream.lastReceivedLsn();
-                resumeLsn.set(walPosition.resumeFromLsn(lsn, message).orElse(null));
-            });
-
-            if (receivedMessage) {
-                noMessageIterations = 0;
-            }
-            else {
-                noMessageIterations++;
-                if (noMessageIterations >= THROTTLE_NO_MESSAGE_BEFORE_PAUSE) {
-                    noMessageIterations = 0;
-                    pauseNoMessage.sleepWhen(true);
-                }
-            }
-
-            probeConnectionIfNeeded();
-        }
-        LOGGER.info("WAL resume position '{}' discovered", resumeLsn.get());
-    }
-
-    protected void probeConnectionIfNeeded() throws SQLException {
+    private void probeConnectionIfNeeded() throws SQLException {
         // CDCSDK Find out why it fails.
         // if (connectionProbeTimer.hasElapsed()) {
         // connection.prepareQuery("SELECT 1");
         // connection.commit();
         // }
-    }
-
-    protected void commitMessage(YBPartition partition, YugabyteDBOffsetContext offsetContext,
-                               final OpId lsn)
-            throws SQLException, InterruptedException {
-        lastCompletelyProcessedLsn = lsn;
-        maybeWarnAboutGrowingWalBacklog(false);
     }
 
     /**

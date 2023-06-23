@@ -12,7 +12,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.kafka.connect.data.Schema;
-import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,7 +38,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     private static final Logger LOGGER =
       LoggerFactory.getLogger(YugabyteDBSnapshotChangeEventSource.class);
-
+    
     // The two maps tabletSourceInfo and fromLsn are used to store offsets. However, there are
     // differences between the offsets they store:
     // tabletSourceInfo - this has the offset for each processed record and thus these offsets are
@@ -172,7 +171,8 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     /**
      * [NOT MEANT FOR USAGES] This method simply returns a dummy schema since we have to override
      * this method while implementing the class, otherwise we are not using this method anywhere.
-     * @return a dummy {@link Schema} object
+     * @throws {@link UnsupportedOperationException}
+     * @return nothing
      */
     @Override
     public Schema getSourceInfoSchema() {
@@ -182,7 +182,8 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     /**
      * [NOT MEANT FOR USAGES] This method simply returns a dummy Struct since we have to override
      * this method while implementing the class, otherwise we are not using this method anywhere.
-     * @return a dummy {@link Struct} object
+     * @throws {@link UnsupportedOperationException}
+     * @return nothing
      */
     @Override
     public Struct getSourceInfo() {
@@ -200,9 +201,9 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     @Override
     public boolean isSnapshotRunning() {
-        // TODO: think about making this work.
+        // TODO: think about making this work
         return true;
-//        return sourceInfo.isSnapshot();
+        // return sourceInfo.isSnapshot();
     }
 
     @Override

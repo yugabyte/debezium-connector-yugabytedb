@@ -15,7 +15,7 @@ import java.util.stream.IntStream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.Common.DatumMessagePB;
+import org.yb.Common;
 import org.yb.cdc.CdcService;
 
 import io.debezium.connector.yugabytedb.YugabyteDBStreamingChangeEventSource.PgConnectionSupplier;
@@ -104,11 +104,11 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
         return !(rawMessage.getNewTypeinfoList() == null || rawMessage.getNewTypeinfoList().isEmpty());
     }
 
-    private List<ReplicationMessage.Column> transform(List<DatumMessagePB> messageList,
+    private List<ReplicationMessage.Column> transform(List<Common.DatumMessagePB> messageList,
                                                       List<CdcService.TypeInfo> typeInfoList) {
         return IntStream.range(0, messageList.size())
                 .mapToObj(index -> {
-                    final DatumMessagePB datum = messageList.get(index);
+                    final Common.DatumMessagePB datum = messageList.get(index);
                     final Optional<CdcService.TypeInfo> typeInfo = Optional.ofNullable(hasTypeMetadata() && typeInfoList != null ? typeInfoList.get(index) : null);
                     final String columnName = Strings.unquoteIdentifierPart(datum.getColumnName());
                     final YugabyteDBType type = yugabyteDBTypeRegistry.get((int) datum.getColumnType());
@@ -139,7 +139,7 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
     }
 
     public Object getValue(String columnName, YugabyteDBType type, String fullType,
-                           DatumMessagePB datumMessage,
+                           Common.DatumMessagePB datumMessage,
                            final PgConnectionSupplier connection,
                            boolean includeUnknownDatatypes) {
         final YbProtoColumnValue columnValue = new YbProtoColumnValue(datumMessage);
