@@ -390,7 +390,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 OpId cp = previousOffset.snapshotLSN(part);
 
-                if (LOGGER.isDebugEnabled()
+                if (true || LOGGER.isDebugEnabled()
                     || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
                   LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
                               tabletId, cp, table.getName());
@@ -431,6 +431,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                             record.getCdcSdkOpId().getWriteIdKey().toByteArray(),
                                             record.getCdcSdkOpId().getWriteId(),
                                             resp.getSnapshotTime());
+                  LOGGER.info("Record's LSN is {}", lsn);
 
                   if (message.isLastEventForLsn()) {
                     lastCompletelyProcessedLsn = lsn;
@@ -496,7 +497,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 OpId finalOpId = new OpId(resp.getTerm(), resp.getIndex(), resp.getKey(),
                                           resp.getWriteId(), resp.getSnapshotTime());
-                LOGGER.debug("Final OpId for tablet {} is {}", part.getId(), finalOpId);
+                LOGGER.info("Final OpId for tablet {} is {}", part.getId(), finalOpId);
 
                 /*
                    This block checks and validates for two scenarios:
