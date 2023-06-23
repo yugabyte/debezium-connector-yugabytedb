@@ -12,10 +12,11 @@ import io.debezium.config.CommonConnectorConfig;
 import io.debezium.connector.AbstractSourceInfoStructMaker;
 
 /**
- * @author Suranjan Kumar
+ * Helper class to create {@link Struct} values for the {@link SourceInfo} object for the records.
+ *
+ * @author Suranjan Kumar, Vaibhav Kushwaha
  */
 public class YugabyteDBSourceInfoStructMaker extends AbstractSourceInfoStructMaker<SourceInfo> {
-
     private final Schema schema;
 
     public YugabyteDBSourceInfoStructMaker(String connector, String version, CommonConnectorConfig connectorConfig) {
@@ -26,7 +27,6 @@ public class YugabyteDBSourceInfoStructMaker extends AbstractSourceInfoStructMak
                 .field(SourceInfo.TABLE_NAME_KEY, Schema.STRING_SCHEMA)
                 .field(SourceInfo.TXID_KEY, Schema.OPTIONAL_STRING_SCHEMA)
                 .field(SourceInfo.LSN_KEY, Schema.OPTIONAL_STRING_SCHEMA)
-                .field(SourceInfo.XMIN_KEY, Schema.OPTIONAL_INT64_SCHEMA)
                 .field(SourceInfo.COMMIT_TIME, Schema.OPTIONAL_INT64_SCHEMA)
                 .field(SourceInfo.RECORD_TIME, Schema.INT64_SCHEMA)
                 .field(SourceInfo.TABLET_ID, Schema.STRING_SCHEMA)
@@ -62,9 +62,6 @@ public class YugabyteDBSourceInfoStructMaker extends AbstractSourceInfoStructMak
         }
         if (sourceInfo.lsn() != null) {
             result.put(SourceInfo.LSN_KEY, sourceInfo.lsn().toSerString());
-        }
-        if (sourceInfo.xmin() != null) {
-            result.put(SourceInfo.XMIN_KEY, sourceInfo.xmin());
         }
         return result;
     }

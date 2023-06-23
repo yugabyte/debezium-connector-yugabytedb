@@ -194,7 +194,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                         table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                                         cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
                                         taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
-                                        tabletSafeTime.getOrDefault(part.getId(), -1L));
+                                        tabletSafeTime.getOrDefault(part.getId(), -1L), offsetContext.getWalSegmentIndex(part));
 
                                 tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
                             } catch (CDCErrorException cdcException) {
@@ -240,12 +240,11 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                         response.getKey(),
                                         response.getWriteId(),
                                         response.getSnapshotTime());
-                                offsetContext.getSourceInfo(part).updateLastCommit(finalOpid);
-                                LOGGER.debug("The final opid is " + finalOpid);
+                                offsetContext.updateWalPosition(part, finalOpid);
+                                offsetContext.updateWalSegmentIndex(part, response.getWalSegmentIndex());
+                                LOGGER.debug("The final opid for tablet {} is {}", part.getTabletId(), finalOpid);
                             }
                         }
-
-                        probeConnectionIfNeeded();
 
                         if (!isInPreSnapshotCatchUpStreaming(offsetContext)) {
                             // During catch up streaming, the streaming phase needs to hold a transaction open so that
@@ -320,10 +319,10 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
             return;
         }
 
-        final OpId lsn = new OpId(record.getCdcSdkOpId().getTerm(),
-                record.getCdcSdkOpId().getIndex(),
-                record.getCdcSdkOpId().getWriteIdKey().toByteArray(),
-                record.getCdcSdkOpId().getWriteId(),
+        final OpId lsn = new OpId(record.getFromOpId().getTerm(),
+                record.getFromOpId().getIndex(),
+                record.getFromOpId().getWriteIdKey().toByteArray(),
+                record.getFromOpId().getWriteId(),
                 snapshotTime);
 
         if (message.isLastEventForLsn()) {
@@ -344,10 +343,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                         beginCountForTablet.merge(part.getId(), 1, Integer::sum);
                     } else if (message.getOperation() == ReplicationMessage.Operation.COMMIT) {
                         LOGGER.debug("LSN in case of COMMIT is " + lsn);
-                        offsetContext.updateWalPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                                String.valueOf(message.getTransactionId()), null, null /* taskContext.getSlotXmin(connection) */,
-                                message.getRecordTime());
-                        commitMessage(part, offsetContext, lsn);
+                        offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                                String.valueOf(message.getTransactionId()), null, message.getRecordTime());
 
                         if (recordsInTransactionalBlock.containsKey(part.getId())) {
                             if (recordsInTransactionalBlock.get(part.getId()) == 0) {
@@ -377,10 +374,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                     beginCountForTablet.merge(part.getId(), 1, Integer::sum);
                 } else if (message.getOperation() == ReplicationMessage.Operation.COMMIT) {
                     LOGGER.debug("LSN in case of COMMIT is " + lsn);
-                    offsetContext.updateWalPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                            String.valueOf(message.getTransactionId()), null, null /* taskContext.getSlotXmin(connection) */,
-                            message.getRecordTime());
-                    commitMessage(part, offsetContext, lsn);
+                    offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                            String.valueOf(message.getTransactionId()), null, message.getRecordTime());
                     dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
 
                     if (recordsInTransactionalBlock.containsKey(part.getId())) {
@@ -433,9 +428,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 // If you need to print the received record, change debug level to info
                 LOGGER.debug("Received DML record {}", record);
 
-                offsetContext.updateWalPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                        String.valueOf(message.getTransactionId()), tableId, null/* taskContext.getSlotXmin(connection) */,
-                        message.getRecordTime());
+                offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                        String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
 
                 boolean dispatched = message.getOperation() != ReplicationMessage.Operation.NOOP
                         && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,

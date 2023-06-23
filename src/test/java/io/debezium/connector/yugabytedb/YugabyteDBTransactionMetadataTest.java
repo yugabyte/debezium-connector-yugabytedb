@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha
  */
-public class YugabyteDBTransactionMetadataTest extends YugabytedTestBase {
+public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBase {
 	// By using generate_series(), we are ensuring that there are explicit transactions.
 	private static final String INSERT_FORMAT =
 		"INSERT INTO t1 VALUES (generate_series(%d,%d), 'fname', 'lname', 12.34);";

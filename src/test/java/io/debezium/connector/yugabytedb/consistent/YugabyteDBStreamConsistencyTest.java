@@ -18,9 +18,11 @@ import java.util.stream.Collectors;
 import io.debezium.connector.yugabytedb.TestHelper;
 import io.debezium.connector.yugabytedb.YugabyteDBConnector;
 import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 
+import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -37,12 +39,13 @@ import io.debezium.config.Configuration;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 
-public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
+public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase {
     private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBStreamConsistencyTest.class);
     
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        initializeYBContainer(null, "cdc_max_stream_intent_records=100,cdc_populate_safepoint_record=true");
+        initializeYBContainer("enable_automatic_tablet_splitting=false",
+                              "cdc_populate_safepoint_record=true,enable_automatic_tablet_splitting=false");
         TestHelper.dropAllSchemas();
     }
 
@@ -55,8 +58,6 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         TestHelper.execute("DROP TABLE IF EXISTS contract;");
         TestHelper.execute("DROP TABLE IF EXISTS employee;");
         TestHelper.execute("DROP TABLE IF EXISTS department;");
-
-        TestHelper.executeDDL("yugabyte_create_tables.ddl");
     }
 
     @AfterEach
@@ -865,6 +866,9 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
 
     @Test
     public void consistencyWithColocatedTables() throws Exception {
+        // Create colocated database for usage.
+        TestHelper.execute(String.format("CREATE DATABASE %s WITH COLOCATED = true;", DEFAULT_COLOCATED_DB_NAME));
+
         TestHelper.executeInDatabase("CREATE TABLE department (id INT PRIMARY KEY, dept_name TEXT, serial_no INT) WITH (colocated = true);", DEFAULT_COLOCATED_DB_NAME);
         TestHelper.executeInDatabase("CREATE TABLE employee (id INT PRIMARY KEY, emp_name TEXT, d_id INT, serial_no INT) WITH (colocated = true);", DEFAULT_COLOCATED_DB_NAME);
 
@@ -937,6 +941,9 @@ public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
         } catch (ConditionTimeoutException exception) {
             fail("Failed to consume " + (long) totalRecords + " records in " + seconds + " seconds, consumed " + totalConsumedRecords.get(), exception);
         }
+
+        // Drop the colocated database.
+        TestHelper.execute(String.format("DROP DATABASE IF EXISTS %s;", DEFAULT_COLOCATED_DB_NAME));
     }
 
     @Disabled
