@@ -60,9 +60,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     private OpId lastCompletelyProcessedLsn;
 
     private YugabyteDBTypeRegistry yugabyteDbTypeRegistry;
-
     private Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
-
     private boolean snapshotComplete = false;
 
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
@@ -460,9 +458,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       // In case of snapshots, we do not want to ignore tableUUID while updating
                       // OpId value for a table-tablet pair.
                       previousOffset.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn,
-                                                          message.getCommitTime(), 
+                                                          message.getRawCommitTime(),
                                                           String.valueOf(message.getTransactionId()),
-                                                          tId);
+                                                          tId, message.getRecordTime());
 
                       boolean dispatched = (message.getOperation() != Operation.NOOP) &&
                           dispatcher.dispatchDataChangeEvent(part, tId,

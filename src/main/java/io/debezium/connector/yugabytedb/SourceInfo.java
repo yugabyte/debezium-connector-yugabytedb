@@ -18,6 +18,7 @@ import io.debezium.connector.SnapshotRecord;
 import io.debezium.connector.common.BaseSourceInfo;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.relational.TableId;
+import io.debezium.time.Conversions;
 
 /**
  * Information about the source of information for a particular record.
@@ -31,6 +32,14 @@ public final class SourceInfo extends BaseSourceInfo {
     public static final String TXID_KEY = "txId";
     public static final String LSN_KEY = "lsn";
 
+    public static final String COMMIT_TIME = "commit_time";
+
+    public static final String RECORD_TIME = "record_time";
+
+    public static final String TABLE_ID = "table_id";
+    public static final String TABLET_ID = "tablet_id";
+    public static final String PARTITION_ID_KEY = "partition_id";
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final String dbName;
@@ -41,6 +50,10 @@ public final class SourceInfo extends BaseSourceInfo {
     private Instant timestamp;
     private String schemaName;
     private String tableName;
+    private String tableUUID;
+    private String tabletId;
+    private Long commitTime;
+    private Long recordTime;
 
     protected SourceInfo(YugabyteDBConnectorConfig connectorConfig) {
         super(connectorConfig);
@@ -57,21 +70,28 @@ public final class SourceInfo extends BaseSourceInfo {
     /**
      * Updates the source with information about a particular received or read event.
      *
+     * @param tabletId Tablet ID of the partition
      * @param lsn the position in the server WAL for a particular event; may be null indicating that this information is not
      * available
      * @param commitTime the commit time of the transaction that generated the event;
      * may be null indicating that this information is not available
      * @param txId the ID of the transaction that generated the transaction; may be null if this information is not available
      * @param tableId the table that should be included in the source info; may be null
+     * @param recordTime Hybrid Time Stamp Time of the statement within the transaction.
      * @return this instance
      */
-    protected SourceInfo update(YBPartition partition, OpId lsn, Instant commitTime, String txId,
-                                TableId tableId) {
+    protected SourceInfo update(YBPartition partition, OpId lsn, long commitTime, String txId,
+                                TableId tableId, Long recordTime) {
         this.lsn = lsn;
-        if (commitTime != null) {
-            this.timestamp = commitTime;
-        }
+        this.commitTime = commitTime;
         this.txId = txId;
+        this.recordTime = recordTime;
+        this.tableUUID = partition.getTableId();
+        this.tabletId = partition.getTabletId();
+
+        // The commit time of the record is technically the timestamp of the record.
+        this.timestamp = Conversions.toInstantFromMicros(commitTime);
+
         if (tableId != null && tableId.schema() != null) {
             this.schemaName = tableId.schema();
         }
@@ -143,6 +163,22 @@ public final class SourceInfo extends BaseSourceInfo {
 
     protected String txId() {
         return txId;
+    }
+
+    protected Long commitTime() {
+        return this.commitTime;
+    }
+
+    protected Long recordTime() {
+        return this.recordTime;
+    }
+
+    protected String tabletId() {
+        return this.tabletId;
+    }
+
+    protected String tableUUID() {
+        return this.tableUUID;
     }
 
     @Override

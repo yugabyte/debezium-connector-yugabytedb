@@ -5,7 +5,7 @@
     <groupId>io.debezium</groupId>
     <artifactId>debezium-connector-yugabytedb</artifactId>
     <name>YugabyteDB Source Connector</name>
-    <version>1.9.5.y.25-SNAPSHOT</version>
+    <version>1.9.5.y.26-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <scm>
@@ -28,7 +28,7 @@
         <version.release.plugin>3.0.0-M5</version.release.plugin>
         <version.site.plugin>3.7.1</version.site.plugin>
         <version.resources.plugin>3.1.0</version.resources.plugin>
-        <version.docker.maven.plugin>0.31.0</version.docker.maven.plugin>
+        <version.docker.maven.plugin>0.40.2</version.docker.maven.plugin>
         <version.protoc.maven.plugin>3.11.4</version.protoc.maven.plugin>
         <version.fabric8.plugin>0.40.2</version.fabric8.plugin>
         <version.jackson>2.14.1</version.jackson>
@@ -47,7 +47,7 @@
         <version.kafka>3.3.1</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
-        <version.ybclient>0.8.56-20230615.071435-1</version.ybclient>
+        <version.ybclient>0.8.56-20230623.112806-3</version.ybclient>
         <version.gson>2.8.9</version.gson>
 
         <!--
@@ -562,7 +562,7 @@
             <plugin>
                 <groupId>io.fabric8</groupId>
                 <artifactId>docker-maven-plugin</artifactId>
-                <version>${version.fabric8.plugin}</version>
+                <version>${version.docker.maven.plugin}</version>
                 <extensions>true</extensions>
                 <configuration>
                     <images>
