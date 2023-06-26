@@ -14,6 +14,8 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.storage.MemoryOffsetBackingStore;
 import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionTimeoutException;
+import org.eclipse.jetty.util.BlockingArrayQueue;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
@@ -23,6 +25,7 @@ import org.testcontainers.containers.YugabyteYSQLContainer;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -42,7 +45,7 @@ public class TestBaseClass extends AbstractConnectorTest {
     protected static String yugabytedStartCommand = "";
     protected Map<String, ?> offsetMapForRecords = new HashMap<>();
     protected ExecutorService engineExecutor;
-    protected static Queue<SourceRecord> consumedLines;
+    protected static BlockingArrayQueue<SourceRecord> linesConsumed;
 
     protected void awaitUntilConnectorIsReady() throws Exception {
         Awaitility.await()
@@ -56,7 +59,7 @@ public class TestBaseClass extends AbstractConnectorTest {
   @BeforeAll
   public static void initializeTestFramework() {
     LoggingContext.forConnector(YugabyteDBConnector.class.getSimpleName(), "", "test");
-    consumedLines = new LinkedList<>();
+    linesConsumed = new BlockingArrayQueue<>();
   }
 
   @Override
@@ -162,7 +165,7 @@ public class TestBaseClass extends AbstractConnectorTest {
                .using(this.getClass().getClassLoader())
                .notifying((records, committer) -> {
                  for (SourceRecord record: records) {
-                   consumedLines.add(record);
+                   linesConsumed.add(record);
                    committer.markProcessed(record);
 
                    offsetMapForRecords = record.sourceOffset();
@@ -181,23 +184,22 @@ public class TestBaseClass extends AbstractConnectorTest {
   }
 
   protected int consumeAvailableRecords(Consumer<SourceRecord> recordConsumer) {
+    List<SourceRecord> records = new ArrayList<>();
+    linesConsumed.drainTo(records);
+    
     if (recordConsumer != null) {
-        consumedLines.forEach(recordConsumer);
+        records.forEach(recordConsumer);
     }
 
-    // Read the size of the queue to return later and clear it.
-    final int queueSize = consumedLines.size();
-    consumedLines.clear();
-
-    return queueSize;
+    return records.size();
   }
 
   protected SourceRecords consumeByTopic(int numRecords) throws InterruptedException {
     SourceRecords records = new SourceRecords();
     int recordsConsumed = 0;
-    while (recordsConsumed <= numRecords) {
-      if (!consumedLines.isEmpty()) {
-        records.add(consumedLines.poll());
+    while (recordsConsumed < numRecords) {
+      if (!linesConsumed.isEmpty()) {
+        records.add(linesConsumed.poll());
         ++recordsConsumed;
       }
     }
@@ -207,7 +209,7 @@ public class TestBaseClass extends AbstractConnectorTest {
 
   @Override
   protected void assertNoRecordsToConsume() {
-    assertTrue(consumedLines.isEmpty());
+    assertTrue(linesConsumed.isEmpty());
   }
 
   @Override
@@ -216,11 +218,48 @@ public class TestBaseClass extends AbstractConnectorTest {
     long now = System.currentTimeMillis();
     long stop = now + unit.toMillis(timeout);
     while (System.currentTimeMillis() < stop) {
-        if (!consumedLines.isEmpty()) {
+        if (!linesConsumed.isEmpty()) {
             break;
         }
     }
-    return !consumedLines.isEmpty();
+    return !linesConsumed.isEmpty();
+  }
+
+  /**
+   * Consume the records available and add them to a list for further assertion purposes.
+   * @param records list to which we need to add the records we consume, pass a
+   * {@code new ArrayList<>()} if you do not need assertions on the consumed values
+   * @param recordsCount total number of records which should be consumed
+   * @param milliSecondsToWait duration in milliseconds to wait for while consuming
+   */
+  protected void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
+                                            long milliSecondsToWait) {
+      AtomicLong totalConsumedRecords = new AtomicLong();
+      long seconds = milliSecondsToWait / 1000;
+      try {
+          Awaitility.await()
+              .atMost(Duration.ofSeconds(seconds))
+              .until(() -> {
+                  int consumed = consumeAvailableRecords(record -> {
+                      LOGGER.debug("The record being consumed is " + record);
+                      records.add(record);
+                  });
+                  if (consumed > 0) {
+                      totalConsumedRecords.addAndGet(consumed);
+                      LOGGER.info("Consumed " + totalConsumedRecords + " records");
+                  }
+
+                  return totalConsumedRecords.get() >= recordsCount;
+              });
+      } catch (ConditionTimeoutException exception) {
+          fail("Failed to consume " + recordsCount + " in " + seconds + " seconds, consumed only " + totalConsumedRecords.get(), exception);
+      }
+
+      assertEquals(recordsCount, totalConsumedRecords.get());
+  }
+
+  protected void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
+    waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
   }
 
   protected class SourceRecords {

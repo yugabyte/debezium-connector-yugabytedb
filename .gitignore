@@ -28,5 +28,6 @@ generated-sources
 .classpath
 .project
 .settings
+.factorypath
 .idea/
 dependency-reduced-pom.xml
