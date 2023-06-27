@@ -616,8 +616,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
    * @param tabletsWaitingForCallback a set containing tablets which have completed snapshot from server but have not received the explicit checkpoint
    */
   public void doSnapshotCompletionCheck(YBPartition partition, Set<String> snapshotCompletedTablets,
-                                        Set<String> tabletsWaitingForCallback, YugabyteDBOffsetContext offsetContext)
-                                          throws Exception {
+                                        Set<String> tabletsWaitingForCallback, YugabyteDBOffsetContext offsetContext) throws Exception {
       if (this.tabletToExplicitCheckpoint.get(partition.getId()) == null) {
         // If we have no OpId stored in the explicit checkpoint map then that would indicate that
         // we haven't yet received any callback from Kafka even once and we should wait more.
