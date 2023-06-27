@@ -394,6 +394,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
                   LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
                               tabletId, cp, table.getName());
+                  if (tabletToExplicitCheckpoint.get(part.getId()) != null) {
+                    CdcSdkCheckpoint ecp = tabletToExplicitCheckpoint.get(part.getId());
+                    LOGGER.info("Explicit checkpoint in the call for tablet {} is {}.{}.{}", part.getId(), ecp.getTerm(), ecp.getIndex(), ecp.getKey());
+                  }
                   lastLoggedTimeForGetChanges = System.currentTimeMillis();
                 }
 
@@ -550,7 +554,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     } else {
                       LOGGER.info("Adding {} to the list of snapshot completed tablets", part.getId());
                       snapshotCompletedTablets.add(part.getId());
-                      markSnapshotDoneOnServer(partition, previousOffset);
+                      markSnapshotDoneOnServer(part, previousOffset);
                     }
                   }
                 } else if (!taskContext.shouldEnableExplicitCheckpointing() && isSnapshotCompleteMarker(finalOpId)) {
