@@ -2,7 +2,6 @@ package io.debezium.connector.yugabytedb.common;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.YugabyteDBConnector;
-import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.connector.yugabytedb.container.YugabyteCustomContainer;
 import io.debezium.connector.yugabytedb.rules.YugabyteDBLogTestName;
 import io.debezium.embedded.AbstractConnectorTest;
@@ -182,30 +181,6 @@ public class TestBaseClass extends AbstractConnectorTest {
       LoggingContext.forConnector(getClass().getSimpleName(), "", "engine");
       engine.run();
     });
-  }
-
-  /**
-   * @return the offset map which stores the offset for each record being used as explicit checkpoint
-   */
-  protected Map<String, ?> getOffsetMap() {
-    return offsetMapForRecords;
-  }
-
-  /**
-   * Get the {@link OpId} stored in the offset map for the given partition ID, which by extension
-   * is the tablet ID. The OpId returned here will be the one used to set the checkpoint explicitly
-   * on service
-   * @param partitionId the partition to get the offsets for
-   * @return {@link OpId} which is committed on service as explicit checkpoint
-   */
-  protected OpId getOffset(String partitionId) {
-    String opIdString = (String) offsetMapForRecords.get(partitionId);
-    
-    if (opIdString == null || opIdString.isEmpty()) {
-      throw new RuntimeException("No offset found in the offset map for the given partition ID " + partitionId);
-    }
-
-    return OpId.valueOf(opIdString);
   }
 
   protected int consumeAvailableRecords(Consumer<SourceRecord> recordConsumer) {
