@@ -72,6 +72,13 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
         return Instant.ofEpochSecond(0, rawMessage.getCommitTime() * 1_000);
     }
 
+    public long getRawCommitTime() {
+        return rawMessage.getCommitTime();
+    }
+
+    public long getRecordTime() {
+        return rawMessage.getRecordTime();
+    }
     @Override
     public String getTransactionId() {
         return rawMessage.getTransactionId() == null ? null : rawMessage.getTransactionId().toStringUtf8();

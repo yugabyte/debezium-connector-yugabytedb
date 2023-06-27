@@ -89,7 +89,7 @@ public class YugabyteDBContainerTestBase extends TestBaseClass {
 
     /**
      * Restart the yugabyted process running in the TestContainer
-     * 
+     *
      * @param millisecondsToWait amount of time (in ms) to wait before starting after stopping
      */
     @Override

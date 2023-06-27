@@ -60,11 +60,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     private OpId lastCompletelyProcessedLsn;
 
     private YugabyteDBTypeRegistry yugabyteDbTypeRegistry;
-
     private Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
-    private Map<String, Long> tabletSafeTime;
-    Map<String, YBTable> tableIdToTable;
-    Map<String, Boolean> shouldWaitForCallback;
+    protected Map<String, Long> tabletSafeTime;
+    protected Map<String, YBTable> tableIdToTable;
+    protected Map<String, Boolean> shouldWaitForCallback;
 
     private boolean snapshotComplete = false;
 
@@ -479,9 +478,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       // In case of snapshots, we do not want to ignore tableUUID while updating
                       // OpId value for a table-tablet pair.
                       previousOffset.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn,
-                                                          message.getCommitTime(), 
+                                                          message.getRawCommitTime(),
                                                           String.valueOf(message.getTransactionId()),
-                                                          tId);
+                                                          tId, message.getRecordTime());
 
                       boolean dispatched = (message.getOperation() != Operation.NOOP) &&
                           dispatcher.dispatchDataChangeEvent(part, tId,
@@ -501,7 +500,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 OpId finalOpId = new OpId(resp.getTerm(), resp.getIndex(), resp.getKey(),
                                           resp.getWriteId(), resp.getSnapshotTime());
-                LOGGER.info("Final OpId for tablet {} is {}", part.getId(), finalOpId);
+                LOGGER.debug("Final OpId for tablet {} is {}", part.getId(), finalOpId);
 
                 /*
                    This block checks and validates for two scenarios:

@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.TabletCheckpointPair;
 import org.yb.cdc.CdcService.CDCErrorPB.Code;
+import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.client.*;
 
 import java.io.IOException;
@@ -35,6 +36,7 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.DataChangeEvent;
@@ -46,44 +48,44 @@ import io.debezium.pipeline.DataChangeEvent;
 public class YugabyteDBStreamingChangeEventSource implements
         StreamingChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
 
-    private static final String KEEP_ALIVE_THREAD_NAME = "keep-alive";
+    protected static final String KEEP_ALIVE_THREAD_NAME = "keep-alive";
 
     /**
      * Number of received events without sending anything to Kafka which will
      * trigger a "WAL backlog growing" warning.
      */
-    private static final int GROWING_WAL_WARNING_LOG_INTERVAL = 10_000;
+    protected static final int GROWING_WAL_WARNING_LOG_INTERVAL = 10_000;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBStreamingChangeEventSource.class);
 
     // PGOUTPUT decoder sends the messages with larger time gaps than other decoders
     // We thus try to read the message multiple times before we make poll pause
-    private static final int THROTTLE_NO_MESSAGE_BEFORE_PAUSE = 5;
+    protected static final int THROTTLE_NO_MESSAGE_BEFORE_PAUSE = 5;
 
-    private final YugabyteDBConnection connection;
-    private final YugabyteDBEventDispatcher<TableId> dispatcher;
-    private final ErrorHandler errorHandler;
-    private final Clock clock;
-    private final YugabyteDBSchema schema;
-    private final YugabyteDBConnectorConfig connectorConfig;
-    private final YugabyteDBTaskContext taskContext;
+    protected final YugabyteDBConnection connection;
+    protected final YugabyteDBEventDispatcher<TableId> dispatcher;
+    protected final ErrorHandler errorHandler;
+    protected final Clock clock;
+    protected final YugabyteDBSchema schema;
+    protected final YugabyteDBConnectorConfig connectorConfig;
+    protected final YugabyteDBTaskContext taskContext;
 
-    private final Snapshotter snapshotter;
-    private final DelayStrategy pauseNoMessage;
-    private final ElapsedTimeStrategy connectionProbeTimer;
+    protected final Snapshotter snapshotter;
+    protected final DelayStrategy pauseNoMessage;
+    protected final ElapsedTimeStrategy connectionProbeTimer;
 
     /**
      * The minimum of (number of event received since the last event sent to Kafka,
      * number of event received since last WAL growing warning issued).
      */
-    private long numberOfEventsSinceLastEventSentOrWalGrowingWarning = 0;
-    private OpId lastCompletelyProcessedLsn;
+    protected long numberOfEventsSinceLastEventSentOrWalGrowingWarning = 0;
+    protected OpId lastCompletelyProcessedLsn;
 
-    private final AsyncYBClient asyncYBClient;
-    private final YBClient syncClient;
-    private YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
-    private final Map<String, OpId> checkPointMap;
-    private final ChangeEventQueue<DataChangeEvent> queue;
+    protected final AsyncYBClient asyncYBClient;
+    protected final YBClient syncClient;
+    protected YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
+    protected final Map<String, OpId> checkPointMap;
+    protected final ChangeEventQueue<DataChangeEvent> queue;
 
     protected Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
 
@@ -184,7 +186,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
-    private void bootstrapTabletWithRetry(List<Pair<String,String>> tabletPairList) throws Exception {
+    protected void bootstrapTabletWithRetry(List<Pair<String,String>> tabletPairList) throws Exception {
         short retryCountForBootstrapping = 0;
         for (Pair<String, String> entry : tabletPairList) {
             // entry is a Pair<tableId, tabletId>
@@ -223,7 +225,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     }
 
 
-    private void getChanges2(ChangeEventSourceContext context,
+    protected void getChanges2(ChangeEventSourceContext context,
                              YBPartition partitionn,
                              YugabyteDBOffsetContext offsetContext,
                              boolean previousOffsetPresent)
@@ -424,7 +426,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                             cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
                             taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
-                            tabletSafeTime.getOrDefault(part.getId(), -1L));
+                            tabletSafeTime.getOrDefault(part.getId(), -1L), offsetContext.getWalSegmentIndex(part));
 
                         tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
                       } catch (CDCErrorException cdcException) {
@@ -479,6 +481,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                             YbProtoReplicationMessage message = new YbProtoReplicationMessage(
                                     m, this.yugabyteDBTypeRegistry);
 
+                            // Ignore safepoint record as they are not meant to be processed here.
+                            if (m.getOp() == Op.SAFEPOINT) {
+                                continue;
+                            }
+
                             String pgSchemaNameInRecord = m.getPgschemaName();
 
                             // This is a hack to skip tables in case of colocated tables
@@ -513,8 +520,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         }
                                         if (message.getOperation() == Operation.COMMIT) {
                                             LOGGER.debug("LSN in case of COMMIT is " + lsn);
-                                            offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
-                                                    String.valueOf(message.getTransactionId()), null);
+                                            offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                                                    String.valueOf(message.getTransactionId()), null, message.getRecordTime());
 
                                             if (recordsInTransactionalBlock.containsKey(part.getId())) {
                                                 if (recordsInTransactionalBlock.get(part.getId()) == 0) {
@@ -543,8 +550,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     }
                                     else if (message.getOperation() == Operation.COMMIT) {
                                         LOGGER.debug("LSN in case of COMMIT is " + lsn);
-                                        offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
-                                                String.valueOf(message.getTransactionId()), null);
+                                        offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                                                String.valueOf(message.getTransactionId()), null, message.getRecordTime());
                                         dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
 
                                         if (recordsInTransactionalBlock.containsKey(part.getId())) {
@@ -599,8 +606,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     // If you need to print the received record, change debug level to info
                                     LOGGER.debug("Received DML record {}", record);
 
-                                    offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getCommitTime(),
-                                            String.valueOf(message.getTransactionId()), tableId);
+                                    offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                                            String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
 
                                     boolean dispatched = message.getOperation() != Operation.NOOP
                                             && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
@@ -691,7 +698,7 @@ public class YugabyteDBStreamingChangeEventSource implements
      * @param dispatched
      *            Whether an event was sent to the broker or not
      */
-    private void maybeWarnAboutGrowingWalBacklog(boolean dispatched) {
+    protected void maybeWarnAboutGrowingWalBacklog(boolean dispatched) {
         if (dispatched) {
             numberOfEventsSinceLastEventSentOrWalGrowingWarning = 0;
         }
@@ -765,7 +772,7 @@ public class YugabyteDBStreamingChangeEventSource implements
      *
      * @return true if the current streaming phase is performing catch up streaming
      */
-    private boolean isInPreSnapshotCatchUpStreaming(YugabyteDBOffsetContext offsetContext) {
+    protected boolean isInPreSnapshotCatchUpStreaming(YugabyteDBOffsetContext offsetContext) {
         return offsetContext.getStreamingStoppingLsn() != null;
     }
 
@@ -841,7 +848,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
-    private void handleTabletSplit(
+    protected void handleTabletSplit(
       CDCErrorException cdcErrorException, List<Pair<String,String>> tabletPairList,
       YugabyteDBOffsetContext offsetContext, String streamId,
       Map<String, Boolean> schemaNeeded) throws Exception {
@@ -850,11 +857,11 @@ public class YugabyteDBStreamingChangeEventSource implements
         handleTabletSplit(splitTabletId, tabletPairList, offsetContext, streamId, schemaNeeded);
     }
 
-    private void handleTabletSplit(String splitTabletId,
-                                   List<Pair<String,String>> tabletPairList,
-                                   YugabyteDBOffsetContext offsetContext,
-                                   String streamId,
-                                   Map<String, Boolean> schemaNeeded) throws Exception {
+    protected void handleTabletSplit(String splitTabletId,
+                                     List<Pair<String,String>> tabletPairList,
+                                     YugabyteDBOffsetContext offsetContext,
+                                     String streamId,
+                                     Map<String, Boolean> schemaNeeded) throws Exception {
         LOGGER.info("Removing the tablet {} from the list to get the changes since it has been split", splitTabletId);
 
         Pair<String, String> entryToBeDeleted = getEntryToDelete(tabletPairList, splitTabletId);
