@@ -223,7 +223,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           snapshotCompletedTablets.add(tabletId);
           snapshotCompletedPreviously.add(tabletId);
         } else {
-          LOGGER.info("Setting checkpoint on {} with 0.0", tabletId);
+          LOGGER.debug("Setting checkpoint on tablet {} with 0.0");
           YBClientUtils.setCheckpoint(this.syncClient, 
                                       this.connectorConfig.streamId(), 
                                       tableId /* tableId */, 
@@ -380,23 +380,17 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       || tabletsWaitingForCallback.contains(part.getId())) {
                   // Before continuing, check if the tablets waiting for callback have been updated in case of explicit checkpointing.
                   if (!snapshotCompletedTablets.contains(part.getId()) && taskContext.shouldEnableExplicitCheckpointing()) {
-                    LOGGER.info("Snapshot completed size before check: {}", snapshotCompletedTablets.size());
                     doSnapshotCompletionCheck(part, snapshotCompletedTablets, tabletsWaitingForCallback, previousOffset);
-                    LOGGER.info("Snapshot completed size after check: {}", snapshotCompletedTablets.size());
                   }
                   continue;
                 }
 
                 OpId cp = previousOffset.snapshotLSN(part);
 
-                if (true || LOGGER.isDebugEnabled()
+                if (LOGGER.isDebugEnabled()
                     || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
                   LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
                               tabletId, cp, table.getName());
-                  if (tabletToExplicitCheckpoint.get(part.getId()) != null) {
-                    CdcSdkCheckpoint ecp = tabletToExplicitCheckpoint.get(part.getId());
-                    LOGGER.info("Explicit checkpoint in the call for tablet {} is {}.{}.{}", part.getId(), ecp.getTerm(), ecp.getIndex(), ecp.getKey());
-                  }
                   lastLoggedTimeForGetChanges = System.currentTimeMillis();
                 }
 
@@ -434,7 +428,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                             record.getCdcSdkOpId().getWriteIdKey().toByteArray(),
                                             record.getCdcSdkOpId().getWriteId(),
                                             resp.getSnapshotTime());
-                  LOGGER.info("Record's LSN is {}", lsn);
 
                   if (message.isLastEventForLsn()) {
                     lastCompletelyProcessedLsn = lsn;
@@ -623,7 +616,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
    * @param tabletsWaitingForCallback a set containing tablets which have completed snapshot from server but have not received the explicit checkpoint
    */
   public void doSnapshotCompletionCheck(YBPartition partition, Set<String> snapshotCompletedTablets,
-                                        Set<String> tabletsWaitingForCallback, YugabyteDBOffsetContext offsetContext) {
+                                        Set<String> tabletsWaitingForCallback, YugabyteDBOffsetContext offsetContext)
+                                          throws Exception {
       if (this.tabletToExplicitCheckpoint.get(partition.getId()) == null) {
         // If we have no OpId stored in the explicit checkpoint map then that would indicate that
         // we haven't yet received any callback from Kafka even once and we should wait more.
@@ -639,22 +633,38 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       }
     }
 
-  public void markSnapshotDoneOnServer(YBPartition partition, YugabyteDBOffsetContext offsetContext) {
+  public void markSnapshotDoneOnServer(YBPartition partition, YugabyteDBOffsetContext offsetContext) throws Exception {
     OpId snapshotDoneMarker = offsetContext.snapshotDoneKeyLsn(partition);
 
-    try {
-      LOGGER.info("Calling GetChanges on table {} tablet {} with snapshot_done_key", partition.getTableId(), partition.getTabletId());
-      GetChangesResponse response =
-        this.syncClient.getChangesCDCSDK(tableIdToTable.get(partition.getTableId()), connectorConfig.streamId(), 
-                                         partition.getTabletId(), snapshotDoneMarker.getTerm(),
-                                         snapshotDoneMarker.getIndex(), snapshotDoneMarker.getKey(), 
-                                         snapshotDoneMarker.getWrite_id(), snapshotDoneMarker.getTime(),
-                          false /* schema is not needed since this is a dummy call */,
-                                         taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(partition.getId()) : null,
-                                         tabletSafeTime.getOrDefault(partition.getId(), -1L));
-    } catch (Exception e) {
-      LOGGER.error("Exception while calling dummy GetChanges", e);
+    short retryCount = 0;
+    while (retryCount <= connectorConfig.maxConnectorRetries()) {
+      try {
+        LOGGER.debug("Marking snapshot completed on service for table {} tablet {}", partition.getTableId(), partition.getTabletId());
+        GetChangesResponse response =
+            this.syncClient.getChangesCDCSDK(tableIdToTable.get(partition.getTableId()), connectorConfig.streamId(), 
+                                             partition.getTabletId(), snapshotDoneMarker.getTerm(),
+                                             snapshotDoneMarker.getIndex(), snapshotDoneMarker.getKey(), 
+                                             snapshotDoneMarker.getWrite_id(), snapshotDoneMarker.getTime(),
+                              false /* schema is not needed since this is a dummy call */,
+                                             taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(partition.getId()) : null,
+                                             tabletSafeTime.getOrDefault(partition.getId(), -1L));
+
+        // Break upon successful request.
+        break;
+      } catch (Exception e) {
+        ++retryCount;
+
+        if (retryCount > connectorConfig.maxConnectorRetries()) {
+          LOGGER.error("Too many errors while trying to mark snapshot completed on service for table {} tablet {} error: ",
+                       partition.getTableId(), partition.getTabletId(), e);
+          throw e;
+        }
+        
+        LOGGER.warn("Error while marking snapshot completed on service for table {} tablet {}, will attempt retry {} of {} for error {}",
+                    partition.getTableId(), partition.getTabletId(), retryCount, connectorConfig.maxConnectorRetries(), e);
+      }
     }
+
   }
 
     /**
