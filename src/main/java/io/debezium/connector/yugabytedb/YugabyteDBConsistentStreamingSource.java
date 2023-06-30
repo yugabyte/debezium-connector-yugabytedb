@@ -314,8 +314,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
         // This is a hack to skip tables in case of colocated tables
         TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-        if (!message.isDDLMessage() && !message.isTransactionalMessage()
-            && !new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
+        if (!message.isTransactionalMessage()
+            && !filters.tableFilter().isIncluded(tempTid)) {
             return;
         }
 

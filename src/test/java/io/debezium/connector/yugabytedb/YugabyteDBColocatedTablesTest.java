@@ -238,8 +238,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 5_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
 
-    start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> assertTrue(success));
-
+    startEngine(configBuilder, (success, message, error) -> assertTrue(success));
     awaitUntilConnectorIsReady();
 
     // Start threads to perform schema change operations on the colocated tables.

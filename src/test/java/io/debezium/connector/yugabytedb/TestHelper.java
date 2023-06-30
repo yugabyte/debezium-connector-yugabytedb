@@ -440,6 +440,13 @@ public final class TestHelper {
         return new YBClient(asyncClient);
     }
 
+    /**
+     * Get the {@link YBTable} object for the given table name
+     * @param syncClient the {@link YBClient} instance
+     * @param tableName just the name of the table, without any schema name
+     * @return a {@link YBTable} if a table is found with the given name, null otherwise
+     * @throws Exception if there is any error in opening the table
+     */
     public static YBTable getYbTable(YBClient syncClient, String tableName) throws Exception {
         ListTablesResponse resp = syncClient.getTablesList();
 
