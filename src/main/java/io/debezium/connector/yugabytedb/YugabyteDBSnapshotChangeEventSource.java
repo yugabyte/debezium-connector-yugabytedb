@@ -624,7 +624,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       }
 
       OpId opId = OpId.from(this.tabletToExplicitCheckpoint.get(partition.getId()));
-      if (isSnapshotCompleteMarker(opId) && !snapshotCompletedTablets.contains(partition.getId())) {
+      if (isSnapshotCompleteMarker(opId)) {
         LOGGER.info("Adding tablet {} to snapshot completed list", partition.getId());
         snapshotCompletedTablets.add(partition.getId());
         markSnapshotDoneOnServer(partition, offsetContext);

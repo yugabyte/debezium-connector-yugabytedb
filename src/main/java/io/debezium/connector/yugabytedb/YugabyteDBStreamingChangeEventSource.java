@@ -89,6 +89,8 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     protected Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
 
+    protected final Filters filters;
+
     // This set will contain the list of partition IDs for the tablets which have been split
     // and waiting for the callback from Kafka.
     protected Set<String> splitTabletsWaitingForCallback;
@@ -124,6 +126,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.queue = queue;
         this.tabletToExplicitCheckpoint = new HashMap<>();
         this.splitTabletsWaitingForCallback = new HashSet<>();
+        this.filters = new Filters(connectorConfig);
     }
 
     @Override
@@ -491,7 +494,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                             // This is a hack to skip tables in case of colocated tables
                             TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
                             if (!message.isTransactionalMessage()
-                                  && !new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
+                                  && !filters.tableFilter().isIncluded(tempTid)) {
+                                LOGGER.info("Skipping a record for table {} because it was not included", tempTid.table());
                                 continue;
                             }
 
