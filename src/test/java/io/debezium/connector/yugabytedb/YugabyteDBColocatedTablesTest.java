@@ -6,21 +6,15 @@ import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.TestBaseClass;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
-import io.debezium.connector.yugabytedb.connection.OpId;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import org.apache.kafka.connect.source.SourceRecord;
-import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
-import org.yb.client.GetCheckpointResponse;
-import org.yb.client.YBClient;
-import org.yb.client.YBTable;
 
 /**
  * Unit tests to verify connector functionality with colocated tables in YugabyteDB.
