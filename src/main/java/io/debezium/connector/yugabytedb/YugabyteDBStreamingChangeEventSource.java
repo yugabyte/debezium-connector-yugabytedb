@@ -89,7 +89,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     protected Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
 
-    final protected Filters filters;
+    protected final Filters filters;
 
     // This set will contain the list of partition IDs for the tablets which have been split
     // and waiting for the callback from Kafka.
