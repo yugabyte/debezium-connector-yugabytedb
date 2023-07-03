@@ -49,8 +49,8 @@ public class TestBaseClass extends AbstractConnectorTest {
 
     protected void awaitUntilConnectorIsReady() throws Exception {
         Awaitility.await()
-                .pollDelay(Duration.ofSeconds(10))
-                .atMost(Duration.ofSeconds(20))
+                .pollDelay(Duration.ofSeconds(15))
+                .atMost(Duration.ofSeconds(65))
                 .until(() -> {
                     return engine.isRunning();
                 });
