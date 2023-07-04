@@ -52,7 +52,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false})
+    @ValueSource(booleans = {true, false})
     public void testSnapshotRecordConsumption(boolean colocation) throws Exception {
         createTables(colocation);
         final int recordsCount = 5000;

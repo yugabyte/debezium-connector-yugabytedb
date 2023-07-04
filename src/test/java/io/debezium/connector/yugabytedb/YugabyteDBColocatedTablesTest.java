@@ -21,7 +21,7 @@ import org.junit.jupiter.api.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBColocatedTablesTest extends YugabytedTestBase {
+public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
   private final String INSERT_TEST_1 = "INSERT INTO test_1 VALUES (%d, 'sample insert');";
   private final String INSERT_TEST_2 = "INSERT INTO test_2 VALUES (%d::text);";
   private final String INSERT_TEST_3 = "INSERT INTO test_3 VALUES (%d::float, 'hours in varchar');";
