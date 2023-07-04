@@ -90,6 +90,7 @@ public class SourceInfoTest extends YugabyteDBContainerTestBase {
                 .field(SourceInfo.COMMIT_TIME, Schema.OPTIONAL_INT64_SCHEMA)
                 .field(SourceInfo.RECORD_TIME, Schema.INT64_SCHEMA)
                 .field(SourceInfo.TABLET_ID, Schema.STRING_SCHEMA)
+                .field(SourceInfo.PARTITION_ID_KEY, Schema.STRING_SCHEMA)
                 .build();
 
         VerifyRecord.assertConnectSchemasAreEqual(null, source.struct().schema(), schema);
