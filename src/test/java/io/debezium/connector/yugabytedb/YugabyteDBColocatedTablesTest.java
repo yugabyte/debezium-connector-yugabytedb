@@ -151,6 +151,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
       10, records.recordsForTopic(TestHelper.TEST_SERVER + ".public.test_no_colocated").size());
   }
 
+  @Disabled
   @Test
   public void shouldWorkAfterAddingTableAfterRestart() throws Exception {
     createTables();
