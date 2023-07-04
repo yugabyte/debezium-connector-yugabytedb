@@ -21,7 +21,7 @@ import org.junit.jupiter.api.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBColocatedTablesTest extends YugabytedTestBase {
   private final String INSERT_TEST_1 = "INSERT INTO test_1 VALUES (%d, 'sample insert');";
   private final String INSERT_TEST_2 = "INSERT INTO test_2 VALUES (%d::text);";
   private final String INSERT_TEST_3 = "INSERT INTO test_3 VALUES (%d::float, 'hours in varchar');";
@@ -151,7 +151,6 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
       10, records.recordsForTopic(TestHelper.TEST_SERVER + ".public.test_no_colocated").size());
   }
 
-  @Disabled
   @Test
   public void shouldWorkAfterAddingTableAfterRestart() throws Exception {
     createTables();
@@ -186,6 +185,8 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Stop the connector and modify the configuration
     stopConnector();
 
+    TestHelper.executeBulkWithRange(INSERT_TEST_2, 11, 21, DEFAULT_COLOCATED_DB_NAME);
+
     configBuilder.with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST,
                        "public.test_1,public.test_2,public.test_3");
 
@@ -198,20 +199,20 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // The below statements will insert records of the respective types with keys in the
     // range [11,21)
     TestHelper.executeBulkWithRange(INSERT_TEST_1, 11, 21, DEFAULT_COLOCATED_DB_NAME);
-    TestHelper.executeBulkWithRange(INSERT_TEST_2, 11, 21, DEFAULT_COLOCATED_DB_NAME);
+    TestHelper.executeBulkWithRange(INSERT_TEST_2, 21, 101, DEFAULT_COLOCATED_DB_NAME);
     TestHelper.executeBulkWithRange(INSERT_TEST_3, 11, 21, DEFAULT_COLOCATED_DB_NAME);
 
     // Dummy wait for 10 more seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords recordsAfterRestart = consumeByTopic(30);
+    SourceRecords recordsAfterRestart = consumeByTopic(110);
 
     assertNotNull(recordsAfterRestart);
 
     assertEquals(
       10, recordsAfterRestart.recordsForTopic(TestHelper.TEST_SERVER + ".public.test_1").size());
     assertEquals(
-      10, recordsAfterRestart.recordsForTopic(TestHelper.TEST_SERVER + ".public.test_2").size());
+      90, recordsAfterRestart.recordsForTopic(TestHelper.TEST_SERVER + ".public.test_2").size());
     assertEquals(
       10, recordsAfterRestart.recordsForTopic(TestHelper.TEST_SERVER + ".public.test_3").size());
 

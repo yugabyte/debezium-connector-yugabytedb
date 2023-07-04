@@ -638,7 +638,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     short retryCount = 0;
     while (retryCount <= connectorConfig.maxConnectorRetries()) {
       try {
-        LOGGER.debug("Marking snapshot completed on service for table {} tablet {}", partition.getTableId(), partition.getTabletId());
+        LOGGER.info("Marking snapshot completed on service for table {} tablet {}", partition.getTableId(), partition.getTabletId());
         GetChangesResponse response =
             this.syncClient.getChangesCDCSDK(tableIdToTable.get(partition.getTableId()), connectorConfig.streamId(), 
                                              partition.getTabletId(), snapshotDoneMarker.getTerm(),
