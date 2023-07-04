@@ -131,7 +131,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
         if (snapshotter.shouldSnapshot()) {
             LOGGER.info("Skipping bootstrap because snapshot has been taken so streaming will resume there onwards");
         } else {
-            bootstrapTabletWithRetry(tabletPairList);
+            bootstrapTabletWithRetry(tabletPairList, tableIdToTable);
         }
 
         // This log while indicate that the connector has either bootstrapped the tablets or skipped

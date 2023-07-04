@@ -259,6 +259,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     public void initSourceInfo(YBPartition partition, YugabyteDBConnectorConfig connectorConfig, OpId opId) {
         this.tabletSourceInfo.put(partition.getId(), new SourceInfo(connectorConfig, opId));
+        this.fromLsn.put(partition.getId(), opId);
     }
 
     public Map<String, SourceInfo> getTabletSourceInfo() {
