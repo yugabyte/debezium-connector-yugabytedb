@@ -40,8 +40,8 @@ public class TestBaseClass extends AbstractConnectorTest {
     public Logger LOGGER = LoggerFactory.getLogger(getClass());
     protected static YugabyteCustomContainer ybContainer;
     protected CountDownLatch countDownLatch;
-    protected final String DEFAULT_DB_NAME = "yugabyte";
-    protected final String DEFAULT_COLOCATED_DB_NAME = "colocated_database";
+    protected static final String DEFAULT_DB_NAME = "yugabyte";
+    protected static final String DEFAULT_COLOCATED_DB_NAME = "colocated_database";
     protected static String yugabytedStartCommand = "";
     protected Map<String, ?> offsetMapForRecords = new HashMap<>();
     protected ExecutorService engineExecutor;

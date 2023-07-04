@@ -34,7 +34,7 @@ class MergerTest {
                 .build();
         Message insert = new Message(insertProtoRecord, DUMMY_TABLE_ID, "3fe122ffe3f24ad39c2cf8a57fa124b3",
                 "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
-                BigInteger.valueOf(6822178296477519872L),
+                BigInteger.valueOf(6822178296495259648L),
                 BigInteger.valueOf(6822178296477519872L),
                 BigInteger.ZERO, 35);
 
@@ -52,8 +52,8 @@ class MergerTest {
         merger.addMessage(insert);
         merger.addMessage(commit);
 
-        assertEquals(insert, merger.poll().get());
         assertEquals(begin, merger.poll().get());
+        assertEquals(insert, merger.poll().get());
         assertEquals(commit, merger.poll().get());
     }
 
@@ -128,7 +128,7 @@ class MergerTest {
         } catch (AssertionError ae) {
             // An assertion error will be thrown saying that commit time of incoming message is less
             // than that of the last record in the merge slot.
-            assertTrue(ae.getMessage().contains("Commit time of the newly added message is less than the last message in the merge slot"));
+            assertTrue(ae.getMessage().contains("Merger tried to set tablet safetime to a lower value"));
         }
     }
 
