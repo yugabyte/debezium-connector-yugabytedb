@@ -11,6 +11,7 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.CommonTypes;
 import org.yb.cdc.CdcService;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.CDCStreamInfo;
@@ -64,6 +65,7 @@ public class YBClientUtils {
     Set<String> tableIds = new HashSet<>();
       try {
           ListTablesResponse tablesResp = ybClient.getTablesList();
+
           for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo : 
               tablesResp.getTableInfoList()) {
               if (tableInfo.getRelationType() == MasterTypes.RelationType.INDEX_TABLE_RELATION ||
@@ -72,23 +74,32 @@ public class YBClientUtils {
                   continue;
               }
 
-              // Ignore the tables without a pgschema_name, these tables are the ones created with 
-              // the older versions of YugabyteDB where the changes for CDCSDK were not present. 
-              // For more details, visit https://github.com/yugabyte/yugabyte-db/issues/11976
-              if (tableInfo.getPgschemaName() == null || tableInfo.getPgschemaName().isEmpty()) {
-                  LOGGER.warn(String.format("Ignoring the table %s.%s since it does not have" 
-                    + " a pgschema_name value (possibly because it was created using an older"
-                    + " YugabyteDB version)", tableInfo.getNamespace().getName(),
-                      tableInfo.getName()));
-                  continue;
+              TableId tableId;
+              String fqlTableName;
+              if (tableInfo.getNamespace().getDatabaseType() == CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL) {
+                  // Ignore the tables without a pgschema_name, these tables are the ones created with
+                  // the older versions of YugabyteDB where the changes for CDCSDK were not present.
+                  // For more details, visit https://github.com/yugabyte/yugabyte-db/issues/11976
+                  if (tableInfo.getPgschemaName() == null || tableInfo.getPgschemaName().isEmpty()) {
+                      LOGGER.warn(String.format("Ignoring the table %s.%s since it does not have"
+                                      + " a pgschema_name value (possibly because it was created using an older"
+                                      + " YugabyteDB version)", tableInfo.getNamespace().getName(),
+                              tableInfo.getName()));
+                      continue;
+                  }
+
+                  fqlTableName = tableInfo.getNamespace().getName() + "."
+                          + tableInfo.getPgschemaName() + "."
+                          + tableInfo.getName();
+                  tableId = YugabyteDBSchema.parseWithSchema(fqlTableName,
+                          tableInfo.getPgschemaName());
+
               }
-
-              String fqlTableName = tableInfo.getNamespace().getName() + "." 
-                                    + tableInfo.getPgschemaName() + "." 
-                                    + tableInfo.getName();
-              TableId tableId = YugabyteDBSchema.parseWithSchema(fqlTableName, 
-                                                                 tableInfo.getPgschemaName());
-
+              else {
+                  fqlTableName = tableInfo.getNamespace().getName() + "."
+                          + tableInfo.getName();
+                  tableId = YugabyteDBSchema.parseWithKeyspace(fqlTableName);
+              }
               // Retrieve the list of tables in the stream ID,
               GetDBStreamInfoResponse dbStreamInfoResponse = ybClient.getDBStreamInfo(
                                                                connectorConfig.streamId());

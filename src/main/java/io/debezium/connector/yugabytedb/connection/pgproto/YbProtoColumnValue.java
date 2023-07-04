@@ -34,9 +34,7 @@ import io.debezium.data.SpecialValueDecimal;
 import io.debezium.time.Conversions;
 
 /**
- * Replication message column
- *
- * @author Suranjan Kumar
+ * Replication message column sent by YugabyteDB CDCService
  */
 public class YbProtoColumnValue extends AbstractColumnValue<Common.DatumMessagePB> {
 

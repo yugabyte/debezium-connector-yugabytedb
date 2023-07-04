@@ -45,7 +45,6 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
             for (int i = 0; i < numOfRowsToBeInserted; i++) {
                 TestHelper.execute(String.format(formatInsertString, i));
             }
-
         }).exceptionally(throwable -> {
             throw new RuntimeException(throwable);
         }).get();

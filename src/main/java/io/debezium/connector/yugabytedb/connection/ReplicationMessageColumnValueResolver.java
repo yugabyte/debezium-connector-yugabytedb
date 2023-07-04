@@ -5,6 +5,7 @@
  */
 package io.debezium.connector.yugabytedb.connection;
 
+import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoCqlColumnValue;
 import org.postgresql.util.PGmoney;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +14,7 @@ import io.debezium.connector.yugabytedb.YugabyteDBStreamingChangeEventSource.PgC
 import io.debezium.connector.yugabytedb.YugabyteDBType;
 import io.debezium.connector.yugabytedb.YugabyteDBTypeRegistry;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage.ColumnValue;
+import org.yb.QLType;
 
 /**
  * @author Chris Cranford
@@ -199,5 +201,41 @@ public class ReplicationMessageColumnValueResolver {
 
         return value.asDefault(yugabyteDBTypeRegistry, type.getOid(), columnName, fullType,
                 includeUnknownDatatypes, connection);
+    }
+
+    public static Object resolveValue(String columnName, QLType type,
+                                      YbProtoCqlColumnValue value) {
+        if (!value.getValuepb().isInitialized()) {
+            // nulls are null
+            return null;
+        }
+        switch (type.getMain()) {
+            case INT8:value.getValuepb().getInt8Value();
+            case INT16:value.getValuepb().getInt16Value();
+            case INT32: return value.getValuepb().getInt32Value();
+            case INT64: return value.getValuepb().getDoubleValue();
+            case STRING: return value.getValuepb().getStringValue();
+            case BOOL: return value.getValuepb().getBoolValue();
+            case FLOAT: return value.getValuepb().getFloatValue();
+            case DOUBLE: return value.getValuepb().getDoubleValue();
+            case BINARY: return value.getValuepb().getBinaryValue();
+
+            case TIMESTAMP: return value.getValuepb().getTimestampValue();
+            case DECIMAL: return value.getValuepb().getDecimalValue().toStringUtf8();
+            case VARINT: return "varint";
+            case INET: return "inet";
+            case LIST: return "list";
+            case MAP: return "map";
+            case SET: return "set";
+            case UUID: return "uuid";
+            case TIMEUUID: return "timeuuid";
+            case FROZEN: return "frozen";
+            case USER_DEFINED_TYPE: return "user_defined_type";
+
+            default:
+                break;
+        }
+
+        return null;
     }
 }

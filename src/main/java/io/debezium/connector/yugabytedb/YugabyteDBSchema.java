@@ -483,14 +483,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         tableIdToToastableColumns.put(tableId, Collections.unmodifiableList(toastableColumns));
     }
 
-    protected static TableId parse(String table) {
-        TableId tableId = TableId.parse(table, false);
-        if (tableId == null) {
-            return null;
-        }
-        return tableId.schema() == null ? new TableId(tableId.catalog(), PUBLIC_SCHEMA_NAME, tableId.table()) : tableId;
-    }
-
     protected static TableId parseWithSchema(String table, String pgSchemaName) {
         TableId tableId = TableId.parse(table, false);
         if (tableId == null) {
@@ -498,6 +490,11 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         }
 
         return tableId.schema() == null ? new TableId(tableId.catalog(), pgSchemaName, tableId.table()) : tableId;
+    }
+
+    protected static TableId parseWithKeyspace(String table) {
+        TableId tableId = TableId.parse(table, true);
+        return tableId;
     }
 
     public YugabyteDBTypeRegistry getTypeRegistry() {
