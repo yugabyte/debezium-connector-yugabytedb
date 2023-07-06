@@ -257,7 +257,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 
                 LOGGER.warn("Error while marking no snapshot on service for table {} tablet {}, will attempt retry {} of {} for error {}",
                             ybTable.getTableId(), tabletId, retryCount, connectorConfig.maxConnectorRetries(), e);
-                
+
                 try {
                     final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
                     retryMetronome.pause();
@@ -448,7 +448,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                       if (taskContext.shouldEnableExplicitCheckpointing()) {
                         CdcSdkCheckpoint ecp = tabletToExplicitCheckpoint.get(part.getId());
                         if (ecp != null) {
-                            LOGGER.info("Requesting changes for tablet {}, explicit checkpointing: {}.{} from_op_id: {}.{}", part.getId(), ecp.getTerm(), ecp.getIndex(), cp.getTerm(), cp.getIndex());
+                            LOGGER.info("Requesting changes for tablet {}, explicit checkpointing: {}.{}.{} from_op_id: {}.{}", part.getId(), ecp.getTerm(), ecp.getIndex(), ecp.getTime(), cp.getTerm(), cp.getIndex());
                         } else {
                             LOGGER.info("Requesting changes for tablet {}, explicit checkpoint is null and from_op_id: {}.{}", part.getId(), cp.getTerm(), cp.getIndex());
                         }
@@ -545,7 +545,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     record.getCdcSdkOpId().getIndex(),
                                     record.getCdcSdkOpId().getWriteIdKey().toByteArray(),
                                     record.getCdcSdkOpId().getWriteId(),
-                                    response.getSnapshotTime());
+                                    record.getRowMessage().getCommitTime());
 
                             if (message.isLastEventForLsn()) {
                                 lastCompletelyProcessedLsn = lsn;
@@ -921,7 +921,6 @@ public class YugabyteDBStreamingChangeEventSource implements
               streamId,
               tableId,
               splitTabletId);
-        
         Objects.requireNonNull(getTabletListResponse);
 
         // Remove the entry with the tablet which has been split.
