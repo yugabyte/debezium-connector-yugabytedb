@@ -20,23 +20,24 @@ public class YugabyteDBContainerTestBase extends TestBaseClass {
         ybContainer = TestHelper.getYbContainer(masterFlags, tserverFlags);
         ybContainer.start();
 
-        if (tserverFlags == null || tserverFlags.isEmpty()) {
-            tserverFlags = "";
-        } else {
-            tserverFlags = " --tserver_flags=" + tserverFlags;
-        }
+        // Set the GFLAG: "cdc_state_checkpoint_update_interval_ms" to 0 in all tests, forcing every
+        // instance of explicit_checkpoint to be added to the 'cdc_state' table in the service.
+        String finalTserverFlags = " --tserver_flags=" +
+                                   ((tserverFlags == null || tserverFlags.isEmpty())
+                                        ? "cdc_state_checkpoint_update_interval_ms=0"
+                                        : tserverFlags + ",cdc_state_checkpoint_update_interval_ms=0");
 
         if (masterFlags == null || masterFlags.isEmpty()) {
             masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0";
         } else {
             masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0," + masterFlags;
         }
-        
-        logger.info("tserver flags: {}", tserverFlags);
+
+        logger.info("tserver flags: {}", finalTserverFlags);
         logger.info("master flags: {}", masterFlags);
 
         yugabytedStartCommand = "/home/yugabyte/bin/yugabyted start --listen=0.0.0.0 "
-                                    + masterFlags + tserverFlags + " --daemon=true";
+                                    + masterFlags + finalTserverFlags + " --daemon=true";
         logger.info("Container startup command: {}", yugabytedStartCommand);
 
         try {
@@ -49,7 +50,7 @@ public class YugabyteDBContainerTestBase extends TestBaseClass {
 
         TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
         TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
-    } 
+    }
 
     protected static void initializeYBContainer() {
         initializeYBContainer(null, null);

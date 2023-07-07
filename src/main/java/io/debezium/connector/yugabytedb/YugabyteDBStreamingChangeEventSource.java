@@ -240,8 +240,8 @@ public class YugabyteDBStreamingChangeEventSource implements
             try {
                 LOGGER.info("Marking no snapshot on service for table {} tablet {}", ybTable.getTableId(), tabletId);
                 GetChangesResponse response =
-                    this.syncClient.getChangesCDCSDK(ybTable, connectorConfig.streamId(), 
-                                                    tabletId, -1, -1, YugabyteDBOffsetContext.SNAPSHOT_DONE_KEY.getBytes(), 
+                    this.syncClient.getChangesCDCSDK(ybTable, connectorConfig.streamId(),
+                                                    tabletId, -1, -1, YugabyteDBOffsetContext.SNAPSHOT_DONE_KEY.getBytes(),
                                                     0, 0, false /* schema is not needed since this is a dummy call */);
 
                 // Break upon successful request.
@@ -254,7 +254,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             ybTable.getTableId(), tabletId, e);
                 throw e;
                 }
-                
+
                 LOGGER.warn("Error while marking no snapshot on service for table {} tablet {}, will attempt retry {} of {} for error {}",
                             ybTable.getTableId(), tabletId, retryCount, connectorConfig.maxConnectorRetries(), e);
 
@@ -471,7 +471,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                             cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
                             taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
-                            tabletSafeTime.getOrDefault(part.getId(), -1L), offsetContext.getWalSegmentIndex(part));
+                            tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part));
 
                         tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
                       } catch (CDCErrorException cdcException) {
@@ -541,10 +541,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 continue;
                             }
 
-                            final OpId lsn = new OpId(record.getCdcSdkOpId().getTerm(),
-                                    record.getCdcSdkOpId().getIndex(),
-                                    record.getCdcSdkOpId().getWriteIdKey().toByteArray(),
-                                    record.getCdcSdkOpId().getWriteId(),
+                            final OpId lsn = new OpId(record.getFromOpId().getTerm(),
+                                    record.getFromOpId().getIndex(),
+                                    record.getFromOpId().getWriteIdKey().toByteArray(),
+                                    record.getFromOpId().getWriteId(),
                                     record.getRowMessage().getCommitTime());
 
                             if (message.isLastEventForLsn()) {

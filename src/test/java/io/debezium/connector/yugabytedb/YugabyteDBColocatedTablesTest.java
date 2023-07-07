@@ -283,7 +283,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     createTest2.append(") WITH (COLOCATED = true);");
     createTest3.append(") WITH (COLOCATED = true);");
 
-    final String createTestNoColocated = 
+    final String createTestNoColocated =
       "CREATE TABLE test_no_colocated (id INT PRIMARY KEY, name TEXT) WITH (COLOCATED = false)"
       + " SPLIT INTO 3 TABLETS;";
 
