@@ -240,8 +240,8 @@ public class YugabyteDBStreamingChangeEventSource implements
             try {
                 LOGGER.info("Marking no snapshot on service for table {} tablet {}", ybTable.getTableId(), tabletId);
                 GetChangesResponse response =
-                    this.syncClient.getChangesCDCSDK(ybTable, connectorConfig.streamId(), 
-                                                    tabletId, -1, -1, YugabyteDBOffsetContext.SNAPSHOT_DONE_KEY.getBytes(), 
+                    this.syncClient.getChangesCDCSDK(ybTable, connectorConfig.streamId(),
+                                                    tabletId, -1, -1, YugabyteDBOffsetContext.SNAPSHOT_DONE_KEY.getBytes(),
                                                     0, 0, false /* schema is not needed since this is a dummy call */);
 
                 // Break upon successful request.
@@ -254,10 +254,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                             ybTable.getTableId(), tabletId, e);
                 throw e;
                 }
-                
+
                 LOGGER.warn("Error while marking no snapshot on service for table {} tablet {}, will attempt retry {} of {} for error {}",
                             ybTable.getTableId(), tabletId, retryCount, connectorConfig.maxConnectorRetries(), e);
-                
+
                 try {
                     final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
                     retryMetronome.pause();
@@ -448,7 +448,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                       if (taskContext.shouldEnableExplicitCheckpointing()) {
                         CdcSdkCheckpoint ecp = tabletToExplicitCheckpoint.get(part.getId());
                         if (ecp != null) {
-                            LOGGER.info("Requesting changes for tablet {}, explicit checkpointing: {}.{} from_op_id: {}.{}", part.getId(), ecp.getTerm(), ecp.getIndex(), cp.getTerm(), cp.getIndex());
+                            LOGGER.info("Requesting changes for tablet {}, explicit checkpointing: {}.{}.{} from_op_id: {}.{}", part.getId(), ecp.getTerm(), ecp.getIndex(), ecp.getTime(), cp.getTerm(), cp.getIndex());
                         } else {
                             LOGGER.info("Requesting changes for tablet {}, explicit checkpoint is null and from_op_id: {}.{}", part.getId(), cp.getTerm(), cp.getIndex());
                         }
@@ -471,7 +471,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                             cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
                             taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
-                            tabletSafeTime.getOrDefault(part.getId(), -1L), offsetContext.getWalSegmentIndex(part));
+                            tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part));
 
                         tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
                       } catch (CDCErrorException cdcException) {
@@ -541,11 +541,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 continue;
                             }
 
-                            final OpId lsn = new OpId(record.getCdcSdkOpId().getTerm(),
-                                    record.getCdcSdkOpId().getIndex(),
-                                    record.getCdcSdkOpId().getWriteIdKey().toByteArray(),
-                                    record.getCdcSdkOpId().getWriteId(),
-                                    response.getSnapshotTime());
+                            final OpId lsn = new OpId(record.getFromOpId().getTerm(),
+                                    record.getFromOpId().getIndex(),
+                                    record.getFromOpId().getWriteIdKey().toByteArray(),
+                                    record.getFromOpId().getWriteId(),
+                                    record.getRowMessage().getCommitTime());
 
                             if (message.isLastEventForLsn()) {
                                 lastCompletelyProcessedLsn = lsn;
@@ -921,7 +921,6 @@ public class YugabyteDBStreamingChangeEventSource implements
               streamId,
               tableId,
               splitTabletId);
-        
         Objects.requireNonNull(getTabletListResponse);
 
         // Remove the entry with the tablet which has been split.
