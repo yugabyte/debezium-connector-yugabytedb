@@ -185,6 +185,8 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Stop the connector and modify the configuration
     stopConnector();
 
+    TestHelper.executeBulkWithRange(INSERT_TEST_2, 11, 21, DEFAULT_COLOCATED_DB_NAME);
+
     configBuilder.with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST,
                        "public.test_1,public.test_2,public.test_3");
 
@@ -197,20 +199,20 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // The below statements will insert records of the respective types with keys in the
     // range [11,21)
     TestHelper.executeBulkWithRange(INSERT_TEST_1, 11, 21, DEFAULT_COLOCATED_DB_NAME);
-    TestHelper.executeBulkWithRange(INSERT_TEST_2, 11, 21, DEFAULT_COLOCATED_DB_NAME);
+    TestHelper.executeBulkWithRange(INSERT_TEST_2, 21, 101, DEFAULT_COLOCATED_DB_NAME);
     TestHelper.executeBulkWithRange(INSERT_TEST_3, 11, 21, DEFAULT_COLOCATED_DB_NAME);
 
     // Dummy wait for 10 more seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords recordsAfterRestart = consumeByTopic(30);
+    SourceRecords recordsAfterRestart = consumeByTopic(110);
 
     assertNotNull(recordsAfterRestart);
 
     assertEquals(
       10, recordsAfterRestart.recordsForTopic(TestHelper.TEST_SERVER + ".public.test_1").size());
     assertEquals(
-      10, recordsAfterRestart.recordsForTopic(TestHelper.TEST_SERVER + ".public.test_2").size());
+      90, recordsAfterRestart.recordsForTopic(TestHelper.TEST_SERVER + ".public.test_2").size());
     assertEquals(
       10, recordsAfterRestart.recordsForTopic(TestHelper.TEST_SERVER + ".public.test_3").size());
 
@@ -238,8 +240,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 5_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
 
-    start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> assertTrue(success));
-
+    startEngine(configBuilder, (success, message, error) -> assertTrue(success));
     awaitUntilConnectorIsReady();
 
     // Start threads to perform schema change operations on the colocated tables.

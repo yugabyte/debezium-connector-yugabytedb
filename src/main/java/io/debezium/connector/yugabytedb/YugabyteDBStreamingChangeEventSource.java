@@ -89,6 +89,8 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     protected Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
 
+    protected final Filters filters;
+
     // This set will contain the list of partition IDs for the tablets which have been split
     // and waiting for the callback from Kafka.
     protected Set<String> splitTabletsWaitingForCallback;
@@ -124,6 +126,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.queue = queue;
         this.tabletToExplicitCheckpoint = new HashMap<>();
         this.splitTabletsWaitingForCallback = new HashSet<>();
+        this.filters = new Filters(connectorConfig);
     }
 
     @Override
@@ -172,28 +175,35 @@ public class YugabyteDBStreamingChangeEventSource implements
     }
 
     private void bootstrapTablet(YBTable table, String tabletId) throws Exception {
-        GetCheckpointResponse getCheckpointResponse = this.syncClient.getCheckpoint(table, connectorConfig.streamId(), tabletId);
-
-        long term = getCheckpointResponse.getTerm();
-        long index = getCheckpointResponse.getIndex();
-        LOGGER.info("Checkpoint for tablet {} before going to bootstrap: {}.{}", tabletId, term, index);
-        if (term == -1 && index == -1) {
-            LOGGER.info("Bootstrapping the tablet {}", tabletId);
-            this.syncClient.bootstrapTablet(table, connectorConfig.streamId(), tabletId, 0, 0, true, true);
-        }
-        else {
-            LOGGER.info("Skipping bootstrap for table {} tablet {} as it has a checkpoint {}.{}", table.getTableId(), tabletId, term, index);
-        }
+        LOGGER.info("Bootstrapping the tablet {}", tabletId);
+        this.syncClient.bootstrapTablet(table, connectorConfig.streamId(), tabletId, 0, 0, true, true);
+        markNoSnapshotNeeded(table, tabletId);
     }
 
-    protected void bootstrapTabletWithRetry(List<Pair<String,String>> tabletPairList) throws Exception {
+    protected void bootstrapTabletWithRetry(List<Pair<String,String>> tabletPairList,
+                                            Map<String, YBTable> tableIdToTable) throws Exception {
+        Set<String> tabletsWithoutBootstrap = new HashSet<>();
+        for (Pair<String, String> entry : tabletPairList) {
+            GetCheckpointResponse resp = this.syncClient.getCheckpoint(tableIdToTable.get(entry.getKey()), connectorConfig.streamId(), entry.getValue());
+            if (resp.getTerm() == -1 && resp.getIndex() == -1) {
+                LOGGER.debug("Bootstrap required for table {} tablet {} as it has checkpoint -1.-1", entry.getKey(), entry.getValue());
+            } else {
+                LOGGER.info("No bootstrap needed for tablet {} with checkpoint {}.{}", entry.getValue(), resp.getTerm(), resp.getIndex());
+                tabletsWithoutBootstrap.add(entry.getValue() /* tabletId */ );
+            }
+        }
+
         short retryCountForBootstrapping = 0;
         for (Pair<String, String> entry : tabletPairList) {
             // entry is a Pair<tableId, tabletId>
             boolean shouldRetry = true;
             while (retryCountForBootstrapping <= connectorConfig.maxConnectorRetries() && shouldRetry) {
                 try {
-                    bootstrapTablet(this.syncClient.openTableByUUID(entry.getKey()), entry.getValue());
+                    if (!tabletsWithoutBootstrap.contains(entry.getValue())) {
+                        bootstrapTablet(this.syncClient.openTableByUUID(entry.getKey()), entry.getValue());
+                    } else {
+                        LOGGER.info("Skipping bootstrap for table {} tablet {} as it has a checkpoint", entry.getKey(), entry.getValue());
+                    }
 
                     // Reset the retry flag if the bootstrap was successful
                     shouldRetry = false;
@@ -219,6 +229,41 @@ public class YugabyteDBStreamingChangeEventSource implements
                         LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
                         Thread.currentThread().interrupt();
                     }
+                }
+            }
+        }
+    }
+
+    protected void markNoSnapshotNeeded(YBTable ybTable, String tabletId) throws Exception {
+        short retryCount = 0;
+        while (retryCount <= connectorConfig.maxConnectorRetries()) {
+            try {
+                LOGGER.info("Marking no snapshot on service for table {} tablet {}", ybTable.getTableId(), tabletId);
+                GetChangesResponse response =
+                    this.syncClient.getChangesCDCSDK(ybTable, connectorConfig.streamId(), 
+                                                    tabletId, -1, -1, YugabyteDBOffsetContext.SNAPSHOT_DONE_KEY.getBytes(), 
+                                                    0, 0, false /* schema is not needed since this is a dummy call */);
+
+                // Break upon successful request.
+                break;
+            } catch (Exception e) {
+                ++retryCount;
+
+                if (retryCount > connectorConfig.maxConnectorRetries()) {
+                LOGGER.error("Too many errors while trying to mark no snapshot on service for table {} tablet {} error: ",
+                            ybTable.getTableId(), tabletId, e);
+                throw e;
+                }
+                
+                LOGGER.warn("Error while marking no snapshot on service for table {} tablet {}, will attempt retry {} of {} for error {}",
+                            ybTable.getTableId(), tabletId, retryCount, connectorConfig.maxConnectorRetries(), e);
+                
+                try {
+                    final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+                    retryMetronome.pause();
+                } catch (InterruptedException ie) {
+                    LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
+                    Thread.currentThread().interrupt();
                 }
             }
         }
@@ -308,7 +353,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         if (snapshotter.shouldSnapshot()) {
             LOGGER.info("Skipping bootstrap because snapshot has been taken so streaming will resume there onwards");
         } else {
-            bootstrapTabletWithRetry(tabletPairList);
+            bootstrapTabletWithRetry(tabletPairList, tableIdToTable);
         }
 
         // This log while indicate that the connector has either bootstrapped the tablets or skipped
@@ -490,8 +535,9 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                             // This is a hack to skip tables in case of colocated tables
                             TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-                            if (!message.isDDLMessage() && !message.isTransactionalMessage()
-                                  && !new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
+                            if (!message.isTransactionalMessage()
+                                  && !filters.tableFilter().isIncluded(tempTid)) {
+                                LOGGER.info("Skipping a record for table {} because it was not included", tempTid.table());
                                 continue;
                             }
 
