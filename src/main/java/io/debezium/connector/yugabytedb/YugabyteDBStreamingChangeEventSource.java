@@ -36,7 +36,6 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.DataChangeEvent;
@@ -397,14 +396,16 @@ public class YugabyteDBStreamingChangeEventSource implements
                         // checkpoint is the same as from_op_id, if yes then handle the tablet
                         // for split.
                         CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                        if (explicitCheckpoint != null && cp.equals(explicitCheckpoint)) {
+                        OpId lastCommitLsn = offsetContext.getTabletSourceInfo().get(part.getId()).lastCommitLsn();
+
+                        if (explicitCheckpoint != null && lastCommitLsn.equals(explicitCheckpoint)) {
                             // At this position, we know we have received a callback for split tablet
                             // handle tablet split and delete the tablet from the waiting list.
 
                             // Call getChanges to make sure checkpoint is set on the cdc_state table.
                             LOGGER.info("Setting explicit checkpoint is set to {}.{}", explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex());
                             setCheckpointWithGetChanges(tableIdToTable.get(part.getTableId()), part,
-                                cp, explicitCheckpoint, schemaNeeded.get(part.getId()),
+                                lastCommitLsn, explicitCheckpoint, schemaNeeded.get(part.getId()),
                                 tabletSafeTime.get(part.getId()), offsetContext.getWalSegmentIndex(part));
 
                             LOGGER.info("Handling tablet split for enqueued tablet {} as we have now received the commit callback",
@@ -467,20 +468,23 @@ public class YugabyteDBStreamingChangeEventSource implements
                             }
 
                             if (taskContext.shouldEnableExplicitCheckpointing()) {
+                                OpId lastCommitLsn = offsetContext.getTabletSourceInfo().get(part.getId()).lastCommitLsn();
+
                                 // If explicit checkpointing is enabled then we should check if we have the explicit checkpoint
                                 // the same as from_op_id, if yes then handle tablet split directly, if not, add the partition ID
                                 // (table.tablet) to be processed later.
                                 CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                                if (explicitCheckpoint != null && cp.equals(explicitCheckpoint)) {
-                                    LOGGER.info("Explicit checkpoint same as from_op_id, handling tablet split immediately for partition {}, explicit checkpoint {}:{} from_op_id: {}.{}",
+                                if (explicitCheckpoint != null && lastCommitLsn.equals(explicitCheckpoint)) {
+                                    LOGGER.info("Explicit checkpoint same as last seen record's checkpoint, handling tablet split immediately for partition {}, explicit checkpoint {}:{} from_op_id: {}.{}",
                                                 part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), cp.getTerm(), cp.getIndex());
+
                                     handleTabletSplit(cdcException, tabletPairList, offsetContext, streamId, schemaNeeded);
                                 } else {
                                     // Add the tablet for being processed later, this will mark the tablet as locked. There is a chance that explicit checkpoint may
                                     // be null, in that case, just to avoid NullPointerException in the log, simply log a null value.
                                     final String explicitString = (explicitCheckpoint == null) ? null : (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex());
-                                    LOGGER.info("Adding partition {} to wait-list since the explicit checkpoint ({}) and from_op_id ({}.{}) are not the same",
-                                                part.getId(), explicitString, cp.getTerm(), cp.getIndex());
+                                    LOGGER.info("Adding partition {} to wait-list since the explicit checkpoint ({}) and last seen record's checkpoint ({}.{}) are not the same",
+                                                part.getId(), explicitString, lastCommitLsn.getTerm(), lastCommitLsn.getIndex());
                                     splitTabletsWaitingForCallback.add(part.getId());
                                 }
                             } else {
@@ -522,6 +526,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 continue;
                             }
 
+                            // TODO: Rename to Checkpoint, since OpId is misleading.
+                            // This is the checkpoint which will be stored in Kafka and will be used for explicit checkpointing.
                             final OpId lsn = new OpId(record.getFromOpId().getTerm(),
                                     record.getFromOpId().getIndex(),
                                     record.getFromOpId().getWriteIdKey().toByteArray(),
