@@ -398,7 +398,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                         CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
                         OpId lastCommitLsn = offsetContext.getTabletSourceInfo().get(part.getId()).lastCommitLsn();
 
-                        if (explicitCheckpoint != null && lastCommitLsn.equals(explicitCheckpoint)) {
+                        if (explicitCheckpoint != null && (lastCommitLsn == null || lastCommitLsn.isLesserThanOrEqualTo(explicitCheckpoint))) {
                             // At this position, we know we have received a callback for split tablet
                             // handle tablet split and delete the tablet from the waiting list.
 
@@ -450,11 +450,16 @@ public class YugabyteDBStreamingChangeEventSource implements
                         LOGGER.debug("Requesting schema for tablet: {}", tabletId);
                       }
 
+                      CdcSdkCheckpoint explicitCheckpoint = null;
+                      if (taskContext.shouldEnableExplicitCheckpointing()) {
+                        explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
+                      }
+
                       try {
                         response = this.syncClient.getChangesCDCSDK(
                             table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                             cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
-                            taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
+                            explicitCheckpoint,
                             tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part));
 
                         tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
@@ -473,8 +478,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 // If explicit checkpointing is enabled then we should check if we have the explicit checkpoint
                                 // the same as from_op_id, if yes then handle tablet split directly, if not, add the partition ID
                                 // (table.tablet) to be processed later.
-                                CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                                if (explicitCheckpoint != null && lastCommitLsn.equals(explicitCheckpoint)) {
+                                if (explicitCheckpoint != null && (lastCommitLsn == null || lastCommitLsn.isLesserThanOrEqualTo(explicitCheckpoint))) {
                                     LOGGER.info("Explicit checkpoint same as last seen record's checkpoint, handling tablet split immediately for partition {}, explicit checkpoint {}:{} from_op_id: {}.{}",
                                                 part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), cp.getTerm(), cp.getIndex());
 
@@ -676,6 +680,17 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 response.getSnapshotTime());
                         offsetContext.updateWalPosition(part, finalOpid);
                         offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
+
+                        // In cases where there is no transactions on the server, the response checkpoint can still move ahead and we should
+                        // also move the explicit checkpoint forward, given that it was already greater than the lsn of the last seen valid record.
+                        // Otherwise the explicit checkpoint can get stuck at older values, and upon connector restart
+                        // we will resume from an older point than necessary.
+                        if (taskContext.shouldEnableExplicitCheckpointing()) {
+                            OpId lastCommitLsn = offsetContext.getTabletSourceInfo().get(part.getId()).lastCommitLsn();
+                            if (lastCommitLsn.isLesserThanOrEqualTo(explicitCheckpoint)) {
+                                tabletToExplicitCheckpoint.put(part.getId(), finalOpid.toCdcSdkCheckpoint());
+                            }
+                        }
 
                         LOGGER.debug("The final opid for tablet {} is {}", part.getId(), finalOpid);
                     }
