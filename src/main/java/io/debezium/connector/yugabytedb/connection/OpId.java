@@ -138,4 +138,14 @@ public class OpId implements Comparable<OpId> {
     public CdcSdkCheckpoint toCdcSdkCheckpoint() {
         return new CdcSdkCheckpoint(this.term, this.index, this.key, this.write_id, this.time);
     }
+
+    /**
+     * Verify the equality of OpId with the given {@link CdcSdkCheckpoint}
+     * @param checkpoint
+     * @return true if the term and index of this {@link OpId} are equal to the ones in
+     * {@link CdcSdkCheckpoint}
+     */
+    public boolean equals(CdcSdkCheckpoint checkpoint) {
+        return (this.term == checkpoint.getTerm()) && (this.index == checkpoint.getIndex());
+    }
 }
