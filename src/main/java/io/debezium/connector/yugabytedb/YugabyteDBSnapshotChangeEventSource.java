@@ -685,7 +685,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         }
 
         try {
-            LOGGER.info("Committing offsets on server for snapshot");
+            LOGGER.info("{} | Committing offsets on server for snapshot", taskContext.getTaskId());
 
             for (Map.Entry<String, ?> entry : offset.entrySet()) {
                 // TODO: The transaction_id field is getting populated somewhere and see if it can
@@ -703,7 +703,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 }
             }
         } catch (Exception e) {
-            LOGGER.warn("Unable to update the explicit checkpoint map", e);
+            LOGGER.warn("{} | Unable to update the explicit checkpoint map {}", taskContext.getTaskId(), e);
         }
     }
 
