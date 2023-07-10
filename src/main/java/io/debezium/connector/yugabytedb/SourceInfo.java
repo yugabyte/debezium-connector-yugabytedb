@@ -106,7 +106,6 @@ public final class SourceInfo extends BaseSourceInfo {
      */
     protected SourceInfo updateLastCommit(OpId lsn) {
         this.lastCommitLsn = lsn;
-        this.lsn = lsn;
         return this;
     }
 
@@ -123,6 +122,10 @@ public final class SourceInfo extends BaseSourceInfo {
 
     public OpId lsn() {
         return this.lsn;
+    }
+
+    public OpId lastCommitLsn() {
+        return lastCommitLsn;
     }
 
     public String sequence() {
