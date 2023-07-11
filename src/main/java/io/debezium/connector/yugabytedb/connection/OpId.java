@@ -146,7 +146,7 @@ public class OpId implements Comparable<OpId> {
      * the corresponding values in {@link CdcSdkCheckpoint}
      */
     public boolean isLesserThanOrEqualTo(CdcSdkCheckpoint checkpoint) {
-        return (checkpoint.getTerm() >= this.term && checkpoint.getIndex() >= this.index
-                && checkpoint.getTime() >= this.time);
+        return (checkpoint != null && this.term <= checkpoint.getTerm()
+                && this.index <= checkpoint.getIndex() && this.time <= checkpoint.getTime());
     }
 }

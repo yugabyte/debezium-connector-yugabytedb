@@ -277,14 +277,6 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         return this.fromLsn.getOrDefault(partition.getId(), streamingStartLsn());
     }
 
-    /**
-     * Get the LSN of the last seen record from GetChanges
-     * @param partition
-     * @return
-     */
-    OpId commitLsn(YBPartition partition) {
-        return this.tabletSourceInfo.get(partition.getId()).lastCommitLsn();
-    }
 
     /**
      * If a previous OpId is null then we want the server to send the snapshot from the

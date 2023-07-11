@@ -396,16 +396,16 @@ public class YugabyteDBStreamingChangeEventSource implements
                         // checkpoint is the same as from_op_id, if yes then handle the tablet
                         // for split.
                         CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                        OpId lastCommitLsn = offsetContext.getTabletSourceInfo().get(part.getId()).lastCommitLsn();
+                        OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
 
-                        if (explicitCheckpoint != null && (lastCommitLsn == null || lastCommitLsn.isLesserThanOrEqualTo(explicitCheckpoint))) {
+                        if (explicitCheckpoint != null && (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint))) {
                             // At this position, we know we have received a callback for split tablet
                             // handle tablet split and delete the tablet from the waiting list.
 
                             // Call getChanges to make sure checkpoint is set on the cdc_state table.
                             LOGGER.info("Setting explicit checkpoint is set to {}.{}", explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex());
                             setCheckpointWithGetChanges(tableIdToTable.get(part.getTableId()), part,
-                                lastCommitLsn, explicitCheckpoint, schemaNeeded.get(part.getId()),
+                                lastRecordCheckpoint, explicitCheckpoint, schemaNeeded.get(part.getId()),
                                 tabletSafeTime.get(part.getId()), offsetContext.getWalSegmentIndex(part));
 
                             LOGGER.info("Handling tablet split for enqueued tablet {} as we have now received the commit callback",
@@ -473,22 +473,23 @@ public class YugabyteDBStreamingChangeEventSource implements
                             }
 
                             if (taskContext.shouldEnableExplicitCheckpointing()) {
-                                OpId lastCommitLsn = offsetContext.getTabletSourceInfo().get(part.getId()).lastCommitLsn();
+                                OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
 
                                 // If explicit checkpointing is enabled then we should check if we have the explicit checkpoint
                                 // the same as from_op_id, if yes then handle tablet split directly, if not, add the partition ID
                                 // (table.tablet) to be processed later.
-                                if (explicitCheckpoint != null && (lastCommitLsn == null || lastCommitLsn.isLesserThanOrEqualTo(explicitCheckpoint))) {
-                                    LOGGER.info("Explicit checkpoint same as last seen record's checkpoint, handling tablet split immediately for partition {}, explicit checkpoint {}:{} from_op_id: {}.{}",
-                                                part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), cp.getTerm(), cp.getIndex());
+                                LOGGER.info("");
+                                if (explicitCheckpoint != null && (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint))) {
+                                    LOGGER.info("Explicit checkpoint same as last seen record's checkpoint, handling tablet split immediately for partition {}, explicit checkpoint {}:{}:{} lastRecordCheckpoint: {}.{}.{}",
+                                                part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), explicitCheckpoint.getTime(), lastRecordCheckpoint.getTerm(), lastRecordCheckpoint.getIndex(), lastRecordCheckpoint.getTime());
 
                                     handleTabletSplit(cdcException, tabletPairList, offsetContext, streamId, schemaNeeded);
                                 } else {
                                     // Add the tablet for being processed later, this will mark the tablet as locked. There is a chance that explicit checkpoint may
                                     // be null, in that case, just to avoid NullPointerException in the log, simply log a null value.
-                                    final String explicitString = (explicitCheckpoint == null) ? null : (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex());
-                                    LOGGER.info("Adding partition {} to wait-list since the explicit checkpoint ({}) and last seen record's checkpoint ({}.{}) are not the same",
-                                                part.getId(), explicitString, lastCommitLsn.getTerm(), lastCommitLsn.getIndex());
+                                    final String explicitString = (explicitCheckpoint == null) ? null : (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex() + ":" + explicitCheckpoint.getTime());
+                                    LOGGER.info("Adding partition {} to wait-list since the explicit checkpoint ({}) and last seen record's checkpoint ({}.{}.{}) are not the same",
+                                                part.getId(), explicitString, lastRecordCheckpoint.getTerm(), lastRecordCheckpoint.getIndex(), lastRecordCheckpoint.getTime());
                                     splitTabletsWaitingForCallback.add(part.getId());
                                 }
                             } else {
@@ -677,7 +678,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 response.getIndex(),
                                 response.getKey(),
                                 response.getWriteId(),
-                                response.getSnapshotTime());
+                                response.getResp().getSafeHybridTime());
                         offsetContext.updateWalPosition(part, finalOpid);
                         offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
 
@@ -686,8 +687,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                         // Otherwise the explicit checkpoint can get stuck at older values, and upon connector restart
                         // we will resume from an older point than necessary.
                         if (taskContext.shouldEnableExplicitCheckpointing()) {
-                            OpId lastCommitLsn = offsetContext.getTabletSourceInfo().get(part.getId()).lastCommitLsn();
-                            if (lastCommitLsn.isLesserThanOrEqualTo(explicitCheckpoint)) {
+                            OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
+                            if (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint)) {
                                 tabletToExplicitCheckpoint.put(part.getId(), finalOpid.toCdcSdkCheckpoint());
                             }
                         }
