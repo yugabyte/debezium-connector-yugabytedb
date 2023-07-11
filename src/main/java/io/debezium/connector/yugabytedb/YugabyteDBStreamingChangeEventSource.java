@@ -784,7 +784,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
 
         try {
-            LOGGER.info("Committing offsets on server");
+            LOGGER.info("{} | Committing offsets on server", taskContext.getTaskId());
 
             for (Map.Entry<String, ?> entry : offset.entrySet()) {
                 // TODO: The transaction_id field is getting populated somewhere and see if it can
@@ -801,7 +801,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 }
             }
         } catch (Exception e) {
-            LOGGER.warn("Unable to update the explicit checkpoint map", e);
+            LOGGER.warn("{} | Unable to update the explicit checkpoint map {}", taskContext.getTaskId(), e);
         }
     }
 
