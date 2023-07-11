@@ -124,7 +124,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         syncClient = new YBClient(asyncYBClient);
         yugabyteDBTypeRegistry = taskContext.schema().getTypeRegistry();
         this.queue = queue;
-        this.tabletToExplicitCheckpoint = new HashMap<>();
+        this.tabletToExplicitCheckpoint = new ConcurrentHashMap<>();
         this.splitTabletsWaitingForCallback = new HashSet<>();
         this.filters = new Filters(connectorConfig);
     }
@@ -397,32 +397,15 @@ public class YugabyteDBStreamingChangeEventSource implements
                         // checkpoint is the same as from_op_id, if yes then handle the tablet
                         // for split.
                         CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                        if (explicitCheckpoint != null
-                              && (explicitCheckpoint.getTerm() == cp.getTerm())
-                              && (explicitCheckpoint.getIndex() == cp.getIndex())) {
+                        if (explicitCheckpoint != null && cp.equals(explicitCheckpoint)) {
                             // At this position, we know we have received a callback for split tablet
                             // handle tablet split and delete the tablet from the waiting list.
 
                             // Call getChanges to make sure checkpoint is set on the cdc_state table.
-                            LOGGER.info("Calling GetChanges to ensure explicit checkpoint is set to {}.{}", explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex());
-                            try {
-                                // This will throw an error saying tablet split detected as we are calling GetChanges again on the
-                                // same checkpoint - handle the error and move ahead.
-                                GetChangesResponse resp = this.syncClient.getChangesCDCSDK(
-                                  tableIdToTable.get(part.getTableId()), streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
-                                  cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()), explicitCheckpoint,
-                                  tabletSafeTime.getOrDefault(part.getId(), -1L), offsetContext.getWalSegmentIndex(part));
-
-                                // We do not update the tablet safetime we get from the response at this
-                                // point because the previous GetChanges call is supposed to throw
-                                // an exception which will be handled further.
-                            } catch (CDCErrorException cdcErrorException) {
-                                if (cdcErrorException.getCDCError().getCode() == Code.TABLET_SPLIT) {
-                                    LOGGER.debug("Handling tablet split error gracefully for enqueued tablet {}", part.getTabletId());
-                                } else {
-                                    throw cdcErrorException;
-                                }
-                            }
+                            LOGGER.info("Setting explicit checkpoint is set to {}.{}", explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex());
+                            setCheckpointWithGetChanges(tableIdToTable.get(part.getTableId()), part,
+                                cp, explicitCheckpoint, schemaNeeded.get(part.getId()),
+                                tabletSafeTime.get(part.getId()), offsetContext.getWalSegmentIndex(part));
 
                             LOGGER.info("Handling tablet split for enqueued tablet {} as we have now received the commit callback",
                                         part.getTabletId());
@@ -488,9 +471,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 // the same as from_op_id, if yes then handle tablet split directly, if not, add the partition ID
                                 // (table.tablet) to be processed later.
                                 CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                                if (explicitCheckpoint != null
-                                      && (cp.getTerm() == explicitCheckpoint.getTerm())
-                                      && (cp.getIndex() == explicitCheckpoint.getIndex())) {
+                                if (explicitCheckpoint != null && cp.equals(explicitCheckpoint)) {
                                     LOGGER.info("Explicit checkpoint same as from_op_id, handling tablet split immediately for partition {}, explicit checkpoint {}:{} from_op_id: {}.{}",
                                                 part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), cp.getTerm(), cp.getIndex());
                                     handleTabletSplit(cdcException, tabletPairList, offsetContext, streamId, schemaNeeded);
@@ -726,6 +707,43 @@ public class YugabyteDBStreamingChangeEventSource implements
         // connection.prepareQuery("SELECT 1");
         // connection.commit();
         // }
+    }
+
+    /**
+     * Mark the checkpoint on the service. This method is only supposed to be used to set the
+     * explicit checkpoint for the tablets who are in the wait-list.
+     * @param ybTable {@link YBTable} object
+     * @param partition {@link YBPartition} object
+     * @param fromOpId {@link OpId} being used as from_op_id
+     * @param explicitCheckpoint {@link CdcSdkCheckpoint} to be set to cdc_state table
+     * @param schemaNeeded whether we need schema in the response
+     * @param tabletSafeTime
+     * @param walSegmentIndex
+     * @throws Exception if we receive any other error than the one for tablet split upon calling
+     * GetChanges
+     */
+    protected void setCheckpointWithGetChanges(YBTable ybTable, YBPartition partition,
+                                               OpId fromOpId, CdcSdkCheckpoint explicitCheckpoint,
+                                               boolean schemaNeeded, long tabletSafeTime,
+                                               int walSegmentIndex) throws Exception {
+        try {
+            // This will throw an error saying tablet split detected as we are calling GetChanges again on the
+            // same checkpoint - handle the error and move ahead.
+            GetChangesResponse resp = syncClient.getChangesCDCSDK(
+              ybTable, connectorConfig.streamId(), partition.getTabletId(), fromOpId.getTerm(),
+              fromOpId.getIndex(), fromOpId.getKey(), fromOpId.getWrite_id(), fromOpId.getTime(),
+              schemaNeeded, explicitCheckpoint, tabletSafeTime, walSegmentIndex);
+
+            // We do not update the tablet safetime we get from the response at this
+            // point because the previous GetChanges call is supposed to throw
+            // an exception which will be handled.
+        } catch (CDCErrorException cdcErrorException) {
+            if (cdcErrorException.getCDCError().getCode() == Code.TABLET_SPLIT) {
+                LOGGER.info("Handling tablet split error gracefully for enqueued tablet {}", partition.getTabletId());
+            } else {
+                throw cdcErrorException;
+            }
+        }
     }
 
     /**
