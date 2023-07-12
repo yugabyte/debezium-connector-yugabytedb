@@ -405,7 +405,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             // Call getChanges to make sure checkpoint is set on the cdc_state table.
                             LOGGER.info("Setting explicit checkpoint is set to {}.{}", explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex());
                             setCheckpointWithGetChanges(tableIdToTable.get(part.getTableId()), part,
-                                lastRecordCheckpoint, explicitCheckpoint, schemaNeeded.get(part.getId()),
+                                cp, explicitCheckpoint, schemaNeeded.get(part.getId()),
                                 tabletSafeTime.get(part.getId()), offsetContext.getWalSegmentIndex(part));
 
                             LOGGER.info("Handling tablet split for enqueued tablet {} as we have now received the commit callback",
