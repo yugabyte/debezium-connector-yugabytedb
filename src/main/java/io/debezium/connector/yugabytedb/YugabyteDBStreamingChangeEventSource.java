@@ -328,6 +328,9 @@ public class YugabyteDBStreamingChangeEventSource implements
             // based on just their tablet IDs - pass false as the 'colocated' flag to enforce the same.
             YBPartition p = new YBPartition(entry.getKey(), entry.getValue(), false /* colocated */);
             offsetContext.initSourceInfo(p, this.connectorConfig, opId);
+            // We can initialise the explicit checkpoint for this tablet to the value returned by
+            // the cdc_service through the 'GetTabletListToPollForCDC' API
+            tabletToExplicitCheckpoint.put(p.getId(), opId.toCdcSdkCheckpoint());
             schemaNeeded.put(p.getId(), Boolean.TRUE);
         }
 
