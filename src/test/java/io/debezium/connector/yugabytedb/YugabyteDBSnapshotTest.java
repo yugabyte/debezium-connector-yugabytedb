@@ -43,6 +43,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         stopConnector();
         dropAllTables();
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
+        TestHelper.dropAllSchemas();
     }
 
     @AfterAll

@@ -131,7 +131,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
         if (snapshotter.shouldSnapshot()) {
             LOGGER.info("Skipping bootstrap because snapshot has been taken so streaming will resume there onwards");
         } else {
-            bootstrapTabletWithRetry(tabletPairList);
+            bootstrapTabletWithRetry(tabletPairList, tableIdToTable);
         }
 
         // This log while indicate that the connector has either bootstrapped the tablets or skipped
@@ -314,8 +314,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
         // This is a hack to skip tables in case of colocated tables
         TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-        if (!message.isDDLMessage() && !message.isTransactionalMessage()
-            && !new Filters(connectorConfig).tableFilter().isIncluded(tempTid)) {
+        if (!message.isTransactionalMessage()
+            && !filters.tableFilter().isIncluded(tempTid)) {
             return;
         }
 
