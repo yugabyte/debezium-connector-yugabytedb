@@ -140,12 +140,13 @@ public class OpId implements Comparable<OpId> {
     }
 
     /**
-     * Verify the equality of OpId with the given {@link CdcSdkCheckpoint}
+     * Verify that the OpId is lesser than or equal to the given {@link CdcSdkCheckpoint}
      * @param checkpoint
-     * @return true if the term and index of this {@link OpId} are equal to the ones in
-     * {@link CdcSdkCheckpoint}
+     * @return true if the term and index of time of this {@link OpId} are lesser than or equal to
+     * the corresponding values in {@link CdcSdkCheckpoint}
      */
-    public boolean equals(CdcSdkCheckpoint checkpoint) {
-        return (this.term == checkpoint.getTerm()) && (this.index == checkpoint.getIndex());
+    public boolean isLesserThanOrEqualTo(CdcSdkCheckpoint checkpoint) {
+        return (checkpoint != null && this.term <= checkpoint.getTerm()
+                && this.index <= checkpoint.getIndex() && this.time <= checkpoint.getTime());
     }
 }
