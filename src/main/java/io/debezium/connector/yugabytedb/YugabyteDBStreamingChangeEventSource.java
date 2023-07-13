@@ -927,8 +927,9 @@ public class YugabyteDBStreamingChangeEventSource implements
             // is not possible on colocated tables, it is safe to assume that the tablets here
             // would be all non-colocated.
             YBPartition p = new YBPartition(tableId, tabletId, false /* colocated */);
-            offsetContext.initSourceInfo(p, this.connectorConfig,
-                                         OpId.from(pair.getCdcSdkCheckpoint()));
+            OpId checkpoint = OpId.from(pair.getCdcSdkCheckpoint());
+            offsetContext.initSourceInfo(p, this.connectorConfig, checkpoint);
+            tabletToExplicitCheckpoint.put(p.getId(), checkpoint.toCdcSdkCheckpoint());
 
             LOGGER.info("Initialized offset context for tablet {} with OpId {}", tabletId, OpId.from(pair.getCdcSdkCheckpoint()));
 
@@ -971,6 +972,9 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         // Remove the corresponding entry to indicate that we don't need the schema now.
         schemaNeeded.remove(entryToBeDeleted.getValue());
+
+        // Remove the entry for the tablet which has been split from: 'tabletToExplicitCheckpoint'.
+        tabletToExplicitCheckpoint.remove(splitTabletId);
 
         // Log a warning if the element cannot be removed from the list.
         if (!removeSuccessful) {
