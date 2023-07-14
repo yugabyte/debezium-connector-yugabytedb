@@ -964,6 +964,15 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     "'skip' to skip / ignore TRUNCATE events (default), " +
                     "'include' to handle and include TRUNCATE events");
 
+    public static final Field TRANSACTION_ORDERING = Field.create("transaction.ordering")
+           .withDisplayName("Order transactions")
+           .withGroup(Field.createGroupEntry(Field.Group.CONNECTOR, 23))
+           .withImportance(Importance.HIGH)
+           .withDefault(false)
+           .withType(Type.BOOLEAN)
+           .withValidation(Field::isBoolean)
+           .withDescription("Specify whether the transactions need to be ordered");
+
     public static final Field CONSISTENCY_MODE = Field.create("consistency.mode")
             .withDisplayName("Transaction Consistency mode")
             .withGroup(Field.createGroupEntry(Field.Group.CONNECTOR, 23))
@@ -1229,6 +1238,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return truncateHandlingMode;
     }
 
+    public boolean transactionOrdering() {
+        return getConfig().getBoolean(TRANSACTION_ORDERING);
+    }
     public ConsistencyMode consistencyMode() {
         return consistencyMode;
     }
@@ -1330,7 +1342,8 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     INTERVAL_HANDLING_MODE,
                     SCHEMA_REFRESH_MODE,
                     TRUNCATE_HANDLING_MODE,
-                    INCREMENTAL_SNAPSHOT_CHUNK_SIZE)
+                    INCREMENTAL_SNAPSHOT_CHUNK_SIZE,
+                    TRANSACTION_ORDERING)
             .excluding(INCLUDE_SCHEMA_CHANGES)
             .create();
 

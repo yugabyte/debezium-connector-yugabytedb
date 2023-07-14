@@ -85,8 +85,8 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
 
     @Override
     public StreamingChangeEventSource<YBPartition, YugabyteDBOffsetContext> getStreamingChangeEventSource() {
-        LOGGER.info("Consistency mode is {}", configuration.consistencyMode().getValue());
-        if (configuration.consistencyMode() == YugabyteDBConnectorConfig.ConsistencyMode.DEFAULT) {
+        LOGGER.info("Transaction ordering enabled: {}", configuration.transactionOrdering());
+        if (configuration.transactionOrdering()) {
             LOGGER.info("Instantiating Vanilla Streaming Source");
             return new YugabyteDBStreamingChangeEventSource(
                     configuration,

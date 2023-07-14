@@ -84,7 +84,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
+        configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_ORDERING, true);
         configBuilder.with("transforms", "Reroute");
         configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
         configBuilder.with("transforms.Reroute.topic.regex", "(.*)");
@@ -200,7 +200,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department", false, true);
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee,public.contract,public.address,public.locality", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
+        configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_ORDERING, true);
         configBuilder.with("transforms", "Reroute");
         configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
         configBuilder.with("transforms.Reroute.topic.regex", "(.*)");
@@ -339,7 +339,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
 
         final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
+        configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_ORDERING, true);
         configBuilder.with("transforms", "Reroute");
         configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
         configBuilder.with("transforms.Reroute.topic.regex", "(.*)");
@@ -412,7 +412,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
 
         final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
+        configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_ORDERING, true);
         configBuilder.with("transforms", "Reroute");
         configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
         configBuilder.with("transforms.Reroute.topic.regex", "(.*)");
@@ -491,7 +491,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
 
         final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
+        configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_ORDERING, true);
         configBuilder.with("transforms", "Reroute");
         configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
         configBuilder.with("transforms.Reroute.topic.regex", "(.*)");
@@ -566,7 +566,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
 
         final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
+        configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_ORDERING, true);
         configBuilder.with("transforms", "Reroute");
         configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
         configBuilder.with("transforms.Reroute.topic.regex", "(.*)");
@@ -642,7 +642,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "department", false, true);
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.department,public.employee,public.contract,public.address,public.locality", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
+        configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_ORDERING, true);
         configBuilder.with("transforms", "Reroute");
         configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
         configBuilder.with("transforms.Reroute.topic.regex", "(.*)");
@@ -1001,7 +1001,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
 
     private Configuration.Builder getConsistentConfigurationBuilder(String databaseName, String tableIncludeList, String dbStreamId) throws Exception {
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder(databaseName, tableIncludeList, dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
+        configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_ORDERING, true);
         configBuilder.with("transforms", "Reroute");
         configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
         configBuilder.with("transforms.Reroute.topic.regex", "(.*)");
