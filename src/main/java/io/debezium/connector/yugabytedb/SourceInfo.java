@@ -45,7 +45,7 @@ public final class SourceInfo extends BaseSourceInfo {
     private final String dbName;
 
     private OpId lsn;
-    private OpId lastCommitLsn;
+    private OpId lastRecordCheckpoint;
     private String txId;
     private Instant timestamp;
     private String schemaName;
@@ -63,7 +63,7 @@ public final class SourceInfo extends BaseSourceInfo {
     protected SourceInfo(YugabyteDBConnectorConfig connectorConfig, OpId lastCommitLsn) {
         super(connectorConfig);
         this.dbName = connectorConfig.databaseName();
-        this.lastCommitLsn = lastCommitLsn;
+        this.lastRecordCheckpoint = lastCommitLsn;
         this.lsn = lastCommitLsn;
     }
 
@@ -105,8 +105,7 @@ public final class SourceInfo extends BaseSourceInfo {
      * Updates the source with the LSN of the last committed transaction.
      */
     protected SourceInfo updateLastCommit(OpId lsn) {
-        this.lastCommitLsn = lsn;
-        this.lsn = lsn;
+        this.lastRecordCheckpoint = lsn;
         return this;
     }
 
@@ -125,10 +124,14 @@ public final class SourceInfo extends BaseSourceInfo {
         return this.lsn;
     }
 
+    public OpId lastRecordCheckpoint() {
+        return lastRecordCheckpoint;
+    }
+
     public String sequence() {
         List<String> sequence = new ArrayList<String>(2);
-        String lastCommitLsn = (this.lastCommitLsn != null)
-                ? this.lastCommitLsn.toSerString()
+        String lastCommitLsn = (this.lastRecordCheckpoint != null)
+                ? this.lastRecordCheckpoint.toSerString()
                 : null;
         String lsn = (this.lsn != null)
                 ? this.lsn.toSerString()
@@ -197,8 +200,8 @@ public final class SourceInfo extends BaseSourceInfo {
         if (txId != null) {
             sb.append(", txId=").append(txId);
         }
-        if (lastCommitLsn != null) {
-            sb.append(", lastCommitLsn=").append(lastCommitLsn);
+        if (lastRecordCheckpoint != null) {
+            sb.append(", lastCommitLsn=").append(lastRecordCheckpoint);
         }
         if (timestamp != null) {
             sb.append(", timestamp=").append(timestamp);

@@ -36,7 +36,6 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.DataChangeEvent;
@@ -329,6 +328,9 @@ public class YugabyteDBStreamingChangeEventSource implements
             // based on just their tablet IDs - pass false as the 'colocated' flag to enforce the same.
             YBPartition p = new YBPartition(entry.getKey(), entry.getValue(), false /* colocated */);
             offsetContext.initSourceInfo(p, this.connectorConfig, opId);
+            // We can initialise the explicit checkpoint for this tablet to the value returned by
+            // the cdc_service through the 'GetTabletListToPollForCDC' API
+            tabletToExplicitCheckpoint.put(p.getId(), opId.toCdcSdkCheckpoint());
             schemaNeeded.put(p.getId(), Boolean.TRUE);
         }
 
@@ -397,7 +399,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                         // checkpoint is the same as from_op_id, if yes then handle the tablet
                         // for split.
                         CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                        if (explicitCheckpoint != null && cp.equals(explicitCheckpoint)) {
+                        OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
+
+                        if (explicitCheckpoint != null && (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint))) {
                             // At this position, we know we have received a callback for split tablet
                             // handle tablet split and delete the tablet from the waiting list.
 
@@ -449,11 +453,16 @@ public class YugabyteDBStreamingChangeEventSource implements
                         LOGGER.debug("Requesting schema for tablet: {}", tabletId);
                       }
 
+                      CdcSdkCheckpoint explicitCheckpoint = null;
+                      if (taskContext.shouldEnableExplicitCheckpointing()) {
+                        explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
+                      }
+
                       try {
                         response = this.syncClient.getChangesCDCSDK(
                             table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                             cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
-                            taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
+                            explicitCheckpoint,
                             tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part));
 
                         tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
@@ -467,20 +476,23 @@ public class YugabyteDBStreamingChangeEventSource implements
                             }
 
                             if (taskContext.shouldEnableExplicitCheckpointing()) {
+                                OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
+
                                 // If explicit checkpointing is enabled then we should check if we have the explicit checkpoint
                                 // the same as from_op_id, if yes then handle tablet split directly, if not, add the partition ID
                                 // (table.tablet) to be processed later.
-                                CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                                if (explicitCheckpoint != null && cp.equals(explicitCheckpoint)) {
-                                    LOGGER.info("Explicit checkpoint same as from_op_id, handling tablet split immediately for partition {}, explicit checkpoint {}:{} from_op_id: {}.{}",
-                                                part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), cp.getTerm(), cp.getIndex());
+                                LOGGER.info("");
+                                if (explicitCheckpoint != null && (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint))) {
+                                    LOGGER.info("Explicit checkpoint same as last seen record's checkpoint, handling tablet split immediately for partition {}, explicit checkpoint {}:{}:{} lastRecordCheckpoint: {}.{}.{}",
+                                                part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), explicitCheckpoint.getTime(), lastRecordCheckpoint.getTerm(), lastRecordCheckpoint.getIndex(), lastRecordCheckpoint.getTime());
+
                                     handleTabletSplit(cdcException, tabletPairList, offsetContext, streamId, schemaNeeded);
                                 } else {
                                     // Add the tablet for being processed later, this will mark the tablet as locked. There is a chance that explicit checkpoint may
                                     // be null, in that case, just to avoid NullPointerException in the log, simply log a null value.
-                                    final String explicitString = (explicitCheckpoint == null) ? null : (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex());
-                                    LOGGER.info("Adding partition {} to wait-list since the explicit checkpoint ({}) and from_op_id ({}.{}) are not the same",
-                                                part.getId(), explicitString, cp.getTerm(), cp.getIndex());
+                                    final String explicitString = (explicitCheckpoint == null) ? null : (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex() + ":" + explicitCheckpoint.getTime());
+                                    LOGGER.info("Adding partition {} to wait-list since the explicit checkpoint ({}) and last seen record's checkpoint ({}.{}.{}) are not the same",
+                                                part.getId(), explicitString, lastRecordCheckpoint.getTerm(), lastRecordCheckpoint.getIndex(), lastRecordCheckpoint.getTime());
                                     splitTabletsWaitingForCallback.add(part.getId());
                                 }
                             } else {
@@ -522,6 +534,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 continue;
                             }
 
+                            // TODO: Rename to Checkpoint, since OpId is misleading.
+                            // This is the checkpoint which will be stored in Kafka and will be used for explicit checkpointing.
                             final OpId lsn = new OpId(record.getFromOpId().getTerm(),
                                     record.getFromOpId().getIndex(),
                                     record.getFromOpId().getWriteIdKey().toByteArray(),
@@ -667,9 +681,20 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 response.getIndex(),
                                 response.getKey(),
                                 response.getWriteId(),
-                                response.getSnapshotTime());
+                                response.getResp().getSafeHybridTime());
                         offsetContext.updateWalPosition(part, finalOpid);
                         offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
+
+                        // In cases where there is no transactions on the server, the response checkpoint can still move ahead and we should
+                        // also move the explicit checkpoint forward, given that it was already greater than the lsn of the last seen valid record.
+                        // Otherwise the explicit checkpoint can get stuck at older values, and upon connector restart
+                        // we will resume from an older point than necessary.
+                        if (taskContext.shouldEnableExplicitCheckpointing()) {
+                            OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
+                            if (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint)) {
+                                tabletToExplicitCheckpoint.put(part.getId(), finalOpid.toCdcSdkCheckpoint());
+                            }
+                        }
 
                         LOGGER.debug("The final opid for tablet {} is {}", part.getId(), finalOpid);
                     }
@@ -902,8 +927,9 @@ public class YugabyteDBStreamingChangeEventSource implements
             // is not possible on colocated tables, it is safe to assume that the tablets here
             // would be all non-colocated.
             YBPartition p = new YBPartition(tableId, tabletId, false /* colocated */);
-            offsetContext.initSourceInfo(p, this.connectorConfig,
-                                         OpId.from(pair.getCdcSdkCheckpoint()));
+            OpId checkpoint = OpId.from(pair.getCdcSdkCheckpoint());
+            offsetContext.initSourceInfo(p, this.connectorConfig, checkpoint);
+            tabletToExplicitCheckpoint.put(p.getId(), checkpoint.toCdcSdkCheckpoint());
 
             LOGGER.info("Initialized offset context for tablet {} with OpId {}", tabletId, OpId.from(pair.getCdcSdkCheckpoint()));
 
@@ -946,6 +972,9 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         // Remove the corresponding entry to indicate that we don't need the schema now.
         schemaNeeded.remove(entryToBeDeleted.getValue());
+
+        // Remove the entry for the tablet which has been split from: 'tabletToExplicitCheckpoint'.
+        tabletToExplicitCheckpoint.remove(splitTabletId);
 
         // Log a warning if the element cannot be removed from the list.
         if (!removeSuccessful) {

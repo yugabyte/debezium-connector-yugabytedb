@@ -38,7 +38,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     private static final Logger LOGGER =
       LoggerFactory.getLogger(YugabyteDBSnapshotChangeEventSource.class);
-    
+
     // The two maps tabletSourceInfo and fromLsn are used to store offsets. However, there are
     // differences between the offsets they store:
     // tabletSourceInfo - this has the offset for each processed record and thus these offsets are
@@ -254,6 +254,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         }
 
         info.update(partition, lsn, commitTime, txId, tableId, recordTime);
+        info.updateLastCommit(lsn);
         this.tabletSourceInfo.put(partition.getId(), info);
     }
 
@@ -275,6 +276,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     OpId lsn(YBPartition partition) {
         return this.fromLsn.getOrDefault(partition.getId(), streamingStartLsn());
     }
+
 
     /**
      * If a previous OpId is null then we want the server to send the snapshot from the
@@ -375,7 +377,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
              * final OpId lastCommitLsn = OpId.valueOf(readOptionalString(offset,
              * LAST_COMPLETELY_PROCESSED_LSN_KEY));
              * final String txId = readOptionalString(offset, SourceInfo.TXID_KEY);
-             * 
+             *
              * final Instant useconds = Conversions.toInstantFromMicros((Long) offset
              * .get(SourceInfo.TIMESTAMP_USEC_KEY));
              * final boolean snapshot = (boolean) ((Map<String, Object>) offset)
