@@ -5,6 +5,7 @@ import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage;
+import io.debezium.connector.yugabytedb.connection.ReplicationMessage.Operation;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoReplicationMessage;
 import io.debezium.connector.yugabytedb.consistent.Merger;
@@ -239,7 +240,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                         response.getIndex(),
                                         response.getKey(),
                                         response.getWriteId(),
-                                        response.getSnapshotTime());
+                                        response.getResp().getSafeHybridTime());
                                 offsetContext.updateWalPosition(part, finalOpid);
                                 offsetContext.updateWalSegmentIndex(part, response.getWalSegmentIndex());
                                 LOGGER.debug("The final opid for tablet {} is {}", part.getTabletId(), finalOpid);
@@ -323,7 +324,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 record.getFromOpId().getIndex(),
                 record.getFromOpId().getWriteIdKey().toByteArray(),
                 record.getFromOpId().getWriteId(),
-                snapshotTime);
+                record.getRowMessage().getCommitTime() - 1);
 
         if (message.isLastEventForLsn()) {
             lastCompletelyProcessedLsn = lsn;

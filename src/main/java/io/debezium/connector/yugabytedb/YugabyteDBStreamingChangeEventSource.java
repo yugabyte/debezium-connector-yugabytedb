@@ -540,7 +540,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     record.getFromOpId().getIndex(),
                                     record.getFromOpId().getWriteIdKey().toByteArray(),
                                     record.getFromOpId().getWriteId(),
-                                    record.getRowMessage().getCommitTime());
+                                    record.getRowMessage().getCommitTime() - 1);
 
                             if (message.isLastEventForLsn()) {
                                 lastCompletelyProcessedLsn = lsn;
