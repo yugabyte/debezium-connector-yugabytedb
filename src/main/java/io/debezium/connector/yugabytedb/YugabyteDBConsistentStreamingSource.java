@@ -5,6 +5,7 @@ import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage;
+import io.debezium.connector.yugabytedb.connection.ReplicationMessage.Operation;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoReplicationMessage;
 import io.debezium.connector.yugabytedb.consistent.Merger;
@@ -319,11 +320,19 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
             return;
         }
 
+        long requiredCommitTime = record.getRowMessage().getCommitTime();
+        if (message.getOperation() != Operation.COMMIT) {
+            // Only when we see a 'COMMIT' record, can we set the checkpoint
+            // with the same time as the current transaction's commit time, otherwise we need to replay this
+            // transaction in cases of connector restart, hence we will set the checkpoint to be the commit_time - 1.
+            requiredCommitTime -= 1;
+        }
+
         final OpId lsn = new OpId(record.getFromOpId().getTerm(),
                 record.getFromOpId().getIndex(),
                 record.getFromOpId().getWriteIdKey().toByteArray(),
                 record.getFromOpId().getWriteId(),
-                record.getRowMessage().getCommitTime());
+                requiredCommitTime);
 
         if (message.isLastEventForLsn()) {
             lastCompletelyProcessedLsn = lsn;
