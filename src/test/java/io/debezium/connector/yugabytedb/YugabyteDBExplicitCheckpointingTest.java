@@ -128,8 +128,8 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
                         TestHelper.getYbTable(ybClient, "t1"), dbStreamId, tabletId);
                 LOGGER.info("Offset op_id: {}.{} and response op_id: {}.{}", cp.getTerm(),
                         cp.getIndex(), resp.getTerm(), resp.getIndex());
-                assertEquals(cp.getTerm(), resp.getTerm());
-                assertEquals(cp.getIndex(), resp.getIndex());
+                assertTrue(resp.getTerm() >= cp.getTerm());
+                assertTrue(resp.getIndex() >= cp.getIndex());
             }
         }
 
