@@ -536,20 +536,11 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                             // TODO: Rename to Checkpoint, since OpId is misleading.
                             // This is the checkpoint which will be stored in Kafka and will be used for explicit checkpointing.
-
-                            long requiredCommitTime = record.getRowMessage().getCommitTime();
-                            if (message.getOperation() != Operation.COMMIT) {
-                                // Only when we see a 'COMMIT' record, can we set the checkpoint
-                                // with the same time as the current transaction's commit time, otherwise we need to replay this
-                                // transaction in cases of connector restart, hence we will set the checkpoint to be the commit_time - 1.
-                                requiredCommitTime -= 1;
-                            }
-
                             final OpId lsn = new OpId(record.getFromOpId().getTerm(),
                                     record.getFromOpId().getIndex(),
                                     record.getFromOpId().getWriteIdKey().toByteArray(),
                                     record.getFromOpId().getWriteId(),
-                                    requiredCommitTime);
+                                    record.getRowMessage().getCommitTime() - 1);
 
                             if (message.isLastEventForLsn()) {
                                 lastCompletelyProcessedLsn = lsn;
