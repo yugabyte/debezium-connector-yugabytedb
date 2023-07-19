@@ -140,8 +140,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             throw new DebeziumException(e);
         }
 
-        if (this.yugabyteDBConnectorConfig.consistencyMode() != YugabyteDBConnectorConfig.ConsistencyMode.DEFAULT
-              && !enableExplicitCheckpointing) {
+        if (this.yugabyteDBConnectorConfig.transactionOrdering() && !enableExplicitCheckpointing) {
             final String errorMessage = "Explicit checkpointing not enabled in consistent streaming mode, "
                 + "create a stream with explicit checkpointing and try again";
             throw new DebeziumException(errorMessage);
