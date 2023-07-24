@@ -223,7 +223,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           snapshotCompletedTablets.add(tabletId);
           snapshotCompletedPreviously.add(tabletId);
         } else {
-          LOGGER.debug("Setting checkpoint on tablet {} with 0.0");
+          LOGGER.info("Setting checkpoint before snapshot on tablet {} with 0.0", tabletId);
           YBClientUtils.setCheckpoint(this.syncClient, 
                                       this.connectorConfig.streamId(), 
                                       tableId /* tableId */, 
