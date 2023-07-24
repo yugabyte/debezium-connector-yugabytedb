@@ -183,12 +183,42 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             Map<String, YBTable> tableIdToTable) throws Exception {
         Set<String> tabletsWithoutBootstrap = new HashSet<>();
         for (Pair<String, String> entry : tabletPairList) {
-            GetCheckpointResponse resp = this.syncClient.getCheckpoint(tableIdToTable.get(entry.getKey()), connectorConfig.streamId(), entry.getValue());
-            if (resp.getTerm() == -1 && resp.getIndex() == -1) {
-                LOGGER.debug("Bootstrap required for table {} tablet {} as it has checkpoint -1.-1", entry.getKey(), entry.getValue());
-            } else {
-                LOGGER.info("No bootstrap needed for tablet {} with checkpoint {}.{}", entry.getValue(), resp.getTerm(), resp.getIndex());
-                tabletsWithoutBootstrap.add(entry.getValue() /* tabletId */ );
+            boolean shouldRetry = true;
+            short retryCountForGetCheckpoint = 0;
+            while (retryCountForGetCheckpoint <= connectorConfig.maxConnectorRetries() && shouldRetry) {
+                try {
+                    GetCheckpointResponse resp = this.syncClient.getCheckpoint(tableIdToTable.get(entry.getKey()), connectorConfig.streamId(), entry.getValue());
+                    if (resp.getTerm() == -1 && resp.getIndex() == -1) {
+                        LOGGER.debug("Bootstrap required for table {} tablet {} as it has checkpoint -1.-1", entry.getKey(), entry.getValue());
+                    } else {
+                        LOGGER.info("No bootstrap needed for tablet {} with checkpoint {}.{}", entry.getValue(), resp.getTerm(), resp.getIndex());
+                        tabletsWithoutBootstrap.add(entry.getValue() /* tabletId */ );
+                    }
+
+                    // Reset the flag to retry.
+                    shouldRetry = false;
+                } catch (Exception e) {
+                    ++retryCountForGetCheckpoint;
+
+                    shouldRetry = true;
+
+                    if (retryCountForGetCheckpoint > connectorConfig.maxConnectorRetries()) {
+                        LOGGER.error("Failed to get checkpoint for tablet {} after {} retries", entry.getValue(), connectorConfig.maxConnectorRetries());
+                        throw e;
+                    }
+
+                    // If there are retries left, perform them after the specified delay.
+                    LOGGER.warn("Error while trying to get the checkpoint for tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
+                            entry.getValue(), retryCountForGetCheckpoint, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
+
+                    try {
+                        final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+                        retryMetronome.pause();
+                    } catch (InterruptedException ie) {
+                        LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
+                        Thread.currentThread().interrupt();
+                    }
+                }
             }
         }
 
@@ -928,6 +958,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             // would be all non-colocated.
             YBPartition p = new YBPartition(tableId, tabletId, false /* colocated */);
             OpId checkpoint = OpId.from(pair.getCdcSdkCheckpoint());
+            checkpoint.unsetTime();
             offsetContext.initSourceInfo(p, this.connectorConfig, checkpoint);
             tabletToExplicitCheckpoint.put(p.getId(), checkpoint.toCdcSdkCheckpoint());
 
