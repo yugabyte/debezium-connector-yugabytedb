@@ -177,19 +177,8 @@ public final class TestHelper {
         final YugabyteDBConnectorConfig config = new YugabyteDBConnectorConfig(defaultConfig().build());
 
         return new YugabyteDBConnection(
-                config.getJdbcConfig(),
+                config,
                 getPostgresValueConverterBuilder(config), YugabyteDBConnection.CONNECTION_GENERAL);
-    }
-
-    /**
-     * Obtain a DB connection with a custom application name.
-     *
-     * @param appName the name of the application used for PostgreSQL diagnostics
-     *
-     * @return the PostgresConnection instance; never null
-     */
-    public static YugabyteDBConnection create(String appName) {
-        return new YugabyteDBConnection(Objects.requireNonNull(defaultJdbcConfigBuilder()).with("ApplicationName", appName).build(), YugabyteDBConnection.CONNECTION_GENERAL);
     }
 
     /**
@@ -331,7 +320,7 @@ public final class TestHelper {
 
     public static YugabyteDBTypeRegistry getTypeRegistry() {
         final YugabyteDBConnectorConfig config = new YugabyteDBConnectorConfig(defaultConfig().build());
-        try (final YugabyteDBConnection connection = new YugabyteDBConnection(config.getJdbcConfig(), getPostgresValueConverterBuilder(config), YugabyteDBConnection.CONNECTION_GENERAL)) {
+        try (final YugabyteDBConnection connection = new YugabyteDBConnection(config, getPostgresValueConverterBuilder(config), YugabyteDBConnection.CONNECTION_GENERAL)) {
             return connection.getTypeRegistry();
         }
     }

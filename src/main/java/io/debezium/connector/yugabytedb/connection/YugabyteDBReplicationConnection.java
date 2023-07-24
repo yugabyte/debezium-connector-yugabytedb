@@ -630,7 +630,7 @@ public class YugabyteDBReplicationConnection extends JdbcConnection implements R
         }
         if (dropSlotOnClose && dropSlot) {
             // we're dropping the replication slot via a regular - i.e. not a replication - connection
-            try (YugabyteDBConnection connection = new YugabyteDBConnection(originalConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_DROP_SLOT)) {
+            try (YugabyteDBConnection connection = new YugabyteDBConnection(originalConfig, YugabyteDBConnection.CONNECTION_DROP_SLOT)) {
                 connection.dropReplicationSlot(slotName);
             }
             catch (Throwable e) {

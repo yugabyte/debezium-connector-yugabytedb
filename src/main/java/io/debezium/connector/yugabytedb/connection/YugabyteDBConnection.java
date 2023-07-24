@@ -58,11 +58,12 @@ public class YugabyteDBConnection extends JdbcConnection {
     public static final String CONNECTION_VALIDATE_CONNECTION = "Debezium Validate Connection";
     public static final String CONNECTION_HEARTBEAT = "Debezium Heartbeat";
     public static final String CONNECTION_GENERAL = "Debezium General";
+    public final YugabyteDBConnectorConfig connectorConfig;
+    public JdbcConfiguration jdbcConfig;
 
     private static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBConnection.class);
 
-    private static final String URL_PATTERN = "jdbc:postgresql://${" + JdbcConfiguration.HOSTNAME + "}:${"
-            + JdbcConfiguration.PORT + "}/${" + JdbcConfiguration.DATABASE + "}";
+    private static final String URL_PATTERN = "jdbc:yugabytedb://%s/${" + JdbcConfiguration.DATABASE + "}";
     protected static final ConnectionFactory FACTORY = JdbcConnection.patternBasedFactory(URL_PATTERN,
             org.postgresql.Driver.class.getName(),
             YugabyteDBConnection.class.getClassLoader(), JdbcConfiguration.PORT.withDefault(YugabyteDBConnectorConfig.PORT.defaultValueAsString()));
@@ -70,17 +71,8 @@ public class YugabyteDBConnection extends JdbcConnection {
     private final YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
     private final YugabyteDBDefaultValueConverter defaultValueConverter;
 
-    /**
-     * Creates a Postgres connection using the supplied configuration.
-     * If necessary this connection is able to resolve data type mappings.
-     * Such a connection requires a {@link YugabyteDBValueConverter}, and will provide its own {@link YugabyteDBTypeRegistry}.
-     * Usually only one such connection per connector is needed.
-     *
-     * @param config {@link Configuration} instance, may not be null.
-     * @param valueConverterBuilder supplies a configured {@link YugabyteDBValueConverter} for a given {@link YugabyteDBTypeRegistry}
-     */
-    public YugabyteDBConnection(JdbcConfiguration config, YugabyteDBValueConverterBuilder valueConverterBuilder, String connectionUsage) {
-        super(addDefaultSettings(config, connectionUsage) , FACTORY, YugabyteDBConnection::validateServerVersion, null, "\"", "\"");
+    public YugabyteDBConnection(YugabyteDBConnectorConfig config, YugabyteDBValueConverterBuilder valueConverterBuilder, String connectionUsage) {
+        super(addDefaultSettings(config.getJdbcConfig(), connectionUsage) , FACTORY, YugabyteDBConnection::validateServerVersion, null, "\"", "\"");
 
         if (Objects.isNull(valueConverterBuilder)) {
             this.yugabyteDBTypeRegistry = null;
@@ -92,13 +84,25 @@ public class YugabyteDBConnection extends JdbcConnection {
             final YugabyteDBValueConverter valueConverter = valueConverterBuilder.build(this.yugabyteDBTypeRegistry);
             this.defaultValueConverter = new YugabyteDBDefaultValueConverter(valueConverter, this.getTimestampUtils());
         }
+
+        this.connectorConfig = config;
     }
 
-    /**
-     * Create a Postgres connection using the supplied configuration and {@link YugabyteDBTypeRegistry}
-     * @param config {@link Configuration} instance, may not be null.
-     * @param yugabyteDBTypeRegistry an existing/already-primed {@link YugabyteDBTypeRegistry} instance
-     */
+    public YugabyteDBConnection(JdbcConfiguration jdbcConfig, String connectionUsage) {
+        super(addDefaultSettings(jdbcConfig, connectionUsage), FACTORY, YugabyteDBConnection::validateServerVersion, null, "\"", "\"");
+
+        // Initialize with null objects.
+        this.yugabyteDBTypeRegistry = null;
+        this.defaultValueConverter = null;
+
+        this.connectorConfig = null;
+    }
+
+//    /**
+//     * Create a Postgres connection using the supplied configuration and {@link YugabyteDBTypeRegistry}
+//     * @param config {@link Configuration} instance, may not be null.
+//     * @param yugabyteDBTypeRegistry an existing/already-primed {@link YugabyteDBTypeRegistry} instance
+//     */
     public YugabyteDBConnection(YugabyteDBConnectorConfig config,
                                 YugabyteDBTypeRegistry yugabyteDBTypeRegistry, String connectionUsage) {
         super(addDefaultSettings(config.getJdbcConfig(), connectionUsage), FACTORY, YugabyteDBConnection::validateServerVersion, null, "\"", "\"");
@@ -112,6 +116,8 @@ public class YugabyteDBConnection extends JdbcConnection {
                     yugabyteDBTypeRegistry);
             this.defaultValueConverter = new YugabyteDBDefaultValueConverter(valueConverter, this.getTimestampUtils());
         }
+
+        this.connectorConfig = config;
     }
 
     /**
@@ -120,8 +126,8 @@ public class YugabyteDBConnection extends JdbcConnection {
      *
      * @param config {@link Configuration} instance, may not be null.
      */
-    public YugabyteDBConnection(JdbcConfiguration config, String connectionUsage) {
-        this(config, null, connectionUsage);
+    public YugabyteDBConnection(YugabyteDBConnectorConfig config, String connectionUsage) {
+        this(config, (YugabyteDBValueConverterBuilder) null, connectionUsage);
     }
 
     static JdbcConfiguration addDefaultSettings(JdbcConfiguration configuration, String connectionUsage) {
@@ -138,102 +144,17 @@ public class YugabyteDBConnection extends JdbcConnection {
      * @return a {@code String} where the variables in {@code urlPattern} are replaced with values from the configuration
      */
     public String connectionString() {
-        return connectionString(URL_PATTERN);
+        return connectionString(String.format(URL_PATTERN, getHostPortString()));
     }
 
-    /**
-     * Prints out information about the REPLICA IDENTITY status of a table.
-     * This in turn determines how much information is available for UPDATE and DELETE operations for logical replication.
-     *
-     * @param tableId the identifier of the table
-     * @return the replica identity information; never null
-     * @throws SQLException if there is a problem obtaining the replica identity information for the given table
-     */
-    public ServerInfo.ReplicaIdentity readReplicaIdentityInfo(TableId tableId) throws SQLException {
-        String statement = "SELECT relreplident FROM pg_catalog.pg_class c " +
-                "LEFT JOIN pg_catalog.pg_namespace n ON c.relnamespace=n.oid " +
-                "WHERE n.nspname=? and c.relname=?";
-        String schema = tableId.schema() != null && tableId.schema().length() > 0 ? tableId.schema() : "public";
-        StringBuilder replIdentity = new StringBuilder();
-        prepareQuery(statement, stmt -> {
-            stmt.setString(1, schema);
-            stmt.setString(2, tableId.table());
-        }, rs -> {
-            if (rs.next()) {
-                replIdentity.append(rs.getString(1));
-            }
-            else {
-                LOGGER.warn("Cannot determine REPLICA IDENTITY information for table '{}'", tableId);
-            }
-        });
-        return ServerInfo.ReplicaIdentity.parseFromDB(replIdentity.toString());
-    }
-
-    protected ServerInfo.ReplicationSlot queryForSlot(String slotName, String database, String pluginName,
-                                                      ResultSetMapper<ServerInfo.ReplicationSlot> map)
-            throws SQLException {
-        return prepareQueryAndMap("select * from pg_replication_slots where slot_name = ? and database = ? and plugin = ?", statement -> {
-            statement.setString(1, slotName);
-            statement.setString(2, database);
-            statement.setString(3, pluginName);
-        }, map);
-    }
-
-    /**
-     * Obtains the LSN to resume streaming from. On PG 9.5 there is no confirmed_flushed_lsn yet, so restart_lsn will be
-     * read instead. This may result in more records to be re-read after a restart.
-     */
-    private Lsn parseConfirmedFlushLsn(String slotName, String pluginName, String database, ResultSet rs) {
-        Lsn confirmedFlushedLsn = null;
-
-        try {
-            confirmedFlushedLsn = tryParseLsn(slotName, pluginName, database, rs, "confirmed_flush_lsn");
+    private String getHostPortString() {
+        // This change is to accommodate tests.
+        if (connectorConfig == null) {
+            assert jdbcConfig != null;
+            return jdbcConfig.getHostname() + ":" + jdbcConfig.getPortAsString();
+        } else {
+            return connectorConfig.getModifiedHostPortString();
         }
-        catch (SQLException e) {
-            LOGGER.info("unable to find confirmed_flushed_lsn, falling back to restart_lsn");
-            try {
-                confirmedFlushedLsn = tryParseLsn(slotName, pluginName, database, rs, "restart_lsn");
-            }
-            catch (SQLException e2) {
-                throw new ConnectException("Neither confirmed_flush_lsn nor restart_lsn could be found");
-            }
-        }
-
-        return confirmedFlushedLsn;
-    }
-
-    private Lsn parseRestartLsn(String slotName, String pluginName, String database, ResultSet rs) {
-        Lsn restartLsn = null;
-        try {
-            restartLsn = tryParseLsn(slotName, pluginName, database, rs, "restart_lsn");
-        }
-        catch (SQLException e) {
-            throw new ConnectException("restart_lsn could be found");
-        }
-
-        return restartLsn;
-    }
-
-    private Lsn tryParseLsn(String slotName, String pluginName, String database, ResultSet rs, String column) throws ConnectException, SQLException {
-        Lsn lsn = null;
-
-        String lsnStr = rs.getString(column);
-        if (lsnStr == null) {
-            return null;
-        }
-        try {
-            lsn = Lsn.valueOf(lsnStr);
-        }
-        catch (Exception e) {
-            throw new ConnectException("Value " + column + " in the pg_replication_slots table for slot = '"
-                    + slotName + "', plugin = '"
-                    + pluginName + "', database = '"
-                    + database + "' is not valid. This is an abnormal situation and the database status should be checked.");
-        }
-        if (!lsn.isValid()) {
-            throw new ConnectException("Invalid LSN returned from database");
-        }
-        return lsn;
     }
 
     /**
@@ -278,29 +199,6 @@ public class YugabyteDBConnection extends JdbcConnection {
         return false;
     }
 
-    /**
-     * Drops the debezium publication that was created.
-     *
-     * @param publicationName the publication name, may not be null
-     * @return {@code true} if the publication was dropped, {@code false} otherwise
-     */
-    public boolean dropPublication(String publicationName) {
-        try {
-            LOGGER.debug("Dropping publication '{}'", publicationName);
-            execute("DROP PUBLICATION " + publicationName);
-            return true;
-        }
-        catch (SQLException e) {
-            if (PSQLState.UNDEFINED_OBJECT.getState().equals(e.getSQLState())) {
-                LOGGER.debug("Publication {} has already been dropped", publicationName);
-            }
-            else {
-                LOGGER.error("Unexpected error while attempting to drop publication", e);
-            }
-            return false;
-        }
-    }
-
     @Override
     public synchronized void close() {
         try {
@@ -309,41 +207,6 @@ public class YugabyteDBConnection extends JdbcConnection {
         catch (SQLException e) {
             LOGGER.error("Unexpected error while closing Postgres connection", e);
         }
-    }
-
-    /**
-     * Returns the PG id of the current active transaction
-     *
-     * @return a PG transaction identifier, or null if no tx is active
-     * @throws SQLException if anything fails.
-     */
-    public Long currentTransactionId() throws SQLException {
-        AtomicLong txId = new AtomicLong(0);
-        query("select * from txid_current()", rs -> {
-            if (rs.next()) {
-                txId.compareAndSet(0, rs.getLong(1));
-            }
-        });
-        long value = txId.get();
-        return value > 0 ? value : null;
-    }
-
-    /**
-     * Returns the current position in the server tx log.
-     *
-     * @return a long value, never negative
-     * @throws SQLException if anything unexpected fails.
-     */
-    public long currentXLogLocation() throws SQLException {
-        AtomicLong result = new AtomicLong(0);
-        int majorVersion = connection().getMetaData().getDatabaseMajorVersion();
-        query(majorVersion >= 10 ? "select * from pg_current_wal_lsn()" : "select * from pg_current_xlog_location()", rs -> {
-            if (!rs.next()) {
-                throw new IllegalStateException("there should always be a valid xlog position");
-            }
-            result.compareAndSet(0, LogSequenceNumber.valueOf(rs.getString(1)).asLong());
-        });
-        return result.get();
     }
 
     /**

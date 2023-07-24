@@ -42,7 +42,7 @@
         <jdk.min.version>11</jdk.min.version>
 
         <!-- Dependency Versions -->
-        <version.postgresql.driver>42.5.1</version.postgresql.driver>
+        <version.yugabytedb.driver>42.3.0</version.yugabytedb.driver>
         <version.com.google.protobuf>3.21.7</version.com.google.protobuf>
         <version.kafka>3.3.1</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
@@ -163,9 +163,9 @@
             <version>${version.debezium}</version>
         </dependency>
         <dependency>
-            <groupId>org.postgresql</groupId>
-            <artifactId>postgresql</artifactId>
-            <version>${version.postgresql.driver}</version>
+            <groupId>com.yugabyte</groupId>
+            <artifactId>jdbc-yugabytedb</artifactId>
+            <version>${version.yugabytedb.driver}</version>
         </dependency>
         <dependency>
             <groupId>com.google.protobuf</groupId>

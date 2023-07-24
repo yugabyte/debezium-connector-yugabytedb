@@ -120,7 +120,7 @@ public class YugabyteDBConnectorTask
 
         // Global JDBC connection used both for snapshotting and streaming.
         // Must be able to resolve datatypes.
-        jdbcConnection = new YugabyteDBConnection(connectorConfig.getJdbcConfig(), valueConverterBuilder, YugabyteDBConnection.CONNECTION_GENERAL);
+        jdbcConnection = new YugabyteDBConnection(connectorConfig, valueConverterBuilder, YugabyteDBConnection.CONNECTION_GENERAL);
 
         // CDCSDK We can just build the type registry on the co-ordinator and then send the
         // map of Postgres Type and Oid to the Task using Config
@@ -168,7 +168,7 @@ public class YugabyteDBConnectorTask
                     connectorConfig,
                     topicSelector,
                     schemaNameAdjuster,
-                    () -> new YugabyteDBConnection(connectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL),
+                    () -> new YugabyteDBConnection(connectorConfig, YugabyteDBConnection.CONNECTION_GENERAL),
                     exception -> {
                         String sqlErrorId = exception.getSQLState();
                         switch (sqlErrorId) {

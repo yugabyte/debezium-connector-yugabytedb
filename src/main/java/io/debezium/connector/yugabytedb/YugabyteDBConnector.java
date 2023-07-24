@@ -88,7 +88,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             return Collections.emptyList();
         }
 
-        connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL);
+        connection = new YugabyteDBConnection(yugabyteDBConnectorConfig, YugabyteDBConnection.CONNECTION_GENERAL);
         final Charset databaseCharset = connection.getDatabaseCharset();
         String charSetName = databaseCharset.name();
 
@@ -261,7 +261,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
         final ConfigValue hostnameValue = configValues.get(RelationalDatabaseConnectorConfig.HOSTNAME.name());
         // Try to connect to the database ...
-        try (YugabyteDBConnection connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL)) {
+        try (YugabyteDBConnection connection = new YugabyteDBConnection(yugabyteDBConnectorConfig, YugabyteDBConnection.CONNECTION_GENERAL)) {
             try {
                 // Prepare connection without initial statement execution
                 connection.connection(false);
