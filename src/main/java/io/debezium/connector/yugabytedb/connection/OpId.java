@@ -45,10 +45,6 @@ public class OpId implements Comparable<OpId> {
         return time;
     }
 
-    public void unsetTime() {
-        this.time = 0;
-    }
-
     public static OpId valueOf(String stringId) {
         if (stringId != null && !stringId.isEmpty()) {
             String[] arr = stringId.split(":");
