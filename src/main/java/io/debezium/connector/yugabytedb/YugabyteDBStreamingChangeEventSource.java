@@ -927,11 +927,16 @@ public class YugabyteDBStreamingChangeEventSource implements
             // is not possible on colocated tables, it is safe to assume that the tablets here
             // would be all non-colocated.
             YBPartition p = new YBPartition(tableId, tabletId, false /* colocated */);
+            
+            // Get the checkpoint for child tablet and unset its time.
             OpId checkpoint = OpId.from(pair.getCdcSdkCheckpoint());
+            checkpoint.unsetTime();
+            
             offsetContext.initSourceInfo(p, this.connectorConfig, checkpoint);
+            
             tabletToExplicitCheckpoint.put(p.getId(), checkpoint.toCdcSdkCheckpoint());
 
-            LOGGER.info("Initialized offset context for tablet {} with OpId {}", tabletId, OpId.from(pair.getCdcSdkCheckpoint()));
+            LOGGER.info("Initialized offset context for tablet {} with OpId {}", tabletId, checkpoint);
 
             // Add the flag to indicate that we need the schema for the new tablets so that the schema can be registered.
             schemaNeeded.put(p.getId(), Boolean.TRUE);
