@@ -506,7 +506,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             // Break out of the loop so that the iteration can start afresh on the modified list.
                             break;
                         } else {
-                            LOGGER.debug("Throwing error because error code did not match. Code received: {}", cdcException.getCDCError().getCode());
+                            LOGGER.warn("Throwing error with code: {}", cdcException.getCDCError().getCode());
                             throw cdcException;
                         }
                       }
