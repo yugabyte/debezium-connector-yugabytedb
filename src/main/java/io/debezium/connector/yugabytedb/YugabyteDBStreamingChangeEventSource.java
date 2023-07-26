@@ -350,6 +350,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             // If we are getting a term and index as -1 and -1 from the server side it means
             // that the streaming has not yet started on that tablet ID. In that case, assign a
             // starting OpId so that the connector can poll using proper checkpoints.
+            LOGGER.info("Checkpoint from GetTabletListToPollForCDC for tablet {} as {}", entry.getValue(), opId);
             if (opId.getTerm() == -1 && opId.getIndex() == -1) {
                 opId = YugabyteDBOffsetContext.streamingStartLsn();
             }
@@ -535,7 +536,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             // Break out of the loop so that the iteration can start afresh on the modified list.
                             break;
                         } else {
-                            LOGGER.warn("Throwing error because error code did not match. Code received: {}", cdcException.getCDCError().getCode());
+                            LOGGER.warn("Throwing error with code: {}", cdcException.getCDCError().getCode());
                             throw cdcException;
                         }
                       }
@@ -1018,6 +1019,13 @@ public class YugabyteDBStreamingChangeEventSource implements
             if (!tabletPairList.remove(entryToBeDeleted)) {
                 String exceptionMessageFormat = "Failed to remove the entry table {} - tablet {} from the tablet pair list after split";
                 throw new RuntimeException(String.format(exceptionMessageFormat, entryToBeDeleted.getKey(), entryToBeDeleted.getValue()));
+            }
+        }
+
+        if (getTabletListResponse.getTabletCheckpointPairListSize() != 2) {
+            LOGGER.warn("Received response with unexpected children count: {}", getTabletListResponse.getTabletCheckpointPairListSize());
+            for (TabletCheckpointPair p : getTabletListResponse.getTabletCheckpointPairList()) {
+                LOGGER.warn("Tablet {}", p.getTabletLocations().getTabletId().toStringUtf8());
             }
         }
 
