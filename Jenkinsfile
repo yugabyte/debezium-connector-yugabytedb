@@ -3,6 +3,7 @@
 properties([
     parameters([
         string(defaultValue: 'main', description: 'Specify the Branch name', name: 'BRANCH'),
+        string(defaultValue: '2.19.1.0', description: 'YB DB version', name: 'YB_VERSION'),
         booleanParam(defaultValue: false, description: 'If checked release builds are uploaded to s3 bucket. (debezium-connector -> s3://releases.yugabyte.com/debezium-connector-yugabytedb)', name: 'PUBLISH_TO_S3')
     ])
 ])
@@ -11,12 +12,12 @@ pipeline {
      agent {
         node { label 'cdcsdk-docker-agent' }
     }
-    // options {
-    //     timeout(time: 2, unit: 'HOURS')
-    // }
+    options {
+        timeout(time: 4, unit: 'HOURS')
+    }
     environment {
         RELEASE_BUCKET_PATH = "s3://releases.yugabyte.com/debezium-connector-yugabytedb"
-        YB_DOCKER_IMAGE = "quay.io/yugabyte/yugabyte:2.17.4.0-b45"
+        YB_VERSION = "${params.YB_VERSION}"
     }
     stages {
         stage('Clone Project') {
@@ -33,6 +34,8 @@ pipeline {
                 }
                 script{
                     sh './.github/scripts/install_prerequisites.sh'
+                    env.BUILD_NUMBER = sh(script: "curl -sk http://release.dev.yugabyte.com/releases/latest?version=${YB_VERSION}", returnStdout: true).trim()
+                    env.YB_DOCKER_IMAGE="quay.io/yugabyte/yugabyte-itest:${YB_VERSION}-b${BUILD_NUMBER}"
                 }
             }
         }
