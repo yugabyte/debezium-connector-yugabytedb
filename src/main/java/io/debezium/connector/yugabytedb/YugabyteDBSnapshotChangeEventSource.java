@@ -396,7 +396,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 if (LOGGER.isDebugEnabled()
                     || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
                   LOGGER.info("Requesting changes for tablet {} from OpId {} for table {} with explicit checkpoint {}",
-                              tabletId, cp, table.getName(), explicitCdcSdkCheckpoint);
+                              tabletId, cp, table.getName(), explicitCdcSdkCheckpoint.toString());
                   lastLoggedTimeForGetChanges = System.currentTimeMillis();
                 }
 
@@ -494,11 +494,21 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                           resp.getWriteId(), resp.getSnapshotTime());
                 LOGGER.debug("Final OpId for tablet {} is {}", part.getId(), finalOpId);
 
-                // If the response doesn't have any record, it is safe to assume that we should not wait
-                // for the callback to come and that we can proceed further in processing this particular tablet.
-                if (previousOffset.getSourceInfo(part).noRecordSeen()) {
-                  LOGGER.info("Should not wait for callback on tablet {}", part.getId());
-                  shouldWaitForCallback.remove(part.getId());
+                // In cases where the tablet is empty, the response checkpoint can still move ahead and we should
+                // also move the explicit checkpoint forward, given that it was already greater than the lsn of the last seen valid record.
+                // Otherwise, we will be stuck waiting for callback on an empty tablet.
+                if (taskContext.shouldEnableExplicitCheckpointing()) {
+                  // If the response doesn't have any record and we got the snapshot end marker, we know the snapshot is empty.
+                  SourceInfo sourceInfo = previousOffset.getSourceInfo(part);
+                  if (isSnapshotCompleteMarker(finalOpId) && sourceInfo.noRecordSeen()) {
+                    LOGGER.info("Should not wait for callback on tablet {}", part.getId());
+                    shouldWaitForCallback.put(part.getId(), Boolean.FALSE);
+                  }
+
+                  OpId lastRecordCheckpoint = sourceInfo.lastRecordCheckpoint();
+                  if (sourceInfo.noRecordSeen() || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCdcSdkCheckpoint)) {
+                    tabletToExplicitCheckpoint.put(part.getId(), finalOpId.toCdcSdkCheckpoint());
+                  }
                 }
 
                 /*
