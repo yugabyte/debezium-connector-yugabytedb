@@ -497,7 +497,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 // also move the explicit checkpoint forward, given that it was already greater than the lsn of the last seen valid record.
                 // Otherwise, we will be stuck waiting for callback on an empty tablet.
                 if (taskContext.shouldEnableExplicitCheckpointing()) {
-                  // If the response doesn't have any record and we got the snapshot end marker, we know the snapshot.
+                  // If the response doesn't have any record and we got the snapshot end marker, we know the snapshot is empty.
                   SourceInfo sourceInfo = previousOffset.getSourceInfo(part);
                   if (isSnapshotCompleteMarker(finalOpId) && sourceInfo.noRecordSeen()) {
                     LOGGER.info("Should not wait for callback on tablet {}", part.getId());
