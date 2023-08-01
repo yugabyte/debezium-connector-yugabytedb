@@ -392,10 +392,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 OpId cp = previousOffset.snapshotLSN(part);
 
-                if (LOGGER.isDebugEnabled()
+                if (true || LOGGER.isDebugEnabled()
                     || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
                   LOGGER.info("Requesting changes for tablet {} from OpId {} for table {} with explicit checkpoint {}",
-                              tabletId, cp, table.getName(), explicitCdcSdkCheckpoint.toString());
+                              tabletId, cp, table.getName(), explicitCdcSdkCheckpoint);
                   lastLoggedTimeForGetChanges = System.currentTimeMillis();
                 }
 
@@ -506,6 +506,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                   OpId lastRecordCheckpoint = sourceInfo.lastRecordCheckpoint();
                   if (sourceInfo.noRecordSeen() || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCdcSdkCheckpoint)) {
+                    LOGGER.info("Putting explicit checkpoint for partition {} as {}", part.getId(), finalOpId);
                     tabletToExplicitCheckpoint.put(part.getId(), finalOpId.toCdcSdkCheckpoint());
                   }
                 }
@@ -571,6 +572,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     part.getTabletId(), table.getName(), part.getTableId());
                 }
 
+                LOGGER.info("Updating wal position for partition {} with {}", part.getId(), finalOpId);
                 previousOffset.updateWalPosition(part, finalOpId);
             }
             
