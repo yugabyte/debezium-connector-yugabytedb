@@ -393,7 +393,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 OpId cp = previousOffset.snapshotLSN(part);
 
-                if (true || LOGGER.isDebugEnabled()
+                if (LOGGER.isDebugEnabled()
                     || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
                   LOGGER.info("Requesting changes for tablet {} from OpId {} for table {} with explicit checkpoint {}",
                               tabletId, cp, table.getName(), explicitCdcSdkCheckpoint);
@@ -507,7 +507,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                   OpId lastRecordCheckpoint = sourceInfo.lastRecordCheckpoint();
                   if (sourceInfo.noRecordSeen() || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCdcSdkCheckpoint)) {
-                    LOGGER.info("Putting explicit checkpoint for partition {} as {}", part.getId(), finalOpId);
                     tabletToExplicitCheckpoint.put(part.getId(), finalOpId.toCdcSdkCheckpoint());
                   }
                 }
@@ -573,7 +572,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     part.getTabletId(), table.getName(), part.getTableId());
                 }
 
-                LOGGER.info("Updating wal position for partition {} with {}", part.getId(), finalOpId);
                 previousOffset.updateWalPosition(part, finalOpId);
             }
             
@@ -638,7 +636,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       if (this.tabletToExplicitCheckpoint.get(partition.getId()) == null) {
         // If we have no OpId stored in the explicit checkpoint map then that would indicate that
         // we haven't yet received any callback from Kafka even once and we should wait more.
-        // LOGGER.info("Explicit checkpoint is null for partition {}", partition.getId());
         return;
       }
 

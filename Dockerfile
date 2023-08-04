@@ -14,8 +14,7 @@ COPY target/debezium-connector-yugabytedb-*.jar $KAFKA_CONNECT_YB_DIR/
 ENV KAFKA_OPTS="-Djdk.tls.client.protocols=TLSv1.2"
 
 # Add the required jar files to be packaged with the base connector
-#RUN cd $KAFKA_CONNECT_YB_DIR && curl -so kafka-connect-jdbc-10.6.5.jar https://github.com/yugabyte/kafka-connect-jdbc/releases/download/10.6.5-CUSTOM/kafka-connect-jdbc-10.6.5.jar
-COPY kafka-connect-jdbc-10.6.5.jar $KAFKA_CONNECT_YB_DIR/
+RUN cd $KAFKA_CONNECT_YB_DIR && curl -so kafka-connect-jdbc-10.6.5.jar https://github.com/yugabyte/kafka-connect-jdbc/releases/download/10.6.5-CUSTOM/kafka-connect-jdbc-10.6.5.jar
 RUN cd $KAFKA_CONNECT_YB_DIR && curl -so jdbc-yugabytedb-42.3.5-yb-1.jar https://repo1.maven.org/maven2/com/yugabyte/jdbc-yugabytedb/42.3.5-yb-1/jdbc-yugabytedb-42.3.5-yb-1.jar
 RUN cd $KAFKA_CONNECT_YB_DIR && curl -so mysql-connector-java-8.0.30.jar https://repo1.maven.org/maven2/mysql/mysql-connector-java/8.0.30/mysql-connector-java-8.0.30.jar
 RUN cd $KAFKA_CONNECT_YB_DIR && curl -so postgresql-42.5.1.jar https://repo1.maven.org/maven2/org/postgresql/postgresql/42.5.1/postgresql-42.5.1.jar
