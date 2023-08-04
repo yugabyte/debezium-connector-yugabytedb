@@ -383,7 +383,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   if (!snapshotCompletedTablets.contains(part.getId()) && taskContext.shouldEnableExplicitCheckpointing()) {
                     doSnapshotCompletionCheck(part, snapshotCompletedTablets, tabletsWaitingForCallback, previousOffset);
                   }
-                  LOGGER.info("Skipping the loop for tablet {}", part.getId());
                   continue;
                 }
 
@@ -639,6 +638,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       if (this.tabletToExplicitCheckpoint.get(partition.getId()) == null) {
         // If we have no OpId stored in the explicit checkpoint map then that would indicate that
         // we haven't yet received any callback from Kafka even once and we should wait more.
+        // LOGGER.info("Explicit checkpoint is null for partition {}", partition.getId());
         return;
       }
 

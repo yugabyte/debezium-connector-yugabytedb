@@ -44,6 +44,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         dropAllTables();
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
         TestHelper.dropAllSchemas();
+        resetCommitCallbackDelay();
     }
 
     @AfterAll
@@ -54,6 +55,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @ParameterizedTest
     @ValueSource(booleans = {false})
     public void testSnapshotRecordConsumption(boolean colocation) throws Exception {
+        setCommitCallbackDelay(10000);
         createTables(colocation);
         final int recordsCount = 5000;
         insertBulkRecords(recordsCount, "public.test_1");
