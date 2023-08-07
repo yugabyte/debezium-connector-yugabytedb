@@ -408,13 +408,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 tabletSafeTime.put(part.getId(), resp.getResp().getSafeHybridTime());
 
-                // If the response doesn't have any record, it is safe to assume that we should not wait
-                // for the callback to come and that we can proceed further in processing this particular tablet.
-                if (resp.getResp().getCdcSdkProtoRecordsCount() == 0) {
-                  LOGGER.info("Should not wait for callback on tablet {}", part.getId());
-                  shouldWaitForCallback.put(part.getId(), Boolean.FALSE);
-                }
-
                 // Process the response
                 for (CdcService.CDCSDKProtoRecordPB record :
                         resp.getResp().getCdcSdkProtoRecordsList()) {
@@ -495,6 +488,13 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 OpId finalOpId = new OpId(resp.getTerm(), resp.getIndex(), resp.getKey(),
                                           resp.getWriteId(), resp.getSnapshotTime());
                 LOGGER.debug("Final OpId for tablet {} is {}", part.getId(), finalOpId);
+
+                // If the response doesn't have any record, it is safe to assume that we should not wait
+                // for the callback to come and that we can proceed further in processing this particular tablet.
+                if (previousOffset.getSourceInfo(part).lastRecordCheckpoint() == null) {
+                  LOGGER.info("Should not wait for callback on tablet {}", part.getId());
+                  shouldWaitForCallback.put(part.getId(), Boolean.FALSE);
+                }
 
                 /*
                    This block checks and validates for two scenarios:
