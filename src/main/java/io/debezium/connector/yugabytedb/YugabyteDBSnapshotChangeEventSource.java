@@ -386,12 +386,17 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   continue;
                 }
 
+                CdcSdkCheckpoint explicitCdcSdkCheckpoint = null;
+                if (taskContext.shouldEnableExplicitCheckpointing()) {
+                  explicitCdcSdkCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
+                }
+
                 OpId cp = previousOffset.snapshotLSN(part);
 
                 if (LOGGER.isDebugEnabled()
                     || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
-                  LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
-                              tabletId, cp, table.getName());
+                  LOGGER.info("Requesting changes for tablet {} from OpId {} for table {} with explicit checkpoint {}",
+                              tabletId, cp, table.getName(), explicitCdcSdkCheckpoint);
                   lastLoggedTimeForGetChanges = System.currentTimeMillis();
                 }
 
@@ -403,7 +408,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 GetChangesResponse resp = this.syncClient.getChangesCDCSDK(table,
                     connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
-                    taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
+                    explicitCdcSdkCheckpoint,
                     tabletSafeTime.getOrDefault(part.getId(), -1L));
 
                 tabletSafeTime.put(part.getId(), resp.getResp().getSafeHybridTime());
