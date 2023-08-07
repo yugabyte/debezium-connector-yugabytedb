@@ -128,8 +128,17 @@ public final class SourceInfo extends BaseSourceInfo {
         return lastRecordCheckpoint;
     }
 
+    /**
+     * Compares the lastRecordCheckpoint with {@code snapshotStartLsn} and {@code streamingStartLsn}.
+     * If it is equal then it means that we haven't received any record for the given partition,
+     * in case there's any difference, it technically siginifies that some record has updated the
+     * values.
+     * @return true if the partition hasn't seen any record yet, false otherwise
+     */
     public boolean noRecordSeen() {
-        return (lastRecordCheckpoint == null) || lastRecordCheckpoint.equals(YugabyteDBOffsetContext.snapshotStartLsn()) || lastRecordCheckpoint.equals(YugabyteDBOffsetContext.streamingStartLsn());
+        return (lastRecordCheckpoint == null)
+            || lastRecordCheckpoint.equals(YugabyteDBOffsetContext.snapshotStartLsn())
+            || lastRecordCheckpoint.equals(YugabyteDBOffsetContext.streamingStartLsn());
     }
 
     public String sequence() {
