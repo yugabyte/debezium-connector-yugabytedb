@@ -65,6 +65,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     protected Map<String, YBTable> tableIdToTable;
     protected Map<String, Boolean> shouldWaitForCallback;
 
+    // This set will contain the tablets for which the server has sent the snapshot
+    // end marker, but we have not received the callback from Kafka - this will ensure
+    // that we do not end up sending redundant GetChanges calls.
+    protected Set<String> tabletsWaitingForCallback;
+
     private boolean snapshotComplete = false;
 
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
@@ -98,6 +103,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.tabletSafeTime = new HashMap<>();
         this.tableIdToTable = new HashMap<>();
         this.shouldWaitForCallback = new HashMap<>();
+        this.tabletsWaitingForCallback = new HashSet<>();
     }
 
     @Override
@@ -357,11 +363,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
                 pollIntervalMetronome.pause();
 
-                // This set will contain the tablets for which the server has sent the snapshot
-                // end marker, but we have not received the callback from Kafka - this will ensure
-                // that we do not end up sending redundant GetChanges calls.
-                Set<String> tabletsWaitingForCallback = new HashSet<>();
-
                 String tableUUID = tableIdToTabletId.getKey();
                 YBTable table = tableIdToTable.get(tableUUID);
 
@@ -395,7 +396,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 if (LOGGER.isDebugEnabled()
                     || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
                   LOGGER.info("Requesting changes for tablet {} from OpId {} for table {} with explicit checkpoint {}",
-                              tabletId, cp, table.getName(), explicitCdcSdkCheckpoint.toString());
+                              tabletId, cp, table.getName(), explicitCdcSdkCheckpoint);
                   lastLoggedTimeForGetChanges = System.currentTimeMillis();
                 }
 
