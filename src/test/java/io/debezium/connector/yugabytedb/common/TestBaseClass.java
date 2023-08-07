@@ -1,6 +1,7 @@
 package io.debezium.connector.yugabytedb.common;
 
 import io.debezium.config.Configuration;
+import io.debezium.connector.yugabytedb.TestHelper;
 import io.debezium.connector.yugabytedb.YugabyteDBConnector;
 import io.debezium.connector.yugabytedb.container.YugabyteCustomContainer;
 import io.debezium.connector.yugabytedb.rules.YugabyteDBLogTestName;
@@ -46,6 +47,7 @@ public class TestBaseClass extends AbstractConnectorTest {
     protected Map<String, ?> offsetMapForRecords = new HashMap<>();
     protected ExecutorService engineExecutor;
     protected static BlockingArrayQueue<SourceRecord> linesConsumed;
+    protected long callbackDelay = 0;
 
     protected void awaitUntilConnectorIsReady() throws Exception {
         Awaitility.await()
@@ -76,6 +78,15 @@ public class TestBaseClass extends AbstractConnectorTest {
     assertNotNull(begin.getString("partition_id"));
 
     return txId;
+  }
+
+  protected void setCommitCallbackDelay(long milliseconds) {
+    LOGGER.info("Setting commit callback delay to {} milliseconds", milliseconds);
+    this.callbackDelay = milliseconds;
+  }
+
+  protected void resetCommitCallbackDelay() {
+    this.callbackDelay = 0;
   }
 
   /**
@@ -173,6 +184,7 @@ public class TestBaseClass extends AbstractConnectorTest {
 
                  // This method here is responsible for calling the commit() method which later
                  // invokes commitOffset() in the change event source classes.
+                 TestHelper.waitFor(Duration.ofMillis(callbackDelay));
                  committer.markBatchFinished();
                }).build();
 
