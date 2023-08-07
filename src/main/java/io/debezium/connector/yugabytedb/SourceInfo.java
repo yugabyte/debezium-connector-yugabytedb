@@ -184,13 +184,6 @@ public final class SourceInfo extends BaseSourceInfo {
         return this.tableUUID;
     }
 
-    protected boolean noRecordSeen() {
-        // The theory of having this is that the object lastRecordCheckpoint will be updated as soon
-        // as it sees even 1 change record, so in case the connector hasn't received any record
-        // this will stay null.
-        return lastRecordCheckpoint == null;
-    }
-
     @Override
     public SnapshotRecord snapshot() {
         return super.snapshot();

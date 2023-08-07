@@ -386,17 +386,12 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   continue;
                 }
 
-                CdcSdkCheckpoint explicitCdcSdkCheckpoint = null;
-                if (taskContext.shouldEnableExplicitCheckpointing()) {
-                  explicitCdcSdkCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                }
-
                 OpId cp = previousOffset.snapshotLSN(part);
 
                 if (LOGGER.isDebugEnabled()
                     || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
-                  LOGGER.info("Requesting changes for tablet {} from OpId {} for table {} with explicit checkpoint {}",
-                              tabletId, cp, table.getName(), explicitCdcSdkCheckpoint);
+                  LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
+                              tabletId, cp, table.getName());
                   lastLoggedTimeForGetChanges = System.currentTimeMillis();
                 }
 
@@ -408,10 +403,17 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 GetChangesResponse resp = this.syncClient.getChangesCDCSDK(table,
                     connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
-                    explicitCdcSdkCheckpoint,
+                    taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
                     tabletSafeTime.getOrDefault(part.getId(), -1L));
 
                 tabletSafeTime.put(part.getId(), resp.getResp().getSafeHybridTime());
+
+                // If the response doesn't have any record, it is safe to assume that we should not wait
+                // for the callback to come and that we can proceed further in processing this particular tablet.
+                if (resp.getResp().getCdcSdkProtoRecordsCount() == 0) {
+                  LOGGER.info("Should not wait for callback on tablet {}", part.getId());
+                  shouldWaitForCallback.put(part.getId(), Boolean.FALSE);
+                }
 
                 // Process the response
                 for (CdcService.CDCSDKProtoRecordPB record :
@@ -493,23 +495,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 OpId finalOpId = new OpId(resp.getTerm(), resp.getIndex(), resp.getKey(),
                                           resp.getWriteId(), resp.getSnapshotTime());
                 LOGGER.debug("Final OpId for tablet {} is {}", part.getId(), finalOpId);
-
-                // In cases where the tablet is empty, the response checkpoint can still move ahead and we should
-                // also move the explicit checkpoint forward, given that it was already greater than the lsn of the last seen valid record.
-                // Otherwise, we will be stuck waiting for callback on an empty tablet.
-                if (taskContext.shouldEnableExplicitCheckpointing()) {
-                  // If the response doesn't have any record and we got the snapshot end marker, we know the snapshot is empty.
-                  SourceInfo sourceInfo = previousOffset.getSourceInfo(part);
-                  if (isSnapshotCompleteMarker(finalOpId) && sourceInfo.noRecordSeen()) {
-                    LOGGER.info("Should not wait for callback on tablet {}", part.getId());
-                    shouldWaitForCallback.put(part.getId(), Boolean.FALSE);
-                  }
-
-                  OpId lastRecordCheckpoint = sourceInfo.lastRecordCheckpoint();
-                  if (sourceInfo.noRecordSeen() || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCdcSdkCheckpoint)) {
-                    tabletToExplicitCheckpoint.put(part.getId(), finalOpId.toCdcSdkCheckpoint());
-                  }
-                }
 
                 /*
                    This block checks and validates for two scenarios:
