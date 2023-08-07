@@ -128,6 +128,10 @@ public final class SourceInfo extends BaseSourceInfo {
         return lastRecordCheckpoint;
     }
 
+    public boolean noRecordSeen() {
+        return (lastRecordCheckpoint == null) || lastRecordCheckpoint.equals(YugabyteDBOffsetContext.snapshotStartLsn()) || lastRecordCheckpoint.equals(YugabyteDBOffsetContext.streamingStartLsn());
+    }
+
     public String sequence() {
         List<String> sequence = new ArrayList<String>(2);
         String lastCommitLsn = (this.lastRecordCheckpoint != null)

@@ -491,7 +491,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 // If the response doesn't have any record, it is safe to assume that we should not wait
                 // for the callback to come and that we can proceed further in processing this particular tablet.
-                if (previousOffset.getSourceInfo(part).lastRecordCheckpoint() == null) {
+                if (previousOffset.getSourceInfo(part).noRecordSeen()) {
                   LOGGER.info("Should not wait for callback on tablet {}", part.getId());
                   shouldWaitForCallback.put(part.getId(), Boolean.FALSE);
                 }
