@@ -27,6 +27,7 @@ import io.debezium.time.Conversions;
  */
 @NotThreadSafe
 public final class SourceInfo extends BaseSourceInfo {
+    public static final int HT_BITS_FOR_LOGICAL_COMPONENT = 12;
 
     public static final String TIMESTAMP_USEC_KEY = "ts_usec";
     public static final String TXID_KEY = "txId";
@@ -89,8 +90,10 @@ public final class SourceInfo extends BaseSourceInfo {
         this.tableUUID = partition.getTableId();
         this.tabletId = partition.getTabletId();
 
-        // The commit time of the record is technically the timestamp of the record.
-        this.timestamp = Conversions.toInstantFromMicros(commitTime);
+        // The commit time of the record can be used to infer the actual time in microseconds.
+        // Since the commit time is a hybrid time value, the way it is converted to physical microseconds
+        // is by doing a right shift by the number of bits which store the logical component.
+        this.timestamp = Conversions.toInstantFromMicros(commitTime >> HT_BITS_FOR_LOGICAL_COMPONENT);
 
         if (tableId != null && tableId.schema() != null) {
             this.schemaName = tableId.schema();
