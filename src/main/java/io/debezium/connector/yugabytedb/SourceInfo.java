@@ -128,6 +128,19 @@ public final class SourceInfo extends BaseSourceInfo {
         return lastRecordCheckpoint;
     }
 
+    /**
+     * Compares the lastRecordCheckpoint with {@code snapshotStartLsn} and {@code streamingStartLsn}.
+     * If it is equal then it means that we haven't received any record for the given partition,
+     * in case there's any difference, it technically siginifies that some record has updated the
+     * values.
+     * @return true if the partition hasn't seen any record yet, false otherwise
+     */
+    public boolean noRecordSeen() {
+        return (lastRecordCheckpoint == null)
+            || lastRecordCheckpoint.equals(YugabyteDBOffsetContext.snapshotStartLsn())
+            || lastRecordCheckpoint.equals(YugabyteDBOffsetContext.streamingStartLsn());
+    }
+
     public String sequence() {
         List<String> sequence = new ArrayList<String>(2);
         String lastCommitLsn = (this.lastRecordCheckpoint != null)
@@ -182,13 +195,6 @@ public final class SourceInfo extends BaseSourceInfo {
 
     protected String tableUUID() {
         return this.tableUUID;
-    }
-
-    protected boolean noRecordSeen() {
-        // The theory of having this is that the object lastRecordCheckpoint will be updated as soon
-        // as it sees even 1 change record, so in case the connector hasn't received any record
-        // this will stay null.
-        return lastRecordCheckpoint == null;
     }
 
     @Override
