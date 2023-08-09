@@ -63,7 +63,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     private Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
     protected Map<String, Long> tabletSafeTime;
     protected Map<String, YBTable> tableIdToTable;
-    protected Map<String, Boolean> shouldWaitForCallback;
+    protected Set<String> shouldWaitForCallback;
 
     // This set will contain the tablets for which the server has sent the snapshot
     // end marker, but we have not received the callback from Kafka - this will ensure
@@ -102,7 +102,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.tabletToExplicitCheckpoint = new HashMap<>();
         this.tabletSafeTime = new HashMap<>();
         this.tableIdToTable = new HashMap<>();
-        this.shouldWaitForCallback = new HashMap<>();
+        this.shouldWaitForCallback = new HashSet<>();
         this.tabletsWaitingForCallback = new HashSet<>();
     }
 
@@ -312,7 +312,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                             YugabyteDBOffsetContext.snapshotStartLsn() : OpId.from(resp);
         previousOffset.initSourceInfo(p, this.connectorConfig, startLsn);
         schemaNeeded.put(p.getId(), Boolean.TRUE);
-        shouldWaitForCallback.put(p.getId(), Boolean.TRUE);
+        shouldWaitForCallback.add(p.getId());
         LOGGER.debug("Previous offset for table {} tablet {} is {}", p.getTableId(),
                      p.getTabletId(), previousOffset.toString());
       }
@@ -494,21 +494,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                           resp.getWriteId(), resp.getSnapshotTime());
                 LOGGER.debug("Final OpId for tablet {} is {}", part.getId(), finalOpId);
 
-                // In cases where the tablet is empty, the response checkpoint can still move ahead and we should
-                // also move the explicit checkpoint forward, given that it was already greater than the lsn of the last seen valid record.
-                // Otherwise, we will be stuck waiting for callback on an empty tablet.
-                if (taskContext.shouldEnableExplicitCheckpointing()) {
-                  // If the response doesn't have any record and we got the snapshot end marker, we know the snapshot is empty.
-                  SourceInfo sourceInfo = previousOffset.getSourceInfo(part);
-                  if (isSnapshotCompleteMarker(finalOpId) && sourceInfo.noRecordSeen()) {
-                    LOGGER.info("Should not wait for callback on tablet {}", part.getId());
-                    shouldWaitForCallback.put(part.getId(), Boolean.FALSE);
-                  }
-
-                  OpId lastRecordCheckpoint = sourceInfo.lastRecordCheckpoint();
-                  if (sourceInfo.noRecordSeen() || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCdcSdkCheckpoint)) {
-                    tabletToExplicitCheckpoint.put(part.getId(), finalOpId.toCdcSdkCheckpoint());
-                  }
+                // If the response doesn't have any record, it is safe to assume that we should not wait
+                // for the callback to come and that we can proceed further in processing this particular tablet.
+                if (previousOffset.getSourceInfo(part).noRecordSeen()) {
+                  LOGGER.info("Should not wait for callback on tablet {}", part.getId());
+                  shouldWaitForCallback.remove(part.getId());
                 }
 
                 /*
@@ -553,7 +543,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   } else if (isSnapshotCompleteMarker(finalOpId)) {
                     // Add it to tablets waiting for callback so that the connector doesn't end up
                     // calling GetChanges for the same again.
-                    if (shouldWaitForCallback.get(part.getId())) {
+                    if (shouldWaitForCallback.contains(part.getId())) {
                       if (!tabletsWaitingForCallback.contains(part.getId())) {
                         LOGGER.info("Adding tablet {} of table {} ({}) to wait-list",
                                     part.getId(), table.getName(), part.getTableId());
