@@ -199,6 +199,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "req", false, true);
         Configuration.Builder configBuilder = getConsistentConfigurationBuilder(DEFAULT_DB_NAME, "rs_req_dbo.req,rs_req_dbo.req_ty", dbStreamId);
         configBuilder.with("tombstones.on.delete", false);
+        // configBuilder.with("provide.transaction.metadata", true);
 
         startEngine(configBuilder);
         awaitUntilConnectorIsReady();
@@ -211,9 +212,9 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
         ExecutorService exec = Executors.newFixedThreadPool(1);
         Future<?> future = exec.submit(() -> {
             try (Statement st = conn.createStatement()) {
-                callInsertProcedure(st, 5);
-                callUpdateProcedure(st, 4);
-                callDeleteProcedure(st, 2);
+                callInsertProcedure(st, 5); // Generates 4 records per call
+                callUpdateProcedure(st, 4); // Generates 1 record per call
+                callDeleteProcedure(st, 2); // Generates 1 record per call
             } catch (Exception e) {
                 LOGGER.error("Received exception", e);
                 throw new RuntimeException(e);
@@ -1114,11 +1115,11 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
         return numOfTimes * 1;
     }
 
-    private void setHostPort(String tserverHost, String port) {
+    private static void setHostPort(String tserverHost, String port) {
         TestHelper.setContainerHostPort(tserverHost, 5433);
     }
 
-    private void setMasterAddresses(String masterAddresses) {
+    private static void setMasterAddresses(String masterAddresses) {
         TestHelper.setMasterAddress(masterAddresses);
     }
 }
