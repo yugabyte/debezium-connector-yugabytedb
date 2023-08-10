@@ -17,6 +17,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigValue;
 import org.apache.kafka.connect.connector.Task;
+import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService.TabletCheckpointPair;
@@ -77,6 +78,11 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         tableMonitorThread = new YugabyteDBTablePoller(yugabyteDBConnectorConfig, context);
         if (this.yugabyteDBConnectorConfig.autoAddNewTables()) {
             tableMonitorThread.start();
+        }
+
+        if (this.yugabyteDBConnectorConfig.transactionOrdering() && config.getInteger("tasks.max") != 1) {
+            throw new ConnectException("Transaction ordering is only supported with 1 task, "
+                                        + "change number of tasks and try again");
         }
     }
 
