@@ -190,7 +190,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
     }
 
     @Test
-    public void issueUsingScripts() throws Exception {
+    public void recordsShouldBeOrderedWithCorrectRecordAndCommitTimes() throws Exception {
         // Create functions, tables and stored procedures using the script
         TestHelper.executeDDL("create_functions_and_seq.ddl");
         TestHelper.executeDDL("test_tables.ddl");
