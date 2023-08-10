@@ -3,6 +3,7 @@ package io.debezium.connector.yugabytedb.consistent;
 import static org.junit.Assert.*;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import java.math.BigInteger;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -186,6 +187,83 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
         }
 
         assertEquals(totalCount, recordPkSet.size());
+    }
+
+    @Test
+    public void issueUsingScripts() throws Exception {
+        // Create functions, tables and stored procedures using the script
+        TestHelper.executeDDL("create_functions_and_seq.ddl");
+        TestHelper.executeDDL("test_tables.ddl");
+        TestHelper.executeDDL("stored_procedures.ddl");
+        
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "req", false, true);
+        Configuration.Builder configBuilder = getConsistentConfigurationBuilder(DEFAULT_DB_NAME, "rs_req_dbo.req,rs_req_dbo.req_ty", dbStreamId);
+        configBuilder.with("tombstones.on.delete", false);
+
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        TestHelper.waitFor(Duration.ofSeconds(20));
+
+        YugabyteDBConnection ybConn = TestHelper.create();
+        Connection conn = ybConn.connection();
+        
+        ExecutorService exec = Executors.newFixedThreadPool(1);
+        Future<?> future = exec.submit(() -> {
+            try (Statement st = conn.createStatement()) {
+                callInsertProcedure(st, 5);
+                callUpdateProcedure(st, 4);
+                callDeleteProcedure(st, 2);
+            } catch (Exception e) {
+                LOGGER.error("Received exception", e);
+                throw new RuntimeException(e);
+            }
+        });
+
+        List<SourceRecord> recordsToAssert = new ArrayList<>();
+
+        final long total = 26;
+        AtomicLong totalConsumedRecords = new AtomicLong();
+        List<BigInteger> recordTimes = new ArrayList<>();
+        List<BigInteger> commitTimes = new ArrayList<>();
+        recordTimes.add(BigInteger.valueOf(-1));
+        commitTimes.add(BigInteger.valueOf(-1));
+
+        try {
+            LOGGER.info("Started consuming");
+            Awaitility.await()
+                    .atMost(Duration.ofSeconds(600))
+                    .until(() -> {
+                        int consumed = consumeAvailableRecords(record -> {
+                            LOGGER.debug("The record being consumed is " + record);
+
+                            Struct value = (Struct) record.value();
+                            BigInteger recordTime = Message.toUnsignedBigInteger(value.getStruct("source").getInt64("record_time"));
+                            BigInteger commitTime = Message.toUnsignedBigInteger(value.getStruct("source").getInt64("commit_time"));
+
+                            LOGGER.debug("Operation type: {} commit time: {} record time: {}", value.getString("op"), commitTime, recordTime);
+
+                            BigInteger prevCommitTime = commitTimes.get(commitTimes.size() - 1);
+                            if (prevCommitTime.equals(commitTime)) {
+                                BigInteger prevRecordTime = recordTimes.get(recordTimes.size() - 1);
+                                Assertions.assertTrue(prevRecordTime.compareTo(recordTime) < 1, "Previous record time " + prevRecordTime + " is greater than the current record's " + recordTime);
+                            } else {
+                                Assertions.assertTrue(prevCommitTime.compareTo(commitTime) == -1, "Previous commit time " + prevCommitTime + " is greater than the current record's " + commitTime);
+                            }
+                            
+                            // We have to assert that the record time we are receiving is either equal to or higher than the last one.
+                            recordsToAssert.add(record);
+                        });
+                        if (consumed > 0) {
+                            totalConsumedRecords.addAndGet(consumed);
+                            LOGGER.info("Consumed " + totalConsumedRecords.get() + " records");
+                        }
+
+                        return recordsToAssert.size() == total && future.isDone();
+                    });
+        } catch (ConditionTimeoutException exception) {
+            fail("Failed to consume " + total + " records in 600 seconds, consumed " + totalConsumedRecords.get(), exception);
+        }
     }
 
     @Test
@@ -1010,5 +1088,29 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
 
         return configBuilder;
+    }
+
+    private int callInsertProcedure(Statement st, int numOfTimes) throws Exception {
+        for (int i = 0; i < numOfTimes; ++i) {
+            st.execute("CALL rs_req_dbo.insert_rs_req_dbo_req_ty ();");
+        }
+
+        return numOfTimes * 4;
+    }
+
+    private int callUpdateProcedure(Statement st, int numOfTimes) throws Exception {
+        for (int i = 0; i < numOfTimes; ++i) {
+            st.execute("CALL rs_req_dbo.update_rs_req_dbo_req_ty ();");
+        }
+
+        return numOfTimes * 1;
+    }
+
+    private int callDeleteProcedure(Statement st, int numOfTimes) throws Exception {
+        for (int i = 0; i < numOfTimes; ++i) {
+            st.execute("CALL rs_req_dbo.delete_rs_req_dbo_req_ty ();");
+        }
+
+        return numOfTimes * 1;
     }
 }
