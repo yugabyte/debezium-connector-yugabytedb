@@ -1113,4 +1113,12 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
 
         return numOfTimes * 1;
     }
+
+    private void setHostPort(String tserverHost, String port) {
+        TestHelper.setContainerHostPort(tserverHost, 5433);
+    }
+
+    private void setMasterAddresses(String masterAddresses) {
+        TestHelper.setMasterAddress(masterAddresses);
+    }
 }
