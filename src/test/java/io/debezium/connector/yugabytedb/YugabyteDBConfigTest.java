@@ -288,7 +288,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
         TestHelper.execute("CREATE TABLE dummy_table (id INT PRIMARY KEY);");
         final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "dummy_table", false, false);
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.dummy_table", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
+        configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_ORDERING, true);
 
         start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
            assertFalse(success);

@@ -140,8 +140,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             throw new DebeziumException(e);
         }
 
-        if (this.yugabyteDBConnectorConfig.consistencyMode() != YugabyteDBConnectorConfig.ConsistencyMode.DEFAULT
-              && !enableExplicitCheckpointing) {
+        if (this.yugabyteDBConnectorConfig.transactionOrdering() && !enableExplicitCheckpointing) {
             final String errorMessage = "Explicit checkpointing not enabled in consistent streaming mode, "
                 + "create a stream with explicit checkpointing and try again";
             throw new DebeziumException(errorMessage);
@@ -352,11 +351,16 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                 YBTable table = ybClient.openTableByUUID(tableId);
                 GetTabletListToPollForCDCResponse resp = ybClient.getTabletListToPollForCdc(
                     table, this.yugabyteDBConnectorConfig.streamId(), tableId);
+
+                Set<String> tablets = new HashSet<>();
                 for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
                     this.tabletIds.add(
                         new ImmutablePair<String,String>(
                             tableId, pair.getTabletLocations().getTabletId().toStringUtf8()));
+                    tablets.add(pair.getTabletLocations().getTabletId().toStringUtf8());
                 }
+
+                LOGGER.info("Received tablet list for table {} ({}): {}", table.getTableId(), table.getName(), tablets);
             }
             Collections.sort(this.tabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));
         }

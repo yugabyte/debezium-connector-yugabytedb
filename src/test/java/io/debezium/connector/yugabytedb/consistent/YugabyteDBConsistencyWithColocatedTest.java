@@ -140,7 +140,7 @@ public class YugabyteDBConsistencyWithColocatedTest extends YugabyteDBContainerT
 
     private Configuration.Builder getConsistentConfigurationBuilder(String databaseName, String tableIncludeList, String dbStreamId) throws Exception {
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder(databaseName, tableIncludeList, dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.CONSISTENCY_MODE, "global");
+        configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_ORDERING, true);
         configBuilder.with("transforms", "Reroute");
         configBuilder.with("transforms.Reroute.type", "io.debezium.transforms.ByLogicalTableRouter");
         configBuilder.with("transforms.Reroute.topic.regex", "(.*)");
