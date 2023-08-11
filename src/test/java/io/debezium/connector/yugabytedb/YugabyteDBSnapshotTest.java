@@ -96,11 +96,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
 
         // Only verifying the record count since the snapshot records are not ordered, so it may be
         // a little complex to verify them in the sorted order at the moment
-        CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount))
-          .exceptionally(throwable -> {
-              throw new RuntimeException(throwable);
-          }).get();
-
+        verifyRecordCount(recordsCount);
     }
 
     @ParameterizedTest
@@ -301,8 +297,8 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {true,false})
-    public void snapshotColocatedNonColocatedThenStream(boolean initial_only) throws Exception {
+    @ValueSource(booleans = {true, false})
+    public void snapshotColocatedNonColocatedThenStream(boolean initialOnly) throws Exception {
         // Create tables.
         createTables(true /* enforce creation of the colocated tables only */);
 
@@ -317,17 +313,15 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
         Configuration.Builder configBuilder =
           TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2,public.test_3,public.test_no_colocated", dbStreamId);
-        if (initial_only) {
+        if (initialOnly) {
             configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE,
                     YugabyteDBConnectorConfig.SnapshotMode.INITIAL_ONLY.getValue());
-            startEngine(configBuilder);
-        }
-        else {
+        } else {
             configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE,
                     YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
-            startEngine(configBuilder);
         }
 
+        startEngine(configBuilder);
         awaitUntilConnectorIsReady();
 
         List<SourceRecord> recordsForTest1 = new ArrayList<>();
@@ -347,10 +341,9 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         TestHelper.executeInDatabase("INSERT INTO test_3 VALUES (generate_series(3000, 6000));", DEFAULT_COLOCATED_DB_NAME);
 
         List<SourceRecord> records = new ArrayList<>();
-        if(initial_only){
+        if(initialOnly) {
             waitAndFailIfCannotConsume(records, recordCountForTest1 + recordCountForTest2 + recordCountForTest3 );
-        }
-        else {
+        } else {
             waitAndFailIfCannotConsume(records, recordCountForTest1 + recordCountForTest2 + recordCountForTest3 + recordCountInNonColocated + 1001 + 3001);
         }
 
@@ -366,12 +359,11 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
                 recordsForNonColocated.add(record);
             }
         }
-        if(initial_only){
+        if(initialOnly) {
             assertEquals(recordCountForTest1 , recordsForTest1.size());
             assertEquals(recordCountForTest2, recordsForTest2.size());
             assertEquals(recordCountForTest3 , recordsForTest3.size());
-        }
-        else{
+        } else {
             assertEquals(recordCountForTest1 + 1001, recordsForTest1.size());
             assertEquals(recordCountForTest2, recordsForTest2.size());
             assertEquals(recordCountForTest3 + 3001, recordsForTest3.size());
