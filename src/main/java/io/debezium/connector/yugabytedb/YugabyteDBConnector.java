@@ -80,6 +80,8 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             tableMonitorThread.start();
         }
 
+        // This guard is to disallow users to deploy a connector with more than a single task when
+        // transaction ordering is enabled
         if (this.yugabyteDBConnectorConfig.transactionOrdering() && config.getInteger("tasks.max") != 1) {
             throw new ConnectException("Transaction ordering is only supported with 1 task, "
                                         + "change number of tasks and try again");
