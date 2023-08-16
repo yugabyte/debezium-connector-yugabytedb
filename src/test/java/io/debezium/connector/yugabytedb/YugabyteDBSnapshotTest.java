@@ -359,7 +359,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
                 recordsForNonColocated.add(record);
             }
         }
-        if(initialOnly) {
+        if (initialOnly) {
             assertEquals(recordCountForTest1 , recordsForTest1.size());
             assertEquals(recordCountForTest2, recordsForTest2.size());
             assertEquals(recordCountForTest3 , recordsForTest3.size());
