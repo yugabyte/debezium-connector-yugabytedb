@@ -79,6 +79,28 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
+    public void testSnapshotRecordCountInInitialOnlyMode(boolean colocation) throws Exception {
+        setCommitCallbackDelay(10000);
+        createTables(colocation);
+        final int recordsCount = 4000;
+        insertBulkRecords(recordsCount, "public.test_1");
+
+        LOGGER.info("Creating DB stream ID");
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
+        Configuration.Builder configBuilder =
+          TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL_ONLY.getValue());
+        startEngine(configBuilder);
+
+        awaitUntilConnectorIsReady();
+
+        // Only verifying the record count since the snapshot records are not ordered, so it may be
+        // a little complex to verify them in the sorted order at the moment
+        verifyRecordCount(recordsCount);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
     public void shouldOnlySnapshotTablesInList(boolean colocation) throws Exception {
         createTables(colocation);
 
@@ -274,8 +296,9 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         assertEquals(recordCountInNonColocated, recordsForNonColocated.size());
     }
 
-    @Test
-    public void snapshotColocatedNonColocatedThenStream() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void snapshotColocatedNonColocatedThenStream(boolean initialOnly) throws Exception {
         // Create tables.
         createTables(true /* enforce creation of the colocated tables only */);
 
@@ -290,9 +313,15 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
         Configuration.Builder configBuilder =
           TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2,public.test_3,public.test_no_colocated", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
-        startEngine(configBuilder);
+        if (initialOnly) {
+            configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE,
+                    YugabyteDBConnectorConfig.SnapshotMode.INITIAL_ONLY.getValue());
+        } else {
+            configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE,
+                    YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
+        }
 
+        startEngine(configBuilder);
         awaitUntilConnectorIsReady();
 
         List<SourceRecord> recordsForTest1 = new ArrayList<>();
@@ -312,7 +341,11 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         TestHelper.executeInDatabase("INSERT INTO test_3 VALUES (generate_series(3000, 6000));", DEFAULT_COLOCATED_DB_NAME);
 
         List<SourceRecord> records = new ArrayList<>();
-        waitAndFailIfCannotConsume(records, recordCountForTest1 + recordCountForTest2 + recordCountForTest3 + recordCountInNonColocated + 1001 + 3001);
+        if (initialOnly) {
+            waitAndFailIfCannotConsume(records, recordCountForTest1 + recordCountForTest2 + recordCountForTest3 );
+        } else {
+            waitAndFailIfCannotConsume(records, recordCountForTest1 + recordCountForTest2 + recordCountForTest3 + recordCountInNonColocated + 1001 + 3001);
+        }
 
         // Iterate over the records and add them to their respective topic
         for (SourceRecord record : records) {
@@ -326,11 +359,16 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
                 recordsForNonColocated.add(record);
             }
         }
-
-        assertEquals(recordCountForTest1 + 1001, recordsForTest1.size());
-        assertEquals(recordCountForTest2, recordsForTest2.size());
-        assertEquals(recordCountForTest3 + 3001, recordsForTest3.size());
-        assertEquals(recordCountInNonColocated, recordsForNonColocated.size());
+        if (initialOnly) {
+            assertEquals(recordCountForTest1 , recordsForTest1.size());
+            assertEquals(recordCountForTest2, recordsForTest2.size());
+            assertEquals(recordCountForTest3 , recordsForTest3.size());
+        } else {
+            assertEquals(recordCountForTest1 + 1001, recordsForTest1.size());
+            assertEquals(recordCountForTest2, recordsForTest2.size());
+            assertEquals(recordCountForTest3 + 3001, recordsForTest3.size());
+            assertEquals(recordCountInNonColocated, recordsForNonColocated.size());
+        }
     }
 
     /**
