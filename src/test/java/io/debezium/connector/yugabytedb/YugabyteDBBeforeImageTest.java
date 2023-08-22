@@ -14,6 +14,7 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
+import org.yb.client.CDCStreamInfo;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
@@ -49,7 +50,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
   public void isBeforeGettingPublished() throws Exception {
       TestHelper.initDB("yugabyte_create_tables.ddl");
 
-      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */);
+      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, HelperBeforeImageModes.ALL);
       Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
       startEngine(configBuilder);
 
@@ -78,7 +79,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
   public void consecutiveSingleShardTransactions() throws Exception {
       TestHelper.initDB("yugabyte_create_tables.ddl");
 
-      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */);
+      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, HelperBeforeImageModes.ALL);
       Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
       startEngine(configBuilder);
 
@@ -110,10 +111,118 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
   }
 
   @Test
+  public void consecutiveSingleShardTransactionsForChange() throws Exception {
+      TestHelper.initDB("yugabyte_create_tables.ddl");
+
+      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, HelperBeforeImageModes.CHANGE);
+      Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+      startEngine(configBuilder);
+
+      awaitUntilConnectorIsReady();
+
+      // Insert a record and update it.
+      TestHelper.execute(String.format(formatInsertString, 1));
+      TestHelper.execute("UPDATE t1 SET last_name='some_last_name' where id = 1;");
+      TestHelper.execute("DELETE from t1 WHERE id = 1;");
+
+      // Consume the records and verify that the records should have the relevant information.
+      List<SourceRecord> records = new ArrayList<>();
+      CompletableFuture.runAsync(() -> getRecords(records, 4, 20000)).get();
+
+      // The first record is an insert record with before image as null.
+      SourceRecord insertRecord = records.get(0);
+      assertValueField(insertRecord, "before", null);
+      assertAfterImage(insertRecord, 1, "Vaibhav", "Kushwaha", 12.345);
+
+      // The second record will be an update record having no before image.
+      SourceRecord updateRecord = records.get(1);
+      assertValueField(updateRecord, "before", null);
+      assertValueField(updateRecord, "after/id/value", 1);
+      assertValueField(updateRecord, "after/last_name/value", "some_last_name");
+
+      // The third record will be a delete record.
+      SourceRecord deleteRecord = records.get(2);
+      assertValueField(deleteRecord, "before/id/value", 1);
+      assertValueField(deleteRecord, "after", null);
+  }
+
+  @Test
+  public void consecutiveSingleShardTransactionsForFullRowNewImage() throws Exception {
+      TestHelper.initDB("yugabyte_create_tables.ddl");
+      
+      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, HelperBeforeImageModes.FULL_ROW_NEW_IMAGE);
+      Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+      startEngine(configBuilder);
+
+      awaitUntilConnectorIsReady();
+
+      // Insert a record and update it.
+      TestHelper.execute(String.format(formatInsertString, 1));
+      TestHelper.execute("UPDATE t1 SET last_name='some_last_name' where id = 1;");
+      TestHelper.execute("DELETE from t1 WHERE id = 1;");
+
+      // Consume the records and verify that the records should have the relevant information.
+      List<SourceRecord> records = new ArrayList<>();
+      CompletableFuture.runAsync(() -> getRecords(records, 4, 20000)).get();
+
+      // The first record is an insert record with before image as null.
+      SourceRecord insertRecord = records.get(0);
+      assertValueField(insertRecord, "before", null);
+      assertAfterImage(insertRecord, 1, "Vaibhav", "Kushwaha", 12.345);
+
+      // The second record will be an update record having no before image.
+      SourceRecord updateRecord = records.get(1);
+      assertValueField(updateRecord, "before", null);
+      assertAfterImage(updateRecord, 1, "Vaibhav", "some_last_name", 12.345);
+
+      // The third record will be a delete record.
+      SourceRecord deleteRecord = records.get(2);
+      assertValueField(deleteRecord, "before/id/value", 1);
+      assertValueField(deleteRecord, "after", null);
+  }
+
+  @Test
+  public void consecutiveSingleShardTransactionsForModifiedColumnsOldAndNewImages() throws Exception {
+      TestHelper.initDB("yugabyte_create_tables.ddl");
+
+      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, HelperBeforeImageModes.MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES);
+      Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+      startEngine(configBuilder);
+
+      awaitUntilConnectorIsReady();
+
+      // Insert a record and update it.
+      TestHelper.execute(String.format(formatInsertString, 1));
+      TestHelper.execute("UPDATE t1 SET last_name='some_last_name' where id = 1;");
+      TestHelper.execute("DELETE from t1 WHERE id = 1;");
+
+      // Consume the records and verify that the records should have the relevant information.
+      List<SourceRecord> records = new ArrayList<>();
+      CompletableFuture.runAsync(() -> getRecords(records, 4, 20000)).get();
+
+      // The first record is an insert record with before image as null.
+      SourceRecord insertRecord = records.get(0);
+      assertValueField(insertRecord, "before", null);
+      assertAfterImage(insertRecord, 1, "Vaibhav", "Kushwaha", 12.345);
+
+      // The second record will be an update record having no before image.
+      SourceRecord updateRecord = records.get(1);
+      assertValueField(updateRecord, "before/id/value", 1);
+      assertValueField(updateRecord, "before/last_name/value", "Kushwaha");
+      assertValueField(updateRecord, "after/id/value", 1);
+      assertValueField(updateRecord, "after/last_name/value", "some_last_name");
+
+      // The third record will be a delete record.
+      SourceRecord deleteRecord = records.get(2);
+      assertValueField(deleteRecord, "before/id/value", 1);
+      assertValueField(deleteRecord, "after", null);
+  }
+
+  @Test
   public void multiShardTransactions() throws Exception {
     TestHelper.initDB("yugabyte_create_tables.ddl");
 
-    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */);
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, HelperBeforeImageModes.ALL);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
     startEngine(configBuilder);
 
@@ -171,7 +280,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
   public void updateWithNullValues() throws Exception {
     TestHelper.initDB("yugabyte_create_tables.ddl");
 
-    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */);
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, HelperBeforeImageModes.ALL);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
     startEngine(configBuilder);
 
@@ -203,7 +312,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
     TestHelper.initDB("yugabyte_create_tables.ddl");
 
-    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */);
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, HelperBeforeImageModes.ALL);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
     startEngine(configBuilder);
 
@@ -251,7 +360,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
                        + " hours DOUBLE PRECISION DEFAULT 12.345);");
 
     String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "table_with_defaults",
-                                                    true /* withBeforeImage */);
+                                                    true /* withBeforeImage */, true, HelperBeforeImageModes.ALL);
     Configuration.Builder configBuilder =
         TestHelper.getConfigBuilder("public.table_with_defaults", dbStreamId);
     startEngine(configBuilder);
@@ -308,7 +417,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
               .atMost(Duration.ofSeconds(seconds))
               .until(() -> {
                   int consumed = consumeAvailableRecords(record -> {
-                      LOGGER.debug("The record being consumed is " + record);
+                      LOGGER.info("The record being consumed is " + record);
                       records.add(record);
                   });
                   if (consumed > 0) {

@@ -461,7 +461,7 @@ public final class TestHelper {
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
-                                          boolean withBeforeImage, boolean explicitCheckpointing)
+                                          boolean withBeforeImage, boolean explicitCheckpointing, String mode)
             throws Exception {
         YBClient syncClient = getYbClient(MASTER_ADDRESS);
 
@@ -475,7 +475,7 @@ public final class TestHelper {
         try {
             dbStreamId = syncClient.createCDCStream(placeholderTable, namespaceName,
                                                     "PROTO", explicitCheckpointing ? "EXPLICIT" : "IMPLICIT",
-                                                    withBeforeImage ? "ALL" : null).getStreamId();
+                                                    mode).getStreamId();
         } finally {
             syncClient.close();
         }
@@ -484,8 +484,13 @@ public final class TestHelper {
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
+                                          boolean withBeforeImage, boolean explicitCheckpointing) throws Exception {
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing /* explicit */, HelperBeforeImageModes.CHANGE);
+    }
+
+    public static String getNewDbStreamId(String namespaceName, String tableName,
                                           boolean withBeforeImage) throws Exception {
-        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, true /* explicit */);
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, true /* explicit */, HelperBeforeImageModes.CHANGE);
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName) throws Exception {
