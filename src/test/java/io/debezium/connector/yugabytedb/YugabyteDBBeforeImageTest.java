@@ -417,7 +417,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
               .atMost(Duration.ofSeconds(seconds))
               .until(() -> {
                   int consumed = consumeAvailableRecords(record -> {
-                      LOGGER.info("The record being consumed is " + record);
+                      LOGGER.debug("The record being consumed is " + record);
                       records.add(record);
                   });
                   if (consumed > 0) {

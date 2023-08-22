@@ -475,7 +475,7 @@ public final class TestHelper {
         try {
             dbStreamId = syncClient.createCDCStream(placeholderTable, namespaceName,
                                                     "PROTO", explicitCheckpointing ? "EXPLICIT" : "IMPLICIT",
-                                                    mode).getStreamId();
+                                                    withBeforeImage ? mode : HelperBeforeImageModes.CHANGE).getStreamId();
         } finally {
             syncClient.close();
         }
