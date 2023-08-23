@@ -48,12 +48,14 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
 import io.debezium.config.Configuration;
+import io.debezium.connector.yugabytedb.HelperBeforeImageModes.BeforeImageMode;
 import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig.SecureConnectionMode;
 import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection.YugabyteDBValueConverterBuilder;
 import io.debezium.connector.yugabytedb.container.CustomContainerWaitStrategy;
 import io.debezium.connector.yugabytedb.container.YugabyteCustomContainer;
+import io.debezium.connector.yugabytedb.HelperBeforeImageModes.BeforeImageMode;
 import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
 
@@ -461,7 +463,7 @@ public final class TestHelper {
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
-                                          boolean withBeforeImage, boolean explicitCheckpointing, String mode)
+                                          boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode)
             throws Exception {
         YBClient syncClient = getYbClient(MASTER_ADDRESS);
 
@@ -475,7 +477,7 @@ public final class TestHelper {
         try {
             dbStreamId = syncClient.createCDCStream(placeholderTable, namespaceName,
                                                     "PROTO", explicitCheckpointing ? "EXPLICIT" : "IMPLICIT",
-                                                    withBeforeImage ? mode : HelperBeforeImageModes.CHANGE).getStreamId();
+                                                    withBeforeImage ? mode.toString() : BeforeImageMode.CHANGE.toString()).getStreamId();
         } finally {
             syncClient.close();
         }
@@ -485,12 +487,12 @@ public final class TestHelper {
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
                                           boolean withBeforeImage, boolean explicitCheckpointing) throws Exception {
-        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing /* explicit */, HelperBeforeImageModes.CHANGE);
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing /* explicit */, BeforeImageMode.CHANGE);
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
                                           boolean withBeforeImage) throws Exception {
-        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, true /* explicit */, HelperBeforeImageModes.CHANGE);
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, true /* explicit */, BeforeImageMode.CHANGE);
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName) throws Exception {

@@ -19,6 +19,7 @@ import org.yb.client.CDCStreamInfo;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+import io.debezium.connector.yugabytedb.HelperBeforeImageModes.BeforeImageMode;
 
 public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
   private final String formatInsertString =
@@ -50,7 +51,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
   public void isBeforeGettingPublished() throws Exception {
       TestHelper.initDB("yugabyte_create_tables.ddl");
 
-      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, HelperBeforeImageModes.ALL);
+      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, BeforeImageMode.ALL);
       Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
       startEngine(configBuilder);
 
@@ -79,7 +80,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
   public void consecutiveSingleShardTransactions() throws Exception {
       TestHelper.initDB("yugabyte_create_tables.ddl");
 
-      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, HelperBeforeImageModes.ALL);
+      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, BeforeImageMode.ALL);
       Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
       startEngine(configBuilder);
 
@@ -114,7 +115,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
   public void consecutiveSingleShardTransactionsForChange() throws Exception {
       TestHelper.initDB("yugabyte_create_tables.ddl");
 
-      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, HelperBeforeImageModes.CHANGE);
+      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, BeforeImageMode.CHANGE);
       Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
       startEngine(configBuilder);
 
@@ -150,7 +151,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
   public void consecutiveSingleShardTransactionsForFullRowNewImage() throws Exception {
       TestHelper.initDB("yugabyte_create_tables.ddl");
       
-      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, HelperBeforeImageModes.FULL_ROW_NEW_IMAGE);
+      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, BeforeImageMode.FULL_ROW_NEW_IMAGE);
       Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
       startEngine(configBuilder);
 
@@ -185,7 +186,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
   public void consecutiveSingleShardTransactionsForModifiedColumnsOldAndNewImages() throws Exception {
       TestHelper.initDB("yugabyte_create_tables.ddl");
 
-      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, HelperBeforeImageModes.MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES);
+      String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, BeforeImageMode.MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES);
       Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
       startEngine(configBuilder);
 
@@ -222,7 +223,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
   public void multiShardTransactions() throws Exception {
     TestHelper.initDB("yugabyte_create_tables.ddl");
 
-    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, HelperBeforeImageModes.ALL);
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, BeforeImageMode.ALL);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
     startEngine(configBuilder);
 
@@ -280,7 +281,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
   public void updateWithNullValues() throws Exception {
     TestHelper.initDB("yugabyte_create_tables.ddl");
 
-    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, HelperBeforeImageModes.ALL);
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, BeforeImageMode.ALL);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
     startEngine(configBuilder);
 
@@ -312,7 +313,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
     TestHelper.initDB("yugabyte_create_tables.ddl");
 
-    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, HelperBeforeImageModes.ALL);
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", true /* withBeforeImage */, true, BeforeImageMode.ALL);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
     startEngine(configBuilder);
 
@@ -360,7 +361,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
                        + " hours DOUBLE PRECISION DEFAULT 12.345);");
 
     String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "table_with_defaults",
-                                                    true /* withBeforeImage */, true, HelperBeforeImageModes.ALL);
+                                                    true /* withBeforeImage */, true, BeforeImageMode.ALL);
     Configuration.Builder configBuilder =
         TestHelper.getConfigBuilder("public.table_with_defaults", dbStreamId);
     startEngine(configBuilder);
