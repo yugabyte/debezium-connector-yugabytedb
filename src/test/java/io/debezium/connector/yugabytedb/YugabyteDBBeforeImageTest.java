@@ -178,7 +178,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
       // The third record will be a delete record.
       SourceRecord deleteRecord = records.get(2);
-      assertValueField(deleteRecord, "before/id/value", 1);
+      assertBeforeImage(deleteRecord, 1, "Vaibhav", "some_last_name", 12.345);
       assertValueField(deleteRecord, "after", null);
   }
 
