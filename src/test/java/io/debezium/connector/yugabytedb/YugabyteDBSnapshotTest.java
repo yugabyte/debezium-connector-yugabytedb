@@ -4,8 +4,6 @@ import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.awaitility.Awaitility;
-import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -16,7 +14,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -36,8 +33,9 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     }
 
     @BeforeEach
-    public void before() {
+    public void before() throws Exception {
         initializeConnectorTestFramework();
+        TestHelper.dropAllSchemas();
     }
 
     @AfterEach
@@ -45,6 +43,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         stopConnector();
         dropAllTables();
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
+        TestHelper.dropAllSchemas();
     }
 
     @AfterAll
@@ -55,7 +54,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     public void testSnapshotRecordConsumption(boolean colocation) throws Exception {
-        TestHelper.dropAllSchemas();
         createTables(colocation);
         final int recordsCount = 5000;
         insertBulkRecords(recordsCount, "public.test_1");
@@ -65,7 +63,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         Configuration.Builder configBuilder =
           TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
 
         awaitUntilConnectorIsReady();
 
@@ -80,7 +78,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     public void shouldOnlySnapshotTablesInList(boolean colocation) throws Exception {
-        TestHelper.dropAllSchemas();
         createTables(colocation);
 
         int recordCountT1 = 5000;
@@ -98,14 +95,14 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE_TABLES, "public.test_1");
 
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
 
         awaitUntilConnectorIsReady();
 
         // Dummy wait condition to wait for another 15 seconds
         TestHelper.waitFor(Duration.ofSeconds(15));
 
-        SourceRecords records = consumeRecordsByTopic(recordCountT1);
+        SourceRecords records = consumeByTopic(recordCountT1);
 
         assertNotNull(records);
 
@@ -120,7 +117,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     public void snapshotTableThenStreamData(boolean colocation) throws Exception {
-        TestHelper.dropAllSchemas();
         createTables(colocation);
 
         int recordCountT1 = 5000;
@@ -132,7 +128,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
 
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
 
         awaitUntilConnectorIsReady();
 
@@ -156,7 +152,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     public void snapshotTableWithCompaction(boolean colocation) throws Exception {
-        TestHelper.dropAllSchemas();
         createTables(colocation);
 
         int recordCount = 5000;
@@ -168,7 +163,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
 
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
 
         awaitUntilConnectorIsReady();
 
@@ -187,8 +182,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     public void snapshotForMultipleTables(boolean colocation) throws Exception {
-        TestHelper.dropAllSchemas();
-
         // Create colocated tables
         createTables(colocation);
 
@@ -203,7 +196,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         Configuration.Builder configBuilder =
           TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2,public.test_3", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
 
         awaitUntilConnectorIsReady();
 
@@ -232,8 +225,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
 
     @Test
     public void snapshotMixOfColocatedNonColocatedTables() throws Exception {
-        TestHelper.dropAllSchemas();
-
         // Create tables.
         createTables(true /* enforce creation of the colocated tables only */);
 
@@ -250,7 +241,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         Configuration.Builder configBuilder =
           TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2,public.test_3,public.test_no_colocated", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
 
         awaitUntilConnectorIsReady();
 
@@ -283,8 +274,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
 
     @Test
     public void snapshotColocatedNonColocatedThenStream() throws Exception {
-        TestHelper.dropAllSchemas();
-
         // Create tables.
         createTables(true /* enforce creation of the colocated tables only */);
 
@@ -300,7 +289,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         Configuration.Builder configBuilder =
           TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2,public.test_3,public.test_no_colocated", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
-        start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
 
         awaitUntilConnectorIsReady();
 
@@ -346,6 +335,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
      * Helper function to create the required tables in the database DEFAULT_COLOCATED_DB_NAME
      */
     private void createTables(boolean colocation) {
+        LOGGER.info("Creating tables with colocation: {}", colocation);
         final String createTest1 = String.format("CREATE TABLE test_1 (id INT PRIMARY KEY," +
                                                  "name TEXT DEFAULT 'Vaibhav Kushwaha') " +
                                                   "WITH (COLOCATION = %b);", colocation);
@@ -383,42 +373,5 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
 
     private void verifyRecordCount(long recordsCount) {
         waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
-    }
-
-    private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
-        waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
-    }
-
-    /**
-     * Consume the records available and add them to a list for further assertion purposes.
-     * @param records list to which we need to add the records we consume, pass a
-     * {@code new ArrayList<>()} if you do not need assertions on the consumed values
-     * @param recordsCount total number of records which should be consumed
-     * @param milliSecondsToWait duration in milliseconds to wait for while consuming
-     */
-    private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
-                                            long milliSecondsToWait) {
-        AtomicLong totalConsumedRecords = new AtomicLong();
-        long seconds = milliSecondsToWait / 1000;
-        try {
-            Awaitility.await()
-              .atMost(Duration.ofSeconds(seconds))
-              .until(() -> {
-                  int consumed = super.consumeAvailableRecords(record -> {
-                      LOGGER.debug("The record being consumed is " + record);
-                      records.add(record);
-                  });
-                  if (consumed > 0) {
-                      totalConsumedRecords.addAndGet(consumed);
-                      LOGGER.info("Consumed " + totalConsumedRecords + " records");
-                  }
-
-                  return totalConsumedRecords.get() == recordsCount;
-              });
-        } catch (ConditionTimeoutException exception) {
-            fail("Failed to consume " + recordsCount + " in " + seconds + " seconds", exception);
-        }
-
-        assertEquals(recordsCount, totalConsumedRecords.get());
     }
 }

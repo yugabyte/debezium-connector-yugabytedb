@@ -495,6 +495,48 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         }
     }
 
+    public enum ConsistencyMode implements EnumeratedValue {
+
+        /**
+         * Default. No consistency filters applied
+         */
+        DEFAULT("default"),
+
+        /**
+         * Key-level consistency
+         */
+        KEY("key"),
+
+        /*
+         * Global Consistency
+         */
+        GLOBAL("global");
+
+        private final String value;
+
+        ConsistencyMode(String value) {
+            this.value = value;
+        }
+
+        @Override
+        public String getValue() {
+            return value;
+        }
+
+        public static ConsistencyMode parse(String value) {
+            if (value == null) {
+                return null;
+            }
+            value = value.trim();
+            for (ConsistencyMode consistencyMode : ConsistencyMode.values()) {
+                if (consistencyMode.getValue().equalsIgnoreCase(value)) {
+                    return consistencyMode;
+                }
+            }
+            return null;
+        }
+    }
+
     protected static final String DATABASE_CONFIG_PREFIX = "database.";
     protected static final String TASK_CONFIG_PREFIX = "task.";
 
@@ -922,6 +964,27 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     "'skip' to skip / ignore TRUNCATE events (default), " +
                     "'include' to handle and include TRUNCATE events");
 
+    public static final Field TRANSACTION_ORDERING = Field.create("transaction.ordering")
+           .withDisplayName("Order transactions")
+           .withGroup(Field.createGroupEntry(Field.Group.CONNECTOR, 23))
+           .withImportance(Importance.HIGH)
+           .withDefault(false)
+           .withType(Type.BOOLEAN)
+           .withValidation(Field::isBoolean)
+           .withDescription("Specify whether the transactions need to be ordered");
+
+    public static final Field CONSISTENCY_MODE = Field.create("consistency.mode")
+            .withDisplayName("Transaction Consistency mode")
+            .withGroup(Field.createGroupEntry(Field.Group.CONNECTOR, 23))
+            .withEnum(ConsistencyMode.class, ConsistencyMode.DEFAULT)
+            .withWidth(Width.MEDIUM)
+            .withImportance(Importance.MEDIUM)
+            .withValidation(YugabyteDBConnectorConfig::validateTruncateHandlingMode)
+            .withDescription("Specify how transactions should be managed when streaming events: " +
+                    "'default' no consistency grouping is done. Events are generated when received, " +
+                    "'key' Consistency grouping is at primary key level, " +
+                    "'global' Consistency grouping is at global level across all transactions");
+
     /**
      * A comma-separated list of regular expressions that match the prefix of logical decoding messages to be excluded
      * from monitoring. Must not be used with {@link #LOGICAL_DECODING_MESSAGE_PREFIX_INCLUDE_LIST}
@@ -1043,6 +1106,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     "If starts with 'hex:' prefix it is expected that the rest of the string repesents hexadecimally encoded octets.");
 
     private final TruncateHandlingMode truncateHandlingMode;
+    private final ConsistencyMode consistencyMode;
     private final HStoreHandlingMode hStoreHandlingMode;
     private final IntervalHandlingMode intervalHandlingMode;
     private final SnapshotMode snapshotMode;
@@ -1062,6 +1126,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 ColumnFilterMode.SCHEMA);
 
         this.truncateHandlingMode = TruncateHandlingMode.parse(config.getString(YugabyteDBConnectorConfig.TRUNCATE_HANDLING_MODE));
+        this.consistencyMode = ConsistencyMode.parse(config.getString(YugabyteDBConnectorConfig.CONSISTENCY_MODE));
         this.logicalDecodingMessageFilter = new LogicalDecodingMessageFilter(config.getString(LOGICAL_DECODING_MESSAGE_PREFIX_INCLUDE_LIST),
                 config.getString(LOGICAL_DECODING_MESSAGE_PREFIX_EXCLUDE_LIST));
         String hstoreHandlingModeStr = config.getString(YugabyteDBConnectorConfig.HSTORE_HANDLING_MODE);
@@ -1173,6 +1238,13 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return truncateHandlingMode;
     }
 
+    public boolean transactionOrdering() {
+        return getConfig().getBoolean(TRANSACTION_ORDERING);
+    }
+    public ConsistencyMode consistencyMode() {
+        return consistencyMode;
+    }
+
     protected HStoreHandlingMode hStoreHandlingMode() {
         return hStoreHandlingMode;
     }
@@ -1270,7 +1342,8 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     INTERVAL_HANDLING_MODE,
                     SCHEMA_REFRESH_MODE,
                     TRUNCATE_HANDLING_MODE,
-                    INCREMENTAL_SNAPSHOT_CHUNK_SIZE)
+                    INCREMENTAL_SNAPSHOT_CHUNK_SIZE,
+                    TRANSACTION_ORDERING)
             .excluding(INCLUDE_SCHEMA_CHANGES)
             .create();
 

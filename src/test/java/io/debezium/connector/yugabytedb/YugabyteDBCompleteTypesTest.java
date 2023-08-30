@@ -6,14 +6,21 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+import io.debezium.jdbc.TemporalPrecisionMode;
 import io.debezium.util.HexConverter;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+
 import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
 
 import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
 import io.debezium.util.Strings;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
     @BeforeAll
@@ -38,12 +45,11 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
         shutdownYBContainer();
     }
 
-    private void consumeRecords(long recordsCount) {
+    private void consumeRecords(List<SourceRecord> records, long recordsCount) {
         int totalConsumedRecords = 0;
         long start = System.currentTimeMillis();
-        List<SourceRecord> records = new ArrayList<>();
         while (totalConsumedRecords < recordsCount) {
-            int consumed = super.consumeAvailableRecords(record -> {
+            int consumed = consumeAvailableRecords(record -> {
                 LOGGER.debug("The record being consumed is " + record);
                 records.add(record);
             });
@@ -57,8 +63,31 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
         if (records.size() != 1) {
             throw new DebeziumException("Record count doesn't match");
         }
+    }
 
-        // todo: make these assertions inside a for loop
+    @Test
+    public void verifyAllWorkingDataTypesInSingleTable() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        Thread.sleep(1000);
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.all_types", dbStreamId);
+        startEngine(configBuilder);
+
+        awaitUntilConnectorIsReady();
+
+        final long recordsCount = 1;
+
+        // This insert statement will insert a row containing all types
+        TestHelper.execute(HelperStrings.INSERT_ALL_TYPES);
+
+        List<SourceRecord> records = new ArrayList<>();
+        CompletableFuture.runAsync(() -> consumeRecords(records, recordsCount))
+                .exceptionally(throwable -> {
+                    throw new RuntimeException(throwable);
+                }).get();
+
         // At this point of time, it is assumed that the list has only one record, so it is safe to get the record at index 0.
         SourceRecord record = records.get(0);
         assertValueField(record, "after/bigintcol/value", 123456);
@@ -90,20 +119,23 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
         assertValueField(record, "after/txt/value", "text to verify behaviour");
         assertValueField(record, "after/tm/value", 46052000);
         assertValueField(record, "after/tmtz/value", "06:30:00Z");
-        assertValueField(record, "after/ts/value", 1637841600000L);
+        assertValueField(record, "after/ts/value", 1637841600123456L);
         assertValueField(record, "after/tstz/value", "2021-11-25T06:30:00Z");
         assertValueField(record, "after/uuidval/value", "ffffffff-ffff-ffff-ffff-ffffffffffff");
     }
 
-    @Test
-    public void verifyAllWorkingDataTypesInSingleTable() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"adaptive", "adaptive_time_microseconds", "connect"})
+    public void shouldEmitTimestampValuesWithCorrectPrecision(String temporalPrecisionMode) throws Exception {
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
         Thread.sleep(1000);
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types");
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.all_types", dbStreamId);
-        start(YugabyteDBConnector.class, configBuilder.build());
+        Configuration.Builder configBuilder =
+          TestHelper.getConfigBuilder("public.all_types", dbStreamId);
+        configBuilder.with("time.precision.mode", temporalPrecisionMode);
+        startEngine(configBuilder);
 
         awaitUntilConnectorIsReady();
 
@@ -112,9 +144,25 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
         // This insert statement will insert a row containing all types
         TestHelper.execute(HelperStrings.INSERT_ALL_TYPES);
 
-        CompletableFuture.runAsync(() -> consumeRecords(recordsCount))
-                .exceptionally(throwable -> {
-                    throw new RuntimeException(throwable);
-                }).get();
+        List<SourceRecord> records = new ArrayList<>();
+
+        CompletableFuture.runAsync(() -> consumeRecords(records, recordsCount))
+          .exceptionally(throwable -> {
+              throw new RuntimeException(throwable);
+          }).get();
+
+        assertEquals(1, records.size());
+
+        // Get the only record from the list.
+        SourceRecord record = records.get(0);
+
+        TemporalPrecisionMode precisionMode = TemporalPrecisionMode.parse(temporalPrecisionMode);
+        if (precisionMode == TemporalPrecisionMode.ADAPTIVE
+              || precisionMode == TemporalPrecisionMode.ADAPTIVE_TIME_MICROSECONDS) {
+            assertValueField(record, "after/ts/value", 1637841600123456L);
+        } else if (precisionMode == TemporalPrecisionMode.CONNECT) {
+            // Note that in 'connect' mode, we have a loss of precision.
+            assertValueField(record, "after/ts/value", 1637841600123L);
+        }
     }
 }

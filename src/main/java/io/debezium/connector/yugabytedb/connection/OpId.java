@@ -138,4 +138,15 @@ public class OpId implements Comparable<OpId> {
     public CdcSdkCheckpoint toCdcSdkCheckpoint() {
         return new CdcSdkCheckpoint(this.term, this.index, this.key, this.write_id, this.time);
     }
+
+    /**
+     * Verify that the OpId is lesser than or equal to the given {@link CdcSdkCheckpoint}
+     * @param checkpoint
+     * @return true if the term and index of time of this {@link OpId} are lesser than or equal to
+     * the corresponding values in {@link CdcSdkCheckpoint}
+     */
+    public boolean isLesserThanOrEqualTo(CdcSdkCheckpoint checkpoint) {
+        return (checkpoint != null && this.term <= checkpoint.getTerm()
+                && this.index <= checkpoint.getIndex() && this.time <= checkpoint.getTime());
+    }
 }

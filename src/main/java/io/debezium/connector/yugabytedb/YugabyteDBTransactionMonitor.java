@@ -95,7 +95,7 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 		}
 		else if (!transactionContext.getTransactionId(partition).equals(txId)) {
 			LOGGER.info("Received a different transaction ID ({}) for the partition {} " +
-									"with another transaction ({}) in progress", txId, partition.getId(),
+									"with another transaction ({}) in progress", txId, partition.getFullPartitionName(),
 									transactionContext.getTransactionId(partition));
 		}
 		transactionEvent(partition, offset, source, value);
@@ -148,7 +148,7 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 		final Struct value = new Struct(transactionValueSchema);
 		value.put(DEBEZIUM_TRANSACTION_STATUS_KEY, TransactionStatus.BEGIN.name());
 		value.put(DEBEZIUM_TRANSACTION_ID_KEY, transactionContext.getTransactionId(partition));
-		value.put(PARTITION_ID_KEY, partition.getId());
+		value.put(PARTITION_ID_KEY, partition.getFullPartitionName());
 
 		sender.accept(new SourceRecord(partition.getSourcePartition(), offsetContext.getOffset(),
 			topicName, null, key.schema(), key, value.schema(), value));
@@ -162,7 +162,7 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 		value.put(DEBEZIUM_TRANSACTION_STATUS_KEY, TransactionStatus.END.name());
 		value.put(DEBEZIUM_TRANSACTION_ID_KEY, transactionContext.getTransactionId(partition));
 		value.put(DEBEZIUM_TRANSACTION_EVENT_COUNT_KEY, transactionContext.getTotalEventCount(partition));
-		value.put(PARTITION_ID_KEY, partition.getId());
+		value.put(PARTITION_ID_KEY, partition.getFullPartitionName());
 
 		// TODO: Process and add per table event count here if required.
 

@@ -65,7 +65,7 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 		String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
 		Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 		configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
-		start(YugabyteDBConnector.class, configBuilder.build());
+		startEngine(configBuilder);
 		awaitUntilConnectorIsReady();
 
 		// Consume whatever records are available.
@@ -83,7 +83,7 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 
 		// Start the connector again - this step will ensure that the connector is resuming the snapshot
 		// and only starting the consumption from the point it left.
-		start(YugabyteDBConnector.class, configBuilder.build());
+		startEngine(configBuilder);
 		awaitUntilConnectorIsReady();
 
 		// Only verifying the record count since the snapshot records are not ordered, so it may be
@@ -118,7 +118,7 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 			Awaitility.await()
 				.atMost(Duration.ofSeconds(seconds))
 				.until(() -> {
-					int consumed = super.consumeAvailableRecords(record -> {
+					int consumed = consumeAvailableRecords(record -> {
 						LOGGER.debug("The record being consumed is " + record);
 						records.add(record);
 					});
@@ -141,7 +141,7 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 		Awaitility.await()
 			.atMost(Duration.ofSeconds(60))
 			.until(() -> {
-				int consumed = super.consumeAvailableRecords(record -> {
+				int consumed = consumeAvailableRecords(record -> {
 					LOGGER.debug("The record being consumed is " + record);
 				});
 				if (consumed > 0) {

@@ -60,8 +60,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     private OpId lastCompletelyProcessedLsn;
 
     private YugabyteDBTypeRegistry yugabyteDbTypeRegistry;
-
     private Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
+    protected Map<String, Long> tabletSafeTime;
+    protected Map<String, YBTable> tableIdToTable;
+    protected Map<String, Boolean> shouldWaitForCallback;
 
     private boolean snapshotComplete = false;
 
@@ -93,7 +95,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
         this.yugabyteDbTypeRegistry = taskContext.schema().getTypeRegistry();
         this.tabletToExplicitCheckpoint = new HashMap<>();
-
+        this.tabletSafeTime = new HashMap<>();
+        this.tableIdToTable = new HashMap<>();
+        this.shouldWaitForCallback = new HashMap<>();
     }
 
     @Override
@@ -219,6 +223,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           snapshotCompletedTablets.add(tabletId);
           snapshotCompletedPreviously.add(tabletId);
         } else {
+          LOGGER.debug("Setting checkpoint on tablet {} with 0.0");
           YBClientUtils.setCheckpoint(this.syncClient, 
                                       this.connectorConfig.streamId(), 
                                       tableId /* tableId */, 
@@ -273,7 +278,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         throw new DebeziumException(e);
       }
 
-      Map<String, YBTable> tableIdToTable = new HashMap<>();
       Set<String> tableUUIDs = tableToTabletIds.stream()
                                   .map(pair -> pair.getLeft())
                                   .collect(Collectors.toSet());
@@ -302,6 +306,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                             YugabyteDBOffsetContext.snapshotStartLsn() : OpId.from(resp);
         previousOffset.initSourceInfo(p, this.connectorConfig, startLsn);
         schemaNeeded.put(p.getId(), Boolean.TRUE);
+        shouldWaitForCallback.put(p.getId(), Boolean.TRUE);
         LOGGER.debug("Previous offset for table {} tablet {} is {}", p.getTableId(),
                      p.getTabletId(), previousOffset.toString());
       }
@@ -374,8 +379,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 if (snapshotCompletedTablets.contains(part.getId())
                       || tabletsWaitingForCallback.contains(part.getId())) {
                   // Before continuing, check if the tablets waiting for callback have been updated in case of explicit checkpointing.
-                  if (taskContext.shouldEnableExplicitCheckpointing()) {
-                    doSnapshotCompletionCheck(part, snapshotCompletedTablets, tabletsWaitingForCallback);
+                  if (!snapshotCompletedTablets.contains(part.getId()) && taskContext.shouldEnableExplicitCheckpointing()) {
+                    doSnapshotCompletionCheck(part, snapshotCompletedTablets, tabletsWaitingForCallback, previousOffset);
                   }
                   continue;
                 }
@@ -397,7 +402,17 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 GetChangesResponse resp = this.syncClient.getChangesCDCSDK(table,
                     connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
-                    taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null);
+                    taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
+                    tabletSafeTime.getOrDefault(part.getId(), -1L));
+
+                tabletSafeTime.put(part.getId(), resp.getResp().getSafeHybridTime());
+
+                // If the response doesn't have any record, it is safe to assume that we should not wait
+                // for the callback to come and that we can proceed further in processing this particular tablet.
+                if (resp.getResp().getCdcSdkProtoRecordsCount() == 0) {
+                  LOGGER.info("Should not wait for callback on tablet {}", part.getId());
+                  shouldWaitForCallback.put(part.getId(), Boolean.FALSE);
+                }
 
                 // Process the response
                 for (CdcService.CDCSDKProtoRecordPB record :
@@ -455,10 +470,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                       // In case of snapshots, we do not want to ignore tableUUID while updating
                       // OpId value for a table-tablet pair.
-                      previousOffset.updateWalPosition(part, lsn, lastCompletelyProcessedLsn,
-                                                       message.getCommitTime(), 
-                                                       String.valueOf(message.getTransactionId()),
-                                                       tId, null);
+                      previousOffset.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn,
+                                                          message.getRawCommitTime(),
+                                                          String.valueOf(message.getTransactionId()),
+                                                          tId, message.getRecordTime());
 
                       boolean dispatched = (message.getOperation() != Operation.NOOP) &&
                           dispatcher.dispatchDataChangeEvent(part, tId,
@@ -478,7 +493,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 OpId finalOpId = new OpId(resp.getTerm(), resp.getIndex(), resp.getKey(),
                                           resp.getWriteId(), resp.getSnapshotTime());
-                LOGGER.debug("Final OpId is {}", finalOpId);
+                LOGGER.debug("Final OpId for tablet {} is {}", part.getId(), finalOpId);
 
                 /*
                    This block checks and validates for two scenarios:
@@ -508,9 +523,12 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   // tabletId to snapshotCompletedTablets - there is a chance that when the
                   // connector crashes, we may lose some data since we may not have published them
                   // to Kafka yet.
-                  if (isSnapshotCompleteMarker(OpId.from(this.tabletToExplicitCheckpoint.get(part.getId())))) {
+                  CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
+                  if (explicitCheckpoint != null && isSnapshotCompleteMarker(OpId.from(explicitCheckpoint))) {
                     // This will mark the snapshot completed for the tablet
                     snapshotCompletedTablets.add(part.getId());
+
+                    markSnapshotDoneOnServer(part, previousOffset);
 
                     // Remove the tablet from the set.
                     tabletsWaitingForCallback.removeIf(t -> t.equals(part.getId()));
@@ -519,15 +537,26 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   } else if (isSnapshotCompleteMarker(finalOpId)) {
                     // Add it to tablets waiting for callback so that the connector doesn't end up
                     // calling GetChanges for the same again.
-                    tabletsWaitingForCallback.add(part.getId());
+                    if (shouldWaitForCallback.get(part.getId())) {
+                      if (!tabletsWaitingForCallback.contains(part.getId())) {
+                        LOGGER.info("Adding tablet {} of table {} ({}) to wait-list",
+                                    part.getId(), table.getName(), part.getTableId());
+                        tabletsWaitingForCallback.add(part.getId());
+                      }
+                    } else {
+                      LOGGER.info("Adding {} to the list of snapshot completed tablets", part.getId());
+                      snapshotCompletedTablets.add(part.getId());
+                      markSnapshotDoneOnServer(part, previousOffset);
+                    }
                   }
                 } else if (!taskContext.shouldEnableExplicitCheckpointing() && isSnapshotCompleteMarker(finalOpId)) {
                   snapshotCompletedTablets.add(part.getId());
+                  markSnapshotDoneOnServer(part, previousOffset);
                   LOGGER.info("I: Snapshot completed for tablet {} belonging to table {} ({})",
                     part.getTabletId(), table.getName(), part.getTableId());
                 }
 
-                previousOffset.getSourceInfo(part).updateLastCommit(finalOpId);
+                previousOffset.updateWalPosition(part, finalOpId);
             }
             
             // Reset the retry count here indicating that if the flow has reached here then
@@ -553,10 +582,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           }
 
           LOGGER.warn("Error while trying to get the snapshot from the server; will attempt " 
-                      + "retry {} of {} after {} milli-seconds. Exception message: {}", retryCount, 
+                      + "retry {} of {} after {} milli-seconds. Exception: {}", retryCount, 
                        this.connectorConfig.maxConnectorRetries(), 
-                       this.connectorConfig.connectorRetryDelayMs(), e.getMessage());
-          LOGGER.debug("Stacktrace: ", e);
+                       this.connectorConfig.connectorRetryDelayMs(), e);
 
           try {
             final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
@@ -588,19 +616,55 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
    * @param tabletsWaitingForCallback a set containing tablets which have completed snapshot from server but have not received the explicit checkpoint
    */
   public void doSnapshotCompletionCheck(YBPartition partition, Set<String> snapshotCompletedTablets,
-                                        Set<String> tabletsWaitingForCallback) {
-      OpId opId = OpId.from(this.tabletToExplicitCheckpoint.get(partition.getId()));
-      if (opId == null) {
+                                        Set<String> tabletsWaitingForCallback, YugabyteDBOffsetContext offsetContext) throws Exception {
+      if (this.tabletToExplicitCheckpoint.get(partition.getId()) == null) {
         // If we have no OpId stored in the explicit checkpoint map then that would indicate that
         // we haven't yet received any callback from Kafka even once and we should wait more.
         return;
       }
 
+      OpId opId = OpId.from(this.tabletToExplicitCheckpoint.get(partition.getId()));
       if (isSnapshotCompleteMarker(opId)) {
+        LOGGER.info("Adding tablet {} to snapshot completed list", partition.getId());
         snapshotCompletedTablets.add(partition.getId());
+        markSnapshotDoneOnServer(partition, offsetContext);
         tabletsWaitingForCallback.removeIf(t -> t.equals(partition.getId()));
       }
     }
+
+  public void markSnapshotDoneOnServer(YBPartition partition, YugabyteDBOffsetContext offsetContext) throws Exception {
+    OpId snapshotDoneMarker = offsetContext.snapshotDoneKeyLsn(partition);
+
+    short retryCount = 0;
+    while (retryCount <= connectorConfig.maxConnectorRetries()) {
+      try {
+        LOGGER.info("Marking snapshot completed on service for table {} tablet {}", partition.getTableId(), partition.getTabletId());
+        GetChangesResponse response =
+            this.syncClient.getChangesCDCSDK(tableIdToTable.get(partition.getTableId()), connectorConfig.streamId(), 
+                                             partition.getTabletId(), snapshotDoneMarker.getTerm(),
+                                             snapshotDoneMarker.getIndex(), snapshotDoneMarker.getKey(), 
+                                             snapshotDoneMarker.getWrite_id(), snapshotDoneMarker.getTime(),
+                              false /* schema is not needed since this is a dummy call */,
+                                             taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(partition.getId()) : null,
+                                             tabletSafeTime.getOrDefault(partition.getId(), -1L));
+
+        // Break upon successful request.
+        break;
+      } catch (Exception e) {
+        ++retryCount;
+
+        if (retryCount > connectorConfig.maxConnectorRetries()) {
+          LOGGER.error("Too many errors while trying to mark snapshot completed on service for table {} tablet {} error: ",
+                       partition.getTableId(), partition.getTabletId(), e);
+          throw e;
+        }
+        
+        LOGGER.warn("Error while marking snapshot completed on service for table {} tablet {}, will attempt retry {} of {} for error {}",
+                    partition.getTableId(), partition.getTabletId(), retryCount, connectorConfig.maxConnectorRetries(), e);
+      }
+    }
+
+  }
 
     /**
      * For EXPLICIT checkpointing, the following code flow is used:<br><br>
@@ -621,7 +685,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         }
 
         try {
-            LOGGER.info("Committing offsets on server for snapshot");
+            LOGGER.info("{} | Committing offsets on server for snapshot", taskContext.getTaskId());
 
             for (Map.Entry<String, ?> entry : offset.entrySet()) {
                 // TODO: The transaction_id field is getting populated somewhere and see if it can
@@ -639,7 +703,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 }
             }
         } catch (Exception e) {
-            LOGGER.warn("Unable to update the explicit checkpoint map", e);
+            LOGGER.warn("{} | Unable to update the explicit checkpoint map {}", taskContext.getTaskId(), e);
         }
     }
 
@@ -742,7 +806,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
     protected void updateOffsetForPreSnapshotCatchUpStreaming(YugabyteDBOffsetContext offset) throws SQLException {
         updateOffsetForSnapshot(offset);
-        offset.setStreamingStoppingLsn(null/* OpId.valueOf(jdbcConnection.currentXLogLocation()) */);
     }
 
     // TOOD:CDCSDK get the offset from YB for snapshot.

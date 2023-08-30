@@ -63,7 +63,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
     String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 
-    start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+    startEngine(configBuilder, (success, message, error) -> {
       assertTrue(success);
     });
 
@@ -109,7 +109,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
     }
 
     // Consume the records now - there will be 100 records in total.
-    SourceRecords records = consumeRecordsByTopic(100);
+    SourceRecords records = consumeByTopic(100);
     
     // Verify that the records are there in the topic.
     assertEquals(100, records.recordsForTopic("test_server.public.t1").size());
@@ -175,7 +175,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
     String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 
-    start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+    startEngine(configBuilder, (success, message, error) -> {
       assertTrue(success);
     });
 
@@ -206,7 +206,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
     Set<Integer> recordKeySet = new HashSet<>();
     int failureCounter = 0;
     while (recordKeySet.size() < recordsCount) {
-        int consumed = super.consumeAvailableRecords(record -> {
+        int consumed = consumeAvailableRecords(record -> {
             Struct s = (Struct) record.key();
             int value = s.getStruct("id").getInt32("value");
             recordKeySet.add(value);

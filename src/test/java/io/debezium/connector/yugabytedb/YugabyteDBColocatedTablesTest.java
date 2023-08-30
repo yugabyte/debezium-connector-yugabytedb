@@ -3,20 +3,17 @@ package io.debezium.connector.yugabytedb;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.annotations.PreviewOnly;
 import io.debezium.connector.yugabytedb.common.TestBaseClass;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.kafka.connect.source.SourceRecord;
-import org.awaitility.Awaitility;
-import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
 
 /**
@@ -24,7 +21,6 @@ import org.junit.jupiter.api.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-@PreviewOnly
 public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
   private final String INSERT_TEST_1 = "INSERT INTO test_1 VALUES (%d, 'sample insert');";
   private final String INSERT_TEST_2 = "INSERT INTO test_2 VALUES (%d::text);";
@@ -64,7 +60,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME,
         "public.test_1", dbStreamId);
 
-    start(YugabyteDBConnector.class, configBuilder.build());
+    startEngine(configBuilder);
 
     awaitUntilConnectorIsReady();
 
@@ -73,7 +69,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords records = consumeRecordsByTopic(10);
+    SourceRecords records = consumeByTopic(10);
 
     assertNotNull(records);
 
@@ -95,7 +91,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME,
         "public.test_1,public.test_2", dbStreamId);
 
-    start(YugabyteDBConnector.class, configBuilder.build());
+    startEngine(configBuilder);
 
     awaitUntilConnectorIsReady();
 
@@ -106,7 +102,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords records = consumeRecordsByTopic(20);
+    SourceRecords records = consumeByTopic(20);
 
     assertNotNull(records);
 
@@ -129,7 +125,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME,
         "public.test_1,public.test_2,public.test_no_colocated", dbStreamId);
 
-    start(YugabyteDBConnector.class, configBuilder.build());
+    startEngine(configBuilder);
 
     awaitUntilConnectorIsReady();
 
@@ -141,7 +137,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords records = consumeRecordsByTopic(30);
+    SourceRecords records = consumeByTopic(30);
 
     assertNotNull(records);
 
@@ -163,7 +159,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME,
         "public.test_1,public.test_2", dbStreamId);
 
-    start(YugabyteDBConnector.class, configBuilder.build());
+    startEngine(configBuilder);
 
     awaitUntilConnectorIsReady();
 
@@ -175,7 +171,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords records = consumeRecordsByTopic(20);
+    SourceRecords records = consumeByTopic(20);
 
     assertNotNull(records);
 
@@ -189,32 +185,34 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Stop the connector and modify the configuration
     stopConnector();
 
+    TestHelper.executeBulkWithRange(INSERT_TEST_2, 11, 21, DEFAULT_COLOCATED_DB_NAME);
+
     configBuilder.with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST,
                        "public.test_1,public.test_2,public.test_3");
 
     // The connector would now start polling for the included tables. Note that the earlier data for
     // table test_3 won't be streamed since it might have gotten garbage collected since it resides
     // on the same tablet i.e. colocated
-    start(YugabyteDBConnector.class, configBuilder.build());
+    startEngine(configBuilder);
     awaitUntilConnectorIsReady();
 
     // The below statements will insert records of the respective types with keys in the
     // range [11,21)
     TestHelper.executeBulkWithRange(INSERT_TEST_1, 11, 21, DEFAULT_COLOCATED_DB_NAME);
-    TestHelper.executeBulkWithRange(INSERT_TEST_2, 11, 21, DEFAULT_COLOCATED_DB_NAME);
+    TestHelper.executeBulkWithRange(INSERT_TEST_2, 21, 101, DEFAULT_COLOCATED_DB_NAME);
     TestHelper.executeBulkWithRange(INSERT_TEST_3, 11, 21, DEFAULT_COLOCATED_DB_NAME);
 
     // Dummy wait for 10 more seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords recordsAfterRestart = consumeRecordsByTopic(30);
+    SourceRecords recordsAfterRestart = consumeByTopic(110);
 
     assertNotNull(recordsAfterRestart);
 
     assertEquals(
       10, recordsAfterRestart.recordsForTopic(TestHelper.TEST_SERVER + ".public.test_1").size());
     assertEquals(
-      10, recordsAfterRestart.recordsForTopic(TestHelper.TEST_SERVER + ".public.test_2").size());
+      90, recordsAfterRestart.recordsForTopic(TestHelper.TEST_SERVER + ".public.test_2").size());
     assertEquals(
       10, recordsAfterRestart.recordsForTopic(TestHelper.TEST_SERVER + ".public.test_3").size());
 
@@ -242,8 +240,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 5_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
 
-    start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> assertTrue(success));
-
+    startEngine(configBuilder, (success, message, error) -> assertTrue(success));
     awaitUntilConnectorIsReady();
 
     // Start threads to perform schema change operations on the colocated tables.
@@ -286,7 +283,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     createTest2.append(") WITH (COLOCATED = true);");
     createTest3.append(") WITH (COLOCATED = true);");
 
-    final String createTestNoColocated = 
+    final String createTestNoColocated =
       "CREATE TABLE test_no_colocated (id INT PRIMARY KEY, name TEXT) WITH (COLOCATED = false)"
       + " SPLIT INTO 3 TABLETS;";
 
@@ -312,32 +309,6 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
 
   private void verifyRecordCount(List<SourceRecord> records, long recordsCount) {
     waitAndFailIfCannotConsume(records, recordsCount, 10 * 60 * 1000);
-  }
-
-  private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
-                                          long milliSecondsToWait) {
-    AtomicLong totalConsumedRecords = new AtomicLong();
-    long seconds = milliSecondsToWait / 1000;
-    try {
-      Awaitility.await()
-              .atMost(Duration.ofSeconds(seconds))
-              .until(() -> {
-                int consumed = super.consumeAvailableRecords(record -> {
-                  LOGGER.debug("The record being consumed is " + record);
-                  records.add(record);
-                });
-                if (consumed > 0) {
-                  totalConsumedRecords.addAndGet(consumed);
-                  LOGGER.debug("Consumed " + totalConsumedRecords + " records");
-                }
-
-                return totalConsumedRecords.get() == recordsCount;
-              });
-    } catch (ConditionTimeoutException exception) {
-      fail("Failed to consume " + recordsCount + " records in " + seconds + " seconds, total consumed: " + totalConsumedRecords.get(), exception);
-    }
-
-    assertEquals(recordsCount, totalConsumedRecords.get());
   }
 
   protected static class Executor extends TestBaseClass implements Runnable {

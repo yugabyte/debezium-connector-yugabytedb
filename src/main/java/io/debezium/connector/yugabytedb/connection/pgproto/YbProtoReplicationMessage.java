@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.Common;
 import org.yb.QLType;
 import org.yb.Value;
+
 import org.yb.cdc.CdcService;
 
 import io.debezium.connector.yugabytedb.YugabyteDBStreamingChangeEventSource.PgConnectionSupplier;
@@ -74,6 +75,13 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
         return Instant.ofEpochSecond(0, rawMessage.getCommitTime() * 1_000);
     }
 
+    public long getRawCommitTime() {
+        return rawMessage.getCommitTime();
+    }
+
+    public long getRecordTime() {
+        return rawMessage.getRecordTime();
+    }
     @Override
     public String getTransactionId() {
         return rawMessage.getTransactionId() == null ? null : rawMessage.getTransactionId().toStringUtf8();
@@ -104,7 +112,8 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
         return IntStream.range(0, messageList.size())
                 .mapToObj(index -> {
                     final Common.DatumMessagePB datum = messageList.get(index);
-                    // For CQL, we need the decoding here.
+                    // Suranjan: For CQL, we need the decoding here.
+                    final Optional<CdcService.TypeInfo> typeInfo = Optional.ofNullable(hasTypeMetadata() && typeInfoList != null ? typeInfoList.get(index) : null);
                     final String columnName = Strings.unquoteIdentifierPart(datum.getColumnName());
 
                     if (datum.getCqlValue() == null) {
