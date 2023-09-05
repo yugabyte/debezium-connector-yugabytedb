@@ -11,6 +11,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.common.config.ConfigDef;
@@ -1283,6 +1284,19 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
     protected long newTablePollIntervalMs() {
         return getConfig().getLong(NEW_TABLE_POLL_INTERVAL_MS);
+    }
+
+    public String getModifiedHostPortString() {
+        StringBuilder hostPortString = new StringBuilder();
+        String[] hostnames = getConfig().getString(HOSTNAME).split(Pattern.quote(","));
+
+        // Add the port number to every host IP.
+        for (String host : hostnames) {
+            hostPortString.append(host).append(":5433,");
+        }
+
+        // Remove the last comma.
+        return hostPortString.substring(0, hostPortString.length() - 1);
     }
 
     /*
