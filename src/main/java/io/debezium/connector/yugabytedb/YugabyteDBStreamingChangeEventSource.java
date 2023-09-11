@@ -222,7 +222,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             }
         }
 
-        short maxBootstrapRetries = 25;
+        int maxBootstrapRetries = connectorConfig.maxConnectorRetries() * 5;
         for (Pair<String, String> entry : tabletPairList) {
             // entry is a Pair<tableId, tabletId>
             boolean shouldRetry = true;

@@ -172,7 +172,7 @@ public class YugabyteDBConnection extends JdbcConnection {
      */
     public String connectionString() {
         String hostName = config.getHostname();
-        if(hostName.contains(":")){
+        if (hostName.contains(":")) {
             return connectionString(MULTI_HOST_URL_PATTERN);
         } else {
             return connectionString(SINGLE_HOST_URL_PATTERN);
