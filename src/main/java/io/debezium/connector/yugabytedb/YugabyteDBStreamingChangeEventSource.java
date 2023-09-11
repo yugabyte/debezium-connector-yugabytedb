@@ -222,14 +222,16 @@ public class YugabyteDBStreamingChangeEventSource implements
             }
         }
 
-        short retryCountForBootstrapping = 0;
+        short maxBootstrapRetries = 25;
         for (Pair<String, String> entry : tabletPairList) {
             // entry is a Pair<tableId, tabletId>
             boolean shouldRetry = true;
-            while (retryCountForBootstrapping <= connectorConfig.maxConnectorRetries() && shouldRetry) {
+            short retryCountForBootstrapping = 0;
+            while (retryCountForBootstrapping <= maxBootstrapRetries && shouldRetry) {
                 try {
                     if (!tabletsWithoutBootstrap.contains(entry.getValue())) {
-                        bootstrapTablet(this.syncClient.openTableByUUID(entry.getKey()), entry.getValue());
+                        YBTable table = this.syncClient.openTableByUUID(entry.getKey());
+                        bootstrapTablet(table, entry.getValue());
                     } else {
                         LOGGER.info("Skipping bootstrap for table {} tablet {} as it has a checkpoint", entry.getKey(), entry.getValue());
                     }
@@ -242,14 +244,14 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // The connector should go for a retry if any exception is thrown
                     shouldRetry = true;
 
-                    if (retryCountForBootstrapping > connectorConfig.maxConnectorRetries()) {
-                        LOGGER.error("Failed to bootstrap the tablet {} after {} retries", entry.getValue(), connectorConfig.maxConnectorRetries());
+                    if (retryCountForBootstrapping > maxBootstrapRetries) {
+                        LOGGER.error("Failed to bootstrap the tablet {} after {} retries", entry.getValue(), maxBootstrapRetries);
                         throw e;
                     }
 
                     // If there are retries left, perform them after the specified delay.
                     LOGGER.warn("Error while trying to bootstrap tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
-                            entry.getValue(), retryCountForBootstrapping, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
+                            entry.getValue(), retryCountForBootstrapping, maxBootstrapRetries, connectorConfig.connectorRetryDelayMs(), e.getMessage());
 
                     try {
                         final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);

@@ -82,7 +82,7 @@ public final class TestHelper {
     private static String CONTAINER_YSQL_HOST = "127.0.0.1";
     private static int CONTAINER_YSQL_PORT = 5433;
     private static String CONTAINER_MASTER_PORT = "7100";
-    private static String MASTER_ADDRESS = "";
+    private static String MASTER_ADDRESS = "127.0.0.1:7100";
     private static String DEFAULT_DATABASE_NAME = "yugabyte";
 
     /**
@@ -375,7 +375,7 @@ public final class TestHelper {
                 .with(YugabyteDBConnectorConfig.PORT, CONTAINER_YSQL_PORT)
                 .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.NEVER.getValue())
                 .with(YugabyteDBConnectorConfig.DELETE_STREAM_ON_STOP, Boolean.TRUE)
-                .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, CONTAINER_YSQL_HOST + ":" + CONTAINER_MASTER_PORT)
+                .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, MASTER_ADDRESS)
                 .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, fullTableNameWithSchema)
                 .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId);
     }
