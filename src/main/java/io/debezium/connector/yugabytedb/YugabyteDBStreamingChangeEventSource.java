@@ -868,6 +868,14 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                     // Parse the string to get the OpId object.
                     OpId tempOpId = OpId.valueOf((String) entry.getValue());
+
+                    if(this.tabletToExplicitCheckpoint.get(entry.getKey()) != null &&
+                            tempOpId.getIndex() < this.tabletToExplicitCheckpoint.get(entry.getKey()).getIndex()) {
+                        LOGGER.warn("The received OpId {} is less than the older checkpoint {} for tablet {}",
+                                    tempOpId.getIndex(), this.tabletToExplicitCheckpoint.get(entry.getKey()).getIndex(), entry.getKey());
+                        continue;
+                    }
+
                     this.tabletToExplicitCheckpoint.put(entry.getKey(), tempOpId.toCdcSdkCheckpoint());
 
                     LOGGER.debug("Committed checkpoint on server for stream ID {} tablet {} with term {} index {}",
