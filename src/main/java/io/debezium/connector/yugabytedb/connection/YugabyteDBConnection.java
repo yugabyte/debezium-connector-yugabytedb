@@ -61,8 +61,8 @@ public class YugabyteDBConnection extends JdbcConnection {
 
     private static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBConnection.class);
 
-    private static final String MULTI_HOST_URL_PATTERN = "jdbc:postgresql://${" + JdbcConfiguration.HOSTNAME + "}/${" + JdbcConfiguration.DATABASE + "}";
-    private static final String SINGLE_HOST_URL_PATTERN = "jdbc:postgresql://${" + JdbcConfiguration.HOSTNAME + "}:${"
+    public static final String MULTI_HOST_URL_PATTERN = "jdbc:postgresql://${" + JdbcConfiguration.HOSTNAME + "}/${" + JdbcConfiguration.DATABASE + "}";
+    public static final String SINGLE_HOST_URL_PATTERN = "jdbc:postgresql://${" + JdbcConfiguration.HOSTNAME + "}:${"
             + JdbcConfiguration.PORT + "}/${" + JdbcConfiguration.DATABASE + "}";
 
     protected static ConnectionFactory FACTORY; 
@@ -136,15 +136,7 @@ public class YugabyteDBConnection extends JdbcConnection {
 
     public YugabyteDBConnection(YugabyteDBConnectorConfig config,
                                 YugabyteDBTypeRegistry yugabyteDBTypeRegistry, String connectionUsage) {
-        this(config,yugabyteDBTypeRegistry, connectionUsage, config.getJdbcConfig().getHostname().contains(":")
-                        ? JdbcConnection.patternBasedFactory(MULTI_HOST_URL_PATTERN,
-                            org.postgresql.Driver.class.getName(),
-                            YugabyteDBConnection.class.getClassLoader(),
-                            JdbcConfiguration.PORT.withDefault(YugabyteDBConnectorConfig.PORT.defaultValueAsString()))
-                        : JdbcConnection.patternBasedFactory(SINGLE_HOST_URL_PATTERN,
-                                org.postgresql.Driver.class.getName(),
-                                YugabyteDBConnection.class.getClassLoader(), JdbcConfiguration.PORT
-                                        .withDefault(YugabyteDBConnectorConfig.PORT.defaultValueAsString())));
+        this(config,yugabyteDBTypeRegistry, connectionUsage, config.getConnectionFactory());
     }
 
     /**
