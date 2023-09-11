@@ -269,16 +269,17 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     }
 
     private Optional<DataCollectionSchema> newTable(TableId tableId) {
-        LOGGER.debug("Creating a new schema entry for table: {} and tablet {}", tableId, tabletId);
+        LOGGER.info("Creating a new schema entry for table: {} and tablet {}", tableId, tabletId);
         refreshTableFromDatabase(tableId);
         final TableSchema tableSchema = schema.schemaForTablet(tableId, tabletId);
-
+        LOGGER.info("Sumukh: TableSchema = " +tableSchema);
         if (tableSchema == null) {
-            LOGGER.warn("cannot load schema for table '{}'", tableId);
+            LOGGER.info("cannot load schema for table '{}'", tableId);
             return Optional.empty();
         }
         else {
-            LOGGER.debug("refreshed DB schema to include table '{}'", tableId);
+            LOGGER.info("Refreshed db schema for " + tableId + " tableSchema = " +tableSchema);
+            LOGGER.info("refreshed DB schema to include table '{}'", tableId);
             return Optional.of(tableSchema);
         }
     }
@@ -286,14 +287,18 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     private void refreshTableFromDatabase(TableId tableId) {
         try {
             // Using another implementation of refresh() to take into picture the schema information too.
-            LOGGER.debug("Refreshing schema for the table {}", tableId);
-            schema.refresh(connection, tableId,
-                           connectorConfig.skipRefreshSchemaOnMissingToastableData(),
-                           schema.getSchemaPBForTablet(tableId, tabletId), tabletId);
+            LOGGER.info("Refreshing schema for the table {}", tableId);
+            LOGGER.info("Sumukh: Is the connection null? " + connection);
+            // schema.refresh(connection, tableId, //Doubt: The connection here is null, how do we overcome this
+            //                connectorConfig.skipRefreshSchemaOnMissingToastableData(),
+            //                schema.getSchemaPBForTablet(tableId, tabletId), tabletId);
+            schema.refreshSchemas(tableId);
         }
-        catch (SQLException e) {
-            throw new ConnectException("Database error while refresing table schema", e);
-        }
+        catch(Exception e){;}
+        // catch (SQLException e) {
+        //     System.out.println("Database error while refresing table schema");
+        //     throw new ConnectException("Database error while refresing table schema", e);
+        // }
     }
 
     static Optional<DataCollectionSchema> updateSchema(YBPartition partition, TableId tableId,

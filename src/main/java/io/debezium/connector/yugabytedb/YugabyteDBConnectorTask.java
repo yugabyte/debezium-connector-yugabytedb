@@ -69,9 +69,9 @@ public class YugabyteDBConnectorTask
         final YugabyteDBConnectorConfig connectorConfig = new YugabyteDBConnectorConfig(config);
         final TopicSelector<TableId> topicSelector = YugabyteDBTopicSelector.create(connectorConfig);
         final Snapshotter snapshotter = connectorConfig.getSnapshotter();
-        final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
+        final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create(); //Kafka connect schema 
 
-        LOGGER.debug("The config is " + config);
+        LOGGER.info("Inside task The config is " + config);
 
         if (snapshotter == null) {
             throw new ConnectException("Unable to load snapshotter, if using custom snapshot mode," +
@@ -81,49 +81,59 @@ public class YugabyteDBConnectorTask
         final String databaseCharsetName = config.getString(YugabyteDBConnectorConfig.CHAR_SET);
         final Charset databaseCharset = Charset.forName(databaseCharsetName);
 
-        String nameToTypeStr = config.getString(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString());
-        String oidToTypeStr = config.getString(YugabyteDBConnectorConfig.OID_TO_TYPE.toString());
+        // String nameToTypeStr = config.getString(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString()); //Null because I've removed type Registry
+        // String oidToTypeStr = config.getString(YugabyteDBConnectorConfig.OID_TO_TYPE.toString()); //Null because I've removed type Registry
         Encoding encoding = Encoding.defaultEncoding(); // UTF-8
 
-        Map<String, YugabyteDBType> nameToType = null;
-        Map<Integer, YugabyteDBType> oidToType = null;
-        try {
-            nameToType = (Map<String, YugabyteDBType>) ObjectUtil
-                    .deserializeObjectFromString(nameToTypeStr);
-        } catch (IOException | ClassNotFoundException e) {
-            LOGGER.error("Error while deserializing name to type string", e);
-            throw new RuntimeException(e);
-        }
+        // Uncomment Below code on fixing typeRegistry error
 
-        try {
-            oidToType = (Map<Integer, YugabyteDBType>) ObjectUtil
-                    .deserializeObjectFromString(oidToTypeStr);
-        } catch (IOException | ClassNotFoundException e) {
-            LOGGER.error("Error while deserializing object to type string", e);
-        }
+        // Map<String, YugabyteDBType> nameToType = null;
+        // Map<Integer, YugabyteDBType> oidToType = null;
+        // try {
+        //     nameToType = (Map<String, YugabyteDBType>) ObjectUtil
+        //             .deserializeObjectFromString(nameToTypeStr);
+        // } catch (IOException | ClassNotFoundException e) {
+        //     LOGGER.error("Error while deserializing name to type string", e);
+        //     throw new RuntimeException(e);
+        // }
 
-        YugabyteDBTaskConnection taskConnection = new YugabyteDBTaskConnection(encoding);
-        final YugabyteDBValueConverterBuilder valueConverterBuilder = (typeRegistry) -> YugabyteDBValueConverter.of(
+        // try {
+        //     oidToType = (Map<Integer, YugabyteDBType>) ObjectUtil
+        //             .deserializeObjectFromString(oidToTypeStr);
+        // } catch (IOException | ClassNotFoundException e) {
+        //     LOGGER.error("Error while deserializing object to type string", e);
+        // }
+
+        YugabyteDBTaskConnection taskConnection = new YugabyteDBTaskConnection(encoding); //Doubt: What is this connection doing? How is it different?
+        LOGGER.info("Sumukh new task Connection created");
+        final YugabyteDBValueConverterBuilder valueConverterBuilder = (typeRegistry) -> YugabyteDBValueConverter.of( //Doubt: What does this do?
                 connectorConfig,
                 databaseCharset,
                 typeRegistry);
 
+        final YugabyteDBCQLValueConverter cqlValueConverter = YugabyteDBCQLValueConverter.of(connectorConfig, databaseCharset);
         // Global JDBC connection used both for snapshotting and streaming.
         // Must be able to resolve datatypes.
-        jdbcConnection = new YugabyteDBConnection(connectorConfig.getJdbcConfig(), valueConverterBuilder, YugabyteDBConnection.CONNECTION_GENERAL);
+        // jdbcConnection = new YugabyteDBConnection(connectorConfig.getJdbcConfig(), valueConverterBuilder, YugabyteDBConnection.CONNECTION_GENERAL);
 
         // CDCSDK We can just build the type registry on the co-ordinator and then send the
         // map of Postgres Type and Oid to the Task using Config
-        final YugabyteDBTypeRegistry yugabyteDBTypeRegistry =
-            new YugabyteDBTypeRegistry(taskConnection, nameToType, oidToType);
+        
+        // Uncomment Below code on fixing typeRegistry error
+        // final YugabyteDBTypeRegistry yugabyteDBTypeRegistry =
+        //     new YugabyteDBTypeRegistry(taskConnection, nameToType, oidToType);
 
-        schema = new YugabyteDBSchema(connectorConfig, yugabyteDBTypeRegistry, topicSelector,
-                valueConverterBuilder.build(yugabyteDBTypeRegistry));
+        // schema = new YugabyteDBSchema(connectorConfig, yugabyteDBTypeRegistry, topicSelector,
+        //                                  valueConverterBuilder.build(yugabyteDBTypeRegistry));
+
+        //New Schema with Null type registry
+        schema = new YugabyteDBSchema(connectorConfig, topicSelector, cqlValueConverter);
 
         String taskId = config.getString(YugabyteDBConnectorConfig.TASK_ID.toString());
         boolean sendBeforeImage = config.getBoolean(YugabyteDBConnectorConfig.SEND_BEFORE_IMAGE.toString());
         boolean enableExplicitCheckpointing = config.getBoolean(YugabyteDBConnectorConfig.ENABLE_EXPLICIT_CHECKPOINTING.toString());
-        this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector, taskId, sendBeforeImage, enableExplicitCheckpointing);
+
+        this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector, taskId, sendBeforeImage, enableExplicitCheckpointing); //Doubt what is this doing? 
 
         String tabletList = config.getString(YugabyteDBConnectorConfig.TABLET_LIST);
         List<Pair<String, String>> tabletPairList = null;
@@ -158,6 +168,7 @@ public class YugabyteDBConnectorTask
                     .maxQueueSizeInBytes(connectorConfig.getMaxQueueSizeInBytes())
                     .loggingContextSupplier(() -> taskContext.configureLoggingContext(CONTEXT_NAME))
                     .build();
+                    LOGGER.info("Sumukh: ChangeEventQueue built " + queue);
 
             ErrorHandler errorHandler = new YugabyteDBErrorHandler(connectorConfig, queue);
 
@@ -168,7 +179,7 @@ public class YugabyteDBConnectorTask
                     connectorConfig,
                     topicSelector,
                     schemaNameAdjuster,
-                    () -> new YugabyteDBConnection(connectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL),
+                    () -> new YugabyteDBConnection(connectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL), //Do we need this?
                     exception -> {
                         String sqlErrorId = exception.getSQLState();
                         switch (sqlErrorId) {
@@ -182,8 +193,8 @@ public class YugabyteDBConnectorTask
                                 break;
                         }
                     });
-
-            final YugabyteDBEventDispatcher<TableId> dispatcher = new YugabyteDBEventDispatcher<>(
+            //We need non null Schema in the below instantiation
+            final YugabyteDBEventDispatcher<TableId> dispatcher = new YugabyteDBEventDispatcher<>( //This constructor takes in jdbc connection for no reason
                     connectorConfig,
                     topicSelector,
                     schema,

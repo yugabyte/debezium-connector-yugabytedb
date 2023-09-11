@@ -71,7 +71,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
     @Override
     public void start(Map<String, String> props) {
         this.props = props;
-        LOGGER.debug("Props " + props);
+        LOGGER.info("Props " + props);
         Configuration config = Configuration.from(this.props);
         this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
         
@@ -95,34 +95,40 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                     " available", maxTasks);
             return Collections.emptyList();
         }
-
+        LOGGER.info("Sumukh: Creating new YugabyteDBConnection"); //Doubt: Why are we using this? Postgres?
         connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL);
+        LOGGER.info("Sumukh: Obtained new YugabyteDBConnection");
+        LOGGER.info("Sumukh" + connection); 
+
         final Charset databaseCharset = connection.getDatabaseCharset();
         String charSetName = databaseCharset.name();
 
-        YugabyteDBTypeRegistry typeRegistry = new YugabyteDBTypeRegistry(connection);
+        // System.out.println("Sumukh: Creating new TypeRegistry"); 
+        // YugabyteDBTypeRegistry typeRegistry = new YugabyteDBTypeRegistry(connection); //Doubt: Why are we using this? Issue in creating this
+        // System.out.println("Sumukh: Obtained new TypeRegistry " + typeRegistry);
 
-        Map<String, YugabyteDBType> nameToType = typeRegistry.getNameToType();
-        Map<Integer, YugabyteDBType> oidToType = typeRegistry.getOidToType();
-        String serializedNameToType = "";
-        try {
-            serializedNameToType = ObjectUtil.serializeObjectToString(nameToType);
-            LOGGER.debug("The serializedNameToType " + serializedNameToType);
-            Object test = ObjectUtil.deserializeObjectFromString(serializedNameToType);
-            LOGGER.debug("The deserializedNameToType " + test);
-        }
-        catch (IOException | ClassNotFoundException e) {
-            e.printStackTrace();
-        }
 
-        String serializedOidToType = "";
-        try {
-            serializedOidToType = ObjectUtil.serializeObjectToString(oidToType);
-            LOGGER.debug("The serializedOidToType " + serializedOidToType);
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
+        // Map<String, YugabyteDBType> nameToType = typeRegistry.getNameToType();
+        // Map<Integer, YugabyteDBType> oidToType = typeRegistry.getOidToType();
+        // String serializedNameToType = "";
+        // try {
+        //     // serializedNameToType = ObjectUtil.serializeObjectToString(nameToType);
+        //     LOGGER.debug("The serializedNameToType " + serializedNameToType);
+        //     Object test = ObjectUtil.deserializeObjectFromString(serializedNameToType);
+        //     LOGGER.debug("The deserializedNameToType " + test);
+        // }
+        // catch (IOException | ClassNotFoundException e) {
+        //     e.printStackTrace();
+        // }
+
+        // String serializedOidToType = "";
+        // try {
+        //     // serializedOidToType = ObjectUtil.serializeObjectToString(oidToType);
+        //     LOGGER.debug("The serializedOidToType " + serializedOidToType);
+        // }
+        // catch (IOException e) {
+        //     e.printStackTrace();
+        // }
 
         Configuration config = Configuration.from(this.props);
         Map<String, ConfigValue> results = validateAllFields(config);
@@ -130,7 +136,8 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         validateTServerConnection(results, config);
         
         String streamIdValue = this.yugabyteDBConnectorConfig.streamId();
-        LOGGER.debug("The streamid in config is" + this.yugabyteDBConnectorConfig.streamId());
+        LOGGER.info("The streamid in config is" + this.yugabyteDBConnectorConfig.streamId());
+        LOGGER.info("The port in config is "+ this.yugabyteDBConnectorConfig.port());
 
         if (streamIdValue == null) {
             streamIdValue = results.get(YugabyteDBConnectorConfig.STREAM_ID.name()).value().toString();
@@ -157,14 +164,14 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         LOGGER.debug("The streamid being used is " + streamIdValue);
 
         int numGroups = Math.min(this.tabletIds.size(), maxTasks);
-        LOGGER.debug("The tabletIds size are " + tabletIds.size() + " maxTasks" + maxTasks);
+        LOGGER.info("The tabletIds size are " + tabletIds.size() + " maxTasks" + maxTasks);
 
         List<List<Pair<String, String>>> tabletIdsGrouped = YugabyteDBConnectorUtils.groupPartitionsSmartly(this.tabletIds, numGroups);
-        LOGGER.debug("The grouped tabletIds are " + tabletIdsGrouped.size());
+        LOGGER.info("The grouped tabletIds are " + tabletIdsGrouped.size());
         List<Map<String, String>> taskConfigs = new ArrayList<>(tabletIdsGrouped.size());
 
         for (List<Pair<String, String>> taskTables : tabletIdsGrouped) {
-            LOGGER.debug("The taskTables are " + taskTables);
+            LOGGER.info("The taskTables are " + taskTables);
             Map<String, String> taskProps = new HashMap<>(this.props);
             int taskId = taskConfigs.size();
             taskProps.put(YugabyteDBConnectorConfig.TASK_ID.toString(), String.valueOf(taskId));
@@ -178,15 +185,15 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             }
             taskProps.put(YugabyteDBConnectorConfig.TABLET_LIST.toString(), taskTablesSerialized);
             taskProps.put(YugabyteDBConnectorConfig.CHAR_SET.toString(), charSetName);
-            taskProps.put(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString(), serializedNameToType);
-            taskProps.put(YugabyteDBConnectorConfig.OID_TO_TYPE.toString(), serializedOidToType);
+            // taskProps.put(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString(), serializedNameToType);
+            // taskProps.put(YugabyteDBConnectorConfig.OID_TO_TYPE.toString(), serializedOidToType);
             taskProps.put(YugabyteDBConnectorConfig.STREAM_ID.toString(), streamIdValue);
             taskProps.put(YugabyteDBConnectorConfig.SEND_BEFORE_IMAGE.toString(), String.valueOf(sendBeforeImage));
             taskProps.put(YugabyteDBConnectorConfig.ENABLE_EXPLICIT_CHECKPOINTING.toString(), String.valueOf(enableExplicitCheckpointing));
             taskConfigs.add(taskProps);
         }
 
-        LOGGER.debug("Configuring {} YugabyteDB connector task(s)", taskConfigs.size());
+        LOGGER.info("Configuring {} YugabyteDB connector task(s)", taskConfigs.size());
         closeYBClient();
         return taskConfigs;
     }
