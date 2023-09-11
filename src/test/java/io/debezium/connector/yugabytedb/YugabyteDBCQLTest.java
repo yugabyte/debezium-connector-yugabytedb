@@ -23,6 +23,40 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 
 public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTestBase*/ {
+    CqlSession session;
+
+    @BeforeAll
+    public static void beforeClass() throws SQLException {
+        initializeYBContainer();
+        // TestHelper.dropAllSchemas();
+
+
+    }
+
+    @BeforeEach
+    public void before() {
+        initializeConnectorTestFramework();
+        session = CqlSession
+                .builder()
+                .addContactPoint(new InetSocketAddress("127.0.0.1", 9042))
+                .withLocalDatacenter("datacenter1")
+                .build();
+
+    }
+
+    @AfterEach
+    public void after() throws Exception {
+        stopConnector();
+        // TestHelper.executeDDL("drop_tables_and_databases.ddl");
+        session.execute("drop table if exists cdctest.test_cdc;");
+    }
+
+    @AfterAll
+    public static void afterClass() {
+        shutdownYBContainer();
+    }
+
+
 
     private void insertRecords(long numOfRowsToBeInserted) throws Exception {
         String formatInsertString = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
@@ -57,42 +91,6 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
         }).get();
     }
 
-    /**
-     * Consume the records available and add them to a list for further assertion purposes.
-     * @param records list to which we need to add the records we consume, pass a
-     * {@code new ArrayList<>()} if you do not need assertions on the consumed values
-     * @param recordsCount total number of records which should be consumed
-     * @param milliSecondsToWait duration in milliseconds to wait for while consuming
-     */
-    private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
-                                            long milliSecondsToWait) {
-        AtomicLong totalConsumedRecords = new AtomicLong();
-        long seconds = milliSecondsToWait / 1000;
-        try {
-            Awaitility.await()
-                    .atMost(Duration.ofSeconds(seconds))
-                    .until(() -> {
-                        int consumed = super.consumeAvailableRecords(record -> {
-                            LOGGER.debug("The record being consumed is " + record);
-                            records.add(record);
-                        });
-                        if (consumed > 0) {
-                            totalConsumedRecords.addAndGet(consumed);
-                            LOGGER.debug("Consumed " + totalConsumedRecords + " records");
-                        }
-
-                        return totalConsumedRecords.get() == recordsCount;
-                    });
-        } catch (ConditionTimeoutException exception) {
-            fail("Failed to consume " + recordsCount + " in " + seconds + " seconds", exception);
-        }
-
-        assertEquals(recordsCount, totalConsumedRecords.get());
-    }
-
-    private void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
-        waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
-    }
     private void verifyPrimaryKeyOnly(long recordsCount) {
         List<SourceRecord> records = new ArrayList<>();
         waitAndFailIfCannotConsume(records, recordsCount);
@@ -105,65 +103,41 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
 
     @Test
     public void testRecordConsumption() throws Exception {
-        CqlSession session = CqlSession
-                .builder()
-                .addContactPoint(new InetSocketAddress("127.0.0.1", 9042))
-                .withLocalDatacenter("datacenter1")
-                .build();
-
-        // String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_cdc");
-        String dbStreamId = "";
+        // String dbStreamId = "6ecbf7a7617d495e8cb0b5cf19193f39";
 
         // Create keyspace 'ybdemo' if it does not exist.
         String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
         session.execute(createKeyspace);
-        session.execute("drop table if exists cdctest.test_cdc;");
-        session.execute("create table cdctest.test_cdc(a int primary key, b int);");
-        session.execute("insert into cdctest.test_cdc(a,b) values (1,2);");
-        String select_stmt =
-                "select * from cdctest.test_cdc where a = 1;";
-        PreparedStatement stmt = session.prepare(select_stmt);
-        ResultSet rs = session.execute(stmt.bind());
-        Row row = rs.one();
-        System.out.println("Row " + row);
+        LOGGER.info("Sumukh: keyspace created");
 
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("cdctest.test_cdc", dbStreamId);
+        session.execute("create table if not exists cdctest.test_cdc(a int primary key, b int);");
+        LOGGER.info("Sumukh: table created");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_cdc", false, false,true);
+        LOGGER.info("Sumukh Stream ID created " + dbStreamId);
+        session.execute("insert into cdctest.test_cdc(a,b) values (1,2);");
+        LOGGER.info("Sumukh: Insert successful");
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","cdctest.test_cdc", dbStreamId);
+        LOGGER.info("Sumukh before start");
         start(YugabyteDBConnector.class, configBuilder.build());
+        // startEngine(configBuilder);
         final long recordsCount = 1;
+        LOGGER.info("Sumukh after start");
+
 
         awaitUntilConnectorIsReady();
 
-        // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
-        insertRecords(recordsCount);
+        session.execute("insert into cdctest.test_cdc(a,b) values (2,3);");
+        session.execute("update cdctest.test_cdc set b = 4 where a = 2;");
+        session.execute("delete from cdctest.test_cdc where a = 2;");
+        verifyRecordCount(1);
 
-        CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
-                .exceptionally(throwable -> {
-                    throw new RuntimeException(throwable);
-                }).get();
-
-        System.out.println("Done");
+        LOGGER.info("Done");
     }
 
-    @BeforeAll
-    public static void beforeClass() throws SQLException {
-        initializeYBContainer();
-        TestHelper.dropAllSchemas();
-    }
-
-    @BeforeEach
-    public void before() {
-        initializeConnectorTestFramework();
-    }
-
-    @AfterEach
-    public void after() throws Exception {
-        stopConnector();
-        TestHelper.executeDDL("drop_tables_and_databases.ddl");
-    }
-
-    @AfterAll
-    public static void afterClass() {
-        shutdownYBContainer();
+    private void verifyRecordCount(long recordsCount) {
+        waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
     }
 
 

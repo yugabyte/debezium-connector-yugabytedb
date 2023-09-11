@@ -17,6 +17,10 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.DataException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.cdc.CdcService.CDCSDKSchemaPB;
+
+import com.google.common.base.Optional;
+import com.google.protobuf.Option;
 
 import io.debezium.annotation.Immutable;
 import io.debezium.annotation.ThreadSafe;
@@ -93,7 +97,8 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
      * @param mappers the mapping functions for columns; may be null if none of the columns are to be mapped to different values
      * @return the table schema that can be used for sending rows of data for this table to Kafka Connect; never null
      */
-    public TableSchema create(String schemaPrefix, String envelopSchemaName, Table table, ColumnNameFilter filter, ColumnMappers mappers, KeyMapper keysMapper) {
+    public TableSchema create(String schemaPrefix, String envelopSchemaName, Table table, ColumnNameFilter filter,
+            ColumnMappers mappers, KeyMapper keysMapper) {
         if (schemaPrefix == null) {
             schemaPrefix = "";
         }
@@ -105,9 +110,13 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
         LOGGER.info("Mapping table '{}' to schemas under '{}'", tableId, schemaNamePrefix);
         SchemaBuilder valSchemaBuilder = SchemaBuilder.struct().name(schemaNameAdjuster.adjust(schemaNamePrefix + ".Value"));
         SchemaBuilder keySchemaBuilder = SchemaBuilder.struct().name(schemaNameAdjuster.adjust(schemaNamePrefix + ".Key"));
+        LOGGER.info("Sumukh keyBuilder " + keySchemaBuilder);
+        LOGGER.info("Sumukh valueBuilder " + valSchemaBuilder);
+
         AtomicBoolean hasPrimaryKey = new AtomicBoolean(false);
 
         Key tableKey = new Key.Builder(table).customKeyMapper(keysMapper).build();
+        LOGGER.info("Sumukh KeyColumns " + tableKey.keyColumns());
         tableKey.keyColumns().forEach(column -> {
             addField(keySchemaBuilder, table, column, null);
             hasPrimaryKey.set(true);
@@ -140,7 +149,9 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
         StructGenerator valueGenerator = createValueGenerator(valSchema, tableId, table.columns(), filter, mappers);
 
         // And the table schema ...
-        return new TableSchema(tableId, keySchema, keyGenerator, envelope, valSchema, valueGenerator);
+        // return new TableSchema(tableId, keySchema, keyGenerator, envelope, valSchema, valueGenerator);
+        return new TableSchema(tableId, keySchema, null, envelope, valSchema, null);
+
     }
 
     /**
@@ -383,10 +394,13 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
      * @param column the column definition
      * @param mapper the mapping function for the column; may be null if the columns is not to be mapped to different values
      */
-    protected void addField(SchemaBuilder builder, Table table, Column column, ColumnMapper mapper) {
+    protected void addField(SchemaBuilder builder, Table table, Column column, ColumnMapper mapper) { //Instead of Column we'll need CDCSDKColumnInfo thingy
+    LOGGER.info("Sumukh defaultvlueExpression = " + column.defaultValueExpression()); //empty
         final Object defaultValue = column.defaultValueExpression()
                 .flatMap(e -> defaultValueConverter.parseDefaultValue(column, e))
                 .orElse(null);
+        
+                LOGGER.info("Sumukh the default value is " + defaultValue); //null
 
         final SchemaBuilder fieldBuilder = customConverterRegistry.registerConverterFor(table.id(), column, defaultValue)
                 .orElse(valueConverterProvider.schemaBuilder(column));
@@ -415,7 +429,7 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
             }
         }
         else {
-            LOGGER.warn("Unexpected JDBC type '{}' for column '{}' that will be ignored", column.jdbcType(), column.name());
+            LOGGER.info("Unexpected JDBC type '{}' for column '{}' that will be ignored", column.jdbcType(), column.name());
         }
     }
 

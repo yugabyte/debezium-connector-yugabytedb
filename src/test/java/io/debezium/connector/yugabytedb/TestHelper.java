@@ -80,10 +80,15 @@ public final class TestHelper {
 
     // Set the localhost value as the defaults for now
     private static String CONTAINER_YSQL_HOST = "127.0.0.1";
+    private static String CONTAINER_YCQL_HOST = "127.0.0.1";
     private static int CONTAINER_YSQL_PORT = 5433;
     private static int CONTAINER_YCQL_PORT = 9042;
     private static String CONTAINER_MASTER_PORT = "7100";
+<<<<<<< HEAD
     private static String MASTER_ADDRESS = "127.0.0.1:7100";
+=======
+    private static String MASTER_ADDRESS = "127.0.0.1";
+>>>>>>> b90ef82 (WIP commit for cdc for cql)
     private static String DEFAULT_DATABASE_NAME = "yugabyte";
 
     /**
@@ -369,6 +374,7 @@ public final class TestHelper {
         return getConfigBuilder("yugabyte", fullTableNameWithSchema, dbStreamId);
     }
 
+
     public static Configuration.Builder getConfigBuilder(String namespaceName, String fullTableNameWithSchema, String dbStreamId) throws Exception {
         return TestHelper.defaultConfig()
                 .with(YugabyteDBConnectorConfig.DATABASE_NAME, namespaceName)
@@ -377,6 +383,20 @@ public final class TestHelper {
                 .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.NEVER.getValue())
                 .with(YugabyteDBConnectorConfig.DELETE_STREAM_ON_STOP, Boolean.TRUE)
                 .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, MASTER_ADDRESS)
+                .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, fullTableNameWithSchema)
+                .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId);
+    }
+
+    public static Configuration.Builder getConfigBuilderForCQL(String keyspaceName, String fullTableNameWithSchema, String dbStreamId) throws Exception {
+        return TestHelper.defaultConfig()
+                .with(YugabyteDBConnectorConfig.DATABASE_NAME, keyspaceName)
+                .with(YugabyteDBConnectorConfig.HOSTNAME,CONTAINER_YCQL_HOST)
+                .with(YugabyteDBConnectorConfig.PORT, CONTAINER_YCQL_PORT)
+                .with(YugabyteDBConnectorConfig.USER, "cassandra")
+                .with(YugabyteDBConnectorConfig.PASSWORD, "Yugabyte@123")
+                .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.NEVER.getValue())
+                .with(YugabyteDBConnectorConfig.DELETE_STREAM_ON_STOP, Boolean.TRUE)
+                .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, CONTAINER_YCQL_HOST + ":" + CONTAINER_MASTER_PORT)
                 .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, fullTableNameWithSchema)
                 .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId);
     }

@@ -543,7 +543,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final String DATABASE_CONFIG_PREFIX = "database.";
     protected static final String TASK_CONFIG_PREFIX = "task.";
 
-    protected static final int DEFAULT_PORT = 5_433;
+    protected static final int DEFAULT_PORT = 5_433; //Doubt: Might have to change this
     protected static final int DEFAULT_SNAPSHOT_FETCH_SIZE = 10_240;
     protected static final int DEFAULT_MAX_RETRIES = 6;
     protected static final int DEFAULT_MASTER_PORT = 7100;
@@ -1432,6 +1432,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     private class DatabasePredicate implements TableFilter {
         @Override
         public boolean isIncluded(TableId tableId) {
+            LOGGER.info("Sumukh tableID catalog " + tableId.catalog() + " for tableID " + tableId);
             return Objects.equals(tableId.catalog(), getConfig().getString(DATABASE_NAME));
         }
     }
