@@ -84,7 +84,11 @@ public final class TestHelper {
     private static int CONTAINER_YSQL_PORT = 5433;
     private static int CONTAINER_YCQL_PORT = 9042;
     private static String CONTAINER_MASTER_PORT = "7100";
+<<<<<<< HEAD
     private static String MASTER_ADDRESS = "127.0.0.1:7100";
+=======
+    private static String MASTER_ADDRESS = "127.0.0.1";
+>>>>>>> b90ef82 (WIP commit for cdc for cql)
     private static String DEFAULT_DATABASE_NAME = "yugabyte";
 
     /**
@@ -482,7 +486,7 @@ public final class TestHelper {
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
-                                          boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode)
+                                          boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode, boolean withCQL)
             throws Exception {
         YBClient syncClient = getYbClient(MASTER_ADDRESS);
 
@@ -496,7 +500,7 @@ public final class TestHelper {
         try {
             dbStreamId = syncClient.createCDCStream(placeholderTable, namespaceName,
                                                     "PROTO", explicitCheckpointing ? "EXPLICIT" : "IMPLICIT",
-                                                    withBeforeImage ? mode.toString() : BeforeImageMode.CHANGE.toString()).getStreamId();
+                                                    withBeforeImage ? mode.toString() : BeforeImageMode.CHANGE.toString(), withCQL).getStreamId();
         } finally {
             syncClient.close();
         }
@@ -505,8 +509,8 @@ public final class TestHelper {
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
-                                          boolean withBeforeImage, boolean explicitCheckpointing) throws Exception {
-        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing /* explicit */, BeforeImageMode.CHANGE);
+                                          boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode) throws Exception {
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing /* explicit */, mode, false /*YSQL*/);
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,

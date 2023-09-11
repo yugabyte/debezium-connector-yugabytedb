@@ -71,7 +71,7 @@ public class YugabyteDBConsistencyWithColocatedTest extends YugabyteDBContainerT
         Connection conn = c.connection();
         conn.setAutoCommit(false);
 
-        final String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "department", false, true);
+        final String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "department", false, true,false);
         Configuration.Builder configBuilder = getConsistentConfigurationBuilder(DEFAULT_COLOCATED_DB_NAME, "public.department,public.employee",dbStreamId);
         startEngine(configBuilder);
         awaitUntilConnectorIsReady();
