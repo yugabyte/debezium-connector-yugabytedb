@@ -222,6 +222,10 @@ public class YugabyteDBStreamingChangeEventSource implements
             }
         }
 
+        // The bootstrap method calls the SetCDCCheckPoint RPC, which relies on a cache to obtain a
+        // list of all the tservers. In case of multi host port connection url, if one of the DB node
+        // goes down, it takes some time for the cache to refresh and return correct tserver list.
+        // This refresh time may be longer and hence we need additional number of retries here.
         int maxBootstrapRetries = connectorConfig.maxConnectorRetries() * 5;
         for (Pair<String, String> entry : tabletPairList) {
             // entry is a Pair<tableId, tabletId>
