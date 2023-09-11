@@ -149,6 +149,7 @@
             <version>3.10.3-yb-2</version>
         </dependency>
         <dependency>
+<<<<<<< HEAD
             <groupId>com.datastax.oss</groupId>
             <artifactId>java-driver-core</artifactId>
             <version>4.1.0</version>
@@ -159,6 +160,8 @@
             <version>4.1.0</version>
         </dependency>
         <dependency>
+=======
+>>>>>>> b90ef82 (WIP commit for cdc for cql)
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-core</artifactId>
             <version>${version.jackson}</version>

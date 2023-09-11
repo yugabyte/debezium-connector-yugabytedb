@@ -135,12 +135,17 @@ public class YugabyteDBTypeRegistry {
 
     public YugabyteDBTypeRegistry(YugabyteDBConnection connection) {
         try {
+            LOGGER.info("Sumukh trying to get connection");
             this.connection = connection.connection();
+            LOGGER.info("Sumukh new connection object created");
             this.oidToType = new HashMap<>();
             this.nameToType = new HashMap<>();
             typeInfo = ((BaseConnection) this.connection).getTypeInfo();
+            LOGGER.info("Sumukh typeInfo obtained "+ typeInfo.toString());
             sqlTypeMapper = new SqlTypeMapper(this.connection, typeInfo);
+            LOGGER.info("Sumukh: sqlTypeMapper initialized");
             prime();
+            LOGGER.info("Sumukh Type registry primed");
         }
         catch (SQLException e) {
             throw new DebeziumException("Couldn't initialize type registry", e);

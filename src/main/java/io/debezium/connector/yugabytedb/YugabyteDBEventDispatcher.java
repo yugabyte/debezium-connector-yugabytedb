@@ -105,7 +105,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
         try {
             boolean handled = false;
             if (!filter.isIncluded(dataCollectionId)) {
-                LOGGER.trace("Filtered data change event for {}", dataCollectionId);
+                LOGGER.info("Filtered data change event for {}", dataCollectionId);
                 eventListener.onFilteredEvent(partition, "source = " + dataCollectionId, changeRecordEmitter.getOperation());
                 dispatchFilteredEvent(changeRecordEmitter.getPartition(), changeRecordEmitter.getOffset());
             } else {
@@ -115,9 +115,12 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
                     final Optional<DataCollectionSchema> replacementSchema = inconsistentSchemaHandler.handle(partition,
                       dataCollectionId, changeRecordEmitter);
                     if (!replacementSchema.isPresent()) {
+                        LOGGER.info("Sumukh no replacement schema");
                         return false;
                     }
                     dataCollectionSchema = replacementSchema.get();
+                    LOGGER.info(
+                            "Sumukh: the datacollectionschema was null, replacement schema = " + dataCollectionSchema);
                 }
 
                 changeRecordEmitter.emitChangeRecords(dataCollectionSchema, new ChangeRecordEmitter.Receiver<YBPartition>() {
