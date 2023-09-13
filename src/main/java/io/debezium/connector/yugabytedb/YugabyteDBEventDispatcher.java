@@ -109,7 +109,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
                 eventListener.onFilteredEvent(partition, "source = " + dataCollectionId, changeRecordEmitter.getOperation());
                 dispatchFilteredEvent(changeRecordEmitter.getPartition(), changeRecordEmitter.getOffset());
             } else {
-                DataCollectionSchema dataCollectionSchema = schema.schemaFor(dataCollectionId);
+                DataCollectionSchema dataCollectionSchema = schema.schemaFor(dataCollectionId); //Doubt: we dont have schemaFor in our code, should we get tableSchema here
                 LOGGER.info("Sumukh: the datacollectionschema inside dispatch change event = " + dataCollectionSchema);
                 // TODO handle as per inconsistent schema info option
                 if (dataCollectionSchema == null) {
@@ -198,7 +198,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
                                  ConnectHeaders headers) throws InterruptedException {
             Objects.requireNonNull(value, "value must not be null");
 
-            LOGGER.trace("Received change record for {} operation on key {}", operation, key);
+            LOGGER.info("Received change record for {} operation on key {}", operation, key);
 
             // Truncate events must have null key schema as they are sent to table topics without keys
             Schema keySchema = (key == null && operation == Envelope.Operation.TRUNCATE) ? null
@@ -215,6 +215,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
               headers);
 
             queue.enqueue(changeEventCreator.createDataChangeEvent(record));
+            LOGGER.info("Queued change event source record " + record);
 
             if (emitTombstonesOnDelete && operation == Envelope.Operation.DELETE) {
                 SourceRecord tombStone = record.newRecord(
@@ -228,6 +229,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
                   record.headers());
 
                 queue.enqueue(changeEventCreator.createDataChangeEvent(tombStone));
+                LOGGER.info("Queued change event tombstone record " + tombStone);
             }
         }
     }

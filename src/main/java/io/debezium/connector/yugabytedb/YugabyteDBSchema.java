@@ -28,6 +28,7 @@ import io.debezium.annotation.NotThreadSafe;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.relational.*;
 import io.debezium.relational.Tables.TableFilter;
+import io.debezium.schema.DataCollectionSchema;
 import io.debezium.schema.TopicSelector;
 import io.debezium.util.Collect;
 import io.debezium.util.SchemaNameAdjuster;
@@ -97,7 +98,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         this.valueConverter = null;
         this.cqlValueConverter = cqlValueConverter;
         this.topicSelector = topicSelector;
-        this.tableFilter = new Filters(config).tableFilter();
+        this.tableFilter = config.databaseFilter();/*new Filters(config).tableFilter();*/
 
     }
 
@@ -144,7 +145,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         // String lookupKey = getLookupKey(tableId, tabletId);
         String lookupKey = getCQLLookupKey(tableId, tabletId);
         if (!tabletIdToCdcsdkSchemaPB.containsKey(lookupKey) || cdcsdkSchemaPB == null) {
-            LOGGER.info("Sumukh Added entry in tabletIdToCdcsdkSchemaPB");
+            LOGGER.info("Sumukh Added entry in tabletIdToCdcsdkSchemaPB with lookupkey " + lookupKey);
             tabletIdToCdcsdkSchemaPB.put(lookupKey, schemaPB);
         }
         LOGGER.info("Sumukh Inside refresh Schema tables = "+ tables() + " table filter " + config.databaseFilter()); //Doubt: Why is tables() null
@@ -164,7 +165,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
      * @return a cached schemaPB object
      */
     protected CdcService.CDCSDKSchemaPB getSchemaPBForTablet(TableId tableId, String tabletId) {
-        return tabletIdToCdcsdkSchemaPB.get(getLookupKey(tableId, tabletId));
+        // return tabletIdToCdcsdkSchemaPB.get(getLookupKey(tableId, tabletId));
+        return tabletIdToCdcsdkSchemaPB.get(getCQLLookupKey(tableId, tabletId));
     }
 
     // schemaNamePattern is the name of the schema here
@@ -298,7 +300,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     protected Table getTableForTablet(TableId tableId, String tabletId) {
-        return tabletIdToTable.get(getLookupKey(tableId, tabletId));
+        // return tabletIdToTable.get(getLookupKey(tableId, tabletId));
+        return tabletIdToTable.get(getCQLLookupKey(tableId, tabletId));
     }
 
     protected List<String> readPrimaryKeyOrUniqueIndexNames(CdcService.CDCSDKSchemaPB schemaPB,
@@ -432,11 +435,25 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                            String tabletId) throws SQLException {
         readSchemaWithTablet(null /* dummy object */, null, tableId.schema(), tableId::equals,
                              null, true, schemaPB, tableId, tabletId);
-
+        //Doubt: What is Toast table and do we need it for cql
         if (refreshToastableColumns) {
             // and refresh toastable columns info
             refreshToastableColumnsMap(connection, tableId);
         }
+    }
+
+    protected void refresh(TableId tableId,
+            boolean refreshToastableColumns, CdcService.CDCSDKSchemaPB schemaPB,
+            String tabletId) {
+        readSchemaWithTablet(null /* dummy object */, tableId.catalog(), tableId.schema(), tableId::equals,
+                null, true, schemaPB, tableId, tabletId);
+        LOGGER.info("Sumukh: Inside refresh() calling refreshSchema");
+        refreshSchemaWithTabletId(tableId, schemaPB, tableId.schema(), tabletId);
+        // Doubt: What is Toast table and do we need it for cql
+        // if (refreshToastableColumns) {
+        //     // and refresh toastable columns info
+        //     refreshToastableColumnsMap(connection, tableId);
+        // }
     }
 
     protected boolean isFilteredOut(TableId id) {
@@ -492,11 +509,16 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             LOGGER.info("Sumukh table.id included");
             LOGGER.info("Updating table schema with lookup key {}", lookupKey);
             tabletIdToTableSchema.put(lookupKey, schema);
+        } else {
+            LOGGER.info("------------------------------TABLE NOT INCLUDED HENCE NO SCHEMA ---------------");
         }
     }
 
     public TableSchema schemaForTablet(TableId tableId, String tabletId) {
-        return tabletIdToTableSchema.get(getLookupKey(tableId, tabletId));
+        // return tabletIdToTableSchema.get(getLookupKey(tableId, tabletId));
+        LOGGER.info("Inside schema for tablet, lookupkey = " + getCQLLookupKey(tableId, tabletId));
+        return tabletIdToTableSchema.get(getCQLLookupKey(tableId, tabletId));
+
     }
 
     private String getEnvelopeSchemaName(Table table) {
@@ -568,7 +590,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     protected static TableId parseWithKeyspace(String table, String keyspace) {
-        LOGGER.info("SUMUKH: Passed TableID " +table);
+        LOGGER.info("SUMUKH: Passed TableID in parseWithKeyspace " +table);
         TableId tableId = TableId.parse(table, true);
         if (tableId == null) {
             return null;
@@ -662,6 +684,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
      */
     public String getLookupKey(TableId tableId, String tabletId) {
         LOGGER.info("Sumukh databaseName " + config.databaseName()+ " schema " + tableId.schema()+ " table " + tableId.table()+ " tablet " + tabletId );
+        LOGGER.info("Sumukh: getLookupKey called, call getCQLLookupKey Instead");
         return config.databaseName() + "." + tableId.schema() + "." + tableId.table()
                 + "." + tabletId;
     }

@@ -708,10 +708,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     // If you need to print the received record, change debug level to info
                                     LOGGER.info("Received DML record {}", record);
 
+                                    LOGGER.info("Message properties: rawcommittime = " + message.getRawCommitTime()
+                                            + " transaction id = " + String.valueOf(message.getTransactionId()) //Doubt: Transaction Id is blank, is this expected?
+                                            + " getRecordTime = " + message.getRecordTime() + " lsn = " + lsn);
                                     offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                             String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
 
-                                            LOGGER.info("Sumukh Record Position updated");
+                                    LOGGER.info("Sumukh Record Position updated");
 
                                     boolean dispatched = message.getOperation() != Operation.NOOP
                                             && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
@@ -761,7 +764,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             }
                         }
 
-                        LOGGER.debug("The final opid for tablet {} is {}", part.getId(), finalOpid);
+                        LOGGER.info("The final opid for tablet {} is {}", part.getId(), finalOpid);
                     }
                     // Reset the retry count, because if flow reached at this point, it means that the connection
                     // has succeeded
