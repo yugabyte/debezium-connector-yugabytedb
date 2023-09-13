@@ -46,9 +46,9 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
 
     @AfterEach
     public void after() throws Exception {
+        // session.execute("drop table cdctest.test_cdc;");
         stopConnector();
         // TestHelper.executeDDL("drop_tables_and_databases.ddl");
-        session.execute("drop table if exists cdctest.test_cdc;");
     }
 
     @AfterAll
@@ -120,8 +120,8 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","cdctest.test_cdc", dbStreamId);
         LOGGER.info("Sumukh before start");
-        start(YugabyteDBConnector.class, configBuilder.build());
-        // startEngine(configBuilder);
+        // start(YugabyteDBConnector.class, configBuilder.build());
+        startEngine(configBuilder);
         final long recordsCount = 1;
         LOGGER.info("Sumukh after start");
 
@@ -131,7 +131,7 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
         session.execute("insert into cdctest.test_cdc(a,b) values (2,3);");
         session.execute("update cdctest.test_cdc set b = 4 where a = 2;");
         session.execute("delete from cdctest.test_cdc where a = 2;");
-        verifyRecordCount(1);
+        verifyRecordCount(4);
 
         LOGGER.info("Done");
     }

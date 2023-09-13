@@ -150,7 +150,7 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
 
         // And the table schema ...
         // return new TableSchema(tableId, keySchema, keyGenerator, envelope, valSchema, valueGenerator);
-        return new TableSchema(tableId, keySchema, null, envelope, valSchema, null);
+        return new TableSchema(tableId, keySchema, keyGenerator, envelope, valSchema, valueGenerator);
 
     }
 
