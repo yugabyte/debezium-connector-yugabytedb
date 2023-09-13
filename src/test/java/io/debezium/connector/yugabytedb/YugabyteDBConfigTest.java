@@ -298,4 +298,24 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
 
         assertConnectorNotRunning();
     }
+
+    @Test
+    public void throwExceptionWithIncorrectTaskCountWithTransactionOrdering() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        // Create a stream ID with IMPLICIT checkpointing and then deploy it in a consistent streaming setup.
+        TestHelper.execute("CREATE TABLE dummy_table (id INT PRIMARY KEY);");
+        final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "dummy_table");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.dummy_table", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_ORDERING, true);
+        configBuilder.with("tasks.max", 2);
+
+        start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+           assertFalse(success);
+
+           assertTrue(error.getMessage().contains("Transaction ordering is only supported with 1 task"));
+        });
+
+        assertConnectorNotRunning();
+    }
 }
