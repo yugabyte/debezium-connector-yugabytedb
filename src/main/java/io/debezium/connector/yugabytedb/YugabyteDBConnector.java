@@ -70,6 +70,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
     @Override
     public void start(Map<String, String> props) {
+        LOGGER.info("-------------------------------------------Inside Start method ----------");
         this.props = props;
         LOGGER.info("Props " + props);
         Configuration config = Configuration.from(this.props);
@@ -273,27 +274,28 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             return;
         }
 
+        //TODO: we need to create a cqlSession to do what is being done in the try block below
         this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
         final ConfigValue hostnameValue = configValues.get(RelationalDatabaseConnectorConfig.HOSTNAME.name());
         // Try to connect to the database ...
-        try (YugabyteDBConnection connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL)) {
-            try {
-                // Prepare connection without initial statement execution
-                connection.connection(false);
-                // check connection
-                connection.execute("SELECT version()");
-                LOGGER.info("Successfully tested connection for {} with user '{}'",
-                        connection.connectionString(),
-                        connection.username());
-            }
-            catch (SQLException e) {
-                LOGGER.error("Failed testing connection for {} with user '{}'",
-                        connection.connectionString(),
-                        connection.username(), e);
-                hostnameValue.addErrorMessage("Error while validating connector config: "
-                        + e.getMessage());
-            }
-        }
+        // try (YugabyteDBConnection connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL)) {
+        //     try {
+        //         // Prepare connection without initial statement execution
+        //         connection.connection(false);
+        //         // check connection
+        //         connection.execute("SELECT version()");
+        //         LOGGER.info("Successfully tested connection for {} with user '{}'",
+        //                 connection.connectionString(),
+        //                 connection.username());
+        //     }
+        //     catch (SQLException e) {
+        //         LOGGER.error("Failed testing connection for {} with user '{}'",
+        //                 connection.connectionString(),
+        //                 connection.username(), e);
+        //         hostnameValue.addErrorMessage("Error while validating connector config: "
+        //                 + e.getMessage());
+        //     }
+        // }
 
         validateTServerConnection(configValues, config);
     }
