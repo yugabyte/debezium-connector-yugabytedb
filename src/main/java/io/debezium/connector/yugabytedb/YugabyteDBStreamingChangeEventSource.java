@@ -576,15 +576,15 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 continue;
                             }
                             
-                            String pgSchemaNameInRecord = m.getPgschemaName();
-                            String cqlKeyspace = "cdctest";
+                            String pgSchemaNameInRecord = m.getPgschemaName(); //This is an empty String in case of CQL ""
 
                             // This is a hack to skip tables in case of colocated tables
                             // TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-                            TableId tempTid = YugabyteDBSchema.parseWithKeyspace(message.getTable(),cqlKeyspace );
+                            
+                            TableId tempTid = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
                             LOGGER.info("Sumukh tempTableID " + tempTid);
                             if (!message.isTransactionalMessage()
-                                  && !filters.tableFilter().isIncluded(tempTid)) {
+                                  && !filters.tableFilter().isIncluded(tempTid) && !connectorConfig.cqlTableFilter().isIncluded(tempTid)) {
                                 LOGGER.info("Skipping a record for table {} because it was not included", tempTid.table());
                                 continue;
                             }
@@ -669,7 +669,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 }
                                 else if (message.isDDLMessage()) {
                                     LOGGER.info("Received DDL message {}", message.getSchema().toString()
-                                            + " the table is " + message.getCQLTable());
+                                            + " the table is " + message.getTable());
 
                                     // If a DDL message is received for a tablet, we do not need its schema again
                                     schemaNeeded.put(part.getId(), Boolean.FALSE);
@@ -677,7 +677,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     TableId tableId = null;
                                     if (message.getOperation() != Operation.NOOP) {
                                         // tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-                                        tableId = YugabyteDBSchema.parseWithKeyspace(message.getCQLTable(), cqlKeyspace);
+                                        tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(),connectorConfig.databaseName());
                                         Objects.requireNonNull(tableId);
                                     }
                                     // Getting the table with the help of the schema.
@@ -692,7 +692,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         }
                                         // schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
                                         LOGGER.info("Sumukh: schema PB " + message.getSchema() + " " +tableId+ " "+tableId.catalog()+ " "+tableId.schema()+" "+tabletId);
-                                        schema.refreshSchemaWithTabletId(tableId, message.getSchema(), cqlKeyspace, tabletId);
+                                        schema.refreshSchemaWithTabletId(tableId, message.getSchema(), YugabyteDBSchema.CQL_SCHEMA_NAME, tabletId);
                                     }
                                 }
                                 // DML event
@@ -701,7 +701,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     TableId tableId = null;
                                     if (message.getOperation() != Operation.NOOP) {
                                         // tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-                                        tableId = YugabyteDBSchema.parseWithKeyspace(message.getCQLTable(), cqlKeyspace);
+                                        tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
                                         LOGGER.info("Sumukh: the tableId for DML record =  " + tableId);
                                         Objects.requireNonNull(tableId);
                                     }
@@ -718,7 +718,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                     boolean dispatched = message.getOperation() != Operation.NOOP
                                             && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
-                                                    schema, connection, tableId, message, cqlKeyspace, tabletId, taskContext.isBeforeImageEnabled()));
+                                                    schema, connection, tableId, message, YugabyteDBSchema.CQL_SCHEMA_NAME, tabletId, taskContext.isBeforeImageEnabled()));
                                     //connection is null here
                                     LOGGER.info("Sumukh dispatched = " + dispatched);
 
