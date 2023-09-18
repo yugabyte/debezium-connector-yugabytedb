@@ -110,15 +110,15 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
         session.execute(createKeyspace);
         LOGGER.info("Sumukh: keyspace created");
 
-        session.execute("create table if not exists cdctest.test_cdc(a int primary key, b int);");
+        session.execute("create table if not exists cdctest.test_cdc(a int primary key, b varchar);");
         LOGGER.info("Sumukh: table created");
 
         String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_cdc", false, false,true);
         LOGGER.info("Sumukh Stream ID created " + dbStreamId);
-        session.execute("insert into cdctest.test_cdc(a,b) values (1,2);");
+        // session.execute("insert into cdctest.test_cdc(a,b) values (1,'abc');");
         LOGGER.info("Sumukh: Insert successful");
 
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","cdctest.test_cdc", dbStreamId);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","cqlSchema.test_cdc", dbStreamId);
         LOGGER.info("Sumukh before start");
         // start(YugabyteDBConnector.class, configBuilder.build());
         startEngine(configBuilder);
@@ -128,8 +128,8 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
 
         awaitUntilConnectorIsReady();
 
-        session.execute("insert into cdctest.test_cdc(a,b) values (2,3);");
-        session.execute("update cdctest.test_cdc set b = 4 where a = 2;");
+        session.execute("insert into cdctest.test_cdc(a,b) values (2,'abc');");
+        session.execute("update cdctest.test_cdc set b = 'cde' where a = 2;");
         session.execute("delete from cdctest.test_cdc where a = 2;");
         verifyRecordCount(4);
 

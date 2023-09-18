@@ -1116,6 +1116,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     private final SchemaRefreshMode schemaRefreshMode;
 
     private final TableFilter databaseFilter;
+    private final TableFilter cqlTableFilter;
 
     private final LogicalDecodingMessageFilter logicalDecodingMessageFilter;
 
@@ -1139,6 +1140,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         this.schemaRefreshMode = SchemaRefreshMode.parse(config.getString(SCHEMA_REFRESH_MODE));
 
         this.databaseFilter = new DatabasePredicate();
+        this.cqlTableFilter = new CQLTablesPredicate();
     }
 
     protected String hostname() {
@@ -1278,6 +1280,10 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
     protected TableFilter databaseFilter() {
         return this.databaseFilter;
+    }
+
+    protected TableFilter cqlTableFilter() {
+        return this.cqlTableFilter;
     }
 
     protected boolean autoAddNewTables() {
@@ -1434,6 +1440,19 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         public boolean isIncluded(TableId tableId) {
             LOGGER.info("Sumukh tableID catalog " + tableId.catalog() + " for tableID " + tableId);
             return Objects.equals(tableId.catalog(), getConfig().getString(DATABASE_NAME));
+        }
+    }
+
+    private class CQLTablesPredicate implements TableFilter {
+        @Override
+        public boolean isIncluded(TableId tableId) {
+            LOGGER.info("Sumukh: Inside CQLTable filter with  "+tableId.catalog()+"."+tableId.schema()+"."+tableId.table());
+            if(Objects.equals(tableId.catalog(), getConfig().getString(DATABASE_NAME))) {
+                String includeTableName = tableId.schema()+"."+tableId.table();
+                LOGGER.info("Sumukh table Include list = " + tableIncludeList());
+                return tableIncludeList().contains(includeTableName);
+            }
+            return false;
         }
     }
 }

@@ -101,7 +101,7 @@ public class YBClientUtils {
                   fqlTableName = tableInfo.getNamespace().getName() + "."
                           + tableInfo.getName();
                   tableId = YugabyteDBSchema.parseWithKeyspace(fqlTableName, tableInfo.getNamespace().getName());
-                  LOGGER.info("Sumukh table name = " + fqlTableName + " tableID = " + tableId.schema());
+                  LOGGER.info("Sumukh table name = " + fqlTableName + " tableID schema = " + tableId.schema());
               }
               // Retrieve the list of tables in the stream ID,
               GetDBStreamInfoResponse dbStreamInfoResponse = ybClient.getDBStreamInfo(
@@ -130,7 +130,7 @@ public class YBClientUtils {
               else {
                 LOGGER.info("Sumukh table ID " + tableId + " is not included");
 
-                  LOGGER.warn("Filtering out the table {} since it was not in the include list", 
+                  LOGGER.info("Filtering out the table {} since it was not in the include list", 
                               tableId);
               }
           }

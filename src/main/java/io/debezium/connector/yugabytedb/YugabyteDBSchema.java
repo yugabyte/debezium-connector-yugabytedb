@@ -45,6 +45,7 @@ import io.debezium.util.SchemaNameAdjuster;
 public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
     protected final static String PUBLIC_SCHEMA_NAME = "public";
+    protected final static String CQL_SCHEMA_NAME = "cqlSchema";
     private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSchema.class);
 
     private final YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
@@ -98,7 +99,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         this.valueConverter = null;
         this.cqlValueConverter = cqlValueConverter;
         this.topicSelector = topicSelector;
-        this.tableFilter = config.databaseFilter();/*new Filters(config).tableFilter();*/
+        this.tableFilter = config.cqlTableFilter();/*new Filters(config).tableFilter();*//*config.databaseFilter();*/
 
     }
 
@@ -145,16 +146,16 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         // String lookupKey = getLookupKey(tableId, tabletId);
         String lookupKey = getCQLLookupKey(tableId, tabletId);
         if (!tabletIdToCdcsdkSchemaPB.containsKey(lookupKey) || cdcsdkSchemaPB == null) {
-            LOGGER.info("Sumukh Added entry in tabletIdToCdcsdkSchemaPB with lookupkey " + lookupKey);
             tabletIdToCdcsdkSchemaPB.put(lookupKey, schemaPB);
+            LOGGER.info("Sumukh Added entry in tabletIdToCdcsdkSchemaPB with lookupkey " + lookupKey);
         }
-        LOGGER.info("Sumukh Inside refresh Schema tables = "+ tables() + " table filter " + config.databaseFilter()); //Doubt: Why is tables() null
+        LOGGER.info("Sumukh Inside refresh Schema tables = "+ tables() + " table filter " + config.cqlTableFilter()); //Doubt: Why is tables() null
         // readSchemaWithTablet(tables(), null, schemaName,
         //         getTableFilter(), null, true, schemaPB, tableId, tabletId);
         // readSchemaWithTablet(tables(), null, schemaName,
         //         config.databaseFilter(), null, true, schemaPB, tableId, tabletId);
         readSchemaWithTablet(tables(), tableId.catalog(), schemaName,
-                config.databaseFilter(), null, true, schemaPB, tableId, tabletId);
+                config.cqlTableFilter()/*config.databaseFilter() */, null, true, schemaPB, tableId, tabletId);
         refreshSchemasWithTabletId(tableId, tabletId, schemaPB); //Passing schemaPB to get QLtype info
     }
 
@@ -590,13 +591,15 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     protected static TableId parseWithKeyspace(String table, String keyspace) {
-        LOGGER.info("SUMUKH: Passed TableID in parseWithKeyspace " +table);
+        LOGGER.info("SUMUKH: Passed TableID in parseWithKeyspace " +keyspace+ "."+CQL_SCHEMA_NAME+ "."+table);
         TableId tableId = TableId.parse(table, true);
         if (tableId == null) {
             return null;
         }
-
-        return tableId.schema() == null ? new TableId(tableId.catalog(), keyspace, tableId.table()) : tableId ;
+        // Since there is no schema in CQL we will use a static String as schema name for topic creation
+        return tableId.catalog() == null ? new TableId(keyspace, CQL_SCHEMA_NAME, tableId.table())
+                                         : new TableId(tableId.catalog(),
+                                                       CQL_SCHEMA_NAME, tableId.table());
     }
 
     public YugabyteDBTypeRegistry getTypeRegistry() {

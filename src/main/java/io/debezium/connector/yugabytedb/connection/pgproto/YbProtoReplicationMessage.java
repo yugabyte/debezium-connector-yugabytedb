@@ -178,7 +178,4 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
         return this.rawMessage.getSchema();
     }
 
-    public String getCQLTable(){
-        return "cdctest"+"."+rawMessage.getTable(); //Doubt:We need to get the keyspace name somehow from the message
-    }
 }

@@ -205,6 +205,8 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         case Types.DOUBLE:
             // values are double precision floating point number which supports 15 digits of mantissa.
             return SchemaBuilder.float64();
+        case Types.VARCHAR:
+            return SchemaBuilder.string();
         default :
             System.out.println("Sumukh: Requirred type not found in CQLValueConverter SchemaBuilder ");
             return null;
@@ -235,6 +237,8 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 return (data) -> convertNumeric(column, fieldDefn, data);
             case Types.DECIMAL:
                 return (data) -> convertDecimal(column, fieldDefn, data);
+            case Types.VARCHAR:
+                return (data) -> convertString(column, fieldDefn, data);
             default:
                 System.out.println("Sumukh: Requirred type not found in CQLValueConverter Converter ");
                 return null;
@@ -510,5 +514,34 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         throw new IllegalArgumentException("Unexpected value for JDBC type " + column.jdbcType() + " and column " + column +
                 ": class=" + data.getClass()); // don't include value in case its sensitive
     }
+
+    /**
+     * Converts a value object for an expected JDBC type of {@link Types#CHAR}, {@link Types#VARCHAR},
+     * {@link Types#LONGVARCHAR}, {@link Types#CLOB}, {@link Types#NCHAR}, {@link Types#NVARCHAR}, {@link Types#LONGNVARCHAR},
+     * {@link Types#NCLOB}, {@link Types#DATALINK}, and {@link Types#SQLXML}.
+     *
+     * @param column the column definition describing the {@code data} value; never null
+     * @param fieldDefn the field definition; never null
+     * @param data the data object to be converted into a {@link Date Kafka Connect date} type; never null
+     * @return the converted value, or null if the conversion could not be made and the column allows nulls
+     * @throws IllegalArgumentException if the value could not be converted but the column does not allow nulls
+     */
+    protected Object convertString(Column column, Field fieldDefn, Object data) {
+        return convertValue(column, fieldDefn, data, "", (r) -> {
+            if (data instanceof SQLXML) {
+                try {
+                    r.deliver(((SQLXML) data).getString());
+                }
+                catch (SQLException e) {
+                    throw new RuntimeException("Error processing data from " + column.jdbcType() + " and column " + column +
+                            ": class=" + data.getClass(), e);
+                }
+            }
+            else {
+                r.deliver(data.toString());
+            }
+        });
+    }
+
 
 }
