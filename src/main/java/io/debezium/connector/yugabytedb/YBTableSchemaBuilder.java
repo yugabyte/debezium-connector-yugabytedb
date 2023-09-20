@@ -114,7 +114,6 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
         AtomicBoolean hasPrimaryKey = new AtomicBoolean(false);
 
         Key tableKey = new Key.Builder(table).customKeyMapper(keysMapper).build();
-        LOGGER.info("Sumukh KeyColumns " + tableKey.keyColumns());
         tableKey.keyColumns().forEach(column -> {
             addField(keySchemaBuilder, table, column, null);
             hasPrimaryKey.set(true);
@@ -391,13 +390,10 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
      * @param column the column definition
      * @param mapper the mapping function for the column; may be null if the columns is not to be mapped to different values
      */
-    protected void addField(SchemaBuilder builder, Table table, Column column, ColumnMapper mapper) { //Instead of Column we'll need CDCSDKColumnInfo thingy
-    LOGGER.info("Sumukh defaultvlueExpression = " + column.defaultValueExpression()); //empty
+    protected void addField(SchemaBuilder builder, Table table, Column column, ColumnMapper mapper) {
         final Object defaultValue = column.defaultValueExpression()
                 .flatMap(e -> defaultValueConverter.parseDefaultValue(column, e))
                 .orElse(null);
-        
-                LOGGER.info("Sumukh the default value is " + defaultValue); //null
 
         final SchemaBuilder fieldBuilder = customConverterRegistry.registerConverterFor(table.id(), column, defaultValue)
                 .orElse(valueConverterProvider.schemaBuilder(column));
@@ -426,7 +422,7 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
             }
         }
         else {
-            LOGGER.info("Unexpected JDBC type '{}' for column '{}' that will be ignored", column.jdbcType(), column.name());
+            LOGGER.warn("Unexpected JDBC type '{}' for column '{}' that will be ignored", column.jdbcType(), column.name());
         }
     }
 

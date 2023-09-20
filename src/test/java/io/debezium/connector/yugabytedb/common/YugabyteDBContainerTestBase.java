@@ -48,8 +48,6 @@ public class YugabyteDBContainerTestBase extends TestBaseClass {
             e.printStackTrace();
             throw new RuntimeException(e);
         }
-        logger.info("SKSK setting ports and master addresses.");
-        logger.info("SKSK the mapped port is " + ybContainer.getMappedPort(9042));
 
         TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433), ybContainer.getMappedPort(9042));
         TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));

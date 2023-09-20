@@ -69,7 +69,7 @@ public class YugabyteDBConnectorTask
         final YugabyteDBConnectorConfig connectorConfig = new YugabyteDBConnectorConfig(config);
         final TopicSelector<TableId> topicSelector = YugabyteDBTopicSelector.create(connectorConfig);
         final Snapshotter snapshotter = connectorConfig.getSnapshotter();
-        final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create(); //Kafka connect schema 
+        final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
 
         LOGGER.debug("Inside task The config is " + config);
 
@@ -172,7 +172,6 @@ public class YugabyteDBConnectorTask
                     .maxQueueSizeInBytes(connectorConfig.getMaxQueueSizeInBytes())
                     .loggingContextSupplier(() -> taskContext.configureLoggingContext(CONTEXT_NAME))
                     .build();
-                    LOGGER.info("Sumukh: ChangeEventQueue built " + queue);
 
             ErrorHandler errorHandler = new YugabyteDBErrorHandler(connectorConfig, queue);
 
