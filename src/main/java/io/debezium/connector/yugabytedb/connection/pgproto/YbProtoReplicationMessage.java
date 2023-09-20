@@ -18,10 +18,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.Common;
 import org.yb.QLType;
 import org.yb.Value;
-<<<<<<< HEAD
 
-=======
->>>>>>> 7152368 (Resolved Merge Conflicts 2)
 import org.yb.cdc.CdcService;
 
 import io.debezium.connector.yugabytedb.YugabyteDBStreamingChangeEventSource.PgConnectionSupplier;
