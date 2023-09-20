@@ -80,11 +80,6 @@ import io.debezium.time.*;
 import io.debezium.util.NumberConversions;
 import io.debezium.util.Strings;
 
-/*
- * TODOS: 1. Remove unused imports
- *        2. public static fields can be reused from YugabyteDBValueConverter class
- *        3. Remove unused fields
- */
 public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
 
     public static final Timestamp POSITIVE_INFINITY_TIMESTAMP = new Timestamp(PGStatement.DATE_POSITIVE_INFINITY);
