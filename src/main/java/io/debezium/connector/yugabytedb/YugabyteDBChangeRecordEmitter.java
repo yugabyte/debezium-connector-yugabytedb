@@ -269,7 +269,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     }
 
     private Optional<DataCollectionSchema> newTable(TableId tableId) {
-        LOGGER.debug("Creating a new schema entry for table: {} and tablet {}", tableId, tabletId);
+        LOGGER.info("Creating a new schema entry for table: {} and tablet {}", tableId, tabletId);
         refreshTableFromDatabase(tableId);
         final TableSchema tableSchema = schema.schemaForTablet(tableId, tabletId);
         if (tableSchema == null) {

@@ -162,14 +162,14 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         LOGGER.debug("The streamid being used is " + streamIdValue);
 
         int numGroups = Math.min(this.tabletIds.size(), maxTasks);
-        LOGGER.debug("The tabletIds size are " + tabletIds.size() + " maxTasks" + maxTasks);
+        LOGGER.info("The tabletIds size are " + tabletIds.size() + " maxTasks" + maxTasks);
 
         List<List<Pair<String, String>>> tabletIdsGrouped = YugabyteDBConnectorUtils.groupPartitionsSmartly(this.tabletIds, numGroups);
-        LOGGER.debug("The grouped tabletIds are " + tabletIdsGrouped.size());
+        LOGGER.info("The grouped tabletIds are " + tabletIdsGrouped.size());
         List<Map<String, String>> taskConfigs = new ArrayList<>(tabletIdsGrouped.size());
 
         for (List<Pair<String, String>> taskTables : tabletIdsGrouped) {
-            LOGGER.debug("The taskTables are " + taskTables);
+            LOGGER.info("The taskTables are " + taskTables);
             Map<String, String> taskProps = new HashMap<>(this.props);
             int taskId = taskConfigs.size();
             taskProps.put(YugabyteDBConnectorConfig.TASK_ID.toString(), String.valueOf(taskId));
@@ -193,7 +193,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             taskConfigs.add(taskProps);
         }
 
-        LOGGER.debug("Configuring {} YugabyteDB connector task(s)", taskConfigs.size());
+        LOGGER.info("Configuring {} YugabyteDB connector task(s)", taskConfigs.size());
         closeYBClient();
         return taskConfigs;
     }
