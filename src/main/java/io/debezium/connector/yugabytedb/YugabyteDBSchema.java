@@ -142,7 +142,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                                              CDCSDKSchemaPB schemaPB,
                                              String schemaName,
                                              String tabletId) {
-        String lookupKey = getLookupKey(tableId, tabletId);
+        // String lookupKey = getLookupKey(tableId, tabletId);
+        String lookupKey = getCQLLookupKey(tableId, tabletId);
         if (!tabletIdToCdcsdkSchemaPB.containsKey(lookupKey) || cdcsdkSchemaPB == null) {
             LOGGER.info("Sumukh Added entry in tabletIdToCdcsdkSchemaPB");
             tabletIdToCdcsdkSchemaPB.put(lookupKey, schemaPB);
@@ -254,8 +255,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         final Set<TableId> tableIds = new HashSet<>();
 
         if (tableFilter == null || tableFilter.isIncluded(tableId)) {
-            tableIds.add(tableId);
             LOGGER.info("Sumukh table id added");
+            tableIds.add(tableId);
         }
 
         for (TableId includeTable : tableIds) {
@@ -463,12 +464,12 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         String lookupKey = getLookupKey(tableId, tabletId);;
         tabletIdToTableSchema.remove(lookupKey);
 
-        refreshSchemaWithTablet(tableId, tabletId);
+        refreshSchemaWithTablet(tableId, tabletId, schemaPB);
     }
 
-    protected void refreshSchemaWithTablet(TableId id, String tabletId) {
+    protected void refreshSchemaWithTablet(TableId id, String tabletId, CDCSDKSchemaPB schemaPB) {
         LOGGER.info("Building and registering schema for tablet {}", tabletId);
-        buildAndRegisterSchemaForTablet(id, tabletId);
+        buildAndRegisterSchemaForTablet(id, tabletId, schemaPB);
     }
 
     /**
@@ -565,7 +566,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             return null;
         }
 
-        return tableId.schema() == null ? new TableId(tableId.catalog(), pgSchemaName, tableId.table()) : tableId;
+        return tableId.schema() == null ? new TableId(tableId.catalog(), pgSchemaName, tableId.table()) : tableId; //Doubt: what is tableID.catalog()
     }
 
     protected static TableId parseWithKeyspace(String table, String keyspace) {
@@ -632,7 +633,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
      * @return the resolved table or null
      */
     public Table tableForTablet(TableId tableId, String tabletId) {
-        String lookupKey = getLookupKey(tableId, tabletId);
+        // String lookupKey = getLookupKey(tableId, tabletId);
+        String lookupKey = getCQLLookupKey(tableId, tabletId);
         if (!tabletIdToTable.containsKey(lookupKey)) {
             LOGGER.info("Not found in tabletIDtoTable " + tabletIdToTable);
             return null;
@@ -662,6 +664,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
      * @return lookup key in the form databaseName.schemaName.tableName.tabletId
      */
     public String getLookupKey(TableId tableId, String tabletId) {
+        LOGGER.info("Sumukh databaseName " + config.databaseName()+ " schema " + tableId.schema()+ " table " + tableId.table()+ " tablet " + tabletId );
         return config.databaseName() + "." + tableId.schema() + "." + tableId.table()
                 + "." + tabletId;
     }

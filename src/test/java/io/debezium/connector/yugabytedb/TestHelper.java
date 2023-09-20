@@ -84,9 +84,11 @@ public final class TestHelper {
     private static int CONTAINER_YSQL_PORT = 5433;
     private static int CONTAINER_YCQL_PORT = 9042;
     private static String CONTAINER_MASTER_PORT = "7100";
-
+<<<<<<< HEAD
     private static String MASTER_ADDRESS = "127.0.0.1:7100";
-
+=======
+    private static String MASTER_ADDRESS = "127.0.0.1";
+>>>>>>> b90ef82 (WIP commit for cdc for cql)
     private static String DEFAULT_DATABASE_NAME = "yugabyte";
 
     /**

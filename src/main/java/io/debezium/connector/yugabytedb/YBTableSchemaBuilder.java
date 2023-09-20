@@ -110,6 +110,11 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
         LOGGER.info("Mapping table '{}' to schemas under '{}'", tableId, schemaNamePrefix);
         SchemaBuilder valSchemaBuilder = SchemaBuilder.struct().name(schemaNameAdjuster.adjust(schemaNamePrefix + ".Value"));
         SchemaBuilder keySchemaBuilder = SchemaBuilder.struct().name(schemaNameAdjuster.adjust(schemaNamePrefix + ".Key"));
+<<<<<<< HEAD
+=======
+        LOGGER.info("Sumukh keyBuilder " + keySchemaBuilder);
+        LOGGER.info("Sumukh valueBuilder " + valSchemaBuilder);
+>>>>>>> 01d5b81 (Resolved Merge conflicts 4)
 
         AtomicBoolean hasPrimaryKey = new AtomicBoolean(false);
 
