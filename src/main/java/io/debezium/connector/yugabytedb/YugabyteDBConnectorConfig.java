@@ -543,7 +543,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final String DATABASE_CONFIG_PREFIX = "database.";
     protected static final String TASK_CONFIG_PREFIX = "task.";
 
-    protected static final int DEFAULT_PORT = 5_433; //Doubt: Might have to change this
+    protected static final int DEFAULT_PORT = 5_433;
     protected static final int DEFAULT_SNAPSHOT_FETCH_SIZE = 10_240;
     protected static final int DEFAULT_MAX_RETRIES = 6;
     protected static final int DEFAULT_MASTER_PORT = 7100;
@@ -702,6 +702,14 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withDescription(
                     "Whether or not to delete the logical replication stream when the connector finishes orderly" +
                             "By default the replication is kept so that on restart progress can resume from the last recorded location");
+        
+    public static final Field QL_TYPE = Field.create(DATABASE_CONFIG_PREFIX + "qltype")
+            .withDisplayName("The Query Language being used for tables to stream, in YugabyteDB (either ysql or ycql)")
+            .withType(Type.STRING)
+            .withImportance(Importance.MEDIUM)
+            .withDefault("ysql")
+            .withDescription("Whether the tables to be streamed are ysql tables or ycql tables");
+
 
     // Changing the default decimal.handling.mode to double
     @Override
@@ -1294,6 +1302,10 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return getConfig().getLong(NEW_TABLE_POLL_INTERVAL_MS);
     }
 
+    protected String qlType() {
+        return getConfig().getString(QL_TYPE);
+    }
+
     /*
      * protected Duration xminFetchInterval() {
      * return Duration.ofMillis(getConfig().getLong(PostgresConnectorConfig.XMIN_FETCH_INTERVAL));
@@ -1323,6 +1335,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     DATABASE_NAME,
                     MASTER_ADDRESSES,
                     STREAM_ID,
+                    QL_TYPE,
                     PLUGIN_NAME,
                     STREAM_PARAMS,
                     ON_CONNECT_STATEMENTS,

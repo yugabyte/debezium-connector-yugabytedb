@@ -374,7 +374,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
             // For streaming, we do not want any colocated information and want to process the tables
             // based on just their tablet IDs - pass false as the 'colocated' flag to enforce the same.
-            YBPartition p = new YBPartition(entry.getKey(), entry.getValue(), false /* colocated */); //Doubt: What exactly is YBPartition? Is this related to partition in kafka topics
+            YBPartition p = new YBPartition(entry.getKey(), entry.getValue(), false /* colocated */);
             offsetContext.initSourceInfo(p, this.connectorConfig, opId);
             // We can initialise the explicit checkpoint for this tablet to the value returned by
             // the cdc_service through the 'GetTabletListToPollForCDC' API
@@ -439,7 +439,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                         YBPartition part = new YBPartition(entry.getKey() /* tableId */, tabletId, false /* colocated */);
 
                       OpId cp = offsetContext.lsn(part);
-                        //   System.out.println("Sumukh Inside while loop OP id " + cp);
 
                       if (taskContext.shouldEnableExplicitCheckpointing()
                             && splitTabletsWaitingForCallback.contains(part.getId())) {
@@ -475,6 +474,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                       }
 
                       YBTable table = tableIdToTable.get(entry.getKey());
+
                       if (LOGGER.isDebugEnabled()
                           || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
                         LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
@@ -576,12 +576,17 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 continue;
                             }
                             
-                            String pgSchemaNameInRecord = m.getPgschemaName(); //This is an empty String in case of CQL ""
+                            String pgSchemaNameInRecord = m.getPgschemaName();; 
+                            TableId tempTid;
+                            if(connectorConfig.qlType().equals("ysql")) {
+                                // This is a hack to skip tables in case of colocated tables
+                                tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
 
-                            // This is a hack to skip tables in case of colocated tables
-                            // TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                            } else {
+                                tempTid = YugabyteDBSchema.parseWithKeyspace(message.getTable(), //TODO: Check if this breaks the above hack 
+                                        connectorConfig.databaseName());
+                            }
                             
-                            TableId tempTid = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
                             LOGGER.info("Sumukh tempTableID " + tempTid);
                             if (!message.isTransactionalMessage()
                                   && !filters.tableFilter().isIncluded(tempTid) && !connectorConfig.cqlTableFilter().isIncluded(tempTid)) {
@@ -676,8 +681,11 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                     TableId tableId = null;
                                     if (message.getOperation() != Operation.NOOP) {
-                                        // tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-                                        tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(),connectorConfig.databaseName());
+                                        if(connectorConfig.qlType().equals("ysql")) {
+                                            tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                        } else {
+                                            tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(),connectorConfig.databaseName());
+                                        }
                                         Objects.requireNonNull(tableId);
                                     }
                                     // Getting the table with the help of the schema.
@@ -690,9 +698,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         } else {
                                             LOGGER.info("Refreshing the schema for table {} tablet {} because of mismatch in cached schema and received schema", entry.getKey(), tabletId);
                                         }
-                                        // schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
-                                        LOGGER.info("Sumukh: schema PB " + message.getSchema() + " " +tableId+ " "+tableId.catalog()+ " "+tableId.schema()+" "+tabletId);
-                                        schema.refreshSchemaWithTabletId(tableId, message.getSchema(), YugabyteDBSchema.CQL_SCHEMA_NAME, tabletId);
+                                        LOGGER.info("Sumukh: schema PB " + message.getSchema() + " " + tableId + " "
+                                                + tableId.catalog() + " " + tableId.schema() + " " + tabletId);
+                                        if(connectorConfig.qlType().equals("ysql")) {
+                                            schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
+                                        } else {
+                                            schema.refreshSchemaWithTabletId(tableId, message.getSchema(), YugabyteDBSchema.CQL_SCHEMA_NAME, tabletId);
+                                        }
                                     }
                                 }
                                 // DML event
@@ -700,8 +712,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     LOGGER.info("Sumukh: DML Record");
                                     TableId tableId = null;
                                     if (message.getOperation() != Operation.NOOP) {
-                                        // tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-                                        tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
+                                        if(connectorConfig.qlType().equals("ysql")) {
+                                            tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                        } else {
+                                            tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
+                                        }
                                         LOGGER.info("Sumukh: the tableId for DML record =  " + tableId);
                                         Objects.requireNonNull(tableId);
                                     }
@@ -716,10 +731,24 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                     LOGGER.info("Sumukh Record Position updated");
 
-                                    boolean dispatched = message.getOperation() != Operation.NOOP
-                                            && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
-                                                    schema, connection, tableId, message, YugabyteDBSchema.CQL_SCHEMA_NAME, tabletId, taskContext.isBeforeImageEnabled()));
-                                    //connection is null here
+                                    boolean dispatched = message.getOperation() != Operation.NOOP;
+                                    if (connectorConfig.qlType().equals("ysql")) {
+                                        dispatched = dispatched
+                                                && dispatcher.dispatchDataChangeEvent(part, tableId,
+                                                        new YugabyteDBChangeRecordEmitter(part, offsetContext, clock,
+                                                                connectorConfig,
+                                                                schema, connection, tableId, message,
+                                                                pgSchemaNameInRecord, tabletId,
+                                                                taskContext.isBeforeImageEnabled()));
+                                    } else {
+                                        dispatched = dispatched
+                                                && dispatcher.dispatchDataChangeEvent(part, tableId,
+                                                        new YugabyteDBChangeRecordEmitter(part, offsetContext, clock,
+                                                                connectorConfig,
+                                                                schema, connection, tableId, message,
+                                                                YugabyteDBSchema.CQL_SCHEMA_NAME, tabletId,
+                                                                taskContext.isBeforeImageEnabled()));
+                                    }
                                     LOGGER.info("Sumukh dispatched = " + dispatched);
 
                                     if (recordsInTransactionalBlock.containsKey(part.getId())) {

@@ -290,20 +290,20 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
             LOGGER.info("Refreshing schema for the table {}", tableId);
             LOGGER.info("TabletID inside refreshTablefrom DB " + tabletId);
             LOGGER.info("Schema sent for refresh " +schema.getSchemaPBForTablet(tableId, tabletId));
-            // schema.refresh(connection, tableId, //Doubt: The connection here is null, how do we overcome this
-            //                connectorConfig.skipRefreshSchemaOnMissingToastableData(),
-            //                schema.getSchemaPBForTablet(tableId, tabletId), tabletId);
-            schema.refresh(tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData(),
-                           schema.getSchemaPBForTablet(tableId, tabletId), tabletId);
+            if (connectorConfig.qlType().equals("ysql")) {
+                schema.refresh(connection, tableId,
+                        connectorConfig.skipRefreshSchemaOnMissingToastableData(),
+                        schema.getSchemaPBForTablet(tableId, tabletId), tabletId);
+
+            } else {
+                schema.refresh(tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData(),
+                        schema.getSchemaPBForTablet(tableId, tabletId), tabletId);
+            }
 
         }
-        catch(Exception e) {
-            LOGGER.info("Exception encountered in refreshTablefromDatabse " + e);
+        catch (SQLException e) {
+            throw new ConnectException("Database error while refresing table schema", e);
         }
-        // catch (SQLException e) {
-        //     System.out.println("Database error while refresing table schema");
-        //     throw new ConnectException("Database error while refresing table schema", e);
-        // }
     }
 
     static Optional<DataCollectionSchema> updateSchema(YBPartition partition, TableId tableId,

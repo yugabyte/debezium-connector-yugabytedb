@@ -7,6 +7,7 @@
 package io.debezium.connector.yugabytedb;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.util.*;
@@ -23,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService.TabletCheckpointPair;
 import org.yb.client.*;
 
+import com.datastax.oss.driver.api.core.CqlSession;
 import com.google.common.net.HostAndPort;
 
 import io.debezium.DebeziumException;
@@ -96,7 +98,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                     " available", maxTasks);
             return Collections.emptyList();
         }
-        LOGGER.info("Sumukh: Creating new YugabyteDBConnection"); //Doubt: Why are we using this? Postgres?
+        LOGGER.info("Sumukh: Creating new YugabyteDBConnection");
         connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL);
         LOGGER.info("Sumukh: Obtained new YugabyteDBConnection");
         LOGGER.info("Sumukh" + connection); 
@@ -104,32 +106,31 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         final Charset databaseCharset = connection.getDatabaseCharset();
         String charSetName = databaseCharset.name();
 
-        // System.out.println("Sumukh: Creating new TypeRegistry"); 
-        // YugabyteDBTypeRegistry typeRegistry = new YugabyteDBTypeRegistry(connection); //Doubt: Why are we using this? Issue in creating this
-        // System.out.println("Sumukh: Obtained new TypeRegistry " + typeRegistry);
+        String serializedNameToType = "";
+        String serializedOidToType = "";
 
+        if (yugabyteDBConnectorConfig.qlType().equals("ysql")) {
+            LOGGER.info("Creating a type registry for ysql tables");
+            YugabyteDBTypeRegistry typeRegistry = new YugabyteDBTypeRegistry(connection); 
 
-        // Map<String, YugabyteDBType> nameToType = typeRegistry.getNameToType();
-        // Map<Integer, YugabyteDBType> oidToType = typeRegistry.getOidToType();
-        // String serializedNameToType = "";
-        // try {
-        //     // serializedNameToType = ObjectUtil.serializeObjectToString(nameToType);
-        //     LOGGER.debug("The serializedNameToType " + serializedNameToType);
-        //     Object test = ObjectUtil.deserializeObjectFromString(serializedNameToType);
-        //     LOGGER.debug("The deserializedNameToType " + test);
-        // }
-        // catch (IOException | ClassNotFoundException e) {
-        //     e.printStackTrace();
-        // }
+            Map<String, YugabyteDBType> nameToType = typeRegistry.getNameToType();
+            Map<Integer, YugabyteDBType> oidToType = typeRegistry.getOidToType();
+            try {
+                serializedNameToType = ObjectUtil.serializeObjectToString(nameToType);
+                LOGGER.debug("The serializedNameToType " + serializedNameToType);
+                Object test = ObjectUtil.deserializeObjectFromString(serializedNameToType);
+                LOGGER.debug("The deserializedNameToType " + test);
+            } catch (IOException | ClassNotFoundException e) {
+                e.printStackTrace();
+            }
 
-        // String serializedOidToType = "";
-        // try {
-        //     // serializedOidToType = ObjectUtil.serializeObjectToString(oidToType);
-        //     LOGGER.debug("The serializedOidToType " + serializedOidToType);
-        // }
-        // catch (IOException e) {
-        //     e.printStackTrace();
-        // }
+            try {
+                serializedOidToType = ObjectUtil.serializeObjectToString(oidToType);
+                LOGGER.debug("The serializedOidToType " + serializedOidToType);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        } 
 
         Configuration config = Configuration.from(this.props);
         Map<String, ConfigValue> results = validateAllFields(config);
@@ -186,8 +187,10 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             }
             taskProps.put(YugabyteDBConnectorConfig.TABLET_LIST.toString(), taskTablesSerialized);
             taskProps.put(YugabyteDBConnectorConfig.CHAR_SET.toString(), charSetName);
-            // taskProps.put(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString(), serializedNameToType);
-            // taskProps.put(YugabyteDBConnectorConfig.OID_TO_TYPE.toString(), serializedOidToType);
+            if (yugabyteDBConnectorConfig.qlType().equals("ysql")) {
+                taskProps.put(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString(), serializedNameToType);
+                taskProps.put(YugabyteDBConnectorConfig.OID_TO_TYPE.toString(), serializedOidToType);
+            }
             taskProps.put(YugabyteDBConnectorConfig.STREAM_ID.toString(), streamIdValue);
             taskProps.put(YugabyteDBConnectorConfig.SEND_BEFORE_IMAGE.toString(), String.valueOf(sendBeforeImage));
             taskProps.put(YugabyteDBConnectorConfig.ENABLE_EXPLICIT_CHECKPOINTING.toString(), String.valueOf(enableExplicitCheckpointing));
@@ -274,28 +277,40 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             return;
         }
 
-        //TODO: we need to create a cqlSession to do what is being done in the try block below
         this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
+
         final ConfigValue hostnameValue = configValues.get(RelationalDatabaseConnectorConfig.HOSTNAME.name());
+
         // Try to connect to the database ...
-        // try (YugabyteDBConnection connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL)) {
-        //     try {
-        //         // Prepare connection without initial statement execution
-        //         connection.connection(false);
-        //         // check connection
-        //         connection.execute("SELECT version()");
-        //         LOGGER.info("Successfully tested connection for {} with user '{}'",
-        //                 connection.connectionString(),
-        //                 connection.username());
-        //     }
-        //     catch (SQLException e) {
-        //         LOGGER.error("Failed testing connection for {} with user '{}'",
-        //                 connection.connectionString(),
-        //                 connection.username(), e);
-        //         hostnameValue.addErrorMessage("Error while validating connector config: "
-        //                 + e.getMessage());
-        //     }
-        // }
+        if (yugabyteDBConnectorConfig.qlType().equals("ysql")) {
+            try (YugabyteDBConnection connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(),
+                    YugabyteDBConnection.CONNECTION_GENERAL)) {
+                try {
+                    // Prepare connection without initial statement execution
+                    connection.connection(false);
+                    // check connection
+                    connection.execute("SELECT version()");
+                    LOGGER.info("Successfully tested connection for {} with user '{}'",
+                            connection.connectionString(),
+                            connection.username());
+                } catch (SQLException e) {
+                    LOGGER.error("Failed testing connection for {} with user '{}'",
+                            connection.connectionString(),
+                            connection.username(), e);
+                    hostnameValue.addErrorMessage("Error while validating connector config: "
+                            + e.getMessage());
+                }
+            }
+        } else { 
+            //Todo: This will not work with multi host port hostname. Investigate if we can do this in cassandra
+            CqlSession session = CqlSession
+                    .builder()
+                    .addContactPoint(new InetSocketAddress(yugabyteDBConnectorConfig.hostname(), yugabyteDBConnectorConfig.port()))
+                    .withLocalDatacenter("datacenter1")
+                    .build();
+            session.execute("SHOW VERSION");
+            LOGGER.info("Successfully tested ycql connection at {}:{} " +yugabyteDBConnectorConfig.hostname(), yugabyteDBConnectorConfig.port());
+        }
 
         validateTServerConnection(configValues, config);
     }

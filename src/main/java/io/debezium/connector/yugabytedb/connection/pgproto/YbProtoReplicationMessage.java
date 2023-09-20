@@ -115,7 +115,6 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
                     final String columnName = Strings.unquoteIdentifierPart(datum.getColumnName());
 
                     if (datum.getCqlValue() == null) {
-                        // final Optional<CdcService.TypeInfo> typeInfo = Optional.ofNullable(hasTypeMetadata() && typeInfoList != null ? typeInfoList.get(index) : null);
                         final YugabyteDBType type = yugabyteDBTypeRegistry.get((int) datum.getColumnType());
                         final String fullType = typeInfo.map(CdcService.TypeInfo::getModifier).orElse(null);
                         return new AbstractReplicationMessageColumn(columnName, type, fullType,
@@ -175,5 +174,4 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
     public CdcService.CDCSDKSchemaPB getSchema() {
         return this.rawMessage.getSchema();
     }
-
 }
