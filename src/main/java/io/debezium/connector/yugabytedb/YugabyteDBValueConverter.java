@@ -293,54 +293,53 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
                 return null;
 
             default:
-            //     if (oidValue == yugabyteDBTypeRegistry.geometryOid()) {
-            //         return Geometry.builder();
-            //     }
-            //     else if (oidValue == yugabyteDBTypeRegistry.geographyOid()) {
-            //         return Geography.builder();
-            //     }
-            //     else if (oidValue == yugabyteDBTypeRegistry.citextOid()) {
-            //         return SchemaBuilder.string();
-            //     }
-            //     else if (oidValue == yugabyteDBTypeRegistry.geometryArrayOid()) {
-            //         return SchemaBuilder.array(Geometry.builder().optional().build());
-            //     }
-            //     else if (oidValue == yugabyteDBTypeRegistry.hstoreOid()) {
-            //         return hstoreSchema();
-            //     }
-            //     else if (oidValue == yugabyteDBTypeRegistry.ltreeOid()) {
-            //         return Ltree.builder();
-            //     }
-            //     else if (oidValue == yugabyteDBTypeRegistry.hstoreArrayOid()) {
-            //         return SchemaBuilder.array(hstoreSchema().optional().build());
-            //     }
-            //     else if (oidValue == yugabyteDBTypeRegistry.geographyArrayOid()) {
-            //         return SchemaBuilder.array(Geography.builder().optional().build());
-            //     }
-            //     else if (oidValue == yugabyteDBTypeRegistry.citextArrayOid()) {
-            //         return SchemaBuilder.array(SchemaBuilder.OPTIONAL_STRING_SCHEMA);
-            //     }
-            //     else if (oidValue == yugabyteDBTypeRegistry.ltreeArrayOid()) {
-            //         return SchemaBuilder.array(Ltree.builder().optional().build());
-            //     }
+                if (oidValue == yugabyteDBTypeRegistry.geometryOid()) {
+                    return Geometry.builder();
+                }
+                else if (oidValue == yugabyteDBTypeRegistry.geographyOid()) {
+                    return Geography.builder();
+                }
+                else if (oidValue == yugabyteDBTypeRegistry.citextOid()) {
+                    return SchemaBuilder.string();
+                }
+                else if (oidValue == yugabyteDBTypeRegistry.geometryArrayOid()) {
+                    return SchemaBuilder.array(Geometry.builder().optional().build());
+                }
+                else if (oidValue == yugabyteDBTypeRegistry.hstoreOid()) {
+                    return hstoreSchema();
+                }
+                else if (oidValue == yugabyteDBTypeRegistry.ltreeOid()) {
+                    return Ltree.builder();
+                }
+                else if (oidValue == yugabyteDBTypeRegistry.hstoreArrayOid()) {
+                    return SchemaBuilder.array(hstoreSchema().optional().build());
+                }
+                else if (oidValue == yugabyteDBTypeRegistry.geographyArrayOid()) {
+                    return SchemaBuilder.array(Geography.builder().optional().build());
+                }
+                else if (oidValue == yugabyteDBTypeRegistry.citextArrayOid()) {
+                    return SchemaBuilder.array(SchemaBuilder.OPTIONAL_STRING_SCHEMA);
+                }
+                else if (oidValue == yugabyteDBTypeRegistry.ltreeArrayOid()) {
+                    return SchemaBuilder.array(Ltree.builder().optional().build());
+                }
 
-            //     final YugabyteDBType resolvedType = yugabyteDBTypeRegistry.get(oidValue);
-            //     if (resolvedType.isEnumType()) {
-            //         return io.debezium.data.Enum.builder(Strings.join(",", resolvedType.getEnumValues()));
-            //     }
-            //     else if (resolvedType.isArrayType() && resolvedType.getElementType().isEnumType()) {
-            //         List<String> enumValues = resolvedType.getElementType().getEnumValues();
-            //         return SchemaBuilder.array(io.debezium.data.Enum.builder(Strings.join(",", enumValues)));
-            //     }
-            
-            //  Comment below lines
+                final YugabyteDBType resolvedType = yugabyteDBTypeRegistry.get(oidValue);
+                if (resolvedType.isEnumType()) {
+                    return io.debezium.data.Enum.builder(Strings.join(",", resolvedType.getEnumValues()));
+                }
+                else if (resolvedType.isArrayType() && resolvedType.getElementType().isEnumType()) {
+                    List<String> enumValues = resolvedType.getElementType().getEnumValues();
+                    return SchemaBuilder.array(io.debezium.data.Enum.builder(Strings.join(",", enumValues)));
+                }
+
                 final SchemaBuilder jdbcSchemaBuilder = super.schemaBuilder(column);
                 if (jdbcSchemaBuilder == null) {
-                      return includeUnknownDatatypes ? binaryMode.getSchema() : null;
+                    return includeUnknownDatatypes ? binaryMode.getSchema() : null;
                 }
                 else {
-                      return jdbcSchemaBuilder;
-                 }
+                    return jdbcSchemaBuilder;
+                }
         }
     }
 

@@ -269,7 +269,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     }
 
     private Optional<DataCollectionSchema> newTable(TableId tableId) {
-        LOGGER.info("Creating a new schema entry for table: {} and tablet {}", tableId, tabletId);
+        LOGGER.debug("Creating a new schema entry for table: {} and tablet {}", tableId, tabletId);
         refreshTableFromDatabase(tableId);
         final TableSchema tableSchema = schema.schemaForTablet(tableId, tabletId);
         if (tableSchema == null) {
@@ -297,11 +297,6 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         catch (SQLException e) {
             throw new ConnectException("Database error while refresing table schema", e);
         }
-        catch(Exception e){;}
-        // catch (SQLException e) {
-        //     System.out.println("Database error while refresing table schema");
-        //     throw new ConnectException("Database error while refresing table schema", e);
-        // }
     }
 
     static Optional<DataCollectionSchema> updateSchema(YBPartition partition, TableId tableId,

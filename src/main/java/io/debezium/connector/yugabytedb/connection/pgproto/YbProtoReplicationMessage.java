@@ -18,6 +18,10 @@ import org.slf4j.LoggerFactory;
 import org.yb.Common;
 import org.yb.QLType;
 import org.yb.Value;
+<<<<<<< HEAD
+
+=======
+>>>>>>> 7152368 (Resolved Merge Conflicts 2)
 import org.yb.cdc.CdcService;
 
 import io.debezium.connector.yugabytedb.YugabyteDBStreamingChangeEventSource.PgConnectionSupplier;
@@ -173,9 +177,5 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
 
     public CdcService.CDCSDKSchemaPB getSchema() {
         return this.rawMessage.getSchema();
-    }
-
-    public String getCQLTable(){
-        return "cdctest"+"."+rawMessage.getTable(); //Doubt:We need to get the keyspace name somehow from the message
     }
 }
