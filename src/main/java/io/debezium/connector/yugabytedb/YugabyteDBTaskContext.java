@@ -44,7 +44,7 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
         super(config.getContextName(), config.getLogicalName(), taskId, Collections::emptySet);
         this.config = config;
         this.topicSelector = topicSelector;
-        // assert schema != null;
+        assert schema != null;
         this.schema = schema;
         this.sendBeforeImage = sendBeforeImage;
         this.enableExplicitCheckpointing = enableExplicitCheckpointing;

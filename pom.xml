@@ -48,7 +48,7 @@
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
 
-        <version.ybclient>0.8.62-SNAPSHOT</version.ybclient>
+        <version.ybclient>0.8.63-SNAPSHOT</version.ybclient>
         <version.gson>2.8.9</version.gson>
 
         <!--
@@ -147,6 +147,16 @@
             <groupId>com.yugabyte</groupId>
             <artifactId>cassandra-driver-core</artifactId>
             <version>3.10.3-yb-2</version>
+        </dependency>
+        <dependency>
+            <groupId>com.datastax.oss</groupId>
+            <artifactId>java-driver-core</artifactId>
+            <version>4.1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.datastax.oss</groupId>
+            <artifactId>java-driver-query-builder</artifactId>
+            <version>4.1.0</version>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

@@ -109,7 +109,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
                 eventListener.onFilteredEvent(partition, "source = " + dataCollectionId, changeRecordEmitter.getOperation());
                 dispatchFilteredEvent(changeRecordEmitter.getPartition(), changeRecordEmitter.getOffset());
             } else {
-                DataCollectionSchema dataCollectionSchema = schema.schemaFor(dataCollectionId); //Doubt: we dont have schemaFor in our code, should we get tableSchema here
+                DataCollectionSchema dataCollectionSchema = schema.schemaFor(dataCollectionId);
                 LOGGER.info("Sumukh: the datacollectionschema inside dispatch change event = " + dataCollectionSchema);
                 // TODO handle as per inconsistent schema info option
                 if (dataCollectionSchema == null) {
