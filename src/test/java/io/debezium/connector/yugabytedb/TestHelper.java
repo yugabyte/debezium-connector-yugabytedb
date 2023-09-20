@@ -512,6 +512,13 @@ public final class TestHelper {
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
+                                          boolean withBeforeImage, boolean explicitCheckpointing) throws Exception {
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing,BeforeImageMode.CHANGE);                               
+    }
+
+
+
+    public static String getNewDbStreamId(String namespaceName, String tableName,
                                           boolean withBeforeImage) throws Exception {
         return getNewDbStreamId(namespaceName, tableName, withBeforeImage, true /* explicit */, BeforeImageMode.CHANGE);
     }
