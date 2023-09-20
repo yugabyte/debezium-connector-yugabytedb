@@ -150,6 +150,9 @@
         </dependency>
         <dependency>
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 2955408 (Code changes to get both ysql and ycql working on same connector)
             <groupId>com.datastax.oss</groupId>
             <artifactId>java-driver-core</artifactId>
             <version>4.1.0</version>
@@ -160,8 +163,11 @@
             <version>4.1.0</version>
         </dependency>
         <dependency>
+<<<<<<< HEAD
 =======
 >>>>>>> b90ef82 (WIP commit for cdc for cql)
+=======
+>>>>>>> 2955408 (Code changes to get both ysql and ycql working on same connector)
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-core</artifactId>
             <version>${version.jackson}</version>

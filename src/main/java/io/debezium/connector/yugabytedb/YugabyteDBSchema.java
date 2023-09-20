@@ -142,8 +142,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                                              CDCSDKSchemaPB schemaPB,
                                              String schemaName,
                                              String tabletId) {
-        // String lookupKey = getLookupKey(tableId, tabletId);
-        String lookupKey = getCQLLookupKey(tableId, tabletId);
+        String lookupKey = getLookupKey(tableId, tabletId);
         if (!tabletIdToCdcsdkSchemaPB.containsKey(lookupKey) || cdcsdkSchemaPB == null) {
             LOGGER.info("Sumukh Added entry in tabletIdToCdcsdkSchemaPB");
             tabletIdToCdcsdkSchemaPB.put(lookupKey, schemaPB);
@@ -255,8 +254,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         final Set<TableId> tableIds = new HashSet<>();
 
         if (tableFilter == null || tableFilter.isIncluded(tableId)) {
-            LOGGER.info("Sumukh table id added");
             tableIds.add(tableId);
+            LOGGER.info("Sumukh table id added");
         }
 
         for (TableId includeTable : tableIds) {
@@ -431,7 +430,10 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                            String tabletId) throws SQLException {
         readSchemaWithTablet(null /* dummy object */, null, tableId.schema(), tableId::equals,
                              null, true, schemaPB, tableId, tabletId);
+<<<<<<< HEAD
         
+=======
+>>>>>>> 2955408 (Code changes to get both ysql and ycql working on same connector)
         if (refreshToastableColumns) {
             // and refresh toastable columns info
             refreshToastableColumnsMap(connection, tableId);
@@ -462,14 +464,18 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
     protected void refreshSchemasWithTabletId(TableId tableId, String tabletId) {
         String lookupKey = getLookupKey(tableId, tabletId);;
+<<<<<<< HEAD
+=======
+        LOGGER.info("Sumukh Lookup Key = " + lookupKey);
+>>>>>>> 2955408 (Code changes to get both ysql and ycql working on same connector)
         tabletIdToTableSchema.remove(lookupKey);
 
-        refreshSchemaWithTablet(tableId, tabletId, schemaPB);
+        refreshSchemaWithTablet(tableId, tabletId);
     }
 
-    protected void refreshSchemaWithTablet(TableId id, String tabletId, CDCSDKSchemaPB schemaPB) {
+    protected void refreshSchemaWithTablet(TableId id, String tabletId) {
         LOGGER.info("Building and registering schema for tablet {}", tabletId);
-        buildAndRegisterSchemaForTablet(id, tabletId, schemaPB);
+        buildAndRegisterSchemaForTablet(id, tabletId);
     }
 
     /**
@@ -488,6 +494,11 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
         TableSchema schema = schemaBuilder.create(getSchemaPrefix(config.getLogicalName()), getEnvelopeSchemaName(table), table, config.getColumnFilter(), ColumnMappers.create(config), config.getKeyMapper());
       
+<<<<<<< HEAD
+=======
+        LOGGER.info("Sumukh TableSchema object created " + schema);
+        LOGGER.info("Sumukh table.id() = " + table.id());
+>>>>>>> 2955408 (Code changes to get both ysql and ycql working on same connector)
         if (tableFilter.isIncluded(table.id())) {
             LOGGER.info("Sumukh table.id included");
             LOGGER.info("Updating table schema with lookup key {}", lookupKey);
@@ -566,7 +577,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             return null;
         }
 
-        return tableId.schema() == null ? new TableId(tableId.catalog(), pgSchemaName, tableId.table()) : tableId; //Doubt: what is tableID.catalog()
+        return tableId.schema() == null ? new TableId(tableId.catalog(), pgSchemaName, tableId.table()) : tableId;
     }
 
     protected static TableId parseWithKeyspace(String table, String keyspace) {
@@ -633,8 +644,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
      * @return the resolved table or null
      */
     public Table tableForTablet(TableId tableId, String tabletId) {
-        // String lookupKey = getLookupKey(tableId, tabletId);
-        String lookupKey = getCQLLookupKey(tableId, tabletId);
+        String lookupKey = getLookupKey(tableId, tabletId);
         if (!tabletIdToTable.containsKey(lookupKey)) {
             LOGGER.info("Not found in tabletIDtoTable " + tabletIdToTable);
             return null;
@@ -664,7 +674,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
      * @return lookup key in the form databaseName.schemaName.tableName.tabletId
      */
     public String getLookupKey(TableId tableId, String tabletId) {
-        LOGGER.info("Sumukh databaseName " + config.databaseName()+ " schema " + tableId.schema()+ " table " + tableId.table()+ " tablet " + tabletId );
         return config.databaseName() + "." + tableId.schema() + "." + tableId.table()
                 + "." + tabletId;
     }

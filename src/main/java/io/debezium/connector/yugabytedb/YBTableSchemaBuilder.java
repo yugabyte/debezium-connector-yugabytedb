@@ -147,12 +147,7 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
         StructGenerator valueGenerator = createValueGenerator(valSchema, tableId, table.columns(), filter, mappers);
 
         // And the table schema ...
-<<<<<<< HEAD
         return new TableSchema(tableId, keySchema, keyGenerator, envelope, valSchema, valueGenerator);
-=======
-        // return new TableSchema(tableId, keySchema, keyGenerator, envelope, valSchema, valueGenerator);
-        return new TableSchema(tableId, keySchema, null, envelope, valSchema, null);
->>>>>>> b90ef82 (WIP commit for cdc for cql)
 
     }
 
