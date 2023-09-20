@@ -5,7 +5,6 @@ import com.datastax.oss.driver.api.core.cql.PreparedStatement;
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.HelperBeforeImageModes.BeforeImageMode;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -60,7 +59,7 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
 
         session.execute("create table if not exists cdctest.test_cdc(a int primary key, b varchar);");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_cdc", false, false,BeforeImageMode.CHANGE,true);
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_cdc", false, false,true);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","cqlSchema.test_cdc", dbStreamId);
         startEngine(configBuilder);
