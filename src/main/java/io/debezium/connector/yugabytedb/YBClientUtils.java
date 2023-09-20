@@ -313,8 +313,7 @@ public class YBClientUtils {
       return false;
     }
 
-    return (cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.ALL.name())
-           || cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES.name()));
+    return cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.ALL.name());
   }
 
   /**
