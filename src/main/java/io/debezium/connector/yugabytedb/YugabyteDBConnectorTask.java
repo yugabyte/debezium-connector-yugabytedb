@@ -69,9 +69,9 @@ public class YugabyteDBConnectorTask
         final YugabyteDBConnectorConfig connectorConfig = new YugabyteDBConnectorConfig(config);
         final TopicSelector<TableId> topicSelector = YugabyteDBTopicSelector.create(connectorConfig);
         final Snapshotter snapshotter = connectorConfig.getSnapshotter();
-        final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create(); //Kafka connect schema 
+        final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
 
-        LOGGER.info("Inside task The config is " + config);
+        LOGGER.debug("Inside task The config is " + config);
 
         if (snapshotter == null) {
             throw new ConnectException("Unable to load snapshotter, if using custom snapshot mode," +
@@ -84,7 +84,6 @@ public class YugabyteDBConnectorTask
         Encoding encoding = Encoding.defaultEncoding(); // UTF-8
         YugabyteDBTaskConnection taskConnection = new YugabyteDBTaskConnection(encoding);
                                                                                           
-        LOGGER.info("Sumukh new task Connection created");
 
         final YugabyteDBValueConverterBuilder valueConverterBuilder = (typeRegistry) -> YugabyteDBValueConverter.of(
                 connectorConfig,
@@ -173,7 +172,6 @@ public class YugabyteDBConnectorTask
                     .maxQueueSizeInBytes(connectorConfig.getMaxQueueSizeInBytes())
                     .loggingContextSupplier(() -> taskContext.configureLoggingContext(CONTEXT_NAME))
                     .build();
-                    LOGGER.info("Sumukh: ChangeEventQueue built " + queue);
 
             ErrorHandler errorHandler = new YugabyteDBErrorHandler(connectorConfig, queue);
 

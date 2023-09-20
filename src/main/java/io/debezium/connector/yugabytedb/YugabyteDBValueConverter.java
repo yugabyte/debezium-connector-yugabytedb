@@ -332,7 +332,7 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
                     List<String> enumValues = resolvedType.getElementType().getEnumValues();
                     return SchemaBuilder.array(io.debezium.data.Enum.builder(Strings.join(",", enumValues)));
                 }
-            
+
                 final SchemaBuilder jdbcSchemaBuilder = super.schemaBuilder(column);
                 if (jdbcSchemaBuilder == null) {
                     return includeUnknownDatatypes ? binaryMode.getSchema() : null;
