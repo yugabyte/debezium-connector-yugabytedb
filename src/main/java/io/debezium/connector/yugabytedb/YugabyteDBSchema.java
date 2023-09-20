@@ -255,7 +255,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
         if (tableFilter == null || tableFilter.isIncluded(tableId)) {
             tableIds.add(tableId);
-            LOGGER.info("Sumukh table id added");
         }
 
         for (TableId includeTable : tableIds) {
@@ -269,12 +268,10 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         for (Map.Entry<TableId, List<Column>> tableEntry : columnsByTable.entrySet()) {
             // First get the primary key information, which must be done for *each* table ...
             List<String> pkColumnNames = readPrimaryKeyOrUniqueIndexNames(schemaPB, tableEntry.getKey());
-            LOGGER.info("Sumukh Primary Key column names " + pkColumnNames);
 
             // Then define the table ...
             List<Column> columns = tableEntry.getValue();
             Collections.sort(columns);
-            LOGGER.info("Sumukh columns list = " + columns);
             Table updatedTable = Table.editor()
               .tableId(tableId)
               .addColumns(columns)
@@ -326,7 +323,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         int position = 1;
         for (CdcService.CDCSDKColumnInfoPB columnMetadata : schemaPB.getColumnInfoList()) {
             TableId tableId = new TableId(databaseCatalog, schemaNameFromYb, tableName);
-            LOGGER.info("Sumukh: table id = "+tableId.catalog()+"."+tableId.schema()+"."+tableId.table());
 
             // exclude views and non-captured tables
             if ((tableFilter != null && !tableFilter.isIncluded(tableId))) {
@@ -430,10 +426,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                            String tabletId) throws SQLException {
         readSchemaWithTablet(null /* dummy object */, null, tableId.schema(), tableId::equals,
                              null, true, schemaPB, tableId, tabletId);
-<<<<<<< HEAD
-        
-=======
->>>>>>> 2955408 (Code changes to get both ysql and ycql working on same connector)
         if (refreshToastableColumns) {
             // and refresh toastable columns info
             refreshToastableColumnsMap(connection, tableId);
@@ -465,16 +457,19 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     protected void refreshSchemasWithTabletId(TableId tableId, String tabletId) {
         String lookupKey = getLookupKey(tableId, tabletId);;
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
         LOGGER.info("Sumukh Lookup Key = " + lookupKey);
 >>>>>>> 2955408 (Code changes to get both ysql and ycql working on same connector)
+=======
+>>>>>>> 261c7d5 (Code cleanup: Removed logs)
         tabletIdToTableSchema.remove(lookupKey);
 
         refreshSchemaWithTablet(tableId, tabletId);
     }
 
     protected void refreshSchemaWithTablet(TableId id, String tabletId) {
-        LOGGER.info("Building and registering schema for tablet {}", tabletId);
+        LOGGER.debug("Building and registering schema for tablet {}", tabletId);
         buildAndRegisterSchemaForTablet(id, tabletId);
     }
 
@@ -495,13 +490,15 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         TableSchema schema = schemaBuilder.create(getSchemaPrefix(config.getLogicalName()), getEnvelopeSchemaName(table), table, config.getColumnFilter(), ColumnMappers.create(config), config.getKeyMapper());
       
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
         LOGGER.info("Sumukh TableSchema object created " + schema);
         LOGGER.info("Sumukh table.id() = " + table.id());
 >>>>>>> 2955408 (Code changes to get both ysql and ycql working on same connector)
+=======
+>>>>>>> 261c7d5 (Code cleanup: Removed logs)
         if (tableFilter.isIncluded(table.id())) {
-            LOGGER.info("Sumukh table.id included");
-            LOGGER.info("Updating table schema with lookup key {}", lookupKey);
+            LOGGER.debug("Updating table schema with lookup key {}", lookupKey);
             tabletIdToTableSchema.put(lookupKey, schema);
         } else {
             LOGGER.warn("{} not included ",table.id());
@@ -646,13 +643,12 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     public Table tableForTablet(TableId tableId, String tabletId) {
         String lookupKey = getLookupKey(tableId, tabletId);
         if (!tabletIdToTable.containsKey(lookupKey)) {
-            LOGGER.info("Not found in tabletIDtoTable " + tabletIdToTable);
             return null;
         }
 
         Table table = tabletIdToTable.get(lookupKey);
         
-        LOGGER.info("Getting a table with lookup key {}", lookupKey);
+        LOGGER.debug("Getting a table with lookup key {}", lookupKey);
         return tableFilter.isIncluded(table.id()) ? table : null;
     }
 
