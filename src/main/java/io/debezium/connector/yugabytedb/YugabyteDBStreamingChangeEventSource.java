@@ -222,20 +222,14 @@ public class YugabyteDBStreamingChangeEventSource implements
             }
         }
 
-        // The bootstrap method calls the SetCDCCheckPoint RPC, which relies on a cache to obtain a
-        // list of all the tservers. In case of multi host port connection url, if one of the DB node
-        // goes down, it takes some time for the cache to refresh and return correct tserver list.
-        // This refresh time may be longer and hence we need additional number of retries here.
-        int maxBootstrapRetries = connectorConfig.maxConnectorRetries() * 5;
+        short retryCountForBootstrapping = 0;
         for (Pair<String, String> entry : tabletPairList) {
             // entry is a Pair<tableId, tabletId>
             boolean shouldRetry = true;
-            short retryCountForBootstrapping = 0;
-            while (retryCountForBootstrapping <= maxBootstrapRetries && shouldRetry) {
+            while (retryCountForBootstrapping <= connectorConfig.maxConnectorRetries() && shouldRetry) {
                 try {
                     if (!tabletsWithoutBootstrap.contains(entry.getValue())) {
-                        YBTable table = this.syncClient.openTableByUUID(entry.getKey());
-                        bootstrapTablet(table, entry.getValue());
+                        bootstrapTablet(this.syncClient.openTableByUUID(entry.getKey()), entry.getValue());
                     } else {
                         LOGGER.info("Skipping bootstrap for table {} tablet {} as it has a checkpoint", entry.getKey(), entry.getValue());
                     }
@@ -248,14 +242,14 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // The connector should go for a retry if any exception is thrown
                     shouldRetry = true;
 
-                    if (retryCountForBootstrapping > maxBootstrapRetries) {
-                        LOGGER.error("Failed to bootstrap the tablet {} after {} retries", entry.getValue(), maxBootstrapRetries);
+                    if (retryCountForBootstrapping > connectorConfig.maxConnectorRetries()) {
+                        LOGGER.error("Failed to bootstrap the tablet {} after {} retries", entry.getValue(), connectorConfig.maxConnectorRetries());
                         throw e;
                     }
 
                     // If there are retries left, perform them after the specified delay.
                     LOGGER.warn("Error while trying to bootstrap tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
-                            entry.getValue(), retryCountForBootstrapping, maxBootstrapRetries, connectorConfig.connectorRetryDelayMs(), e.getMessage());
+                            entry.getValue(), retryCountForBootstrapping, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
 
                     try {
                         final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);

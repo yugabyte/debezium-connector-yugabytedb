@@ -29,7 +29,6 @@ import io.debezium.connector.AbstractSourceInfo;
 import io.debezium.connector.SourceInfoStructMaker;
 import io.debezium.connector.yugabytedb.connection.MessageDecoder;
 import io.debezium.connector.yugabytedb.connection.MessageDecoderContext;
-import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoMessageDecoder;
 import io.debezium.connector.yugabytedb.snapshot.AlwaysSnapshotter;
 import io.debezium.connector.yugabytedb.snapshot.InitialOnlySnapshotter;
@@ -38,9 +37,7 @@ import io.debezium.connector.yugabytedb.snapshot.NeverSnapshotter;
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.heartbeat.DatabaseHeartbeatImpl;
 import io.debezium.jdbc.JdbcConfiguration;
-import io.debezium.jdbc.JdbcConnection;
 import io.debezium.jdbc.JdbcValueConverters;
-import io.debezium.jdbc.JdbcConnection.ConnectionFactory;
 import io.debezium.relational.ColumnFilterMode;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
 import io.debezium.relational.TableId;
@@ -1424,19 +1421,6 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     @Override
     public String getConnectorName() {
         return Module.name();
-    }
-
-    public ConnectionFactory getConnectionFactory() {
-        String hostName = getJdbcConfig().getHostname();
-        return hostName.contains(":")
-                ? JdbcConnection.patternBasedFactory(YugabyteDBConnection.MULTI_HOST_URL_PATTERN,
-                        org.postgresql.Driver.class.getName(),
-                        YugabyteDBConnection.class.getClassLoader(),
-                        JdbcConfiguration.PORT.withDefault(YugabyteDBConnectorConfig.PORT.defaultValueAsString()))
-                : JdbcConnection.patternBasedFactory(YugabyteDBConnection.SINGLE_HOST_URL_PATTERN,
-                        org.postgresql.Driver.class.getName(),
-                        YugabyteDBConnection.class.getClassLoader(),
-                        JdbcConfiguration.PORT.withDefault(YugabyteDBConnectorConfig.PORT.defaultValueAsString()));
     }
 
     private static class SystemTablesPredicate implements TableFilter {

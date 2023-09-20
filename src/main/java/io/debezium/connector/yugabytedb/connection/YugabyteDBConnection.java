@@ -61,16 +61,14 @@ public class YugabyteDBConnection extends JdbcConnection {
 
     private static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBConnection.class);
 
-    public static final String MULTI_HOST_URL_PATTERN = "jdbc:postgresql://${" + JdbcConfiguration.HOSTNAME + "}/${" + JdbcConfiguration.DATABASE + "}";
-    public static final String SINGLE_HOST_URL_PATTERN = "jdbc:postgresql://${" + JdbcConfiguration.HOSTNAME + "}:${"
+    private static final String URL_PATTERN = "jdbc:postgresql://${" + JdbcConfiguration.HOSTNAME + "}:${"
             + JdbcConfiguration.PORT + "}/${" + JdbcConfiguration.DATABASE + "}";
-
-    protected static ConnectionFactory FACTORY; 
+    protected static final ConnectionFactory FACTORY = JdbcConnection.patternBasedFactory(URL_PATTERN,
+            org.postgresql.Driver.class.getName(),
+            YugabyteDBConnection.class.getClassLoader(), JdbcConfiguration.PORT.withDefault(YugabyteDBConnectorConfig.PORT.defaultValueAsString()));
 
     private final YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
     private final YugabyteDBDefaultValueConverter defaultValueConverter;
-
-    private final JdbcConfiguration config;
 
     /**
      * Creates a Postgres connection using the supplied configuration.
@@ -81,11 +79,9 @@ public class YugabyteDBConnection extends JdbcConnection {
      * @param config {@link Configuration} instance, may not be null.
      * @param valueConverterBuilder supplies a configured {@link YugabyteDBValueConverter} for a given {@link YugabyteDBTypeRegistry}
      */
-    public YugabyteDBConnection(JdbcConfiguration config, YugabyteDBValueConverterBuilder valueConverterBuilder, String connectionUsage, ConnectionFactory factory){
-        super(addDefaultSettings(config, connectionUsage), factory, YugabyteDBConnection::validateServerVersion, null,
-                "\"", "\"");
-        YugabyteDBConnection.FACTORY = factory;
-        this.config = config;
+    public YugabyteDBConnection(JdbcConfiguration config, YugabyteDBValueConverterBuilder valueConverterBuilder, String connectionUsage) {
+        super(addDefaultSettings(config, connectionUsage) , FACTORY, YugabyteDBConnection::validateServerVersion, null, "\"", "\"");
+
         if (Objects.isNull(valueConverterBuilder)) {
             this.yugabyteDBTypeRegistry = null;
             this.defaultValueConverter = null;
@@ -96,19 +92,6 @@ public class YugabyteDBConnection extends JdbcConnection {
             final YugabyteDBValueConverter valueConverter = valueConverterBuilder.build(this.yugabyteDBTypeRegistry);
             this.defaultValueConverter = new YugabyteDBDefaultValueConverter(valueConverter, this.getTimestampUtils());
         }
-
-
-    }
-    public YugabyteDBConnection(JdbcConfiguration config, YugabyteDBValueConverterBuilder valueConverterBuilder, String connectionUsage) {
-        this(config, valueConverterBuilder, connectionUsage, config.getHostname().contains(":")
-                        ? JdbcConnection.patternBasedFactory(MULTI_HOST_URL_PATTERN,
-                            org.postgresql.Driver.class.getName(),
-                            YugabyteDBConnection.class.getClassLoader(),
-                            JdbcConfiguration.PORT.withDefault(YugabyteDBConnectorConfig.PORT.defaultValueAsString()))
-                        : JdbcConnection.patternBasedFactory(SINGLE_HOST_URL_PATTERN,
-                                org.postgresql.Driver.class.getName(),
-                                YugabyteDBConnection.class.getClassLoader(), JdbcConfiguration.PORT
-                                        .withDefault(YugabyteDBConnectorConfig.PORT.defaultValueAsString())));
     }
 
     /**
@@ -117,11 +100,8 @@ public class YugabyteDBConnection extends JdbcConnection {
      * @param yugabyteDBTypeRegistry an existing/already-primed {@link YugabyteDBTypeRegistry} instance
      */
     public YugabyteDBConnection(YugabyteDBConnectorConfig config,
-            YugabyteDBTypeRegistry yugabyteDBTypeRegistry, String connectionUsage, ConnectionFactory factory) {
-        super(addDefaultSettings(config.getJdbcConfig(), connectionUsage), factory,
-                YugabyteDBConnection::validateServerVersion, null, "\"", "\"");
-        YugabyteDBConnection.FACTORY = factory;
-        this.config = config.getJdbcConfig();
+                                YugabyteDBTypeRegistry yugabyteDBTypeRegistry, String connectionUsage) {
+        super(addDefaultSettings(config.getJdbcConfig(), connectionUsage), FACTORY, YugabyteDBConnection::validateServerVersion, null, "\"", "\"");
         if (Objects.isNull(yugabyteDBTypeRegistry)) {
             this.yugabyteDBTypeRegistry = null;
             this.defaultValueConverter = null;
@@ -132,11 +112,6 @@ public class YugabyteDBConnection extends JdbcConnection {
                     yugabyteDBTypeRegistry);
             this.defaultValueConverter = new YugabyteDBDefaultValueConverter(valueConverter, this.getTimestampUtils());
         }
-    }
-
-    public YugabyteDBConnection(YugabyteDBConnectorConfig config,
-                                YugabyteDBTypeRegistry yugabyteDBTypeRegistry, String connectionUsage) {
-        this(config,yugabyteDBTypeRegistry, connectionUsage, config.getConnectionFactory());
     }
 
     /**
@@ -163,12 +138,7 @@ public class YugabyteDBConnection extends JdbcConnection {
      * @return a {@code String} where the variables in {@code urlPattern} are replaced with values from the configuration
      */
     public String connectionString() {
-        String hostName = config.getHostname();
-        if (hostName.contains(":")) {
-            return connectionString(MULTI_HOST_URL_PATTERN);
-        } else {
-            return connectionString(SINGLE_HOST_URL_PATTERN);
-        }
+        return connectionString(URL_PATTERN);
     }
 
     /**
