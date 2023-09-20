@@ -189,7 +189,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 try {
                     GetCheckpointResponse resp = this.syncClient.getCheckpoint(tableIdToTable.get(entry.getKey()), connectorConfig.streamId(), entry.getValue());
                     if (resp.getTerm() == -1 && resp.getIndex() == -1) {
-                        LOGGER.info("Bootstrap required for table {} tablet {} as it has checkpoint -1.-1", entry.getKey(), entry.getValue());
+                        LOGGER.debug("Bootstrap required for table {} tablet {} as it has checkpoint -1.-1", entry.getKey(), entry.getValue());
                     } else {
                         LOGGER.info("No bootstrap needed for tablet {} with checkpoint {}.{}", entry.getValue(), resp.getTerm(), resp.getIndex());
                         tabletsWithoutBootstrap.add(entry.getValue() /* tabletId */ );
@@ -313,14 +313,13 @@ public class YugabyteDBStreamingChangeEventSource implements
         LOGGER.info("Processing messages");
 
         String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
-        LOGGER.info("Sumukh: getChanges tabletlist " + tabletList);
 
         // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
         // and the value is tablet UUID
         List<Pair<String, String>> tabletPairList = null;
         try {
             tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
-            LOGGER.info("The tablet list is " + tabletPairList);
+            LOGGER.debug("The tablet list is " + tabletPairList);
         } catch (IOException | ClassNotFoundException e) {
             LOGGER.error("Exception while deserializing tablet pair list", e);
             throw new RuntimeException(e);
@@ -334,19 +333,15 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         Set<String> tIds = tabletPairList.stream().map(pair -> pair.getLeft()).collect(Collectors.toSet());
         for (String tId : tIds) {
-            LOGGER.info("Table UUID: " + tIds);
-            LOGGER.info("tid " + tId);
             YBTable table = this.syncClient.openTableByUUID(tId);
-            LOGGER.info("Sumukh Checking table name " + table.getName() + " Key space " +table.getKeyspace());
             tableIdToTable.put(tId, table);
 
             GetTabletListToPollForCDCResponse resp =
                 this.syncClient.getTabletListToPollForCdc(table, streamId, tId);
-                LOGGER.info("Sumukh response of getTabletListToPoll Tablet server uuid " + resp.getTsUUID());
             tabletListResponse.put(tId, resp);
         }
 
-        LOGGER.info("The init tabletSourceInfo before updating is " + offsetContext.getTabletSourceInfo());
+        LOGGER.debug("The init tabletSourceInfo before updating is " + offsetContext.getTabletSourceInfo());
 
         // Initialize the offsetContext and other supporting flags.
         // This schemaNeeded map here would have the elements as <tableId.tabletId>:<boolean-value>
@@ -356,7 +351,6 @@ public class YugabyteDBStreamingChangeEventSource implements
             // entry.getValue() will give the tabletId
             OpId opId = YBClientUtils.getOpIdFromGetTabletListResponse(
                             tabletListResponse.get(entry.getKey()), entry.getValue());
-                            LOGGER.info("Sumukh checking OpID " + opId.toString());
 
             if (opId == null) {
                 throw new RuntimeException(String.format("OpId for the given tablet {} was not found in the response,"
@@ -369,7 +363,6 @@ public class YugabyteDBStreamingChangeEventSource implements
             LOGGER.info("Checkpoint from GetTabletListToPollForCDC for tablet {} as {}", entry.getValue(), opId);
             if (opId.getTerm() == -1 && opId.getIndex() == -1) {
                 opId = YugabyteDBOffsetContext.streamingStartLsn();
-                LOGGER.info("Sumukh OpID after -1.-1 check " + opId);
             }
 
             // For streaming, we do not want any colocated information and want to process the tables
@@ -378,7 +371,6 @@ public class YugabyteDBStreamingChangeEventSource implements
             offsetContext.initSourceInfo(p, this.connectorConfig, opId);
             // We can initialise the explicit checkpoint for this tablet to the value returned by
             // the cdc_service through the 'GetTabletListToPollForCDC' API
-            LOGGER.info("Sumukh partition ID " + p.getId());
             tabletToExplicitCheckpoint.put(p.getId(), opId.toCdcSdkCheckpoint());
             schemaNeeded.put(p.getId(), Boolean.TRUE);
         }
@@ -395,7 +387,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         // in the stream as well.
         Map<String, Integer> beginCountForTablet = new HashMap<>();
 
-        LOGGER.info("The init tabletSourceInfo after updating is " + offsetContext.getTabletSourceInfo());
+        LOGGER.debug("The init tabletSourceInfo after updating is " + offsetContext.getTabletSourceInfo());
 
         // Only bootstrap if no snapshot has been enabled - if snapshot is enabled then
         // the assumption is that there will already be some checkpoints for the tablet in
@@ -429,7 +421,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                     if (this.connectorConfig.cdcLimitPollPerIteration()
                             && queue.remainingCapacity() < queue.totalCapacity()) {
-                        LOGGER.info("Queue has {} items. Skipping", queue.totalCapacity() - queue.remainingCapacity());
+                        LOGGER.debug("Queue has {} items. Skipping", queue.totalCapacity() - queue.remainingCapacity());
                         continue;
                     }
 
@@ -447,7 +439,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                         // callback for the tablet. At this stage, check if the explicit
                         // checkpoint is the same as from_op_id, if yes then handle the tablet
                         // for split.
-                        LOGGER.info("Sumukh In get changes Entering explicit checkpointing flow");
                         CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
                         OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
 
@@ -506,7 +497,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                       CdcSdkCheckpoint explicitCheckpoint = null;
                       if (taskContext.shouldEnableExplicitCheckpointing()) {
                         explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                        LOGGER.info("Sumukh Explicit checkpoint set");
                       }
 
                       try {
@@ -567,7 +557,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 .getResp()
                                 .getCdcSdkProtoRecordsList()) {
                             CdcService.RowMessage m = record.getRowMessage();
-                            LOGGER.info("Sumukh: Inside GetChanges call Row message = " + m);
                             YbProtoReplicationMessage message = new YbProtoReplicationMessage(
                                     m, this.yugabyteDBTypeRegistry);
 
@@ -587,7 +576,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         connectorConfig.databaseName());
                             }
                             
-                            LOGGER.info("Sumukh tempTableID " + tempTid);
                             if (!message.isTransactionalMessage()
                                   && !filters.tableFilter().isIncluded(tempTid) && !connectorConfig.cqlTableFilter().isIncluded(tempTid)) {
                                 LOGGER.info("Skipping a record for table {} because it was not included", tempTid.table());
@@ -610,11 +598,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 // Tx BEGIN/END event
                                 if (message.isTransactionalMessage()) {
                                     if (!connectorConfig.shouldProvideTransactionMetadata()) {
-                                        LOGGER.info("Received transactional message {}", record);
+                                        LOGGER.debug("Received transactional message {}", record);
                                         // Don't skip on BEGIN message as it would flush LSN for the whole transaction
                                         // too early
                                         if (message.getOperation() == Operation.BEGIN) {
-                                            LOGGER.info("LSN in case of BEGIN is " + lsn);
+                                            LOGGER.debug("LSN in case of BEGIN is " + lsn);
 
                                             recordsInTransactionalBlock.put(part.getId(), 0);
                                             beginCountForTablet.merge(part.getId(), 1, Integer::sum);
@@ -626,10 +614,10 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                             if (recordsInTransactionalBlock.containsKey(part.getId())) {
                                                 if (recordsInTransactionalBlock.get(part.getId()) == 0) {
-                                                    LOGGER.info("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                    LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                                                 message.getTransactionId(), lsn, part.getId());
                                                 } else {
-                                                    LOGGER.info("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
+                                                    LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
                                                                  message.getTransactionId(), lsn, part.getId(), recordsInTransactionalBlock.get(part.getId()));
                                                 }
                                             } else if (beginCountForTablet.get(part.getId()).intValue() == 0) {
@@ -657,10 +645,10 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                         if (recordsInTransactionalBlock.containsKey(part.getId())) {
                                             if (recordsInTransactionalBlock.get(part.getId()) == 0) {
-                                                LOGGER.info("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                                             message.getTransactionId(), lsn, part.getId());
                                             } else {
-                                                LOGGER.info("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
+                                                LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
                                                              message.getTransactionId(), lsn, part.getId(), recordsInTransactionalBlock.get(part.getId()));
                                             }
                                         } else if (beginCountForTablet.get(part.getId()).intValue() == 0) {
@@ -673,7 +661,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     maybeWarnAboutGrowingWalBacklog(true);
                                 }
                                 else if (message.isDDLMessage()) {
-                                    LOGGER.info("Received DDL message {}", message.getSchema().toString()
+                                    LOGGER.debug("Received DDL message {}", message.getSchema().toString()
                                             + " the table is " + message.getTable());
 
                                     // If a DDL message is received for a tablet, we do not need its schema again
@@ -698,8 +686,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         } else {
                                             LOGGER.info("Refreshing the schema for table {} tablet {} because of mismatch in cached schema and received schema", entry.getKey(), tabletId);
                                         }
-                                        LOGGER.info("Sumukh: schema PB " + message.getSchema() + " " + tableId + " "
-                                                + tableId.catalog() + " " + tableId.schema() + " " + tabletId);
                                         if(connectorConfig.qlType().equals("ysql")) {
                                             schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
                                         } else {
@@ -709,7 +695,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 }
                                 // DML event
                                 else {
-                                    LOGGER.info("Sumukh: DML Record");
                                     TableId tableId = null;
                                     if (message.getOperation() != Operation.NOOP) {
                                         if(connectorConfig.qlType().equals("ysql")) {
@@ -717,19 +702,14 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         } else {
                                             tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
                                         }
-                                        LOGGER.info("Sumukh: the tableId for DML record =  " + tableId);
                                         Objects.requireNonNull(tableId);
                                     }
                                     // If you need to print the received record, change debug level to info
-                                    LOGGER.info("Received DML record {}", record);
+                                    LOGGER.debug("Received DML record {}", record);
 
-                                    LOGGER.info("Message properties: rawcommittime = " + message.getRawCommitTime()
-                                            + " transaction id = " + String.valueOf(message.getTransactionId()) //Doubt: Transaction Id is blank, is this expected?
-                                            + " getRecordTime = " + message.getRecordTime() + " lsn = " + lsn);
                                     offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                             String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
 
-                                    LOGGER.info("Sumukh Record Position updated");
 
                                     boolean dispatched = message.getOperation() != Operation.NOOP;
                                     if (connectorConfig.qlType().equals("ysql")) {
@@ -749,7 +729,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                                 YugabyteDBSchema.CQL_SCHEMA_NAME, tabletId,
                                                                 taskContext.isBeforeImageEnabled()));
                                     }
-                                    LOGGER.info("Sumukh dispatched = " + dispatched);
 
                                     if (recordsInTransactionalBlock.containsKey(part.getId())) {
                                         recordsInTransactionalBlock.merge(part.getId(), 1, Integer::sum);
@@ -793,7 +772,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             }
                         }
 
-                        LOGGER.info("The final opid for tablet {} is {}", part.getId(), finalOpid);
+                        LOGGER.debug("The final opid for tablet {} is {}", part.getId(), finalOpid);
                     }
                     // Reset the retry count, because if flow reached at this point, it means that the connection
                     // has succeeded

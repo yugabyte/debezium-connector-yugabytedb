@@ -269,17 +269,13 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     }
 
     private Optional<DataCollectionSchema> newTable(TableId tableId) {
-        LOGGER.info("Creating a new schema entry for table: {} and tablet {}", tableId, tabletId);
+        LOGGER.debug("Creating a new schema entry for table: {} and tablet {}", tableId, tabletId);
         refreshTableFromDatabase(tableId);
         final TableSchema tableSchema = schema.schemaForTablet(tableId, tabletId);
-        LOGGER.info("Sumukh: TableSchema = " +tableSchema);
         if (tableSchema == null) {
-            LOGGER.info("cannot load schema for table '{}'", tableId);
             return Optional.empty();
         }
         else {
-            LOGGER.info("Refreshed db schema for " + tableId + " tableSchema = " +tableSchema);
-            LOGGER.info("refreshed DB schema to include table '{}'", tableId);
             return Optional.of(tableSchema);
         }
     }
@@ -287,9 +283,6 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     private void refreshTableFromDatabase(TableId tableId) {
         try {
             // Using another implementation of refresh() to take into picture the schema information too.
-            LOGGER.info("Refreshing schema for the table {}", tableId);
-            LOGGER.info("TabletID inside refreshTablefrom DB " + tabletId);
-            LOGGER.info("Schema sent for refresh " +schema.getSchemaPBForTablet(tableId, tabletId));
             if (connectorConfig.qlType().equals("ysql")) {
                 schema.refresh(connection, tableId,
                         connectorConfig.skipRefreshSchemaOnMissingToastableData(),
@@ -308,7 +301,6 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
 
     static Optional<DataCollectionSchema> updateSchema(YBPartition partition, TableId tableId,
                                                        ChangeRecordEmitter changeRecordEmitter) {
-        LOGGER.info("Sumukh: YugabyteDBChangeRecordEmitter.updateSchema called with table Id " + tableId);
         return ((YugabyteDBChangeRecordEmitter) changeRecordEmitter).newTable(tableId);
     }
 

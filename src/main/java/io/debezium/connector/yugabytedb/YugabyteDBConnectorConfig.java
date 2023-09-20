@@ -1451,7 +1451,6 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     private class DatabasePredicate implements TableFilter {
         @Override
         public boolean isIncluded(TableId tableId) {
-            LOGGER.info("Sumukh tableID catalog " + tableId.catalog() + " for tableID " + tableId);
             return Objects.equals(tableId.catalog(), getConfig().getString(DATABASE_NAME));
         }
     }
@@ -1459,10 +1458,8 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     private class CQLTablesPredicate implements TableFilter {
         @Override
         public boolean isIncluded(TableId tableId) {
-            LOGGER.info("Sumukh: Inside CQLTable filter with  "+tableId.catalog()+"."+tableId.schema()+"."+tableId.table());
             if(Objects.equals(tableId.catalog(), getConfig().getString(DATABASE_NAME))) {
                 String includeTableName = tableId.schema()+"."+tableId.table();
-                LOGGER.info("Sumukh table Include list = " + tableIncludeList());
                 return tableIncludeList().contains(includeTableName);
             }
             return false;

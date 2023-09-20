@@ -208,7 +208,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         case Types.VARCHAR:
             return SchemaBuilder.string();
         default :
-            System.out.println("Sumukh: Requirred type not found in CQLValueConverter SchemaBuilder ");
+            logger.error("Requirred type not found in CQLValueConverter SchemaBuilder ");
             return null;
         }
     }
@@ -240,7 +240,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
             case Types.VARCHAR:
                 return (data) -> convertString(column, fieldDefn, data);
             default:
-                System.out.println("Sumukh: Requirred type not found in CQLValueConverter Converter ");
+                logger.error("Requirred type not found in CQLValueConverter Converter ");
                 return null;
         }
 

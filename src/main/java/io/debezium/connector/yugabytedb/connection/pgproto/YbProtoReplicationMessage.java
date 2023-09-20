@@ -133,7 +133,6 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
                         };
                     }
                     else {
-                        LOGGER.info("SKSK Trying to populate the CQL value.");
                         final Common.QLTypePB type = datum.getCqlType();
                         return new AbstractReplicationMessageColumn(columnName, type) {
                             @Override

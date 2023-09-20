@@ -93,15 +93,12 @@ public class YBClientUtils {
                           + tableInfo.getName();
                   tableId = YugabyteDBSchema.parseWithSchema(fqlTableName,
                           tableInfo.getPgschemaName());
-                  LOGGER.info("Sumukh ysql table name = " + fqlTableName + " tableID = " + tableId);
-
 
               }
               else {
                   fqlTableName = tableInfo.getNamespace().getName() + "."
                           + tableInfo.getName();
                   tableId = YugabyteDBSchema.parseWithKeyspace(fqlTableName, tableInfo.getNamespace().getName());
-                  LOGGER.info("Sumukh table name = " + fqlTableName + " tableID schema = " + tableId.schema());
               }
               // Retrieve the list of tables in the stream ID,
               GetDBStreamInfoResponse dbStreamInfoResponse = ybClient.getDBStreamInfo(
@@ -110,7 +107,6 @@ public class YBClientUtils {
               if (connectorConfig.getTableFilters().dataCollectionFilter().isIncluded(tableId)
                       && connectorConfig.databaseFilter().isIncluded(tableId)) {
                   // Throw an exception if the table in the include list is not a part of stream ID
-                  LOGGER.info("Sumukh table ID "+tableId+" is included");
                   if (!isTableIncludedInStreamId(dbStreamInfoResponse, 
                                                  tableInfo.getId().toStringUtf8())) {
                       String warningMessageFormat = "The table %s is not a part of the "
@@ -128,9 +124,7 @@ public class YBClientUtils {
                   tableIds.add(tableInfo.getId().toStringUtf8());
               }
               else {
-                LOGGER.info("Sumukh table ID " + tableId + " is not included");
-
-                  LOGGER.info("Filtering out the table {} since it was not in the include list", 
+                  LOGGER.warn("Filtering out the table {} since it was not in the include list", 
                               tableId);
               }
           }
