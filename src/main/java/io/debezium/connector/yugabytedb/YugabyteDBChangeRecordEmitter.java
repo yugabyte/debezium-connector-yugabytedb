@@ -297,11 +297,6 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         catch (SQLException e) {
             throw new ConnectException("Database error while refresing table schema", e);
         }
-        catch(Exception e){;}
-        // catch (SQLException e) {
-        //     System.out.println("Database error while refresing table schema");
-        //     throw new ConnectException("Database error while refresing table schema", e);
-        // }
     }
 
     static Optional<DataCollectionSchema> updateSchema(YBPartition partition, TableId tableId,

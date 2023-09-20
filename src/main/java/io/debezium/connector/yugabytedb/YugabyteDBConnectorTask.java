@@ -183,7 +183,7 @@ public class YugabyteDBConnectorTask
                     connectorConfig,
                     topicSelector,
                     schemaNameAdjuster,
-                    () -> new YugabyteDBConnection(connectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL), //Do we need this?
+                    () -> new YugabyteDBConnection(connectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL),
                     exception -> {
                         String sqlErrorId = exception.getSQLState();
                         switch (sqlErrorId) {

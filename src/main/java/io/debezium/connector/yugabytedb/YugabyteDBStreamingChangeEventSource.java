@@ -372,7 +372,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
             // For streaming, we do not want any colocated information and want to process the tables
             // based on just their tablet IDs - pass false as the 'colocated' flag to enforce the same.
-            YBPartition p = new YBPartition(entry.getKey(), entry.getValue(), false /* colocated */); //Doubt: What exactly is YBPartition? Is this related to partition in kafka topics
+            YBPartition p = new YBPartition(entry.getKey(), entry.getValue(), false /* colocated */);
             offsetContext.initSourceInfo(p, this.connectorConfig, opId);
             // We can initialise the explicit checkpoint for this tablet to the value returned by
             // the cdc_service through the 'GetTabletListToPollForCDC' API
@@ -437,7 +437,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                         YBPartition part = new YBPartition(entry.getKey() /* tableId */, tabletId, false /* colocated */);
 
                       OpId cp = offsetContext.lsn(part);
-                        //   System.out.println("Sumukh Inside while loop OP id " + cp);
 
                       if (taskContext.shouldEnableExplicitCheckpointing()
                             && splitTabletsWaitingForCallback.contains(part.getId())) {
@@ -473,6 +472,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                       }
 
                       YBTable table = tableIdToTable.get(entry.getKey());
+
                       if (LOGGER.isDebugEnabled()
                           || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
                         LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
