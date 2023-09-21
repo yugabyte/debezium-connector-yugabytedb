@@ -456,13 +456,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
     protected void refreshSchemasWithTabletId(TableId tableId, String tabletId) {
         String lookupKey = getLookupKey(tableId, tabletId);;
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-        LOGGER.info("Sumukh Lookup Key = " + lookupKey);
->>>>>>> 2955408 (Code changes to get both ysql and ycql working on same connector)
-=======
->>>>>>> 261c7d5 (Code cleanup: Removed logs)
         tabletIdToTableSchema.remove(lookupKey);
 
         refreshSchemaWithTablet(tableId, tabletId);
@@ -489,14 +482,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
         TableSchema schema = schemaBuilder.create(getSchemaPrefix(config.getLogicalName()), getEnvelopeSchemaName(table), table, config.getColumnFilter(), ColumnMappers.create(config), config.getKeyMapper());
       
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-        LOGGER.info("Sumukh TableSchema object created " + schema);
-        LOGGER.info("Sumukh table.id() = " + table.id());
->>>>>>> 2955408 (Code changes to get both ysql and ycql working on same connector)
-=======
->>>>>>> 261c7d5 (Code cleanup: Removed logs)
         if (tableFilter.isIncluded(table.id())) {
             LOGGER.debug("Updating table schema with lookup key {}", lookupKey);
             tabletIdToTableSchema.put(lookupKey, schema);
