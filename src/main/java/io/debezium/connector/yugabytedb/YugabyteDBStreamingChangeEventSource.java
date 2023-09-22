@@ -689,7 +689,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         if(connectorConfig.qlType().equals("ysql")) {
                                             schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
                                         } else {
-                                            schema.refreshSchemaWithTabletId(tableId, message.getSchema(), YugabyteDBSchema.CQL_SCHEMA_NAME, tabletId);
+                                            schema.refreshSchemaWithTabletId(tableId, message.getSchema(), tableId.catalog(), tabletId);
                                         }
                                     }
                                 }
@@ -726,7 +726,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                         new YugabyteDBChangeRecordEmitter(part, offsetContext, clock,
                                                                 connectorConfig,
                                                                 schema, connection, tableId, message,
-                                                                YugabyteDBSchema.CQL_SCHEMA_NAME, tabletId,
+                                                                tableId.catalog(), tabletId,
                                                                 taskContext.isBeforeImageEnabled()));
                                     }
 

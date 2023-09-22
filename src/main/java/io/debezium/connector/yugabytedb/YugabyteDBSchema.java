@@ -45,7 +45,6 @@ import io.debezium.util.SchemaNameAdjuster;
 public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
     protected final static String PUBLIC_SCHEMA_NAME = "public";
-    protected final static String CQL_SCHEMA_NAME = "cqlSchema";
     private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSchema.class);
 
     private final YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
@@ -568,9 +567,9 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             return null;
         }
         // Since there is no schema in CQL we will use a static String as schema name for topic creation
-        return tableId.catalog() == null ? new TableId(keyspace, CQL_SCHEMA_NAME, tableId.table())
+        return tableId.catalog() == null ? new TableId(keyspace, keyspace, tableId.table())
                                          : new TableId(tableId.catalog(),
-                                                       CQL_SCHEMA_NAME, tableId.table());
+                                                       tableId.catalog(), tableId.table());
     }
 
     public YugabyteDBTypeRegistry getTypeRegistry() {

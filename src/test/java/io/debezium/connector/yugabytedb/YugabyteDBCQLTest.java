@@ -62,7 +62,7 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
 
         String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_cdc", false, false,BeforeImageMode.CHANGE, true);
 
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","cqlSchema.test_cdc", dbStreamId);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","cdctest.test_cdc", dbStreamId);
         startEngine(configBuilder);
 
         final long recordsCount = 4;
