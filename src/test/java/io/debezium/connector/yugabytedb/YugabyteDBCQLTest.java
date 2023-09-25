@@ -58,7 +58,7 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
         String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
         session.execute(createKeyspace);
 
-        session.execute("create table if not exists cdctest.test_cdc(a int primary key, b varchar);");
+        session.execute("create table if not exists cdctest.test_cdc(a int primary key, b varchar, c text);");
 
         String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_cdc", false, false,BeforeImageMode.CHANGE, true);
 
@@ -70,7 +70,7 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
 
         awaitUntilConnectorIsReady();
 
-        session.execute("insert into cdctest.test_cdc(a,b) values (2,'abc');");
+        session.execute("insert into cdctest.test_cdc(a,b,c) values (2,'abc','def');");
         session.execute("update cdctest.test_cdc set b = 'cde' where a = 2;");
         session.execute("delete from cdctest.test_cdc where a = 2;");
         

@@ -34,6 +34,8 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -523,18 +525,28 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
      * @throws IllegalArgumentException if the value could not be converted but the column does not allow nulls
      */
     protected Object convertString(Column column, Field fieldDefn, Object data) {
-        return convertValue(column, fieldDefn, data, "", (r) -> {
-            if (data instanceof SQLXML) {
+        String dataString = data.toString();
+        Pattern pattern = Pattern.compile("contents=\"(.*?)\"");
+        Matcher matcher = pattern.matcher(dataString);
+        Object data_;
+        if(matcher.find()) {
+            String contentString = matcher.group(1);
+            data_ = contentString;
+        } else {
+            data_ = data;
+        }
+        return convertValue(column, fieldDefn, data_, "", (r) -> {
+            if (data_ instanceof SQLXML) {
                 try {
-                    r.deliver(((SQLXML) data).getString());
+                    r.deliver(((SQLXML) data_).getString());
                 }
                 catch (SQLException e) {
-                    throw new RuntimeException("Error processing data from " + column.jdbcType() + " and column " + column +
-                            ": class=" + data.getClass(), e);
+                    throw new RuntimeException("Error processing data from " + column.typeName() + " and column " + column +
+                            ": class=" + data_.getClass(), e);
                 }
             }
             else {
-                r.deliver(data.toString());
+                r.deliver(data_.toString());
             }
         });
     }
