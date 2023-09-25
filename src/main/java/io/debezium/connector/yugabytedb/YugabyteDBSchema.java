@@ -436,7 +436,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             String tabletId) {
         readSchemaWithTablet(null /* dummy object */, tableId.catalog(), tableId.schema(), tableId::equals,
                 null, true, schemaPB, tableId, tabletId);
-        refreshSchemaWithTabletId(tableId, schemaPB, tableId.schema(), tabletId);
     }
 
     protected boolean isFilteredOut(TableId id) {
