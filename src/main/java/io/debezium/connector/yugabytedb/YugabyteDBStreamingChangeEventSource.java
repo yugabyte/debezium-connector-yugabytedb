@@ -81,7 +81,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     protected OpId lastCompletelyProcessedLsn;
 
     protected final AsyncYBClient asyncYBClient;
-    protected final YBClient syncClient;
+    protected YBClient syncClient;
     protected YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
     protected final Map<String, OpId> checkPointMap;
     protected final ChangeEventQueue<DataChangeEvent> queue;
@@ -348,14 +348,32 @@ public class YugabyteDBStreamingChangeEventSource implements
         // This schemaNeeded map here would have the elements as <tableId.tabletId>:<boolean-value>
         Map<String, Boolean> schemaNeeded = new HashMap<>();
         Map<String, Long> tabletSafeTime = new HashMap<>();
-        for (Pair<String, String> entry : tabletPairList) {
+        List<Pair<String, String>> elementsToBeRemoved = new ArrayList<>();
+        for (int i = 0; i < tabletPairList.size(); ++i) {
+            Pair<String, String> entry = tabletPairList.get(i);
             // entry.getValue() will give the tabletId
             OpId opId = YBClientUtils.getOpIdFromGetTabletListResponse(
                             tabletListResponse.get(entry.getKey()), entry.getValue());
 
             if (opId == null) {
-                throw new RuntimeException(String.format("OpId for the given tablet {} was not found in the response,"
-                                                           + " restart the connector to try again", entry.getValue()));
+                // At this stage, we know we do not have the tablet-OpId, most probably because we lost the
+                // correct tablet list containing children from the list. We should remove the parent from the list
+                // and add its children.
+                GetTabletListToPollForCDCResponse getResp = syncClient.getTabletListToPollForCdc(
+                    tableIdToTable.get(entry.getKey()), streamId, entry.getKey(), entry.getValue());
+
+                LOGGER.info("Response size while getting chilren for tablet {}: {}", entry.getValue(),
+                            getResp.getTabletCheckpointPairListSize());
+
+                for (TabletCheckpointPair pair : getResp.getTabletCheckpointPairList()) {
+                    addTabletIfNotPresent(tabletPairList, pair, entry.getKey(), offsetContext, schemaNeeded);
+                }
+
+                // Pair<String, String> entryToBeDeleted = getEntryToDelete(tabletPairList, entry.getValue());
+                elementsToBeRemoved.add(entry);
+                LOGGER.info("Tablet {} will be removed later from the list before polling", entry.getValue());
+
+                continue;
             }
             
             // If we are getting a term and index as -1 and -1 from the server side it means
@@ -366,14 +384,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                 opId = YugabyteDBOffsetContext.streamingStartLsn();
             }
 
-            // For streaming, we do not want any colocated information and want to process the tables
-            // based on just their tablet IDs - pass false as the 'colocated' flag to enforce the same.
-            YBPartition p = new YBPartition(entry.getKey(), entry.getValue(), false /* colocated */);
-            offsetContext.initSourceInfo(p, this.connectorConfig, opId);
-            // We can initialise the explicit checkpoint for this tablet to the value returned by
-            // the cdc_service through the 'GetTabletListToPollForCDC' API
-            tabletToExplicitCheckpoint.put(p.getId(), opId.toCdcSdkCheckpoint());
-            schemaNeeded.put(p.getId(), Boolean.TRUE);
+            initializePartitionsAndOffsets(entry.getKey() /* tableId */, entry.getValue() /* tablet ID */,
+                                           offsetContext, tabletToExplicitCheckpoint, schemaNeeded, opId);
+        }
+
+        for (Pair<String, String> entry : elementsToBeRemoved) {
+            tabletPairList.remove(entry);
+            LOGGER.info("Removed original entry for the tablet {} from list as it has been split", entry.getValue());
         }
 
         // This will contain the tablet ID mapped to the number of records it has seen
@@ -755,6 +772,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // If there are retries left, perform them after the specified delay.
                 LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
                         retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e);
+                
+                if (e.toString().contains("tablet=null")) {
+                    LOGGER.warn("Got a tablet = null error, retrying with a new YBClient");
+                    this.syncClient = YBClientUtils.getYbClient(connectorConfig);
+                    LOGGER.info("Created a new YBClient for retrying");
+                }
 
                 try {
                     final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
@@ -766,6 +789,30 @@ public class YugabyteDBStreamingChangeEventSource implements
                 }
             }
         }
+    }
+
+    /**
+     * Initialize the partition and offsets for the given tablet to get them ready for streaming.
+     * @param tableId table UUID
+     * @param tabletId tablet UUID
+     * @param offsetContext the {@link YugabyteDBOffsetContext}
+     * @param tabletToExplicitCheckpoint map containing tabletId-explicitCheckpoint mapping
+     * @param schemaNeeded map with information whether to get the schema for a tablet
+     * @param opId the OpId to initialize the partitions with
+     */
+    private void initializePartitionsAndOffsets(String tableId, String tabletId, YugabyteDBOffsetContext offsetContext,
+                                                Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint,
+                                                Map<String, Boolean> schemaNeeded, OpId opId) {
+        // For streaming, we do not want any colocated information and want to process the tables
+        // based on just their tablet IDs - pass false as the 'colocated' flag to enforce the same.
+        YBPartition p = new YBPartition(tableId, tabletId, false /* colocated */);
+
+        offsetContext.initSourceInfo(p, this.connectorConfig, opId);
+
+        // We can initialise the explicit checkpoint for this tablet to the value returned by
+        // the cdc_service through the 'GetTabletListToPollForCDC' API
+        tabletToExplicitCheckpoint.put(p.getId(), opId.toCdcSdkCheckpoint());
+        schemaNeeded.put(p.getId(), Boolean.TRUE);
     }
 
     private void probeConnectionIfNeeded() throws SQLException {

@@ -55,7 +55,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     private final YugabyteDBConnection connection;
 
     private final AsyncYBClient asyncClient;
-    private final YBClient syncClient;
+    private YBClient syncClient;
 
     private OpId lastCompletelyProcessedLsn;
 
@@ -591,6 +591,12 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       + "retry {} of {} after {} milli-seconds. Exception: {}", retryCount, 
                        this.connectorConfig.maxConnectorRetries(), 
                        this.connectorConfig.connectorRetryDelayMs(), e);
+
+          if (e.toString().contains("tablet=null")) {
+            LOGGER.warn("Got a tablet=null error while fetching the snapshot, retrying with a new YBClient");
+            this.syncClient = YBClientUtils.getYbClient(connectorConfig);
+            LOGGER.info("Created a new YBClient");
+          }
 
           try {
             final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
