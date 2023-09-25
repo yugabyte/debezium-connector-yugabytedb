@@ -126,6 +126,12 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
             initStreamEvents(entry.getKey(), entry.getValue());
         }
 
+        // This is to handle the initial_only snapshot mode where we will not go to the streaming mode.
+        if (!snapshotter.shouldStream()) {
+            LOGGER.info("Snapshot complete for initial_only mode");
+            return;
+        }
+
         LOGGER.info("Performing the streaming process now");
 
         while (context.isRunning()) {
