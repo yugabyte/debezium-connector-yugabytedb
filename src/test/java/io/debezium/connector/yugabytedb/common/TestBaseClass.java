@@ -220,6 +220,11 @@ public class TestBaseClass extends AbstractConnectorTest {
   }
 
   @Override
+  protected void assertEngineIsRunning() {
+    assertTrue(engine.isRunning());
+  }
+
+  @Override
   protected void assertNoRecordsToConsume() {
     assertTrue(linesConsumed.isEmpty());
   }

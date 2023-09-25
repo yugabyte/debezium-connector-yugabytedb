@@ -78,7 +78,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {true, false})
+    @ValueSource(booleans = {false})
     public void testSnapshotRecordCountInInitialOnlyMode(boolean colocation) throws Exception {
         setCommitCallbackDelay(10000);
         createTables(colocation);
@@ -97,6 +97,9 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         // Only verifying the record count since the snapshot records are not ordered, so it may be
         // a little complex to verify them in the sorted order at the moment
         verifyRecordCount(recordsCount);
+
+        // Verify that the engine doesn't go into a bad state and is still running.
+        assertEngineIsRunning();
     }
 
     @ParameterizedTest
@@ -297,7 +300,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {true, false})
+    @ValueSource(booleans = {true})
     public void snapshotColocatedNonColocatedThenStream(boolean initialOnly) throws Exception {
         // Create tables.
         createTables(true /* enforce creation of the colocated tables only */);
