@@ -110,7 +110,6 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
         LOGGER.info("Mapping table '{}' to schemas under '{}'", tableId, schemaNamePrefix);
         SchemaBuilder valSchemaBuilder = SchemaBuilder.struct().name(schemaNameAdjuster.adjust(schemaNamePrefix + ".Value"));
         SchemaBuilder keySchemaBuilder = SchemaBuilder.struct().name(schemaNameAdjuster.adjust(schemaNamePrefix + ".Key"));
-
         AtomicBoolean hasPrimaryKey = new AtomicBoolean(false);
 
         Key tableKey = new Key.Builder(table).customKeyMapper(keysMapper).build();
@@ -147,7 +146,6 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
 
         // And the table schema ...
         return new TableSchema(tableId, keySchema, keyGenerator, envelope, valSchema, valueGenerator);
-
     }
 
     /**

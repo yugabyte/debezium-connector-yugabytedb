@@ -80,8 +80,15 @@ import io.debezium.time.*;
 import io.debezium.util.NumberConversions;
 import io.debezium.util.Strings;
 
+/**
+ * A provider of {@link ValueConverter}s and {@link SchemaBuilder}s for various YugabyteDB (ycql) 
+ * specific column types.
+ *
+ * It handles data type conversion for values coming from CDC stream.
+ *
+ * @author Sumukh Phalgaonkar (sumukh.phalgaonkar@yugabyte.com)
+ */
 public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
-
     public static final Timestamp POSITIVE_INFINITY_TIMESTAMP = new Timestamp(PGStatement.DATE_POSITIVE_INFINITY);
     public static final Instant POSITIVE_INFINITY_INSTANT = Conversions.toInstantFromMicros(PGStatement.DATE_POSITIVE_INFINITY);
     public static final LocalDateTime POSITIVE_INFINITY_LOCAL_DATE_TIME = LocalDateTime.ofInstant(POSITIVE_INFINITY_INSTANT, ZoneOffset.UTC);
@@ -153,19 +160,13 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         return new YugabyteDBCQLValueConverter(
                 databaseCharset,
                 connectorConfig.getDecimalMode(),
-                // connectorConfig.getTemporalPrecisionMode(),
-                // ZoneOffset.UTC,
-                // null,
                 connectorConfig.includeUnknownDatatypes(),
                 connectorConfig.hStoreHandlingMode(),
-                // connectorConfig.binaryHandlingMode(),
                 connectorConfig.intervalHandlingMode());
     }
 
-    protected YugabyteDBCQLValueConverter(Charset databaseCharset, DecimalMode decimalMode,/*
-                                       TemporalPrecisionMode temporalPrecisionMode, ZoneOffset defaultOffset,
-                                       BigIntUnsignedMode bigIntUnsignedMode,*/ boolean includeUnknownDatatypes,
-                                       HStoreHandlingMode hStoreMode, /*BinaryHandlingMode binaryMode,*/ IntervalHandlingMode intervalMode) {
+    protected YugabyteDBCQLValueConverter(Charset databaseCharset, DecimalMode decimalMode, boolean includeUnknownDatatypes,
+                                       HStoreHandlingMode hStoreMode, IntervalHandlingMode intervalMode) {
         // super(decimalMode, temporalPrecisionMode, defaultOffset, null, bigIntUnsignedMode, binaryMode);
         this.databaseCharset = databaseCharset;
         this.decimalMode = decimalMode;
@@ -179,7 +180,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     public SchemaBuilder schemaBuilder(Column column) {
         int type = column.nativeType();
         switch (type) {
-            case Types.TINYINT:
+        case Types.TINYINT:
             // values are an 8-bit unsigned integer value between 0 and 255
             return SchemaBuilder.int8();
         case Types.SMALLINT:
@@ -203,7 +204,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         case Types.VARCHAR:
             return SchemaBuilder.string();
         default :
-            logger.error("Requirred type not found in CQLValueConverter SchemaBuilder ");
+            logger.error("Required type not found in YugabyteDBCQLValueConverter SchemaBuilder ");
             return null;
         }
     }
@@ -235,13 +236,13 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
             case Types.VARCHAR:
                 return (data) -> convertString(column, fieldDefn, data);
             default:
-                logger.error("Requirred type not found in CQLValueConverter Converter ");
+                logger.error("Required type not found in YugabyteDBCQLValueConverter Converter ");
                 return null;
         }
 
     }
 
-        /**
+    /**
      * Converts a value object for an expected JDBC type of {@link Types#TINYINT}.
      *
      * @param column the column definition describing the {@code data} value; never null

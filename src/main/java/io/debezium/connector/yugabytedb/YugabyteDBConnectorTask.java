@@ -197,7 +197,7 @@ public class YugabyteDBConnectorTask
                         }
                     });
 
-            final YugabyteDBEventDispatcher<TableId> dispatcher = new YugabyteDBEventDispatcher<>( 
+            final YugabyteDBEventDispatcher<TableId> dispatcher = new YugabyteDBEventDispatcher<>(
                     connectorConfig,
                     topicSelector,
                     schema,

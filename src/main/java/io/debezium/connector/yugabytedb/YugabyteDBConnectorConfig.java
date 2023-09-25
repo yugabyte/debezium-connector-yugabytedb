@@ -542,6 +542,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
     protected static final String DATABASE_CONFIG_PREFIX = "database.";
     protected static final String TASK_CONFIG_PREFIX = "task.";
+    protected static final String DEFAULT_QL_TYPE = "ysql";
 
     protected static final int DEFAULT_PORT = 5_433;
     protected static final int DEFAULT_SNAPSHOT_FETCH_SIZE = 10_240;
@@ -707,7 +708,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withDisplayName("The Query Language being used for tables to stream, in YugabyteDB (either ysql or ycql)")
             .withType(Type.STRING)
             .withImportance(Importance.MEDIUM)
-            .withDefault("ysql")
+            .withDefault(DEFAULT_QL_TYPE)
             .withDescription("Whether the tables to be streamed are ysql tables or ycql tables");
 
 

@@ -273,6 +273,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         refreshTableFromDatabase(tableId);
         final TableSchema tableSchema = schema.schemaForTablet(tableId, tabletId);
         if (tableSchema == null) {
+            LOGGER.warn("cannot load schema for table '{}'", tableId);
             return Optional.empty();
         }
         else {
@@ -289,6 +290,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
                         schema.getSchemaPBForTablet(tableId, tabletId), tabletId);
 
             } else {
+                // This implementation of refresh is for cql tables where we do not have a JDBC connection
                 schema.refresh(tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData(),
                         schema.getSchemaPBForTablet(tableId, tabletId), tabletId);
             }

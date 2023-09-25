@@ -98,7 +98,6 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             return Collections.emptyList();
         }
         connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL);
-
         final Charset databaseCharset = connection.getDatabaseCharset();
         String charSetName = databaseCharset.name();
 
@@ -297,16 +296,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                             + e.getMessage());
                 }
             }
-        } else { 
-            //Todo: This will not work with multi host port hostname. Investigate if we can do this in cassandra
-            CqlSession session = CqlSession
-                    .builder()
-                    .addContactPoint(new InetSocketAddress(yugabyteDBConnectorConfig.hostname(), yugabyteDBConnectorConfig.port()))
-                    .withLocalDatacenter("datacenter1")
-                    .build();
-            session.execute("SHOW VERSION");
-            LOGGER.info("Successfully tested ycql connection at {}:{} " +yugabyteDBConnectorConfig.hostname(), yugabyteDBConnectorConfig.port());
-        }
+        } 
 
         validateTServerConnection(configValues, config);
     }

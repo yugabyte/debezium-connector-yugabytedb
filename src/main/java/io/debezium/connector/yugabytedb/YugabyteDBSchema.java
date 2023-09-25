@@ -276,7 +276,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
               .setPrimaryKeyNames(pkColumnNames)
               .setDefaultCharsetName(null /* default character set name */) // JDBC does not expose character sets
               .create();
-            
+
             String lookupKey = getLookupKey(tableId, tabletId);;
             LOGGER.debug("Updating table with lookup key {} and columns {}", lookupKey, updatedTable.columns());
             tabletIdToTable.put(lookupKey, updatedTable);
@@ -342,7 +342,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                                                      Tables.ColumnNameFilter columnFilter,
                                                      int position) {
         final String columnName = columnMetadata.getName();
-        final int oid = columnMetadata.getOid(); 
+        final int oid = columnMetadata.getOid();
         if (columnFilter == null || columnFilter.matches(tableId.catalog(), tableId.schema(),
                 tableId.table(), columnName)) {
             final ColumnEditor column = Column.editor().name(columnName);
