@@ -118,6 +118,12 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
             }
         }
 
+        // This is to handle the initial_only snapshot mode where we will not go to the streaming mode.
+        if (!snapshotter.shouldStream()) {
+            LOGGER.info("Snapshot complete for initial_only mode for task {}", taskContext.getTaskId());
+            return;
+        }
+
         previousLogContext.set(taskContext.configureLoggingContext(
             String.format("streaming|%s", taskContext.getTaskId())));
 
