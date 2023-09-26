@@ -371,6 +371,43 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         }
     }
 
+    @Test
+    public void shouldSnapshotWithFailureAfterBootstrapSnapshotCall() throws Exception {
+        createTables(false);
+
+        // Insert records to be snapshotted.
+        final int recordsCount = 10;
+        insertBulkRecords(recordsCount, "public.test_1");
+
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
+        Configuration.Builder configBuilder =
+          TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
+
+        // Enable the failure flag to introduce an explicit failure.
+        YugabyteDBSnapshotChangeEventSource.FAIL_AFTER_BOOTSTRAP_GET_CHANGES = true;
+        startEngine(configBuilder);
+
+        // Since we have specified the failure flag, we should not get any snapshot and
+        // connector would fail after the first GetChanges call to all the tablets. Verify that
+        // we haven't received any record even after waiting for a minute.
+        TestHelper.waitFor(Duration.ofMinutes(1));
+        assertNoRecordsToConsume();
+
+        // Stop the connector.
+        stopConnector();
+
+        // Disable the failure flag so that execution can happen normally.
+        YugabyteDBSnapshotChangeEventSource.FAIL_AFTER_BOOTSTRAP_GET_CHANGES = false;
+        startEngine(configBuilder);
+
+        // Wait until connector is started.
+        awaitUntilConnectorIsReady();
+
+        // This time we will get the records inserted earlier, this will be the result of snapshot.
+        waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
+    }
+
     /**
      * Helper function to create the required tables in the database DEFAULT_COLOCATED_DB_NAME
      */

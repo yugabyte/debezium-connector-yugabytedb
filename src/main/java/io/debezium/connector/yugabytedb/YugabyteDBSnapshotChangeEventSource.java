@@ -45,6 +45,7 @@ import io.debezium.util.Strings;
 
 public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSnapshotChangeEventSource.class);
+    public static boolean FAIL_AFTER_BOOTSTRAP_GET_CHANGES;
     private final YugabyteDBConnectorConfig connectorConfig;
     private final YugabyteDBSchema schema;
     private final SnapshotProgressListener snapshotProgressListener;
@@ -568,6 +569,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             // Reset the retry count here indicating that if the flow has reached here then
             // everything succeeded without any exceptions
             retryCount = 0;
+
+            // This flag is only meant for testing purposes only.
+            if (FAIL_AFTER_BOOTSTRAP_GET_CHANGES) {
+              throw new RuntimeException("[TEST ONLY] Throwing error explicitly after bootstrap snapshot GetChanges call");
+            }
           }
         } catch (Exception e) {
           ++retryCount;
@@ -778,12 +784,23 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                        this.syncClient.openTableByUUID(tableId), 
                                        this.connectorConfig.streamId(), tabletId);
 
-      if (resp.getSnapshotKey().length != 0) {
-        // This indicates that snapshot was altered midway and has not completed, return false
+      LOGGER.info("Checkpoint before snapshotting tablet {}: Term {} Index {} SnapshotKey: {}",
+                  tabletId, resp.getTerm(), resp.getIndex(),
+                  resp.hasSnapshotKey() ? resp.getSnapshotKey() : "null");
+
+      if (resp.hasSnapshotKey()) {
+        // This indicates that snapshot key is present and the connector is either in the middle
+        // of the snapshot or snapshot has just been bootstrapped and we haven't called further
+        // GetChanges on the tablet.
+        //
+        // In either of the cases, snapshot is not complete and need to be taken.
         return false;
       }
 
-      return !(resp.getTerm() == -1 && resp.getIndex() == -1);
+      // If no snapshot key is present then it could be either of the two cases:
+      // 1. Snapshot hasn't been initiated (so snapshot incomplete) -> indicated by invalid OpId 
+      // 2. Snapshot is complete and tablet is in streaming mode -> OpId is valid
+      return OpId.isValid(resp.getTerm(), resp.getIndex());
     }
 
     protected Set<TableId> getAllTableIds(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx)
