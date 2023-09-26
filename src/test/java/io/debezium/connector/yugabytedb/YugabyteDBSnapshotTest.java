@@ -3,7 +3,10 @@ package io.debezium.connector.yugabytedb;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+
+import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -24,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBSnapshotTest extends YugabytedTestBase {
     @BeforeAll
     public static void beforeClass() throws Exception {
         initializeYBContainer();
@@ -371,17 +374,20 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         }
     }
 
-    @Test
-    public void shouldSnapshotWithFailureAfterBootstrapSnapshotCall() throws Exception {
-        createTables(false);
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void shouldSnapshotWithFailureAfterBootstrapSnapshotCall(boolean colocation)
+        throws Exception {
+        createTables(colocation);
 
         // Insert records to be snapshotted.
         final int recordsCount = 10;
         insertBulkRecords(recordsCount, "public.test_1");
+        insertBulkRecords(recordsCount, "public.test_2");
 
         String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
-        Configuration.Builder configBuilder =
-          TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1", dbStreamId);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder(
+            DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
 
         // Enable the failure flag to introduce an explicit failure.
@@ -405,7 +411,163 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         awaitUntilConnectorIsReady();
 
         // This time we will get the records inserted earlier, this will be the result of snapshot.
-        waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, 2 * recordsCount);
+
+        // Iterate over the records and add them to their respective topic
+        List<SourceRecord> recordsForTest1 = new ArrayList<>();
+        List<SourceRecord> recordsForTest2 = new ArrayList<>();
+        for (SourceRecord record : records) {
+            if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_1")) {
+                recordsForTest1.add(record);
+            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_2")) {
+                recordsForTest2.add(record);
+            }
+        }
+
+        assertEquals(recordsCount, recordsForTest1.size());
+        assertEquals(recordsCount, recordsForTest2.size());
+    }
+
+    @Test
+    public void shouldNotSnapshotAgainIfSnapshotCompletedOnce() throws Exception {
+        /* This test aims to verify that if snapshot is taken on certain streamID + tabletId
+           combination once then we should not be taking it again. To verify the same, we will
+           perform the following steps:
+           1. Start connector in initial_only mode - this will ensure that we only take
+              the snapshot
+           2. Verify that we have received all the records in snapshot
+           3. Stop connector
+           4. Start connector in snapshot.mode = initial
+           5. This time we are expecting that the connector will not take a snapshot and proceed
+              to streaming mode directly
+           6. To verify that the connector is publishing nothing, we can assert that there are
+              no records to consume
+         */ 
+
+        createTables(false);
+
+        final int recordsCount = 50;
+        insertBulkRecords(recordsCount, "public.test_1");
+
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
+        Configuration.Builder configBuilder =
+          TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial_only");
+
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, recordsCount);
+        assertEquals(recordsCount, records.size());
+
+        // Verify that there are no records to consume anymore.
+        assertNoRecordsToConsume();
+
+        // Stop connector and wait till the engine stops.
+        stopConnector();
+
+        Awaitility.await()
+            .pollDelay(Duration.ofSeconds(1))
+            .atMost(Duration.ofSeconds(60))
+            .until(() -> {
+                return engine == null;
+            });
+
+        assertConnectorNotRunning();
+
+        // Change snapshot.mode to initial and start connector.
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        // Verify that there is nothing to consume.
+        for (int i = 0; i < 5; ++i) {
+            assertNoRecordsToConsume();
+            TestHelper.waitFor(Duration.ofSeconds(2));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void shouldContinueStreamingInNeverAfterSnapshotCompleteInInitialOnly(boolean colocation)
+        throws Exception {
+        /* This test aims to verify that if snapshot is taken on certain streamID + tabletId
+           combination once with initial_only and then the connector is deployed with 
+           snapshot.mode = never it should only stream the changes and no snapshot record
+           should be streamed. Steps are as follows:
+           1. Start connector in initial_only mode - this will ensure that we only take
+              the snapshot
+           2. Verify that we have received all the records in snapshot
+           3. Stop connector
+           4. Insert a few records here to make sure they are not streamed as part of snapshot
+           5. Start connector in snapshot.mode = never
+           6. This time we are expecting that the connector will not take a snapshot and proceed
+              to streaming mode directly
+           7. Verify that we get the change records here.
+         */ 
+
+        createTables(colocation);
+
+        final int recordsCount = 50;
+        insertBulkRecords(recordsCount, "public.test_1");
+
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
+        Configuration.Builder configBuilder =
+          TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial_only");
+
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, recordsCount);
+        assertEquals(recordsCount, records.size());
+
+        // Insert records in other tables, this shouldn't cause an issue.
+        insertBulkRecords(1000, "public.test_2");
+        insertBulkRecords(500, "public.test_3");
+
+        // Verify that there are no records to consume anymore.
+        assertNoRecordsToConsume();
+
+        // Stop connector and wait till the engine stops.
+        stopConnector();
+
+        Awaitility.await()
+            .pollDelay(Duration.ofSeconds(1))
+            .atMost(Duration.ofSeconds(60))
+            .until(() -> {
+                return engine == null;
+            });
+
+        assertConnectorNotRunning();
+
+        // Insert a few records --> total records inserted here would be 10, [50, 60)
+        final int insertRecords = 10;
+        insertBulkRecordsInRange(recordsCount, recordsCount + insertRecords, "public.test_1");
+
+        // Change snapshot.mode to initial and start connector.
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "never");
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        // Verify that we consume new records.
+        List<SourceRecord> recordsAfterRestart = new ArrayList<>();
+        waitAndFailIfCannotConsume(recordsAfterRestart, insertRecords);
+
+        assertEquals(insertRecords, recordsAfterRestart.size());
+
+        int startIdx = recordsCount;
+        for (int i = 0; i < recordsAfterRestart.size(); ++i) {
+            Struct s = (Struct) recordsAfterRestart.get(i).value();
+            assertEquals("c", s.getString("op"));
+            assertValueField(recordsAfterRestart.get(i), "after/id/value", startIdx);
+
+            // Increment startIdx for next record verification.
+            ++startIdx;
+        }
     }
 
     /**
@@ -446,6 +608,11 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     private void insertBulkRecords(int numRecords, String fullTableName) {
         String formatInsertString = "INSERT INTO " + fullTableName + " VALUES (%d);";
         TestHelper.executeBulk(formatInsertString, numRecords, DEFAULT_COLOCATED_DB_NAME);
+    }
+
+    private void insertBulkRecordsInRange(int beginKey, int endKey, String fullTableName) {
+        String formatInsertString = "INSERT INTO " + fullTableName + " VALUES (%d);";
+        TestHelper.executeBulkWithRange(formatInsertString, beginKey, endKey, DEFAULT_COLOCATED_DB_NAME);
     }
 
     private void verifyRecordCount(long recordsCount) {
