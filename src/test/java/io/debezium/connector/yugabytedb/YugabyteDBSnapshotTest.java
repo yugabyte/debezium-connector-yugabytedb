@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBSnapshotTest extends YugabytedTestBase {
+public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @BeforeAll
     public static void beforeClass() throws Exception {
         initializeYBContainer();
@@ -378,6 +378,8 @@ public class YugabyteDBSnapshotTest extends YugabytedTestBase {
     @ValueSource(booleans = {true, false})
     public void shouldSnapshotWithFailureAfterBootstrapSnapshotCall(boolean colocation)
         throws Exception {
+        // This test verifies that if there is a failure after snapshot is bootstrapped,
+        // then snapshot is taken normally once the connector restarts.
         createTables(colocation);
 
         // Insert records to be snapshotted.
@@ -405,6 +407,63 @@ public class YugabyteDBSnapshotTest extends YugabytedTestBase {
 
         // Disable the failure flag so that execution can happen normally.
         YugabyteDBSnapshotChangeEventSource.FAIL_AFTER_BOOTSTRAP_GET_CHANGES = false;
+        startEngine(configBuilder);
+
+        // Wait until connector is started.
+        awaitUntilConnectorIsReady();
+
+        // This time we will get the records inserted earlier, this will be the result of snapshot.
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, 2 * recordsCount);
+
+        // Iterate over the records and add them to their respective topic
+        List<SourceRecord> recordsForTest1 = new ArrayList<>();
+        List<SourceRecord> recordsForTest2 = new ArrayList<>();
+        for (SourceRecord record : records) {
+            if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_1")) {
+                recordsForTest1.add(record);
+            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_2")) {
+                recordsForTest2.add(record);
+            }
+        }
+
+        assertEquals(recordsCount, recordsForTest1.size());
+        assertEquals(recordsCount, recordsForTest2.size());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void shouldSnapshotWithFailureAfterSettingInitialCheckpoint(boolean colocation)
+        throws Exception {
+        // This test verifies that if there is a failure after the call to set the checkpoint,
+        // then snapshot is taken normally once the connector restarts.
+        createTables(colocation);
+
+        // Insert records to be snapshotted.
+        final int recordsCount = 10;
+        insertBulkRecords(recordsCount, "public.test_1");
+        insertBulkRecords(recordsCount, "public.test_2");
+
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder(
+            DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
+
+        // Enable the failure flag to introduce an explicit failure.
+        YugabyteDBSnapshotChangeEventSource.FAIL_AFTER_SETTING_INITIAL_CHECKPOINT = true;
+        startEngine(configBuilder);
+
+        // Since we have specified the failure flag, we should not get any snapshot and
+        // connector would fail after setting the checkpoint on all the tablets. Verify that
+        // we haven't received any record even after waiting for a minute.
+        TestHelper.waitFor(Duration.ofMinutes(1));
+        assertNoRecordsToConsume();
+
+        // Stop the connector.
+        stopConnector();
+
+        // Disable the failure flag so that execution can happen normally.
+        YugabyteDBSnapshotChangeEventSource.FAIL_AFTER_SETTING_INITIAL_CHECKPOINT = false;
         startEngine(configBuilder);
 
         // Wait until connector is started.
