@@ -364,7 +364,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         previousOffset.initSourceInfo(p, this.connectorConfig, startLsn);
         schemaNeeded.put(p.getId(), Boolean.TRUE);
         shouldWaitForCallback.add(p.getId());
-        LOGGER.info("Previous offset for table {} tablet {} is {}", p.getTableId(),
+        LOGGER.debug("Previous offset for table {} tablet {} is {}", p.getTableId(),
                      p.getTabletId(), previousOffset.toString());
       }
 
