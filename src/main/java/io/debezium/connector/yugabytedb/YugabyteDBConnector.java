@@ -103,7 +103,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
         String serializedNameToType = "";
         String serializedOidToType = "";
-
+        validateQLType();
         if (yugabyteDBConnectorConfig.qlType().equals("ysql")) {
             LOGGER.info("Creating a type registry for ysql tables");
             YugabyteDBTypeRegistry typeRegistry = new YugabyteDBTypeRegistry(connection); 
@@ -386,6 +386,18 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             final String errorMessage = "Error while fetching all the tablets";
             LOGGER.error(errorMessage, e);
             throw new DebeziumException(errorMessage, e);
+        }
+    }
+
+    protected void validateQLType() {
+        String qlType = yugabyteDBConnectorConfig.qlType();
+
+        if(qlType.equals("ysql") || qlType.equals("ycql")) {
+            LOGGER.info("The querry Language used for tables is " + qlType);
+        } else {
+            String errorMessage = "Unknown qlType " + qlType + ". The supported values for qltype are \"ysql\" and \"ycql\"";
+            LOGGER.error(errorMessage);
+            throw new DebeziumException(errorMessage);
         }
     }
 }

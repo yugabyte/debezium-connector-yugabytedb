@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static org.junit.Assert.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -62,7 +63,7 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
 
         String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_cdc", false, false,BeforeImageMode.CHANGE, true);
 
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","cdctest.test_cdc", dbStreamId);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_cdc", dbStreamId);
         startEngine(configBuilder);
 
         final long recordsCount = 4;
@@ -86,7 +87,7 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
         session.execute("create table if not exists cdctest.t1(id INT PRIMARY KEY, first_name TEXT, last_name VARCHAR, hours int);");
 
         String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "t1", true, true, BeforeImageMode.ALL, true);
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest", "cdctest.t1", dbStreamId);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest", "t1", dbStreamId);
         
         startEngine(configBuilder);
 
@@ -108,6 +109,20 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
         SourceRecord updateRecord = records.get(1);
         assertBeforeImage(updateRecord, 1, "Vaibhav", "Kushwaha", 40);
         assertAfterImage(updateRecord, 1, "VKVK", "Kushwaha", 30);
+    }
+
+    @Test
+    public void testIncorrectQLType() throws Exception{
+        String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
+        session.execute(createKeyspace);
+
+        session.execute("create table if not exists cdctest.t1(id INT PRIMARY KEY, first_name TEXT, last_name VARCHAR, hours int);");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "t1", true, true, BeforeImageMode.ALL, true);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest", "t1", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.QL_TYPE, "CassandraQL");
+        startEngine(configBuilder);
+        assertThrows(Exception.class, () -> awaitUntilConnectorIsReady());
     }
 
     private void verifyRecordCount(long recordsCount) {

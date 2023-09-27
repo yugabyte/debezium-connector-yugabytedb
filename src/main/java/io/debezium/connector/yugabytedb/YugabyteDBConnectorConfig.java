@@ -1134,7 +1134,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 config,
                 config.getString(RelationalDatabaseConnectorConfig.SERVER_NAME),
                 new SystemTablesPredicate(),
-                x -> x.schema() + "." + x.table(),
+                config.getString(YugabyteDBConnectorConfig.QL_TYPE).equals("ysql")? x -> x.schema() + "." + x.table() : x -> x.table(),
                 DEFAULT_SNAPSHOT_FETCH_SIZE,
                 ColumnFilterMode.SCHEMA);
 
@@ -1460,8 +1460,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         @Override
         public boolean isIncluded(TableId tableId) {
             if(Objects.equals(tableId.catalog(), getConfig().getString(DATABASE_NAME))) {
-                String includeTableName = tableId.schema()+"."+tableId.table();
-                return tableIncludeList().contains(includeTableName);
+                return tableIncludeList().contains(tableId.table());
             }
             return false;
         }
