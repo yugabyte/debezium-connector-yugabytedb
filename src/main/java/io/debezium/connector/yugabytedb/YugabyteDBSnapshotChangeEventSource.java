@@ -339,8 +339,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         GetCheckpointResponse resp = this.syncClient.getCheckpoint(
           tableIdToTable.get(tableId), this.connectorConfig.streamId(), tabletId);
         LOGGER.info("Checkpoint before snapshotting tablet {}: Term {} Index {} SnapshotKey: {}",
-                    tabletId, resp.getTerm(), resp.getIndex(),
-                    resp.hasSnapshotKey() ? resp.getSnapshotKey() : "null");
+                    tabletId, resp.getTerm(), resp.getIndex(), resp.getSnapshotKey());
 
         OpId startLsn = OpId.from(resp);
         if (filteredTableIdToUuid.containsValue(tableId)) {
@@ -798,7 +797,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
      * @param getCheckpointResponse
      */
     protected boolean hasSnapshotCompletedPreviously(GetCheckpointResponse getCheckpointResponse) {
-      if (getCheckpointResponse.hasSnapshotKey()) {
+      if (getCheckpointResponse.getSnapshotKey() != null) {
         // This indicates that snapshot key is present and the connector is either in the middle
         // of the snapshot or snapshot has just been bootstrapped and we haven't called further
         // GetChanges on the tablet.

@@ -20,6 +20,7 @@ import org.yb.client.YBTable;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 /**
  * Unit tests to verify that the connector gracefully handles the tablet splitting on the server.

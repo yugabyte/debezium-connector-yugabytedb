@@ -16,6 +16,7 @@ import org.yb.client.YBTable;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -27,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBSnapshotTest extends YugabytedTestBase {
     @BeforeAll
     public static void beforeClass() throws Exception {
         initializeYBContainer();
@@ -627,6 +628,81 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
             // Increment startIdx for next record verification.
             ++startIdx;
         }
+    }
+
+    @Test
+    public void shouldNotSnapshotAgainAfterRestartWithTabletSplitting() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE t2 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false, false);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, "2000");
+
+        YugabyteDBStreamingChangeEventSource.TEST_WAIT_BEFORE_GETTING_CHILDREN = true;
+
+        startEngine(configBuilder, (success, message, error) -> {
+        assertTrue(success);
+        });
+
+        awaitUntilConnectorIsReady();
+
+        int recordsCount = 50;
+
+        String insertFormat = "INSERT INTO t1 VALUES (%d, 'value for split table');";
+
+        for (int i = 0; i < recordsCount; ++i) {
+        TestHelper.execute(String.format(insertFormat, i));
+        }
+
+        // Drop another unrelated table.
+        LOGGER.info("Dropping table t2");
+        TestHelper.execute("DROP TABLE t2;");
+        LOGGER.info("Waiting 10s after dropping table");
+        TestHelper.waitFor(Duration.ofSeconds(10));
+
+        YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
+        YBTable table = TestHelper.getYbTable(ybClient, "t1");
+        
+        // Verify that there is just a single tablet.
+        Set<String> tablets = ybClient.getTabletUUIDs(table);
+        int tabletCountBeforeSplit = tablets.size();
+        assertEquals(1, tabletCountBeforeSplit);
+
+        // Compact the table to ready it for splitting.
+        ybClient.flushTable(table.getTableId());
+
+        // Wait for 20s for the table to be flushed.
+        TestHelper.waitFor(Duration.ofSeconds(20));
+
+        // Split the tablet. There is just one tablet so it is safe to assume that the iterator will
+        // return just the desired tablet.
+        ybClient.splitTablet(tablets.iterator().next());
+
+        // Wait till there are 2 tablets for the table.
+        // waitForTablets(ybClient, table, 2);
+
+        LOGGER.info("Dummy wait to see the logs in connector");
+        TestHelper.waitFor(Duration.ofSeconds(120));
+
+        // // Insert more records
+        // for (int i = recordsCount; i < 100; ++i) {
+        //   TestHelper.execute(String.format(insertFormat, i));
+        // }
+
+        // // Consume the records now - there will be 100 records in total.
+        // SourceRecords records = consumeByTopic(100);
+        
+        // // Verify that the records are there in the topic.
+        // assertEquals(100, records.recordsForTopic("test_server.public.t1").size());
+
+        // // Also call the CDC API to fetch tablets to verify the new tablets have been added in the
+        // // cdc_state table.
+        // GetTabletListToPollForCDCResponse getTabletResponse2 =
+        //   ybClient.getTabletListToPollForCdc(table, dbStreamId, table.getTableId());
+
+        // assertEquals(2, getTabletResponse2.getTabletCheckpointPairListSize());
     }
 
     /**
