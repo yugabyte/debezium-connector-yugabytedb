@@ -394,8 +394,7 @@ public final class TestHelper {
                 .with(YugabyteDBConnectorConfig.DELETE_STREAM_ON_STOP, Boolean.TRUE)
                 .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, CONTAINER_YCQL_HOST + ":" + CONTAINER_MASTER_PORT)
                 .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, fullTableNameWithSchema)
-                .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId)
-                .with(YugabyteDBConnectorConfig.QL_TYPE, "ycql");
+                .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId);
     }
 
     public static void setContainerHostPort(String host, int sqlPort, int cqlPort) {

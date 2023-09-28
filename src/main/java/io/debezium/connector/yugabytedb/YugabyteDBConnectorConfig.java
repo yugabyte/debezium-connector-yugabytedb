@@ -703,14 +703,6 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withDescription(
                     "Whether or not to delete the logical replication stream when the connector finishes orderly" +
                             "By default the replication is kept so that on restart progress can resume from the last recorded location");
-        
-    public static final Field QL_TYPE = Field.create(DATABASE_CONFIG_PREFIX + "qltype")
-            .withDisplayName("The Query Language being used for tables to stream, in YugabyteDB (either ysql or ycql)")
-            .withType(Type.STRING)
-            .withImportance(Importance.MEDIUM)
-            .withDefault(DEFAULT_QL_TYPE)
-            .withDescription("Whether the tables to be streamed are ysql tables or ycql tables");
-
 
     // Changing the default decimal.handling.mode to double
     @Override
@@ -1127,6 +1119,8 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     private final TableFilter databaseFilter;
     private final TableFilter cqlTableFilter;
 
+    private final boolean isYSQL;
+
     private final LogicalDecodingMessageFilter logicalDecodingMessageFilter;
 
     public YugabyteDBConnectorConfig(Configuration config) {
@@ -1134,10 +1128,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 config,
                 config.getString(RelationalDatabaseConnectorConfig.SERVER_NAME),
                 new SystemTablesPredicate(),
-                config.getString(YugabyteDBConnectorConfig.QL_TYPE).equals("ysql")? x -> x.schema() + "." + x.table() : x -> x.table(),
+                YBClientUtils.isYSQLDatabaseType(config.getString(YugabyteDBConnectorConfig.STREAM_ID), YBClientUtils.getYbClient(config))? x -> x.schema() + "." + x.table() : x -> x.table(),
                 DEFAULT_SNAPSHOT_FETCH_SIZE,
                 ColumnFilterMode.SCHEMA);
 
+        this.isYSQL = YBClientUtils.isYSQLDatabaseType(config.getString(YugabyteDBConnectorConfig.STREAM_ID), YBClientUtils.getYbClient(config));
         this.truncateHandlingMode = TruncateHandlingMode.parse(config.getString(YugabyteDBConnectorConfig.TRUNCATE_HANDLING_MODE));
         this.consistencyMode = ConsistencyMode.parse(config.getString(YugabyteDBConnectorConfig.CONSISTENCY_MODE));
         this.logicalDecodingMessageFilter = new LogicalDecodingMessageFilter(config.getString(LOGICAL_DECODING_MESSAGE_PREFIX_INCLUDE_LIST),
@@ -1303,8 +1298,8 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return getConfig().getLong(NEW_TABLE_POLL_INTERVAL_MS);
     }
 
-    protected String qlType() {
-        return getConfig().getString(QL_TYPE);
+    protected boolean isYSQLDbType() {
+        return this.isYSQL;
     }
 
     /*
@@ -1336,7 +1331,6 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     DATABASE_NAME,
                     MASTER_ADDRESSES,
                     STREAM_ID,
-                    QL_TYPE,
                     PLUGIN_NAME,
                     STREAM_PARAMS,
                     ON_CONNECT_STATEMENTS,

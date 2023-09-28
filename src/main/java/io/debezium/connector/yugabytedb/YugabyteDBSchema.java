@@ -145,7 +145,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         if (!tabletIdToCdcsdkSchemaPB.containsKey(lookupKey) || cdcsdkSchemaPB == null) {
             tabletIdToCdcsdkSchemaPB.put(lookupKey, schemaPB);
         }
-        if(config.qlType().equals("ysql")) {
+        if(config.isYSQLDbType()) {
             readSchemaWithTablet(tables(), null, schemaName,
                 getTableFilter(), null, true, schemaPB, tableId, tabletId);
         } else {
@@ -353,7 +353,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             column.autoIncremented(false);
             column.generated(false);
 
-            if (config.qlType().equals("ysql")) {
+            if (config.isYSQLDbType()) {
                 // TODO: Handle the non default length/scale later.
                 column.length(getLength(oid));
                 column.scale(getScale(oid));
@@ -470,7 +470,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     protected void buildAndRegisterSchemaForTablet(TableId id, String tabletId) {
         String lookupKey = getLookupKey(id, tabletId);
         TableSchemaBuilder schemaBuilder;
-        if (config.qlType().equals("ysql")) {
+        if (config.isYSQLDbType()) {
             schemaBuilder = getTableSchemaBuilder(config, valueConverter);
         } else {
             schemaBuilder = getTableSchemaBuilder(config, cqlValueConverter);

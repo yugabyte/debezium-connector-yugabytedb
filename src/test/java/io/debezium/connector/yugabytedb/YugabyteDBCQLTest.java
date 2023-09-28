@@ -111,20 +111,6 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
         assertAfterImage(updateRecord, 1, "VKVK", "Kushwaha", 30);
     }
 
-    @Test
-    public void testIncorrectQLType() throws Exception{
-        String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
-        session.execute(createKeyspace);
-
-        session.execute("create table if not exists cdctest.t1(id INT PRIMARY KEY, first_name TEXT, last_name VARCHAR, hours int);");
-
-        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "t1", true, true, BeforeImageMode.ALL, true);
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest", "t1", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.QL_TYPE, "CassandraQL");
-        startEngine(configBuilder);
-        assertThrows(Exception.class, () -> awaitUntilConnectorIsReady());
-    }
-
     private void verifyRecordCount(long recordsCount) {
         waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
     }

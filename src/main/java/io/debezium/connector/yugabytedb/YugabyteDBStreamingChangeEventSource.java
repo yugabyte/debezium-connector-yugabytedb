@@ -567,7 +567,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             
                             String pgSchemaNameInRecord = m.getPgschemaName();; 
                             TableId tempTid;
-                            if(connectorConfig.qlType().equals("ysql")) {
+                            if(connectorConfig.isYSQLDbType()) {
                                 // This is a hack to skip tables in case of colocated tables
                                 tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
 
@@ -669,7 +669,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                     TableId tableId = null;
                                     if (message.getOperation() != Operation.NOOP) {
-                                        if(connectorConfig.qlType().equals("ysql")) {
+                                        if(connectorConfig.isYSQLDbType()) {
                                             tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
                                         } else {
                                             tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(),connectorConfig.databaseName());
@@ -686,7 +686,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         } else {
                                             LOGGER.info("Refreshing the schema for table {} tablet {} because of mismatch in cached schema and received schema", entry.getKey(), tabletId);
                                         }
-                                        if(connectorConfig.qlType().equals("ysql")) {
+                                        if(connectorConfig.isYSQLDbType()) {
                                             schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
                                         } else {
                                             schema.refreshSchemaWithTabletId(tableId, message.getSchema(), tableId.catalog(), tabletId);
@@ -697,7 +697,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 else {
                                     TableId tableId = null;
                                     if (message.getOperation() != Operation.NOOP) {
-                                        if(connectorConfig.qlType().equals("ysql")) {
+                                        if(connectorConfig.isYSQLDbType()) {
                                             tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
                                         } else {
                                             tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
@@ -712,7 +712,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
 
                                     boolean dispatched = message.getOperation() != Operation.NOOP;
-                                    if (connectorConfig.qlType().equals("ysql")) {
+                                    if (connectorConfig.isYSQLDbType()) {
                                         dispatched = dispatched
                                                 && dispatcher.dispatchDataChangeEvent(part, tableId,
                                                         new YugabyteDBChangeRecordEmitter(part, offsetContext, clock,

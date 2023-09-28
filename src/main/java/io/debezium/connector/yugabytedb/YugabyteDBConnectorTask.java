@@ -92,7 +92,7 @@ public class YugabyteDBConnectorTask
 
 
 
-        if (connectorConfig.qlType().equals("ysql")) {
+        if (connectorConfig.isYSQLDbType()) {
 
             String nameToTypeStr = config.getString(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString());
             String oidToTypeStr = config.getString(YugabyteDBConnectorConfig.OID_TO_TYPE.toString());

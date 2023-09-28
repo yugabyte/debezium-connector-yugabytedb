@@ -103,8 +103,8 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
         String serializedNameToType = "";
         String serializedOidToType = "";
-        validateQLType();
-        if (yugabyteDBConnectorConfig.qlType().equals("ysql")) {
+
+        if (yugabyteDBConnectorConfig.isYSQLDbType()) {
             LOGGER.info("Creating a type registry for ysql tables");
             YugabyteDBTypeRegistry typeRegistry = new YugabyteDBTypeRegistry(connection); 
 
@@ -182,7 +182,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             }
             taskProps.put(YugabyteDBConnectorConfig.TABLET_LIST.toString(), taskTablesSerialized);
             taskProps.put(YugabyteDBConnectorConfig.CHAR_SET.toString(), charSetName);
-            if (yugabyteDBConnectorConfig.qlType().equals("ysql")) {
+            if (yugabyteDBConnectorConfig.isYSQLDbType()) {
                 taskProps.put(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString(), serializedNameToType);
                 taskProps.put(YugabyteDBConnectorConfig.OID_TO_TYPE.toString(), serializedOidToType);
             }
@@ -277,7 +277,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         final ConfigValue hostnameValue = configValues.get(RelationalDatabaseConnectorConfig.HOSTNAME.name());
 
         // Try to connect to the database ...
-        if (yugabyteDBConnectorConfig.qlType().equals("ysql")) {
+        if (yugabyteDBConnectorConfig.isYSQLDbType()) {
             try (YugabyteDBConnection connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(),
                     YugabyteDBConnection.CONNECTION_GENERAL)) {
                 try {
@@ -389,15 +389,4 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         }
     }
 
-    protected void validateQLType() {
-        String qlType = yugabyteDBConnectorConfig.qlType();
-
-        if(qlType.equals("ysql") || qlType.equals("ycql")) {
-            LOGGER.info("The querry Language used for tables is " + qlType);
-        } else {
-            String errorMessage = "Unknown qlType " + qlType + ". The supported values for qltype are \"ysql\" and \"ycql\"";
-            LOGGER.error(errorMessage);
-            throw new DebeziumException(errorMessage);
-        }
-    }
 }

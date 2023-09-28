@@ -12,6 +12,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes;
+import org.yb.CommonTypes.YQLDatabase;
 import org.yb.cdc.CdcService;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.CDCStreamInfo;
@@ -20,18 +21,22 @@ import org.yb.cdc.CdcService.TabletCheckpointPair;
 import org.yb.client.GetDBStreamInfoResponse;
 import org.yb.client.GetTabletListToPollForCDCResponse;
 import org.yb.client.ListCDCStreamsResponse;
+import org.yb.client.ListNamespacesResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 import org.yb.master.MasterDdlOuterClass;
 
 import io.debezium.DebeziumException;
+import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.relational.TableId;
 
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterTypes.NamespaceIdentifierPB;
+
 
 /**
  * Utility class to provide function to help functioning of the connector processes.
@@ -241,7 +246,19 @@ public class YBClientUtils {
                                   .build();
     return new YBClient(asyncClient);
   }
-  
+
+  public static YBClient getYbClient(Configuration config) {
+    AsyncYBClient asyncClient = new AsyncYBClient.AsyncYBClientBuilder(config.getString(YugabyteDBConnectorConfig.MASTER_ADDRESSES))
+                                  .defaultAdminOperationTimeoutMs(config.getLong(YugabyteDBConnectorConfig.ADMIN_OPERATION_TIMEOUT_MS))
+                                  .defaultOperationTimeoutMs(config.getLong(YugabyteDBConnectorConfig.OPERATION_TIMEOUT_MS))
+                                  .defaultSocketReadTimeoutMs(config.getLong(YugabyteDBConnectorConfig.SOCKET_READ_TIMEOUT_MS))
+                                  .numTablets(config.getInteger(YugabyteDBConnectorConfig.MAX_NUM_TABLETS))
+                                  .sslCertFile(config.getString(YugabyteDBConnectorConfig.SSL_ROOT_CERT))
+                                  .sslClientCertFiles(config.getString(YugabyteDBConnectorConfig.SSL_CLIENT_CERT), config.getString(YugabyteDBConnectorConfig.SSL_CLIENT_KEY))
+                                  .build();
+    return new YBClient(asyncClient);
+  }
+
   public static OpId getOpIdFromGetTabletListResponse(GetTabletListToPollForCDCResponse resp, String tabletId) {
     List<TabletCheckpointPair> tabletCheckpointPairs = resp.getTabletCheckpointPairList();
     for (TabletCheckpointPair p : tabletCheckpointPairs) {
@@ -330,5 +347,39 @@ public class YBClientUtils {
 
       return cdcStreamInfo.getOptions().get("checkpoint_type")
               .equals(CdcService.CDCCheckpointType.EXPLICIT.name());
+  }
+
+  public static Boolean isYSQLDatabaseType(String streamId, YBClient ybClient) {
+    GetDBStreamInfoResponse cdcStreamInfo = null;
+    ListNamespacesResponse resp = null;
+    try {
+      cdcStreamInfo = ybClient.getDBStreamInfo(streamId);
+      resp = ybClient.getNamespacesList();
+    } catch (Exception e) {
+      LOGGER.error("Could not get Stream info for {} due to error : {}", streamId, e.getMessage());
+    }
+    Objects.requireNonNull(cdcStreamInfo);
+    Objects.requireNonNull(resp);
+
+    YQLDatabase dbType = null;
+
+    for (NamespaceIdentifierPB namespace : resp.getNamespacesList()) {
+      String dbId = namespace.getId().toStringUtf8();
+      if (dbId.equals(cdcStreamInfo.getNamespaceId())) {
+        dbType = namespace.getDatabaseType();
+        break;
+      }
+    }
+
+    Objects.requireNonNull(dbType);
+
+    if (dbType.equals(YQLDatabase.YQL_DATABASE_PGSQL)) {
+      LOGGER.info("Query Language used for tables is ysql");
+      return true;
+    } else {
+      LOGGER.info("Query Language used for tables is ycql");
+      return false;
+    }
+
   }
 }
