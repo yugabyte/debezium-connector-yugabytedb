@@ -637,6 +637,21 @@ public final class TestHelper {
     }
 
     /**
+     * Wait until we see the given number of tablets for a table
+     * @param ybClient
+     * @param table {@link YBTable} object for the table in picture
+     * @param tabletCount expected number of tablets
+     */
+    public static void waitForTablets(YBClient ybClient, YBTable table, int tabletCount) {
+        Awaitility.await()
+          .pollDelay(Duration.ofSeconds(2))
+          .atMost(Duration.ofSeconds(20))
+          .until(() -> {
+            return ybClient.getTabletUUIDs(table).size() == tabletCount;
+          });
+    }
+
+    /**
      * Get the value of the operation to which the given source records belongs.
      * @param record the {@link SourceRecord} to get the operation for
      * @return the string value of the operation - c, u, r or d

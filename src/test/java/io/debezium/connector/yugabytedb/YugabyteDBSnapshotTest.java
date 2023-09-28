@@ -631,35 +631,47 @@ public class YugabyteDBSnapshotTest extends YugabytedTestBase {
     }
 
     @Test
-    public void shouldNotSnapshotAgainAfterRestartWithTabletSplitting() throws Exception {
+    public void shouldNotBeAffectedByDroppingUnrelatedTables() throws Exception {
+        /* The objective of the test is to verify that when an unrelated table is dropped, it
+           should not cause any harm to the existing flow. At the same time, if tablet split
+           occurs, we should ensure that the parent doesn't get deleted before we start
+           consuming from the children, and when it does, if the connector restarts it 
+           should not take the snapshot on the children in any situation. The test performs
+           the following steps:
+           1. Creates 3 tables: t1, t2 and t3
+           2. Starts streaming on table t1 only
+           3. We set a static flag to wait before getting children - this will ensure that we
+              wait 60s after receiving tablet split and before asking for the children
+           4. Insert some records in t1 and start the connector in snapshot mode
+           5. Drop table t2
+           6. Verify that we have consumed snapshot records
+           7. Restart the connector
+           8. Ensure that we are not receiving any record
+         */
         TestHelper.dropAllSchemas();
         TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
         TestHelper.execute("CREATE TABLE t2 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE t3 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
 
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false, false);
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, "2000");
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
 
         YugabyteDBStreamingChangeEventSource.TEST_WAIT_BEFORE_GETTING_CHILDREN = true;
 
-        startEngine(configBuilder, (success, message, error) -> {
-        assertTrue(success);
-        });
-
-        awaitUntilConnectorIsReady();
-
         int recordsCount = 50;
-
         String insertFormat = "INSERT INTO t1 VALUES (%d, 'value for split table');";
-
         for (int i = 0; i < recordsCount; ++i) {
-        TestHelper.execute(String.format(insertFormat, i));
+            TestHelper.execute(String.format(insertFormat, i));
         }
+
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
 
         // Drop another unrelated table.
         LOGGER.info("Dropping table t2");
         TestHelper.execute("DROP TABLE t2;");
-        LOGGER.info("Waiting 10s after dropping table");
+        LOGGER.info("Waiting 10s after dropping table t2");
         TestHelper.waitFor(Duration.ofSeconds(10));
 
         YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
@@ -681,28 +693,39 @@ public class YugabyteDBSnapshotTest extends YugabytedTestBase {
         ybClient.splitTablet(tablets.iterator().next());
 
         // Wait till there are 2 tablets for the table.
-        // waitForTablets(ybClient, table, 2);
+        TestHelper.waitForTablets(ybClient, table, 2);
 
         LOGGER.info("Dummy wait to see the logs in connector");
         TestHelper.waitFor(Duration.ofSeconds(120));
 
-        // // Insert more records
-        // for (int i = recordsCount; i < 100; ++i) {
-        //   TestHelper.execute(String.format(insertFormat, i));
-        // }
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, recordsCount);
 
-        // // Consume the records now - there will be 100 records in total.
-        // SourceRecords records = consumeByTopic(100);
-        
-        // // Verify that the records are there in the topic.
-        // assertEquals(100, records.recordsForTopic("test_server.public.t1").size());
+        assertEquals(recordsCount, records.size());
 
-        // // Also call the CDC API to fetch tablets to verify the new tablets have been added in the
-        // // cdc_state table.
-        // GetTabletListToPollForCDCResponse getTabletResponse2 =
-        //   ybClient.getTabletListToPollForCdc(table, dbStreamId, table.getTableId());
+        // Also verify all of them are snapshot records.
+        for (SourceRecord record : records) {
+            assertEquals("r", TestHelper.getOpValue(record));
+        }
 
-        // assertEquals(2, getTabletResponse2.getTabletCheckpointPairListSize());
+        // Stop the connector, wait till it stops and then restart.
+        stopConnector();
+
+        Awaitility.await()
+            .pollDelay(Duration.ofSeconds(1))
+            .atMost(Duration.ofSeconds(60))
+            .until(() -> {
+                return engine == null;
+            });
+
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        // No record should be consumed now.
+        for (int i = 0; i < 10; ++i) {
+            assertNoRecordsToConsume();
+            TestHelper.waitFor(Duration.ofSeconds(2));
+        }
     }
 
     /**

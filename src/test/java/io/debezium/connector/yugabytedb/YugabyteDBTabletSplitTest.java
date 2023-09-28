@@ -102,7 +102,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
     ybClient.splitTablet(tablets.iterator().next());
 
     // Wait till there are 2 tablets for the table.
-    waitForTablets(ybClient, table, 2);
+    TestHelper.waitForTablets(ybClient, table, 2);
 
     // Insert more records
     for (int i = recordsCount; i < 100; ++i) {
@@ -230,14 +230,5 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
     Collections.sort(rList);
 
     assertEquals(recordsCount, recordKeySet.size());
-  }
-
-  private void waitForTablets(YBClient ybClient, YBTable table, int tabletCount) {
-    Awaitility.await()
-      .pollDelay(Duration.ofSeconds(2))
-      .atMost(Duration.ofSeconds(20))
-      .until(() -> {
-        return ybClient.getTabletUUIDs(table).size() == tabletCount;
-      });
   }
 }
