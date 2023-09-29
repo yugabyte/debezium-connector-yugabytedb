@@ -45,6 +45,11 @@ import io.debezium.util.Strings;
 
 public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSnapshotChangeEventSource.class);
+
+    // Test only member variables, DO NOT try to modify in the source code.
+    public static boolean FAIL_AFTER_BOOTSTRAP_GET_CHANGES;
+    public static boolean FAIL_AFTER_SETTING_INITIAL_CHECKPOINT;
+
     private final YugabyteDBConnectorConfig connectorConfig;
     private final YugabyteDBSchema schema;
     private final SnapshotProgressListener snapshotProgressListener;
@@ -218,26 +223,27 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       return SnapshotResult.skipped(previousOffset);
     }
 
+    /**
+     * To set the checkpoint on the service indicating that this is the initial checkpoint.
+     * Technically, it means that we are trying to set the active time for the configured
+     * stream ID and the passed tablet ID in the method.
+     * @param tableId
+     * @param tabletId
+     * @throws Exception when the SetCheckpoint RPC fails on the service
+     */
     protected void setCheckpointWithRetryBeforeSnapshot(
-        String tableId, String tabletId, Set<String> snapshotCompletedTablets, 
-        Set<String> snapshotCompletedPreviously) throws Exception {
+      String tableId, String tabletId) throws Exception {
       short retryCount = 0;
       try {
-        if (hasSnapshotCompletedPreviously(tableId, tabletId)) {
-          LOGGER.info("Skipping snapshot for table {} tablet {} since tablet has streamed some data before",
-                      tableId, tabletId);
-          snapshotCompletedTablets.add(tabletId);
-          snapshotCompletedPreviously.add(tabletId);
-        } else {
-          LOGGER.info("Setting checkpoint before snapshot on tablet {} with 0.0", tabletId);
-          YBClientUtils.setCheckpoint(this.syncClient, 
-                                      this.connectorConfig.streamId(), 
-                                      tableId /* tableId */, 
-                                      tabletId /* tabletId */, 
-                                      0 /* term */, 0 /* index */,
-                                      true /* initialCheckpoint */, false /* bootstrap */,
-                                      0 /* invalid cdcsdkSafeTime */);
-        }
+        LOGGER.info("Setting checkpoint before snapshot on tablet {} with 0.0,"
+                    + " will be taking snapshot now", tabletId);
+        YBClientUtils.setCheckpoint(this.syncClient, 
+                                    this.connectorConfig.streamId(), 
+                                    tableId /* tableId */, 
+                                    tabletId /* tabletId */, 
+                                    0 /* term */, 0 /* index */,
+                                    true /* initialCheckpoint */, false /* bootstrap */,
+                                    0 /* invalid cdcsdkSafeTime */);
 
         // Reaching this point would mean that the process went through without failure so reset
         // the retry counter here.
@@ -268,6 +274,79 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       }
     }
 
+    /**
+     * Get the checkpoint for given {@link YBTable} and tabletID
+     * @param ybTable
+     * @param tabletId
+     * @throws Exception if the RPC hits any error
+     */
+    protected GetCheckpointResponse getCheckpointWithRetry(YBTable ybTable, String tabletId)
+      throws Exception {
+      short retryCount = 0;
+      while (retryCount <= connectorConfig.maxConnectorRetries()) {
+        try {
+          GetCheckpointResponse resp =
+              this.syncClient.getCheckpoint(ybTable, connectorConfig.streamId(), tabletId);
+
+          return resp;
+        } catch (Exception e) {
+          ++retryCount;
+
+          if (retryCount > this.connectorConfig.maxConnectorRetries()) {
+            LOGGER.error("Too many errors while trying to get checkpoint for tablet {}, "
+                          + "all {} retries failed.", tabletId, this.connectorConfig.maxConnectorRetries());
+
+            throw e;
+          }
+
+          LOGGER.warn("Error while trying to get the checkpoint for tablet {}; will attempt " 
+                      + "retry {} of {} after {} milli-seconds. Exception message: {}",
+                      tabletId, retryCount, 
+                      connectorConfig.maxConnectorRetries(), 
+                      connectorConfig.connectorRetryDelayMs(), e.getMessage());
+          LOGGER.debug("Stacktrace: ", e);
+
+          try {
+            final Metronome retryMetronome =
+                Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+            retryMetronome.pause();
+          } catch (InterruptedException ie) {
+            LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
+            Thread.currentThread().interrupt();
+          }
+        }
+      }
+
+      // In ideal scenarios, this code will never be hit.
+      return null;
+    }
+
+    /**
+     * Decide if we need to take snapshot or do nothing if snapshot has completed previously
+     */
+    protected boolean isSnapshotRequired(GetCheckpointResponse getCheckpointResponse,
+                                         String tableId, String tabletId,
+                                         Set<String> snapshotCompletedTablets,
+                                         Set<String> snapshotCompletedPreviously) 
+                                           throws Exception {
+      if (hasSnapshotCompletedPreviously(getCheckpointResponse)) {
+        LOGGER.info("Skipping snapshot for table {} tablet {} since tablet has streamed some data before",
+                  tableId, tabletId);
+        snapshotCompletedTablets.add(tabletId);
+        snapshotCompletedPreviously.add(tabletId);
+
+        return false;
+      } else {
+        // Set checkpoint with bootstrap and initialCheckpoint as false.
+        // A call to set the checkpoint is required first otherwise we will get an error 
+        // from the server side saying:
+        // INTERNAL_ERROR[code 21]: Stream ID {} is expired for Tablet ID {}
+        setCheckpointWithRetryBeforeSnapshot(tableId, tabletId);
+
+        return true;
+      }
+    }
+
     protected SnapshotResult<YugabyteDBOffsetContext> doExecute(ChangeEventSourceContext context, YBPartition partition, YugabyteDBOffsetContext previousOffset,
                                                                 SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
                                                                 SnapshottingTask snapshottingTask)
@@ -292,6 +371,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       }
 
       Map<TableId, String> filteredTableIdToUuid = determineTablesForSnapshot(tableIdToTable);
+      List<Pair<String, String>> tableToTabletForSnapshot = new ArrayList<>();
 
       Map<String, Boolean> schemaNeeded = new HashMap<>();
       Set<String> snapshotCompletedTablets = new HashSet<>();
@@ -299,17 +379,33 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
       for (Pair<String, String> entry : tableToTabletIds) {
         // We can use tableIdToTable.get(entry.getKey()).isColocated() to get actual status.
-        YBPartition p = new YBPartition(entry.getKey() /* tableId */,
-                                        entry.getValue() /* tabletId */, true /* colocated */);
+        String tableId = entry.getKey();
+        String tabletId = entry.getValue();
+        YBPartition p = new YBPartition(tableId, tabletId, true /* colocated */);
 
-        GetCheckpointResponse resp = this.syncClient.getCheckpoint(
-          tableIdToTable.get(entry.getKey()), this.connectorConfig.streamId(), entry.getValue());
-        LOGGER.debug("The response received has term {} index {} key {} and time {}",
-                     resp.getTerm(), resp.getIndex(), resp.getSnapshotKey(),
-                     resp.getSnapshotTime());
+        GetCheckpointResponse resp = getCheckpointWithRetry(tableIdToTable.get(tableId), tabletId);
+        LOGGER.info("Checkpoint before snapshotting tablet {}: Term {} Index {} SnapshotKey: {}",
+                    tabletId, resp.getTerm(), resp.getIndex(), resp.getSnapshotKey());
 
-        OpId startLsn = (resp.getSnapshotKey().length == 0) ?
-                            YugabyteDBOffsetContext.snapshotStartLsn() : OpId.from(resp);
+        OpId startLsn = OpId.from(resp);
+        if (filteredTableIdToUuid.containsValue(tableId)) {
+          // We need to take the snapshot for this table.
+          tableToTabletForSnapshot.add(entry);
+
+          if (isSnapshotRequired(resp, tableId, tabletId, snapshotCompletedTablets, snapshotCompletedPreviously)) {
+            startLsn = YugabyteDBOffsetContext.snapshotStartLsn();
+          }
+        } else {
+          // At this stage we know that the particular table is not a part of the
+          // snapshot.include.collection.list so we simply need to bootstrap the tablet
+          // for streaming.
+          LOGGER.info("Skipping the table {} tablet {} since it is not a part of the"
+                      + " snapshot.include.collection.list", entry.getKey(), entry.getValue());
+          YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), 
+                                      tableId, tabletId, -1 /* term */, -1 /* index */,
+                                      true /* initialCheckpoint */, true /* bootstrap */);
+        }
+
         previousOffset.initSourceInfo(p, this.connectorConfig, startLsn);
         schemaNeeded.put(p.getId(), Boolean.TRUE);
         shouldWaitForCallback.add(p.getId());
@@ -317,36 +413,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                      p.getTabletId(), previousOffset.toString());
       }
 
-      List<Pair<String, String>> tableToTabletForSnapshot = new ArrayList<>();
-      List<Pair<String, String>> tableToTabletNoSnapshot = new ArrayList<>();
-
-      for (Pair<String, String> entry : tableToTabletIds) {
-        String tableUuid = entry.getKey();
-        String tabletUuid = entry.getValue();
-
-        if (filteredTableIdToUuid.containsValue(tableUuid)) {
-          // This means we need to add this table/tablet for snapshotting
-          tableToTabletForSnapshot.add(entry);
-        } else {
-          tableToTabletNoSnapshot.add(entry);
-          // Bootstrap the tablets if they need not be snapshotted
-          LOGGER.info(
-            "Skipping the tablet {} since it is not a part of the snapshot collection include list",
-            tabletUuid);
-          YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), 
-                                      tableUuid, tabletUuid, -1, -1, true, true);
-        }
-      }
-
-      // Set checkpoint with bootstrap and initialCheckpoint as false.
-      // A call to set the checkpoint is required first otherwise we will get an error 
-      // from the server side saying:
-      // INTERNAL_ERROR[code 21]: Stream ID {} is expired for Tablet ID {}
-      for (Pair<String, String> entry : tableToTabletForSnapshot) {
-        setCheckpointWithRetryBeforeSnapshot(entry.getKey() /*tableId*/,
-                                             entry.getValue() /*tabletId*/,
-                                             snapshotCompletedTablets,
-                                             snapshotCompletedPreviously);
+      if (FAIL_AFTER_SETTING_INITIAL_CHECKPOINT) {
+        throw new RuntimeException("[TEST ONLY] Throwing error explicitly after setting initial checkpoint");
       }
 
       short retryCount = 0;
@@ -568,6 +636,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             // Reset the retry count here indicating that if the flow has reached here then
             // everything succeeded without any exceptions
             retryCount = 0;
+
+            // This flag is only meant for testing purposes only.
+            if (FAIL_AFTER_BOOTSTRAP_GET_CHANGES) {
+              throw new RuntimeException("[TEST ONLY] Throwing error explicitly after bootstrap snapshot GetChanges call");
+            }
           }
         } catch (Exception e) {
           ++retryCount;
@@ -767,23 +840,22 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     /**
      * Check on the server side if the tablet already has some checkpoint, if it does then do
      * not take a snapshot for it again since some data has already been streamed out of it
-     * @param tableId the UUID of the table
-     * @param tabletId the UUID of the tablet
-     * @return true if snapshot has been taken or some data has streamed already
-     * @throws Exception if checkpoint cannot be retreived from server side
+     * @param getCheckpointResponse
      */
-    protected boolean hasSnapshotCompletedPreviously(String tableId, String tabletId) 
-        throws Exception {
-      GetCheckpointResponse resp = this.syncClient.getCheckpoint(
-                                       this.syncClient.openTableByUUID(tableId), 
-                                       this.connectorConfig.streamId(), tabletId);
-
-      if (resp.getSnapshotKey().length != 0) {
-        // This indicates that snapshot was altered midway and has not completed, return false
+    protected boolean hasSnapshotCompletedPreviously(GetCheckpointResponse getCheckpointResponse) {
+      if (getCheckpointResponse.getSnapshotKey() != null) {
+        // This indicates that snapshot key is present and the connector is either in the middle
+        // of the snapshot or snapshot has just been bootstrapped and we haven't called further
+        // GetChanges on the tablet.
+        //
+        // In either of the cases, snapshot is not complete and need to be taken.
         return false;
       }
 
-      return !(resp.getTerm() == -1 && resp.getIndex() == -1);
+      // If no snapshot key is present then it could be either of the two cases:
+      // 1. Snapshot hasn't been initiated (so snapshot incomplete) -> indicated by invalid OpId 
+      // 2. Snapshot is complete and tablet is in streaming mode -> OpId is valid
+      return OpId.isValid(getCheckpointResponse.getTerm(), getCheckpointResponse.getIndex());
     }
 
     protected Set<TableId> getAllTableIds(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx)

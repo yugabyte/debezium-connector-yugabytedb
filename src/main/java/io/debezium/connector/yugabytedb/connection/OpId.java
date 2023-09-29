@@ -153,4 +153,14 @@ public class OpId implements Comparable<OpId> {
         return (checkpoint != null && this.term <= checkpoint.getTerm()
                 && this.index <= checkpoint.getIndex() && this.time <= checkpoint.getTime());
     }
+
+    /**
+     * Check whether the passed OpId is valid.
+     * @param term
+     * @param index
+     * @return true if OpId is valid, false otherwise
+     */
+    public static boolean isValid(long term, long index) {
+        return (term != -1) && (index != -1);
+    }
 }
