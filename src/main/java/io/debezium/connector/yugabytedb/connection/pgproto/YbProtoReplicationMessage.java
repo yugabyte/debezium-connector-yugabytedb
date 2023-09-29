@@ -132,7 +132,7 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
                     }
                     else {
                         final Common.QLTypePB type = datum.getCqlType();
-                        return new AbstractReplicationMessageColumn(columnName, type) {
+                        return new AbstractReplicationMessageColumn(columnName, type, typeInfo.map(CdcService.TypeInfo::getValueOptional).orElse(Boolean.FALSE)) {
                             @Override
                             public Object getValue(PgConnectionSupplier connection, boolean includeUnknownDatatypes) {
                                 return YbProtoReplicationMessage.this.getValue(columnName, type

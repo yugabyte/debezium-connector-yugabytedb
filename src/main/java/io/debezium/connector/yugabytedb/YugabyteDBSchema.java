@@ -393,6 +393,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             case FLOAT: return Types.FLOAT;
             case DOUBLE: return Types.DOUBLE;
             case BINARY: return Types.BINARY;
+            case DATE: return Types.DATE;
             default:
                 LOGGER.error("Invalid column type for CQL column");
                 return -1;

@@ -78,7 +78,48 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
         verifyRecordCount(recordsCount);
 
     }
+    @Test
+    public void testDatatypes() throws Exception {
+        String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
+        session.execute(createKeyspace);
 
+        session.execute("create table if not exists cdctest.test_datatypes(a int primary key, b varchar, c text, d bigint, e boolean, f float, g date, h double );");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_datatypes", false, false,BeforeImageMode.CHANGE, true);
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_datatypes", dbStreamId);
+        startEngine(configBuilder);
+
+        final long recordsCount = 1;
+
+        awaitUntilConnectorIsReady();
+
+        session.execute("insert into cdctest.test_datatypes(a,b,c,d,e,f,g,h) values (2,'abc','def', 100000, false, 11.2, todate(now()),17.8);");
+        
+        verifyRecordCount(recordsCount);
+    }
+
+    @Test
+    public void testCounter() throws Exception {
+        String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
+        session.execute(createKeyspace);
+
+        session.execute("create table if not exists cdctest.test_counter(id int primary key, b counter);");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_counter", false, false,BeforeImageMode.CHANGE, true);
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_counter", dbStreamId);
+        startEngine(configBuilder);
+
+        final long recordsCount = 1;
+
+        awaitUntilConnectorIsReady();
+
+        session.execute("update cdctest.test_counter set b = b + 1 where id = 1;");
+
+        verifyRecordCount(recordsCount);
+
+    }
     @Test
     public void testBeforeImageWithCQL() throws Exception {
         String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";

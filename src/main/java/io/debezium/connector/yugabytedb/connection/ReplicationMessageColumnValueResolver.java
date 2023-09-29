@@ -213,7 +213,7 @@ public class ReplicationMessageColumnValueResolver {
             case INT8:value.getValuepb().getInt8Value();
             case INT16:value.getValuepb().getInt16Value();
             case INT32: return value.getValuepb().getInt32Value();
-            case INT64: return value.getValuepb().getDoubleValue();
+            case INT64: return value.getValuepb().getInt64Value();
             case STRING: return value.getValuepb().getStringValue();
             case BOOL: return value.getValuepb().getBoolValue();
             case FLOAT: return value.getValuepb().getFloatValue();
@@ -222,6 +222,7 @@ public class ReplicationMessageColumnValueResolver {
 
             case TIMESTAMP: return value.getValuepb().getTimestampValue();
             case DECIMAL: return value.getValuepb().getDecimalValue().toStringUtf8();
+            case DATE: return value.getValuepb().getDateValue();
             case VARINT: return "varint";
             case INET: return "inet";
             case LIST: return "list";

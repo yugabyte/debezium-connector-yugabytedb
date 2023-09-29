@@ -11,7 +11,10 @@ import static java.time.ZoneId.systemDefault;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.sql.SQLXML;
 import java.sql.Timestamp;
@@ -26,17 +29,20 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
+import java.time.temporal.TemporalAdjuster;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.Base64.Encoder;
+import java.util.Base64;
 import java.util.stream.Collectors;
 
 import io.debezium.util.HexConverter;
@@ -60,7 +66,10 @@ import com.fasterxml.jackson.core.JsonGenerator;
 import io.debezium.config.CommonConnectorConfig.BinaryHandlingMode;
 import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig.HStoreHandlingMode;
 import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig.IntervalHandlingMode;
+
 import static io.debezium.util.NumberConversions.SHORT_FALSE;
+import static io.debezium.util.NumberConversions.BYTE_ZERO;
+
 import io.debezium.connector.yugabytedb.data.Ltree;
 import io.debezium.data.Json;
 import io.debezium.data.SpecialValueDecimal;
@@ -154,6 +163,15 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
 
     private final JsonFactory jsonFactory;
 
+    protected final BinaryHandlingMode binaryMode;
+
+    protected final boolean adaptiveTimePrecisionMode;
+    protected final boolean adaptiveTimeMicrosecondsPrecisionMode;
+
+    private final TemporalAdjuster adjuster;
+
+
+
     private static final Logger logger = LoggerFactory.getLogger(YugabyteDBConnector.class);
 
 
@@ -164,11 +182,14 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 connectorConfig.getDecimalMode(),
                 connectorConfig.includeUnknownDatatypes(),
                 connectorConfig.hStoreHandlingMode(),
-                connectorConfig.intervalHandlingMode());
+                connectorConfig.intervalHandlingMode(),
+                connectorConfig.binaryHandlingMode(),
+                connectorConfig.getTemporalPrecisionMode());
     }
 
     protected YugabyteDBCQLValueConverter(Charset databaseCharset, DecimalMode decimalMode, boolean includeUnknownDatatypes,
-                                       HStoreHandlingMode hStoreMode, IntervalHandlingMode intervalMode) {
+                                       HStoreHandlingMode hStoreMode, IntervalHandlingMode intervalMode, BinaryHandlingMode binaryMode,
+                                       TemporalPrecisionMode temporalPrecisionMode) {
         // super(decimalMode, temporalPrecisionMode, defaultOffset, null, bigIntUnsignedMode, binaryMode);
         this.databaseCharset = databaseCharset;
         this.decimalMode = decimalMode;
@@ -176,6 +197,10 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         this.includeUnknownDatatypes = includeUnknownDatatypes;
         this.hStoreMode = hStoreMode;
         this.intervalMode = intervalMode;
+        this.binaryMode = binaryMode;
+        this.adaptiveTimePrecisionMode = temporalPrecisionMode.equals(TemporalPrecisionMode.ADAPTIVE);
+        this.adaptiveTimeMicrosecondsPrecisionMode = temporalPrecisionMode.equals(TemporalPrecisionMode.ADAPTIVE_TIME_MICROSECONDS);
+        this.adjuster = null;
     }
 
     @Override
@@ -203,8 +228,19 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         case Types.DOUBLE:
             // values are double precision floating point number which supports 15 digits of mantissa.
             return SchemaBuilder.float64();
+        case Types.DECIMAL:
+            return SpecialValueDecimal.builder(decimalMode, column.length(), 0/*column.scale().get()*/);
         case Types.VARCHAR:
             return SchemaBuilder.string();
+        case Types.BINARY:
+            return binaryMode.getSchema();
+        case Types.BOOLEAN:
+            return SchemaBuilder.bool();
+        case Types.DATE:
+            if (adaptiveTimePrecisionMode || adaptiveTimeMicrosecondsPrecisionMode) {
+                return Date.builder();
+            }
+            return org.apache.kafka.connect.data.Date.builder();
         default :
             logger.error("Required type not found in YugabyteDBCQLValueConverter SchemaBuilder ");
             return null;
@@ -237,6 +273,15 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 return (data) -> convertDecimal(column, fieldDefn, data);
             case Types.VARCHAR:
                 return (data) -> convertString(column, fieldDefn, data);
+            case Types.BINARY:
+                return (data) -> convertBinary(column, fieldDefn, data, binaryMode);
+            case Types.BOOLEAN:
+                return (data) -> convertBoolean(column, fieldDefn, data);
+            case Types.DATE:
+                if (adaptiveTimePrecisionMode || adaptiveTimeMicrosecondsPrecisionMode) {
+                    return (data) -> convertDateToEpochDays(column, fieldDefn, data);
+                }
+                return (data) -> convertDateToEpochDaysAsDate(column, fieldDefn, data);
             default:
                 logger.error("Required type not found in YugabyteDBCQLValueConverter Converter ");
                 return null;
@@ -547,6 +592,238 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
             }
             else {
                 r.deliver(data_.toString());
+            }
+        });
+    }
+
+    protected Object convertBinary(Column column, Field fieldDefn, Object data, BinaryHandlingMode mode) {
+        switch (mode) {
+            case BASE64:
+                return convertBinaryToBase64(column, fieldDefn, data);
+            case HEX:
+                return convertBinaryToHex(column, fieldDefn, data);
+            case BYTES:
+            default:
+                return convertBinaryToBytes(column, fieldDefn, data);
+        }
+    }
+
+    /**
+     * Converts a value object for an expected JDBC type of {@link Types#BLOB}, {@link Types#BINARY},
+     * {@link Types#VARBINARY}, {@link Types#LONGVARBINARY}.
+     *
+     * @param column the column definition describing the {@code data} value; never null
+     * @param fieldDefn the field definition; never null
+     * @param data the data object to be converted into a {@link Date Kafka Connect date} type; never null
+     * @return the converted value, or null if the conversion could not be made and the column allows nulls
+     * @throws IllegalArgumentException if the value could not be converted but the column does not allow nulls
+     */
+    protected Object convertBinaryToBase64(Column column, Field fieldDefn, Object data) {
+        return convertValue(column, fieldDefn, data, "", (r) -> {
+            Encoder base64Encoder = Base64.getEncoder();
+
+            if (data instanceof String) {
+                r.deliver(new String(base64Encoder.encode(((String) data).getBytes(StandardCharsets.UTF_8))));
+            }
+            else if (data instanceof char[]) {
+                r.deliver(new String(base64Encoder.encode(toByteArray((char[]) data)), StandardCharsets.UTF_8));
+            }
+            else if (data instanceof byte[]) {
+                r.deliver(new String(base64Encoder.encode(normalizeBinaryData(column, (byte[]) data)), StandardCharsets.UTF_8));
+            }
+            else {
+                // An unexpected value
+                r.deliver(unexpectedBinary(data, fieldDefn));
+            }
+        });
+    }
+
+    /**
+     * Converts a value object for an expected JDBC type of {@link Types#BLOB}, {@link Types#BINARY},
+     * {@link Types#VARBINARY}, {@link Types#LONGVARBINARY}.
+     *
+     * @param column the column definition describing the {@code data} value; never null
+     * @param fieldDefn the field definition; never null
+     * @param data the data object to be converted into a {@link Date Kafka Connect date} type; never null
+     * @return the converted value, or null if the conversion could not be made and the column allows nulls
+     * @throws IllegalArgumentException if the value could not be converted but the column does not allow nulls
+     */
+    protected Object convertBinaryToHex(Column column, Field fieldDefn, Object data) {
+        return convertValue(column, fieldDefn, data, "", (r) -> {
+
+            if (data instanceof String) {
+                r.deliver(HexConverter.convertToHexString(((String) data).getBytes(StandardCharsets.UTF_8)));
+            }
+            else if (data instanceof char[]) {
+                r.deliver(HexConverter.convertToHexString(toByteArray((char[]) data)));
+            }
+            else if (data instanceof byte[]) {
+                r.deliver(HexConverter.convertToHexString(normalizeBinaryData(column, (byte[]) data)));
+            }
+            else {
+                // An unexpected value
+                r.deliver(unexpectedBinary(data, fieldDefn));
+            }
+        });
+    }
+
+    /**
+     * Converts a value object for an expected JDBC type of {@link Types#BLOB}, {@link Types#BINARY},
+     * {@link Types#VARBINARY}, {@link Types#LONGVARBINARY}.
+     *
+     * @param column the column definition describing the {@code data} value; never null
+     * @param fieldDefn the field definition; never null
+     * @param data the data object to be converted into a {@link Date Kafka Connect date} type; never null
+     * @return the converted value, or null if the conversion could not be made and the column allows nulls
+     * @throws IllegalArgumentException if the value could not be converted but the column does not allow nulls
+     */
+    protected Object convertBinaryToBytes(Column column, Field fieldDefn, Object data) {
+        return convertValue(column, fieldDefn, data, BYTE_ZERO, (r) -> {
+            if (data instanceof String) {
+                r.deliver(toByteBuffer(((String) data)));
+            }
+            else if (data instanceof char[]) {
+                r.deliver(toByteBuffer((char[]) data));
+            }
+            else if (data instanceof byte[]) {
+                r.deliver(toByteBuffer(column, (byte[]) data));
+            }
+            else {
+                // An unexpected value
+                r.deliver(unexpectedBinary(data, fieldDefn));
+            }
+        });
+    }
+
+    private byte[] toByteArray(char[] chars) {
+        CharBuffer charBuffer = CharBuffer.wrap(chars);
+        ByteBuffer byteBuffer = Charset.forName("UTF-8").encode(charBuffer);
+        return byteBuffer.array();
+    }
+
+    /**
+     * Converts the given byte array value into a normalized byte array. Specific connectors
+     * can perform value adjustments based on the column definition, e.g. right-pad with 0x00 bytes in case of
+     * fixed length BINARY in MySQL.
+     */
+    protected byte[] normalizeBinaryData(Column column, byte[] data) {
+        return data;
+    }
+
+    /**
+     * Handle the unexpected value from a row with a column type of {@link Types#BLOB}, {@link Types#BINARY},
+     * {@link Types#VARBINARY}, {@link Types#LONGVARBINARY}.
+     *
+     * @param value the binary value for which no conversion was found; never null
+     * @param fieldDefn the field definition in the Kafka Connect schema; never null
+     * @return the converted value, or null if the conversion could not be made and the column allows nulls
+     * @throws IllegalArgumentException if the value could not be converted but the column does not allow nulls
+     * @see #convertBinaryToBytes(Column, Field, Object)
+     */
+    protected byte[] unexpectedBinary(Object value, Field fieldDefn) {
+        logger.warn("Unexpected BINARY value for field {} with schema {}: class={}, value={}", fieldDefn.name(),
+                fieldDefn.schema(), value.getClass(), value);
+        return null;
+    }
+
+    private ByteBuffer toByteBuffer(String string) {
+        return ByteBuffer.wrap(string.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private ByteBuffer toByteBuffer(char[] chars) {
+        CharBuffer charBuffer = CharBuffer.wrap(chars);
+        return Charset.forName("UTF-8").encode(charBuffer);
+    }
+
+    /**
+     * Converts the given byte array value into a byte buffer as preferred by Kafka Connect. Specific connectors
+     * can perform value adjustments based on the column definition, e.g. right-pad with 0x00 bytes in case of
+     * fixed length BINARY in MySQL.
+     */
+    protected ByteBuffer toByteBuffer(Column column, byte[] data) {
+        // Kafka Connect would support raw byte arrays, too, but byte buffers are recommended
+        return ByteBuffer.wrap(normalizeBinaryData(column, data));
+    }
+
+    /**
+     * Converts a value object for an expected JDBC type of {@link Types#BOOLEAN}.
+     *
+     * @param column the column definition describing the {@code data} value; never null
+     * @param fieldDefn the field definition; never null
+     * @param data the data object to be converted into a {@link Date Kafka Connect date} type; never null
+     * @return the converted value, or null if the conversion could not be made and the column allows nulls
+     * @throws IllegalArgumentException if the value could not be converted but the column does not allow nulls
+     */
+    protected Object convertBoolean(Column column, Field fieldDefn, Object data) {
+        return convertValue(column, fieldDefn, data, false, (r) -> {
+            if (data instanceof Boolean) {
+                r.deliver(data);
+            }
+            else if (data instanceof Short) {
+                r.deliver(((Short) data).intValue() == 0 ? Boolean.FALSE : Boolean.TRUE);
+            }
+            else if (data instanceof Integer) {
+                r.deliver(((Integer) data).intValue() == 0 ? Boolean.FALSE : Boolean.TRUE);
+            }
+            else if (data instanceof Long) {
+                r.deliver(((Long) data).intValue() == 0 ? Boolean.FALSE : Boolean.TRUE);
+            }
+        });
+    }
+
+    /**
+     * Converts a value object for an expected JDBC type of {@link Types#DATE} to the number of days past epoch.
+     * <p>
+     * Per the JDBC specification, databases should return {@link java.sql.Date} instances that have no notion of time or
+     * time zones. This method handles {@link java.sql.Date} objects plus any other standard date-related objects such as
+     * {@link java.util.Date}, {@link java.time.LocalDate}, and {@link java.time.LocalDateTime}. If any of the types might
+     * have time components, those time components are ignored.
+     *
+     * @param column the column definition describing the {@code data} value; never null
+     * @param fieldDefn the field definition; never null
+     * @param data the data object to be converted into a {@link Date Kafka Connect date} type
+     * @return the converted value, or null if the conversion could not be made and the column allows nulls
+     * @throws IllegalArgumentException if the value could not be converted but the column does not allow nulls
+     */
+    protected Object convertDateToEpochDays(Column column, Field fieldDefn, Object data) {
+        // epoch is the fallback value
+        return convertValue(column, fieldDefn, data, 0, (r) -> {
+            try {
+                r.deliver(Date.toEpochDay(data, adjuster));
+            }
+            catch (IllegalArgumentException e) {
+                logger.warn("Unexpected JDBC DATE value for field {} with schema {}: class={}, value={}", fieldDefn.name(),
+                        fieldDefn.schema(), data.getClass(), data);
+            }
+        });
+    }
+
+    /**
+     * Converts a value object for an expected JDBC type of {@link Types#DATE} to the number of days past epoch, but represented
+     * as a {@link java.util.Date} value at midnight on the date.
+     * <p>
+     * Per the JDBC specification, databases should return {@link java.sql.Date} instances that have no notion of time or
+     * time zones. This method handles {@link java.sql.Date} objects plus any other standard date-related objects such as
+     * {@link java.util.Date}, {@link java.time.LocalDate}, and {@link java.time.LocalDateTime}. If any of the types might
+     * have time components, those time components are ignored.
+     *
+     * @param column the column definition describing the {@code data} value; never null
+     * @param fieldDefn the field definition; never null
+     * @param data the data object to be converted into a {@link Date Kafka Connect date} type
+     * @return the converted value, or null if the conversion could not be made and the column allows nulls
+     * @throws IllegalArgumentException if the value could not be converted but the column does not allow nulls
+     */
+    protected Object convertDateToEpochDaysAsDate(Column column, Field fieldDefn, Object data) {
+        // epoch is the fallback value
+        return convertValue(column, fieldDefn, data, new java.util.Date(0L), (r) -> {
+            try {
+                int epochDay = Date.toEpochDay(data, adjuster);
+                long epochMillis = TimeUnit.DAYS.toMillis(epochDay);
+                r.deliver(new java.util.Date(epochMillis));
+            }
+            catch (IllegalArgumentException e) {
+                logger.warn("Unexpected JDBC DATE value for field {} with schema {}: class={}, value={}", fieldDefn.name(),
+                        fieldDefn.schema(), data.getClass(), data);
             }
         });
     }
