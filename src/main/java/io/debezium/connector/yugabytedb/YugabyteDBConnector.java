@@ -73,7 +73,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
     @Override
     public void start(Map<String, String> props) {
         this.props = props;
-        LOGGER.info("Props " + props);
+        LOGGER.debug("Props " + props);
         Configuration config = Configuration.from(this.props);
         this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
         

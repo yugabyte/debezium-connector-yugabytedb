@@ -570,10 +570,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                             if(connectorConfig.isYSQLDbType()) {
                                 // This is a hack to skip tables in case of colocated tables
                                 tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-
                             } else {
-                                tempTid = YugabyteDBSchema.parseWithKeyspace(message.getTable(), //TODO: Check if this breaks the above hack 
-                                        connectorConfig.databaseName());
+                                tempTid = YugabyteDBSchema.parseWithKeyspace(message.getTable(),
+                                            connectorConfig.databaseName());
                             }
                             
                             if (!message.isTransactionalMessage()
@@ -711,24 +710,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
 
 
-                                    boolean dispatched = message.getOperation() != Operation.NOOP;
-                                    if (connectorConfig.isYSQLDbType()) {
-                                        dispatched = dispatched
-                                                && dispatcher.dispatchDataChangeEvent(part, tableId,
-                                                        new YugabyteDBChangeRecordEmitter(part, offsetContext, clock,
-                                                                connectorConfig,
-                                                                schema, connection, tableId, message,
-                                                                pgSchemaNameInRecord, tabletId,
-                                                                taskContext.isBeforeImageEnabled()));
-                                    } else {
-                                        dispatched = dispatched
-                                                && dispatcher.dispatchDataChangeEvent(part, tableId,
-                                                        new YugabyteDBChangeRecordEmitter(part, offsetContext, clock,
-                                                                connectorConfig,
-                                                                schema, connection, tableId, message,
-                                                                tableId.catalog(), tabletId,
-                                                                taskContext.isBeforeImageEnabled()));
-                                    }
+                                    boolean dispatched = message.getOperation() != Operation.NOOP
+                                            && dispatcher.dispatchDataChangeEvent(part, tableId,
+                                                    new YugabyteDBChangeRecordEmitter(part, offsetContext, clock,
+                                                            connectorConfig,
+                                                            schema, connection, tableId, message,
+                                                            connectorConfig.isYSQLDbType()? pgSchemaNameInRecord : tableId.catalog(), tabletId,
+                                                            taskContext.isBeforeImageEnabled()));
 
                                     if (recordsInTransactionalBlock.containsKey(part.getId())) {
                                         recordsInTransactionalBlock.merge(part.getId(), 1, Integer::sum);

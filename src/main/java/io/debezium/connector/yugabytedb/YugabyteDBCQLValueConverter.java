@@ -190,7 +190,6 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     protected YugabyteDBCQLValueConverter(Charset databaseCharset, DecimalMode decimalMode, boolean includeUnknownDatatypes,
                                        HStoreHandlingMode hStoreMode, IntervalHandlingMode intervalMode, BinaryHandlingMode binaryMode,
                                        TemporalPrecisionMode temporalPrecisionMode) {
-        // super(decimalMode, temporalPrecisionMode, defaultOffset, null, bigIntUnsignedMode, binaryMode);
         this.databaseCharset = databaseCharset;
         this.decimalMode = decimalMode;
         this.jsonFactory = new JsonFactory();

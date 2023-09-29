@@ -94,15 +94,16 @@ public class YBClientUtils {
                   }
 
                   fqlTableName = tableInfo.getNamespace().getName() + "."
-                          + tableInfo.getPgschemaName() + "."
-                          + tableInfo.getName();
+                                  + tableInfo.getPgschemaName() + "."
+                                  + tableInfo.getName();
                   tableId = YugabyteDBSchema.parseWithSchema(fqlTableName,
-                          tableInfo.getPgschemaName());
+                              tableInfo.getPgschemaName());
 
               }
               else {
+                  //Since there is no concept of schema in CQL we will be using nameSpaceName.tableName 
                   fqlTableName = tableInfo.getNamespace().getName() + "."
-                          + tableInfo.getName();
+                                  + tableInfo.getName();
                   tableId = YugabyteDBSchema.parseWithKeyspace(fqlTableName, tableInfo.getNamespace().getName());
               }
               // Retrieve the list of tables in the stream ID,
@@ -247,6 +248,11 @@ public class YBClientUtils {
     return new YBClient(asyncClient);
   }
 
+  /**
+   * Get a {@link YBClient} instance to perform client operations on YugabyteDB server for initializing {@link YugabyteDBConnectorConfig}
+   * @param config configuration for the connector
+   * @return a YBClient instance
+   */
   public static YBClient getYbClient(Configuration config) {
     AsyncYBClient asyncClient = new AsyncYBClient.AsyncYBClientBuilder(config.getString(YugabyteDBConnectorConfig.MASTER_ADDRESSES))
                                   .defaultAdminOperationTimeoutMs(config.getLong(YugabyteDBConnectorConfig.ADMIN_OPERATION_TIMEOUT_MS))

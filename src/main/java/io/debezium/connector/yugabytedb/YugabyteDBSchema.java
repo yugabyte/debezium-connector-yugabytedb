@@ -277,7 +277,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
               .setDefaultCharsetName(null /* default character set name */) // JDBC does not expose character sets
               .create();
 
-            String lookupKey = getLookupKey(tableId, tabletId);;
+            String lookupKey = getLookupKey(tableId, tabletId);
             LOGGER.debug("Updating table with lookup key {} and columns {}", lookupKey, updatedTable.columns());
             tabletIdToTable.put(lookupKey, updatedTable);
         }
@@ -485,7 +485,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             LOGGER.debug("Updating table schema with lookup key {}", lookupKey);
             tabletIdToTableSchema.put(lookupKey, schema);
         } else {
-            LOGGER.warn("{} not included ",table.id());
+            LOGGER.warn("{} not included in the table filter list",table.id());
         }
     }
 

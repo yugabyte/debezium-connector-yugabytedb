@@ -97,8 +97,7 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
      * @param mappers the mapping functions for columns; may be null if none of the columns are to be mapped to different values
      * @return the table schema that can be used for sending rows of data for this table to Kafka Connect; never null
      */
-    public TableSchema create(String schemaPrefix, String envelopSchemaName, Table table, ColumnNameFilter filter,
-            ColumnMappers mappers, KeyMapper keysMapper) {
+    public TableSchema create(String schemaPrefix, String envelopSchemaName, Table table, ColumnNameFilter filter, ColumnMappers mappers, KeyMapper keysMapper) {
         if (schemaPrefix == null) {
             schemaPrefix = "";
         }
