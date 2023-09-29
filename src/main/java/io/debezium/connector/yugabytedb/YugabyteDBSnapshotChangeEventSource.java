@@ -275,6 +275,53 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     }
 
     /**
+     * Get the checkpoint for given {@link YBTable} and tabletID
+     * @param ybTable
+     * @param tabletId
+     * @throws Exception if the RPC hits any error
+     */
+    protected GetCheckpointResponse getCheckpointWithRetry(YBTable ybTable, String tabletId)
+      throws Exception {
+      short retryCount = 0;
+      while (retryCount <= connectorConfig.maxConnectorRetries()) {
+        try {
+          GetCheckpointResponse resp =
+              this.syncClient.getCheckpoint(ybTable, connectorConfig.streamId(), tabletId);
+
+          return resp;
+        } catch (Exception e) {
+          ++retryCount;
+
+          if (retryCount > this.connectorConfig.maxConnectorRetries()) {
+            LOGGER.error("Too many errors while trying to get checkpoint for tablet {}, "
+                          + "all {} retries failed.", tabletId, this.connectorConfig.maxConnectorRetries());
+
+            throw e;
+          }
+
+          LOGGER.warn("Error while trying to get the checkpoint for tablet {}; will attempt " 
+                      + "retry {} of {} after {} milli-seconds. Exception message: {}",
+                      tabletId, retryCount, 
+                      connectorConfig.maxConnectorRetries(), 
+                      connectorConfig.connectorRetryDelayMs(), e.getMessage());
+          LOGGER.debug("Stacktrace: ", e);
+
+          try {
+            final Metronome retryMetronome =
+                Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+            retryMetronome.pause();
+          } catch (InterruptedException ie) {
+            LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
+            Thread.currentThread().interrupt();
+          }
+        }
+      }
+
+      // In ideal scenarios, this code will never be hit.
+      return null;
+    }
+
+    /**
      * Decide if we need to take snapshot or do nothing if snapshot has completed previously
      */
     protected boolean isSnapshotRequired(GetCheckpointResponse getCheckpointResponse,
@@ -336,8 +383,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         String tabletId = entry.getValue();
         YBPartition p = new YBPartition(tableId, tabletId, true /* colocated */);
 
-        GetCheckpointResponse resp = this.syncClient.getCheckpoint(
-          tableIdToTable.get(tableId), this.connectorConfig.streamId(), tabletId);
+        GetCheckpointResponse resp = getCheckpointWithRetry(tableIdToTable.get(tableId), tabletId);
         LOGGER.info("Checkpoint before snapshotting tablet {}: Term {} Index {} SnapshotKey: {}",
                     tabletId, resp.getTerm(), resp.getIndex(), resp.getSnapshotKey());
 
