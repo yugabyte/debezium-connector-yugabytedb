@@ -262,16 +262,28 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     + "retry {} of {} after {} milli-seconds. Exception message: {}", retryCount, 
                       this.connectorConfig.maxConnectorRetries(), 
                       this.connectorConfig.connectorRetryDelayMs(), e.getMessage());
-        LOGGER.debug("Stacktrace: ", e);
+        LOGGER.warn("Stacktrace: ", e);
 
-        try {
+        if (e instanceof RecoverableException) {
+          LOGGER.warn("Retrying with a new YBClient");
+          this.syncClient = YBClientUtils.getYbClient(connectorConfig);
+        }
+
+        pauseBeforeRetryingError();
+      }
+    }
+
+    /**
+     * Pause the flow before moving further to retry.
+     */
+    private void pauseBeforeRetryingError() {
+      try {
           final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
           retryMetronome.pause();
         } catch (InterruptedException ie) {
           LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
           Thread.currentThread().interrupt();
         }
-      }
     }
 
     /**
@@ -304,16 +316,14 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       tabletId, retryCount, 
                       connectorConfig.maxConnectorRetries(), 
                       connectorConfig.connectorRetryDelayMs(), e.getMessage());
-          LOGGER.debug("Stacktrace: ", e);
+          LOGGER.warn("Stacktrace: ", e);
 
-          try {
-            final Metronome retryMetronome =
-                Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-            retryMetronome.pause();
-          } catch (InterruptedException ie) {
-            LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-            Thread.currentThread().interrupt();
+          if (e instanceof RecoverableException) {
+            LOGGER.warn("Retrying with a new YBClient");
+            this.syncClient = YBClientUtils.getYbClient(connectorConfig);
           }
+
+          pauseBeforeRetryingError();
         }
       }
 
@@ -665,19 +675,12 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                        this.connectorConfig.maxConnectorRetries(), 
                        this.connectorConfig.connectorRetryDelayMs(), e);
 
-          if (e.toString().contains("tablet=null")) {
-            LOGGER.warn("Got a tablet=null error while fetching the snapshot, retrying with a new YBClient");
+          if (e instanceof RecoverableException) {
+            LOGGER.warn("Retrying with a new YBClient");
             this.syncClient = YBClientUtils.getYbClient(connectorConfig);
-            LOGGER.info("Created a new YBClient");
           }
 
-          try {
-            final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-            retryMetronome.pause();
-          } catch (InterruptedException ie) {
-            LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-            Thread.currentThread().interrupt();
-          }
+          pauseBeforeRetryingError();
         }
       }
 
@@ -746,6 +749,13 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         
         LOGGER.warn("Error while marking snapshot completed on service for table {} tablet {}, will attempt retry {} of {} for error {}",
                     partition.getTableId(), partition.getTabletId(), retryCount, connectorConfig.maxConnectorRetries(), e);
+
+        if (e instanceof RecoverableException) {
+          LOGGER.warn("Retrying with a new YBClient");
+          this.syncClient = YBClientUtils.getYbClient(connectorConfig);
+        }
+
+        pauseBeforeRetryingError();
       }
     }
 

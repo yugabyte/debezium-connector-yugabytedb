@@ -211,13 +211,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                     LOGGER.warn("Error while trying to get the checkpoint for tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
                             entry.getValue(), retryCountForGetCheckpoint, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
 
-                    try {
-                        final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-                        retryMetronome.pause();
-                    } catch (InterruptedException ie) {
-                        LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-                        Thread.currentThread().interrupt();
+                    if (e instanceof RecoverableException) {
+                       LOGGER.warn("Retrying with a new YBClient");
+                        this.syncClient = YBClientUtils.getYbClient(connectorConfig);
                     }
+
+                    pauseBeforeRetryingError();
                 }
             }
         }
@@ -257,13 +256,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                     LOGGER.warn("Error while trying to bootstrap tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
                             entry.getValue(), retryCountForBootstrapping, maxBootstrapRetries, connectorConfig.connectorRetryDelayMs(), e.getMessage());
 
-                    try {
-                        final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-                        retryMetronome.pause();
-                    } catch (InterruptedException ie) {
-                        LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-                        Thread.currentThread().interrupt();
-                    }
+                    pauseBeforeRetryingError();
                 }
             }
         }
@@ -293,13 +286,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                 LOGGER.warn("Error while marking no snapshot on service for table {} tablet {}, will attempt retry {} of {} for error {}",
                             ybTable.getTableId(), tabletId, retryCount, connectorConfig.maxConnectorRetries(), e);
 
-                try {
-                    final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-                    retryMetronome.pause();
-                } catch (InterruptedException ie) {
-                    LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-                    Thread.currentThread().interrupt();
+                if (e instanceof RecoverableException) {
+                    LOGGER.warn("Retrying with a new YBClient");
+                    this.syncClient = YBClientUtils.getYbClient(connectorConfig);
                 }
+
+                pauseBeforeRetryingError();
             }
         }
     }
@@ -773,20 +765,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                 LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
                         retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e);
                 
-                if (e.toString().contains("tablet=null")) {
-                    LOGGER.warn("Got a tablet = null error, retrying with a new YBClient");
+                if (e instanceof RecoverableException) {
+                    LOGGER.warn("Retrying with a new YBClient");
                     this.syncClient = YBClientUtils.getYbClient(connectorConfig);
-                    LOGGER.info("Created a new YBClient for retrying");
                 }
 
-                try {
-                    final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-                    retryMetronome.pause();
-                }
-                catch (InterruptedException ie) {
-                    LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-                    Thread.currentThread().interrupt();
-                }
+                pauseBeforeRetryingError();
             }
         }
     }
@@ -1148,19 +1132,29 @@ public class YugabyteDBStreamingChangeEventSource implements
                             splitTabletId, retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs());
                 LOGGER.warn("Stacktrace", e);
 
-                try {
-                    final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-                    retryMetronome.pause();
+                if (e instanceof RecoverableException) {
+                    LOGGER.warn("Retrying with a new YBClient");
+                    this.syncClient = YBClientUtils.getYbClient(connectorConfig);
                 }
-                catch (InterruptedException ie) {
-                    LOGGER.warn("Connector retry sleep while pausing to get the children tablets for parent {} interrupted", splitTabletId);
-                    LOGGER.warn("Exception for interruption", ie);
-                    Thread.currentThread().interrupt();
-                }
+
+                pauseBeforeRetryingError();
             }
         }
 
         // In ideal scenarios, this should NEVER be returned from this function.
         return null;
+    }
+
+    /**
+     * Pause the flow before moving further to retry.
+     */
+    private void pauseBeforeRetryingError() {
+        try {
+            final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+            retryMetronome.pause();
+        } catch (InterruptedException ie) {
+            LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
+            Thread.currentThread().interrupt();
+        }
     }
 }
