@@ -1,7 +1,6 @@
 package io.debezium.connector.yugabytedb;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.annotations.PreviewOnly;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import org.apache.kafka.connect.source.SourceRecord;
@@ -17,6 +16,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -27,7 +27,6 @@ import static org.junit.jupiter.api.Assertions.fail;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-@PreviewOnly
 public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 	private final String insertStmtFormat = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
 	@BeforeAll
@@ -76,7 +75,7 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 
 		// There are changes that some records get published and are ready to consume while the
 		// the connector was being stopped.
-		totalConsumedSoFar += super.consumeAvailableRecords(record -> {});
+		totalConsumedSoFar += consumeAvailableRecords(record -> {});
 
 		// Confirm whether there are no more records to consume.
 		assertNoRecordsToConsume();
@@ -89,51 +88,23 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 		// Only verifying the record count since the snapshot records are not ordered, so it may be
 		// a little complex to verify them in the sorted order at the moment
 		final int finalTotalConsumedSoFar = totalConsumedSoFar;
-		CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount - finalTotalConsumedSoFar))
-			.exceptionally(throwable -> {
-				throw new RuntimeException(throwable);
-			}).get();
-	}
+		List<SourceRecord> records = new ArrayList<>();
+		waitAndFailIfCannotConsume(records, recordsCount - finalTotalConsumedSoFar);
 
-	private void verifyRecordCount(long recordsCount) {
-		waitAndFailIfCannotConsumeRecords(new ArrayList<>(), recordsCount);
-	}
+		// Consume the remaining records as there can be duplicates records while resuming snapshot,
+		// they should NOT be equal to what we have consumed before connector restart.
+		LOGGER.info("Consuming remaining records (if available)");
 
-	private void waitAndFailIfCannotConsumeRecords(List<SourceRecord> records, long recordsCount) {
-		waitAndFailIfCannotConsumeRecords(records, recordsCount, 300 * 1000 /* 5 minutes */);
-	}
-
-	/**
-	 * Consume the records available and add them to a list for further assertion purposes.
-	 * @param records list to which we need to add the records we consume, pass a
-	 * {@code new ArrayList<>()} if you do not need assertions on the consumed values
-	 * @param recordsCount total number of records which should be consumed
-	 * @param milliSecondsToWait duration in milliseconds to wait for while consuming
-	 */
-	private void waitAndFailIfCannotConsumeRecords(List<SourceRecord> records, long recordsCount,
-																								 long milliSecondsToWait) {
-		AtomicLong totalConsumedRecords = new AtomicLong();
-		long seconds = milliSecondsToWait / 1000;
-		try {
-			Awaitility.await()
-				.atMost(Duration.ofSeconds(seconds))
-				.until(() -> {
-					int consumed = consumeAvailableRecords(record -> {
-						LOGGER.debug("The record being consumed is " + record);
-						records.add(record);
-					});
-					if (consumed > 0) {
-						totalConsumedRecords.addAndGet(consumed);
-						LOGGER.debug("Consumed " + totalConsumedRecords + " records");
-					}
-
-					return totalConsumedRecords.get() == recordsCount;
-				});
-		} catch (ConditionTimeoutException exception) {
-			fail("Failed to consume " + recordsCount + " in " + seconds + " seconds", exception);
+		int remainingConsumedRecords = 0;
+		for (int i = 0; i < 10; ++i) {
+			remainingConsumedRecords += consumeAvailableRecords(record -> {});
+			TestHelper.waitFor(Duration.ofSeconds(2));
 		}
 
-		assertEquals(recordsCount, totalConsumedRecords.get());
+		LOGGER.info("Remaining consumed record count: {}", remainingConsumedRecords);
+		assertNotEquals(finalTotalConsumedSoFar, remainingConsumedRecords);
+
+		assertEquals(recordsCount - finalTotalConsumedSoFar, records.size());
 	}
 
 	private int consumeAllAvailableRecordsTill(long minimumRecordsToConsume) {
