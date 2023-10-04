@@ -252,6 +252,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                         throw e;
                     }
 
+                    if (e instanceof RecoverableException) {
+                       LOGGER.warn("Retrying with a new YBClient");
+                        this.syncClient = YBClientUtils.getYbClient(connectorConfig);
+                    }
+
                     // If there are retries left, perform them after the specified delay.
                     LOGGER.warn("Error while trying to bootstrap tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
                             entry.getValue(), retryCountForBootstrapping, maxBootstrapRetries, connectorConfig.connectorRetryDelayMs(), e.getMessage());
