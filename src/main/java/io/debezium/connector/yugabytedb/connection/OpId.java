@@ -74,7 +74,7 @@ public class OpId implements Comparable<OpId> {
      * </pre>
      */
     public String toSerString() {
-        String keyStr = Base64.getEncoder().encodeToString(key);
+        String keyStr = (key == null) ? "" : Base64.getEncoder().encodeToString(key);
 
         return "" + term + ":" + index + ":" + keyStr + ":" + write_id + ":" + time;
     }
@@ -85,7 +85,7 @@ public class OpId implements Comparable<OpId> {
         return "" +
                 "term=" + term +
                 ", index=" + index +
-                ", key=" + Arrays.toString(key) +
+                ", key=" + ((key == null) ? "" : Arrays.toString(key)) +
                 ", write_id=" + write_id +
                 ", time=" + time +
                 '}';
