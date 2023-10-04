@@ -81,7 +81,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     protected OpId lastCompletelyProcessedLsn;
 
     protected final AsyncYBClient asyncYBClient;
-    protected final YBClient syncClient;
+    protected YBClient syncClient;
     protected YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
     protected final Map<String, OpId> checkPointMap;
     protected final ChangeEventQueue<DataChangeEvent> queue;
@@ -211,13 +211,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                     LOGGER.warn("Error while trying to get the checkpoint for tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
                             entry.getValue(), retryCountForGetCheckpoint, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
 
-                    try {
-                        final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-                        retryMetronome.pause();
-                    } catch (InterruptedException ie) {
-                        LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-                        Thread.currentThread().interrupt();
+                    if (e instanceof RecoverableException) {
+                       LOGGER.warn("Retrying with a new YBClient");
+                        this.syncClient = YBClientUtils.getYbClient(connectorConfig);
                     }
+
+                    pauseBeforeRetryingError();
                 }
             }
         }
@@ -253,17 +252,16 @@ public class YugabyteDBStreamingChangeEventSource implements
                         throw e;
                     }
 
+                    if (e instanceof RecoverableException) {
+                       LOGGER.warn("Retrying with a new YBClient");
+                        this.syncClient = YBClientUtils.getYbClient(connectorConfig);
+                    }
+
                     // If there are retries left, perform them after the specified delay.
                     LOGGER.warn("Error while trying to bootstrap tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
                             entry.getValue(), retryCountForBootstrapping, maxBootstrapRetries, connectorConfig.connectorRetryDelayMs(), e.getMessage());
 
-                    try {
-                        final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-                        retryMetronome.pause();
-                    } catch (InterruptedException ie) {
-                        LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-                        Thread.currentThread().interrupt();
-                    }
+                    pauseBeforeRetryingError();
                 }
             }
         }
@@ -293,13 +291,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                 LOGGER.warn("Error while marking no snapshot on service for table {} tablet {}, will attempt retry {} of {} for error {}",
                             ybTable.getTableId(), tabletId, retryCount, connectorConfig.maxConnectorRetries(), e);
 
-                try {
-                    final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-                    retryMetronome.pause();
-                } catch (InterruptedException ie) {
-                    LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-                    Thread.currentThread().interrupt();
+                if (e instanceof RecoverableException) {
+                    LOGGER.warn("Retrying with a new YBClient");
+                    this.syncClient = YBClientUtils.getYbClient(connectorConfig);
                 }
+
+                pauseBeforeRetryingError();
             }
         }
     }
@@ -348,14 +345,32 @@ public class YugabyteDBStreamingChangeEventSource implements
         // This schemaNeeded map here would have the elements as <tableId.tabletId>:<boolean-value>
         Map<String, Boolean> schemaNeeded = new HashMap<>();
         Map<String, Long> tabletSafeTime = new HashMap<>();
-        for (Pair<String, String> entry : tabletPairList) {
+        List<Pair<String, String>> elementsToBeRemoved = new ArrayList<>();
+        for (int i = 0; i < tabletPairList.size(); ++i) {
+            Pair<String, String> entry = tabletPairList.get(i);
             // entry.getValue() will give the tabletId
             OpId opId = YBClientUtils.getOpIdFromGetTabletListResponse(
                             tabletListResponse.get(entry.getKey()), entry.getValue());
 
             if (opId == null) {
-                throw new RuntimeException(String.format("OpId for the given tablet {} was not found in the response,"
-                                                           + " restart the connector to try again", entry.getValue()));
+                // At this stage, we know we do not have the tablet-OpId, most probably because we lost the
+                // correct tablet list containing children from the list. We should remove the parent from the list
+                // and add its children.
+                GetTabletListToPollForCDCResponse getResp = syncClient.getTabletListToPollForCdc(
+                    tableIdToTable.get(entry.getKey()), streamId, entry.getKey(), entry.getValue());
+
+                LOGGER.info("Response size while getting chilren for tablet {}: {}", entry.getValue(),
+                            getResp.getTabletCheckpointPairListSize());
+
+                for (TabletCheckpointPair pair : getResp.getTabletCheckpointPairList()) {
+                    addTabletIfNotPresent(tabletPairList, pair, entry.getKey(), offsetContext, schemaNeeded);
+                }
+
+                // Pair<String, String> entryToBeDeleted = getEntryToDelete(tabletPairList, entry.getValue());
+                elementsToBeRemoved.add(entry);
+                LOGGER.info("Tablet {} will be removed later from the list before polling", entry.getValue());
+
+                continue;
             }
             
             // If we are getting a term and index as -1 and -1 from the server side it means
@@ -366,14 +381,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                 opId = YugabyteDBOffsetContext.streamingStartLsn();
             }
 
-            // For streaming, we do not want any colocated information and want to process the tables
-            // based on just their tablet IDs - pass false as the 'colocated' flag to enforce the same.
-            YBPartition p = new YBPartition(entry.getKey(), entry.getValue(), false /* colocated */);
-            offsetContext.initSourceInfo(p, this.connectorConfig, opId);
-            // We can initialise the explicit checkpoint for this tablet to the value returned by
-            // the cdc_service through the 'GetTabletListToPollForCDC' API
-            tabletToExplicitCheckpoint.put(p.getId(), opId.toCdcSdkCheckpoint());
-            schemaNeeded.put(p.getId(), Boolean.TRUE);
+            initializePartitionsAndOffsets(entry.getKey() /* tableId */, entry.getValue() /* tablet ID */,
+                                           offsetContext, tabletToExplicitCheckpoint, schemaNeeded, opId);
+        }
+
+        for (Pair<String, String> entry : elementsToBeRemoved) {
+            tabletPairList.remove(entry);
+            LOGGER.info("Removed original entry for the tablet {} from list as it has been split", entry.getValue());
         }
 
         // This will contain the tablet ID mapped to the number of records it has seen
@@ -755,17 +769,39 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // If there are retries left, perform them after the specified delay.
                 LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
                         retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e);
+                
+                if (e instanceof RecoverableException) {
+                    LOGGER.warn("Retrying with a new YBClient");
+                    this.syncClient = YBClientUtils.getYbClient(connectorConfig);
+                }
 
-                try {
-                    final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-                    retryMetronome.pause();
-                }
-                catch (InterruptedException ie) {
-                    LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-                    Thread.currentThread().interrupt();
-                }
+                pauseBeforeRetryingError();
             }
         }
+    }
+
+    /**
+     * Initialize the partition and offsets for the given tablet to get them ready for streaming.
+     * @param tableId table UUID
+     * @param tabletId tablet UUID
+     * @param offsetContext the {@link YugabyteDBOffsetContext}
+     * @param tabletToExplicitCheckpoint map containing tabletId-explicitCheckpoint mapping
+     * @param schemaNeeded map with information whether to get the schema for a tablet
+     * @param opId the OpId to initialize the partitions with
+     */
+    private void initializePartitionsAndOffsets(String tableId, String tabletId, YugabyteDBOffsetContext offsetContext,
+                                                Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint,
+                                                Map<String, Boolean> schemaNeeded, OpId opId) {
+        // For streaming, we do not want any colocated information and want to process the tables
+        // based on just their tablet IDs - pass false as the 'colocated' flag to enforce the same.
+        YBPartition p = new YBPartition(tableId, tabletId, false /* colocated */);
+
+        offsetContext.initSourceInfo(p, this.connectorConfig, opId);
+
+        // We can initialise the explicit checkpoint for this tablet to the value returned by
+        // the cdc_service through the 'GetTabletListToPollForCDC' API
+        tabletToExplicitCheckpoint.put(p.getId(), opId.toCdcSdkCheckpoint());
+        schemaNeeded.put(p.getId(), Boolean.TRUE);
     }
 
     private void probeConnectionIfNeeded() throws SQLException {
@@ -1101,19 +1137,29 @@ public class YugabyteDBStreamingChangeEventSource implements
                             splitTabletId, retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs());
                 LOGGER.warn("Stacktrace", e);
 
-                try {
-                    final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-                    retryMetronome.pause();
+                if (e instanceof RecoverableException) {
+                    LOGGER.warn("Retrying with a new YBClient");
+                    this.syncClient = YBClientUtils.getYbClient(connectorConfig);
                 }
-                catch (InterruptedException ie) {
-                    LOGGER.warn("Connector retry sleep while pausing to get the children tablets for parent {} interrupted", splitTabletId);
-                    LOGGER.warn("Exception for interruption", ie);
-                    Thread.currentThread().interrupt();
-                }
+
+                pauseBeforeRetryingError();
             }
         }
 
         // In ideal scenarios, this should NEVER be returned from this function.
         return null;
+    }
+
+    /**
+     * Pause the flow before moving further to retry.
+     */
+    private void pauseBeforeRetryingError() {
+        try {
+            final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+            retryMetronome.pause();
+        } catch (InterruptedException ie) {
+            LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
+            Thread.currentThread().interrupt();
+        }
     }
 }
