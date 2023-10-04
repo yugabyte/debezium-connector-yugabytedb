@@ -85,7 +85,7 @@ public class OpId implements Comparable<OpId> {
         return "" +
                 "term=" + term +
                 ", index=" + index +
-                ", key=" + ((key == null) ? "" : Arrays.toString(key)) +
+                ", key=" + ((key == null) ? "null" : Arrays.toString(key)) +
                 ", write_id=" + write_id +
                 ", time=" + time +
                 '}';

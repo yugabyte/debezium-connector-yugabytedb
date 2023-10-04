@@ -5,16 +5,13 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
-import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
 
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
