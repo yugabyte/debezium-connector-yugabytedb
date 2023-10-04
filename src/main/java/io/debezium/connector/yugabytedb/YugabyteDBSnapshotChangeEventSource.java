@@ -49,6 +49,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     // Test only member variables, DO NOT try to modify in the source code.
     public static boolean FAIL_AFTER_BOOTSTRAP_GET_CHANGES;
     public static boolean FAIL_AFTER_SETTING_INITIAL_CHECKPOINT;
+    public static boolean TRACK_EXPLICIT_CHECKPOINTS = false;
+    public static CdcSdkCheckpoint LAST_EXPLICIT_CHECKPOINT;
 
     private final YugabyteDBConnectorConfig connectorConfig;
     private final YugabyteDBSchema schema;
@@ -500,6 +502,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
                     explicitCdcSdkCheckpoint,
                     tabletSafeTime.getOrDefault(part.getId(), -1L));
+
+                if (TRACK_EXPLICIT_CHECKPOINTS) {
+                  LAST_EXPLICIT_CHECKPOINT = explicitCdcSdkCheckpoint;
+                }
 
                 tabletSafeTime.put(part.getId(), resp.getResp().getSafeHybridTime());
 

@@ -6,16 +6,21 @@ import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
+import org.yb.client.CdcSdkCheckpoint;
+import org.yb.client.GetCheckpointResponse;
+import org.yb.client.YBClient;
+import org.yb.client.YBTable;
 
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Basic unit tests to ensure proper working of snapshot resuming functionality - the connector
@@ -24,11 +29,12 @@ import static org.junit.jupiter.api.Assertions.fail;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBSnapshotResumeTest extends YugabytedTestBase {
 	private final String insertStmtFormat = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
+	private static final int snapshotBatchSize = 50;
 	@BeforeAll
 	public static void beforeClass() throws SQLException {
-		initializeYBContainer(null, "cdc_snapshot_batch_size=50");
+		initializeYBContainer(null, "cdc_snapshot_batch_size=" + snapshotBatchSize);
 		TestHelper.dropAllSchemas();
 	}
 
@@ -58,6 +64,8 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 		// insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
 		TestHelper.executeBulk(insertStmtFormat, recordsCount);
 
+		YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = true;
+
 		String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
 		Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 		configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
@@ -76,6 +84,22 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 
 		// Confirm whether there are no more records to consume.
 		assertNoRecordsToConsume();
+
+		// The last set explicit checkpoint can be obtained from the static variable.
+		CdcSdkCheckpoint lastExplicitCheckpoint =
+			YugabyteDBSnapshotChangeEventSource.LAST_EXPLICIT_CHECKPOINT;
+
+		// The last explicit checkpoint should be the one stored in the state table, verify.
+		YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
+		YBTable ybTable = TestHelper.getYbTable(ybClient, "t1");
+
+		// Assuming that the table has only 1 tablet, get the first tablet and get its checkpoint.
+		GetCheckpointResponse resp =
+			ybClient.getCheckpoint(ybTable, dbStreamId, ybClient.getTabletUUIDs(ybTable).iterator().next());
+
+		assertEquals(lastExplicitCheckpoint.getTerm(), resp.getTerm());
+		assertEquals(lastExplicitCheckpoint.getIndex(), resp.getIndex());
+		assertTrue(Arrays.equals(lastExplicitCheckpoint.getKey(), resp.getSnapshotKey()));
 
 		// Start the connector again - this step will ensure that the connector is resuming the snapshot
 		// and only starting the consumption from the point it left.
@@ -102,6 +126,8 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 		assertNotEquals(finalTotalConsumedSoFar, remainingConsumedRecords);
 
 		assertEquals(recordsCount - finalTotalConsumedSoFar, records.size());
+
+		YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = false;
 	}
 
 	private int consumeAllAvailableRecordsTill(long minimumRecordsToConsume) {
