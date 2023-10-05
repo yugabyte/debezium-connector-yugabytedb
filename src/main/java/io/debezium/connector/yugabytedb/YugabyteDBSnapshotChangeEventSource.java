@@ -341,7 +341,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       } else {
         // Mark the stream as active by setting a checkpoint.
         if (!OpId.isValid(getCheckpointResponse.getTerm(), getCheckpointResponse.getIndex())) {
-          // Set checkpoint with bootstrap and initialCheckpoint as false.
+          // Set checkpoint with bootstrap as false and initialCheckpoint as true.
           // A call to set the checkpoint is required first otherwise we will get an error 
           // from the server side saying:
           // INTERNAL_ERROR[code 21]: Stream ID {} is expired for Tablet ID {}
