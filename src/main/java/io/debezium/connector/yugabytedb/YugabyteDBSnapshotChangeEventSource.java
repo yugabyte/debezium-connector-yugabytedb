@@ -231,7 +231,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
      * @param tabletId
      * @throws Exception when the SetCheckpoint RPC fails on the service
      */
-    protected void setCheckpointWithRetry(String tableId, String tabletId, long term, long index, boolean initialCheckpoint, boolean bootstap, Long cdcsdkSafeTime) throws Exception {
+    protected void makeStreamActive(String tableId, String tabletId, boolean bootstrap) throws Exception {
       short retryCount = 0;
 
       // The SetCDCCheckPoint RPC, relies on a cache to obtain a list of all the tservers.
@@ -242,20 +242,17 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
       while (retryCount <= totalRetries) {
         try {
-          LOGGER.info("Setting checkpoint on tablet {} with {}.{},"
-              + " will be taking snapshot now", tabletId, term, index);
-          if (cdcsdkSafeTime.equals(null)) {
-            YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), tableId, tabletId, term, index,
-                initialCheckpoint, bootstap);
-          } else {
-            YBClientUtils.setCheckpoint(this.syncClient,
-                this.connectorConfig.streamId(),
-                tableId /* tableId */,
-                tabletId /* tabletId */,
-                0 /* term */, 0 /* index */,
-                true /* initialCheckpoint */, false /* bootstrap */,
-                cdcsdkSafeTime /* cdcsdkSafeTime */);
+          long term = 0;
+          long index = 0;
+          if (bootstrap) {
+            term = -1;
+            index = -1;
           }
+          
+          LOGGER.info("Setting checkpoint on tablet {} with {}.{},"
+            + " will be taking snapshot now", tabletId, term, index);
+          YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), tableId, tabletId, term, index,
+            true /*initialCheckpoint */, bootstrap);
 
           // Reaching this point would mean that the process went through without failure
           return;
@@ -353,7 +350,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         // A call to set the checkpoint is required first otherwise we will get an error 
         // from the server side saying:
         // INTERNAL_ERROR[code 21]: Stream ID {} is expired for Tablet ID {}
-        setCheckpointWithRetry(tableId, tabletId, 0, 0, true, false, 0L);
+        makeStreamActive(tableId, tabletId, false);
 
         return true;
       }
@@ -413,7 +410,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           // for streaming.
           LOGGER.info("Skipping the table {} tablet {} since it is not a part of the"
                       + " snapshot.include.collection.list", entry.getKey(), entry.getValue());
-          setCheckpointWithRetry(tableId, tabletId, -1, -1, true, true, null);
+          makeStreamActive(tableId, tabletId, true);
         }
 
         previousOffset.initSourceInfo(p, this.connectorConfig, startLsn);
