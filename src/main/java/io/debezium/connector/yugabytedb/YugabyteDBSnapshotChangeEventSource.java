@@ -240,11 +240,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       // This refresh time may be longer and hence we need additional number of retries here.
       int totalRetries = this.connectorConfig.maxConnectorRetries() * 5;
 
-      while(retryCount <= totalRetries) {
+      while (retryCount <= totalRetries) {
         try {
           LOGGER.info("Setting checkpoint on tablet {} with {}.{},"
               + " will be taking snapshot now", tabletId, term, index);
-          if(cdcsdkSafeTime.equals(null)) {
+          if (cdcsdkSafeTime.equals(null)) {
             YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), tableId, tabletId, term, index,
                 initialCheckpoint, bootstap);
           } else {
@@ -413,7 +413,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           // for streaming.
           LOGGER.info("Skipping the table {} tablet {} since it is not a part of the"
                       + " snapshot.include.collection.list", entry.getKey(), entry.getValue());
-          setCheckpointWithRetry(tableId, tabletId, -1, -1, true, true,null);
+          setCheckpointWithRetry(tableId, tabletId, -1, -1, true, true, null);
         }
 
         previousOffset.initSourceInfo(p, this.connectorConfig, startLsn);
