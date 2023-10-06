@@ -31,6 +31,7 @@ import io.debezium.pipeline.spi.ChangeEventCreator;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Partition;
 import io.debezium.util.SchemaNameAdjuster;
+import io.debezium.connector.yugabytedb.transforms.FilterNoOp;
 
 import java.util.EnumSet;
 import java.util.Objects;
@@ -47,6 +48,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
     private final ChangeEventCreator changeEventCreator;
     private final ChangeEventQueue<DataChangeEvent> queue;
     private final boolean emitTombstonesOnDelete;
+    private boolean isNOOP;
     private final LogicalDecodingMessageMonitor logicalDecodingMessageMonitor;
     private final LogicalDecodingMessageFilter messageFilter;
     private final TopicSelector<T> topicSelector;
@@ -80,6 +82,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
         this.signal = new Signal<>(connectorConfig, this);
         this.skippedOperations = connectorConfig.getSkippedOperations();
         this.emitTombstonesOnDelete = connectorConfig.isEmitTombstoneOnDelete();
+        this.isNOOP = false;
         this.neverSkip = connectorConfig.supportsOperationFiltering() || this.skippedOperations.isEmpty();
         this.filter = filter;
         this.schema = schema;
@@ -98,6 +101,10 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
 
     public void setEventListener(DataChangeEventListener<YBPartition> eventListener) {
         this.eventListener = eventListener;
+    }
+
+    public void setIsNOOP(boolean isNOOP) {
+        this.isNOOP = isNOOP;
     }
 
     @Override
@@ -193,23 +200,41 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
                                  Object key, Struct value,
                                  OffsetContext offsetContext,
                                  ConnectHeaders headers) throws InterruptedException {
-            Objects.requireNonNull(value, "value must not be null");
+            if (!isNOOP) {
+                Objects.requireNonNull(value, "value must not be null");
+            } else {
+                LOGGER.info("Creating a NO_OP record");
+            }                       
 
             LOGGER.trace("Received change record for {} operation on key {}", operation, key);
 
             // Truncate events must have null key schema as they are sent to table topics without keys
-            Schema keySchema = (key == null && operation == Envelope.Operation.TRUNCATE) ? null
+            Schema keySchema = (key == null && (operation == Envelope.Operation.TRUNCATE || isNOOP)) ? null
                                  : dataCollectionSchema.keySchema();
-            String topicName = topicSelector.topicNameFor((T) dataCollectionSchema.id());
+            String topicName = isNOOP ? null : topicSelector.topicNameFor((T) dataCollectionSchema.id());
 
-            SourceRecord record = new SourceRecord(partition.getSourcePartition(),
-              offsetContext.getOffset(),
-              topicName, null,
-              keySchema, key,
-              dataCollectionSchema.getEnvelopeSchema().schema(),
-              value,
-              null,
-              headers);
+            SourceRecord record;
+
+            if (!isNOOP) {
+                record = new SourceRecord(partition.getSourcePartition(),
+                    offsetContext.getOffset(),
+                    topicName, null,
+                    keySchema, key,
+                    dataCollectionSchema.getEnvelopeSchema().schema(),
+                    value,
+                    null,
+                    headers);
+            } else {
+                record = new SourceRecord(partition.getSourcePartition(),
+                    offsetContext.getOffset(),
+                    topicName, null,
+                    null, null,
+                    null,
+                    null,
+                    null,
+                    headers);
+                LOGGER.info("Created a NOOP record");
+            }
 
             queue.enqueue(changeEventCreator.createDataChangeEvent(record));
 

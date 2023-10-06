@@ -61,6 +61,8 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
                 return Operation.COMMIT;
             case DDL:
                 return Operation.DDL;
+            case UNKNOWN:
+                return Operation.NOOP;
         }
         throw new IllegalArgumentException(
                 "Unknown operation '" + rawMessage.getOp() + "' in replication stream message " + rawMessage);

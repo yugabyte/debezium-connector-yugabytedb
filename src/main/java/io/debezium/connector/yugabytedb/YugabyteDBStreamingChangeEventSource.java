@@ -528,7 +528,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     LOGGER.info("Explicit checkpoint same as last seen record's checkpoint, handling tablet split immediately for partition {}, explicit checkpoint {}:{}:{} lastRecordCheckpoint: {}.{}.{}",
                                                 part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), explicitCheckpoint.getTime(), lastRecordCheckpoint.getTerm(), lastRecordCheckpoint.getIndex(), lastRecordCheckpoint.getTime());
 
-                                    handleTabletSplit(part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
+                                    handleTabletSplit(cdcException, tabletPairList, offsetContext, streamId, schemaNeeded);
                                 } else {
                                     // Add the tablet for being processed later, this will mark the tablet as locked. There is a chance that explicit checkpoint may
                                     // be null, in that case, just to avoid NullPointerException in the log, simply log a null value.
@@ -538,7 +538,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     splitTabletsWaitingForCallback.add(part.getId());
                                 }
                             } else {
-                                handleTabletSplit(part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
+                                // TODO Vaibhav: Since we have access to tablet ID at this stage, and we can assume that we will only receive
+                                // tablet split error message on the tablet we will call GetChanges on, then instead of passing the exception
+                                // we can directly pass the tablet ID of the split tablet.
+                                handleTabletSplit(cdcException, tabletPairList, offsetContext, streamId, schemaNeeded);
                             }
 
                             // Break out of the loop so that the iteration can start afresh on the modified list.
@@ -555,14 +558,14 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 .getResp()
                                 .getCdcSdkProtoRecordsList()) {
                             CdcService.RowMessage m = record.getRowMessage();
-                            YbProtoReplicationMessage message = new YbProtoReplicationMessage(
-                                    m, this.yugabyteDBTypeRegistry);
 
-                            // Ignore safepoint record as they are not meant to be processed here.
+                            // Ignore safepoint record as they are not meant to be processed here.        
                             if (m.getOp() == Op.SAFEPOINT) {
                                 continue;
                             }
 
+                            YbProtoReplicationMessage message = new YbProtoReplicationMessage(
+                                    m, this.yugabyteDBTypeRegistry);
                             String pgSchemaNameInRecord = m.getPgschemaName();
 
                             // This is a hack to skip tables in case of colocated tables
@@ -676,21 +679,42 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
                                     }
                                 }
-                                // DML event
-                                else {
+                                // NO_OP event
+                                else if (message.isUnknownMessage()) {
                                     TableId tableId = null;
-                                    if (message.getOperation() != Operation.NOOP) {
-                                        tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-                                        Objects.requireNonNull(tableId);
-                                    }
+                                    LOGGER.info("Received a NOOP message for table {}", message.getTable());
+                                    tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                    Objects.requireNonNull(tableId);
                                     // If you need to print the received record, change debug level to info
-                                    LOGGER.debug("Received DML record {}", record);
+                                    LOGGER.debug("Received record {}", record);
 
                                     offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                             String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
 
-                                    boolean dispatched = message.getOperation() != Operation.NOOP
-                                            && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
+                                    dispatcher.setIsNOOP(true);
+                                    boolean dispatched = dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
+                                                    schema, connection, tableId, message, pgSchemaNameInRecord, tabletId, taskContext.isBeforeImageEnabled()));
+                                    dispatcher.setIsNOOP(false); 
+
+                                    if (recordsInTransactionalBlock.containsKey(part.getId())) {
+                                        recordsInTransactionalBlock.merge(part.getId(), 1, Integer::sum);
+                                    }
+
+                                    maybeWarnAboutGrowingWalBacklog(dispatched);
+                                }
+                                // DML event
+                                else {
+                                    TableId tableId = null;
+                                    tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                    Objects.requireNonNull(tableId);
+
+                                    // If you need to print the received record, change debug level to info
+                                    LOGGER.debug("Received record {}", record);
+                                    
+                                    offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                                            String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
+                                    dispatcher.setIsNOOP(false);
+                                    boolean dispatched = dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
                                                     schema, connection, tableId, message, pgSchemaNameInRecord, tabletId, taskContext.isBeforeImageEnabled()));
 
                                     if (recordsInTransactionalBlock.containsKey(part.getId())) {
@@ -872,7 +896,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // TODO: The transaction_id field is getting populated somewhere and see if it can
                 // be removed or blocked from getting added to this map.
                 if (!entry.getKey().equals("transaction_id")) {
-                    LOGGER.debug("Tablet: {} OpId: {}", entry.getKey(), entry.getValue());
+                    LOGGER.info("Tablet: {} OpId: {}", entry.getKey(), entry.getValue());
 
                     // Parse the string to get the OpId object.
                     OpId tempOpId = OpId.valueOf((String) entry.getValue());
@@ -938,6 +962,19 @@ public class YugabyteDBStreamingChangeEventSource implements
     }
 
     /**
+     * Parse the message from the {@link CDCErrorException} to obtain the tablet ID of the tablet.
+     * which has been split
+     * @param message the exception message to parse
+     * @return the tablet UUID of the tablet which has been split
+     */
+    private String getTabletIdFromSplitMessage(String message) {
+        // Note that the message is of the form: Tablet Split detected on <tablet-ID>
+        // So the last element is the tablet ID to be split.
+        String[] splitWords = message.split("\\s+");
+        return splitWords[splitWords.length - 1];
+    }
+
+    /**
      * Add the tablet from the provided tablet checkpoint pair to the list of tablets to poll from
      * if it is not present there
      * @param tabletPairList the list of tablets to poll from - list having Pair<tableId, tabletId>
@@ -976,6 +1013,15 @@ public class YugabyteDBStreamingChangeEventSource implements
             // Add the flag to indicate that we need the schema for the new tablets so that the schema can be registered.
             schemaNeeded.put(p.getId(), Boolean.TRUE);
         }
+    }
+
+    protected void handleTabletSplit(
+      CDCErrorException cdcErrorException, List<Pair<String,String>> tabletPairList,
+      YugabyteDBOffsetContext offsetContext, String streamId,
+      Map<String, Boolean> schemaNeeded) throws Exception {
+        // Obtain the tablet ID of the split tablet from the exception.
+        String splitTabletId = getTabletIdFromSplitMessage(cdcErrorException.getMessage());
+        handleTabletSplit(splitTabletId, tabletPairList, offsetContext, streamId, schemaNeeded);
     }
 
     protected void handleTabletSplit(String splitTabletId,

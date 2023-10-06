@@ -4,15 +4,19 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
 import org.yb.client.GetTabletListToPollForCDCResponse;
 import org.yb.client.YBClient;
@@ -20,6 +24,7 @@ import org.yb.client.YBTable;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 /**
  * Unit tests to verify that the connector gracefully handles the tablet splitting on the server.
@@ -120,6 +125,78 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
       ybClient.getTabletListToPollForCdc(table, dbStreamId, table.getTableId());
 
     assertEquals(2, getTabletResponse2.getTabletCheckpointPairListSize());
+  }
+
+  @Test
+  public void checkNoOpAfterTabletSplit() throws Exception {
+    TestHelper.dropAllSchemas();
+    TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
+
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+
+    configBuilder = configBuilder
+            .with("transforms", "filterNoOp")
+            .with("transforms.filterNoOp.type", "io.debezium.connector.yugabytedb.transforms.FilterNoOp");
+
+    startEngine(configBuilder, (success, message, error) -> {
+      assertTrue(success);
+    });
+
+    awaitUntilConnectorIsReady();
+
+    int recordsCount = 10;
+
+    String insertFormat = "INSERT INTO t1 VALUES (%d, 'value for split table');";
+
+    for (int i = 0; i < recordsCount; ++i) {
+      TestHelper.execute(String.format(insertFormat, i));
+    }
+
+    YBClient ybClient = TestHelper.getYbClient(masterAddresses);
+    YBTable table = TestHelper.getYbTable(ybClient, "t1");
+    
+    // Verify that there is just a single tablet.
+    Set<String> tablets = ybClient.getTabletUUIDs(table);
+    int tabletCountBeforeSplit = tablets.size();
+    assertEquals(1, tabletCountBeforeSplit);
+
+    // Also verify that the new API to get the tablets is returning the correct tablets.
+    GetTabletListToPollForCDCResponse getTabletsResponse =
+      ybClient.getTabletListToPollForCdc(table, dbStreamId, table.getTableId());
+    assertEquals(tabletCountBeforeSplit, getTabletsResponse.getTabletCheckpointPairListSize());
+
+    // Compact the table to ready it for splitting.
+    ybClient.flushTable(table.getTableId());
+
+    // Wait for 10s for the table to be flushed.
+    TestHelper.waitFor(Duration.ofSeconds(10));
+
+    // Split the tablet. There is just one tablet so it is safe to assume that the iterator will
+    // return just the desired tablet.
+    ybClient.splitTablet(tablets.iterator().next());
+
+    // Wait till there are 2 tablets for the table.
+    waitForTablets(ybClient, table, 2);
+
+    // Insert more records
+    for (int i = recordsCount; i < 20; ++i) {
+      TestHelper.execute(String.format(insertFormat, i));
+    }
+
+    List<SourceRecord> records = new ArrayList<>();
+    getRecords(records);
+
+    int unknownRecords = 0;
+
+    for (SourceRecord record : records) {
+      if(record.key() == null && record.keySchema() == null && record.value() == null && record.valueSchema() == null) {
+        unknownRecords++;
+      }
+    }
+
+    // Verify that we saw 0 UNKNOWN records since they should have been filtered out.
+    assertEquals(0, unknownRecords);
   }
 
   @Order(2)
@@ -238,5 +315,30 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
       .until(() -> {
         return ybClient.getTabletUUIDs(table).size() == tabletCount;
       });
+  }
+
+  private void getRecords(List<SourceRecord> records) {
+      AtomicLong totalConsumedRecords = new AtomicLong();
+      long seconds = 3;
+      try {
+          Awaitility.await()
+              .atMost(Duration.ofSeconds(seconds))
+              .until(() -> {
+                  int consumed = consumeAvailableRecords(record -> {
+                      LOGGER.debug("The record being consumed is " + record);
+                      records.add(record);
+                  });
+                  if (consumed > 0) {
+                      totalConsumedRecords.addAndGet(consumed);
+                      LOGGER.debug("Consumed " + totalConsumedRecords + " records");
+                  }
+                  long recordCount = totalConsumedRecords.get();
+                  LOGGER.info("Record count: {}" + recordCount);
+                  return true;
+              });
+      } catch (ConditionTimeoutException exception) {
+          fail("Failed to consume records in " + seconds + " seconds",
+               exception);
+      }
   }
 }

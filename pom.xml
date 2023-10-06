@@ -47,13 +47,13 @@
         <version.kafka>3.3.1</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
-        <version.ybclient>0.8.64-20230929.065833-2</version.ybclient>
+        <version.ybclient>0.8.65-SNAPSHOT</version.ybclient>
         <version.gson>2.8.9</version.gson>
 
         <!--
           Specify the properties that will be used for setting up the integration tests' Docker container.
           Note that the `dockerhost.ip` property is computed from the IP address of DOCKER_HOST, which will
-          work on all platforms. We'll set some of these as system properties during integration testing.
+          work on all platforms. We'll set some of these as system properties during integration testing. 0.8.64-20230929.065833-2
         -->
 
         <protobuf.output.directory>${project.basedir}/generated-sources</protobuf.output.directory>

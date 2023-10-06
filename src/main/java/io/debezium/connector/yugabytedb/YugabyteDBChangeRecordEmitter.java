@@ -85,6 +85,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
             case DELETE:
                 return Operation.DELETE;
             case READ:
+            case NOOP:
                 return Operation.READ;
             case TRUNCATE:
                 return Operation.TRUNCATE;
