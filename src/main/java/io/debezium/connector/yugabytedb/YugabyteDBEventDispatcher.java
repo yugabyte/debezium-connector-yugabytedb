@@ -31,7 +31,6 @@ import io.debezium.pipeline.spi.ChangeEventCreator;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Partition;
 import io.debezium.util.SchemaNameAdjuster;
-import io.debezium.connector.yugabytedb.transforms.FilterNoOp;
 
 import java.util.EnumSet;
 import java.util.Objects;
