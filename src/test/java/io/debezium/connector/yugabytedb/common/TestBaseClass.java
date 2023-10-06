@@ -3,6 +3,7 @@ package io.debezium.connector.yugabytedb.common;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.TestHelper;
 import io.debezium.connector.yugabytedb.YugabyteDBConnector;
+import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.connector.yugabytedb.container.YugabyteCustomContainer;
 import io.debezium.connector.yugabytedb.rules.YugabyteDBLogTestName;
 import io.debezium.embedded.AbstractConnectorTest;
@@ -217,6 +218,16 @@ public class TestBaseClass extends AbstractConnectorTest {
     }
 
     return records;
+  }
+
+  protected OpId getExplicitCheckpointForTablet(String partitionId) {
+    for (Map.Entry<String, ?> entry : offsetMapForRecords.entrySet()) {
+      if (entry.getKey().equals(partitionId)) {
+        return OpId.valueOf((String) entry.getValue());
+      }
+    }
+
+    throw new RuntimeException("No checkpoint found for " + partitionId + " in offset map");
   }
 
   @Override
