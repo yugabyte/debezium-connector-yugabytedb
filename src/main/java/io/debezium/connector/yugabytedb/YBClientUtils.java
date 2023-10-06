@@ -227,6 +227,7 @@ public class YBClientUtils {
                                   .numTablets(connectorConfig.maxNumTablets())
                                   .sslCertFile(connectorConfig.sslRootCert())
                                   .sslClientCertFiles(connectorConfig.sslClientCert(), connectorConfig.sslClientKey())
+                                  .maxAttempts(connectorConfig.maxRPCRetryAttempts())
                                   .build();
     return new YBClient(asyncClient);
   }

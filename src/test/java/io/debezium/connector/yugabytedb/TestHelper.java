@@ -437,6 +437,7 @@ public final class TestHelper {
                 .defaultOperationTimeoutMs(YugabyteDBConnectorConfig.DEFAULT_OPERATION_TIMEOUT_MS)
                 .defaultSocketReadTimeoutMs(YugabyteDBConnectorConfig.DEFAULT_SOCKET_READ_TIMEOUT_MS)
                 .numTablets(YugabyteDBConnectorConfig.DEFAULT_MAX_NUM_TABLETS)
+                .maxAttempts(YugabyteDBConnectorConfig.DEFAULT_MAX_RPC_RETRY_ATTEMPTS)
                 .build();
 
         return new YBClient(asyncClient);

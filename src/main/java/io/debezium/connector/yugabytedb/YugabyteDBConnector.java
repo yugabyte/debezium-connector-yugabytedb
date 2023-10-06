@@ -201,7 +201,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
     }
 
     private YBClient getYBClientBase(String hostAddress, long adminTimeout, long operationTimeout, long socketReadTimeout,
-                                     int maxNumTablets, String certFile, String clientCert, String clientKey) {
+                                     int maxNumTablets, String certFile, String clientCert, String clientKey, int maxAttempts) {
         if (maxNumTablets == -1) {
             maxNumTablets = yugabyteDBConnectorConfig.maxNumTablets();
         }
@@ -225,6 +225,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                 .numTablets(maxNumTablets)
                 .sslCertFile(certFile)
                 .sslClientCertFiles(clientCert, clientKey)
+                .maxAttempts(maxAttempts)
                 .build();
 
         return new YBClient(asyncClient);
@@ -306,7 +307,8 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                 yugabyteDBConnectorConfig.maxNumTablets(),
                 yugabyteDBConnectorConfig.sslRootCert(),
                 yugabyteDBConnectorConfig.sslClientCert(),
-                yugabyteDBConnectorConfig.sslClientKey()); // always passing the ssl root certs,
+                yugabyteDBConnectorConfig.sslClientKey(), // always passing the ssl root certs,
+                yugabyteDBConnectorConfig.maxRPCRetryAttempts()); 
         // so whenever they are null, they will just be ignored
         LOGGER.debug("The master host address is " + hostAddress);
         HostAndPort masterHostPort = ybClient.getLeaderMasterHostAndPort();
