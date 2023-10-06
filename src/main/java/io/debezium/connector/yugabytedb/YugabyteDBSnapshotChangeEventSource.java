@@ -233,45 +233,54 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
      * @param tabletId
      * @throws Exception when the SetCheckpoint RPC fails on the service
      */
-    protected void setCheckpointWithRetryBeforeSnapshot(
-      String tableId, String tabletId) throws Exception {
+    protected void makeStreamActive(String tableId, String tabletId, boolean bootstrap) throws Exception {
       short retryCount = 0;
-      try {
-        LOGGER.info("Setting checkpoint before snapshot on tablet {} with 0.0,"
-                    + " will be taking snapshot now", tabletId);
-        YBClientUtils.setCheckpoint(this.syncClient, 
-                                    this.connectorConfig.streamId(), 
-                                    tableId /* tableId */, 
-                                    tabletId /* tabletId */, 
-                                    0 /* term */, 0 /* index */,
-                                    true /* initialCheckpoint */, false /* bootstrap */,
-                                    0 /* invalid cdcsdkSafeTime */);
 
-        // Reaching this point would mean that the process went through without failure so reset
-        // the retry counter here.
-        retryCount = 0;
-      } catch (Exception e) {
-        ++retryCount;
+      // The SetCDCCheckPoint RPC, relies on a cache to obtain a list of all the tservers.
+      // In case of multi host port connection url, if one of the DB node goes down,
+      // it takes some time for the cache to refresh and return correct tserver list.
+      // This refresh time may be longer and hence we need additional number of retries here.
+      int totalRetries = this.connectorConfig.maxConnectorRetries() * 5;
 
-        if (retryCount > this.connectorConfig.maxConnectorRetries()) {
-          LOGGER.error("Too many errors while trying to set checkpoint, "
-                        + "all {} retries failed.", this.connectorConfig.maxConnectorRetries());
-
-          throw e;
-        }
-
-        LOGGER.warn("Error while trying to set the checkpoint; will attempt " 
-                    + "retry {} of {} after {} milli-seconds. Exception message: {}", retryCount, 
-                      this.connectorConfig.maxConnectorRetries(), 
-                      this.connectorConfig.connectorRetryDelayMs(), e.getMessage());
-        LOGGER.debug("Stacktrace: ", e);
-
+      while (retryCount <= totalRetries) {
         try {
-          final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-          retryMetronome.pause();
-        } catch (InterruptedException ie) {
-          LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-          Thread.currentThread().interrupt();
+          long term = 0;
+          long index = 0;
+          if (bootstrap) {
+            term = -1;
+            index = -1;
+          }
+          
+          LOGGER.info("Setting checkpoint on tablet {} with {}.{},"
+            + " will be taking snapshot now", tabletId, term, index);
+          YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), tableId, tabletId, term, index,
+            true /*initialCheckpoint */, bootstrap);
+
+          // Reaching this point would mean that the process went through without failure
+          return;
+        } catch (Exception e) {
+          ++retryCount;
+
+          if (retryCount > totalRetries) {
+            LOGGER.error("Too many errors while trying to set checkpoint, "
+                + "all {} retries failed.", totalRetries);
+
+            throw e;
+          }
+          LOGGER.warn("Error while trying to set the checkpoint; will attempt "
+              + "retry {} of {} after {} milli-seconds. Exception message: {}", retryCount,
+              totalRetries,
+              this.connectorConfig.connectorRetryDelayMs(), e.getMessage());
+          LOGGER.debug("Stacktrace: ", e);
+
+          try {
+            final Metronome retryMetronome = Metronome
+                .parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+            retryMetronome.pause();
+          } catch (InterruptedException ie) {
+            LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
+            Thread.currentThread().interrupt();
+          }
         }
       }
     }
@@ -345,7 +354,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           // A call to set the checkpoint is required first otherwise we will get an error 
           // from the server side saying:
           // INTERNAL_ERROR[code 21]: Stream ID {} is expired for Tablet ID {}
-          setCheckpointWithRetryBeforeSnapshot(tableId, tabletId);
+          makeStreamActive(tableId, tabletId, false);
         }
 
         return true;
@@ -425,9 +434,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           // for streaming.
           LOGGER.info("Skipping the table {} tablet {} since it is not a part of the"
                       + " snapshot.include.collection.list", entry.getKey(), entry.getValue());
-          YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), 
-                                      tableId, tabletId, -1 /* term */, -1 /* index */,
-                                      true /* initialCheckpoint */, true /* bootstrap */);
+          makeStreamActive(tableId, tabletId, true);
         }
 
         previousOffset.initSourceInfo(p, this.connectorConfig, startLsn);
