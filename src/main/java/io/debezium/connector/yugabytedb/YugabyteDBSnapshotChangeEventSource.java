@@ -505,8 +505,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 }
 
                 GetChangesResponse resp = this.syncClient.getChangesCDCSDK(table,
-                    connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(),
-                    (cp.getKey() == null) ? "".getBytes() : cp.getKey(),
+                    connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
                     explicitCdcSdkCheckpoint,
                     tabletSafeTime.getOrDefault(part.getId(), -1L));
