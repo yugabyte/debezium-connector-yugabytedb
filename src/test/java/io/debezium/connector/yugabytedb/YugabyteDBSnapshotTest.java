@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBSnapshotTest extends YugabytedTestBase {
+public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @BeforeAll
     public static void beforeClass() throws Exception {
         initializeYBContainer();
@@ -375,7 +375,7 @@ public class YugabyteDBSnapshotTest extends YugabytedTestBase {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false})
+    @ValueSource(booleans = {true, false})
     public void shouldSnapshotWithFailureAfterBootstrapSnapshotCall(boolean colocation)
         throws Exception {
         // This test verifies that if there is a failure after snapshot is bootstrapped,
