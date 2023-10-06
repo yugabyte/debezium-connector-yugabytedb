@@ -3,6 +3,8 @@ package io.debezium.connector.yugabytedb;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+
+import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
@@ -29,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBSnapshotResumeTest extends YugabytedTestBase {
+public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 	private final String insertStmtFormat = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
 	private static final int snapshotBatchSize = 50;
 	@BeforeAll
