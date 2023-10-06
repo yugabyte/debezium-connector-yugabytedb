@@ -192,7 +192,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                         if (merger.isSlotEmpty(tabletId)) {
                             try {
                                 response = this.syncClient.getChangesCDCSDK(
-                                        table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
+                                        table, streamId, tabletId, cp.getTerm(), cp.getIndex(), (cp.getKey() == null) ? "".getBytes() : cp.getKey(),
                                         cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
                                         taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
                                         tabletSafeTime.getOrDefault(part.getId(), -1L), offsetContext.getWalSegmentIndex(part));

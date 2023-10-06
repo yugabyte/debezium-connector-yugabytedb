@@ -502,7 +502,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                       try {
                         response = this.syncClient.getChangesCDCSDK(
-                            table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
+                            table, streamId, tabletId, cp.getTerm(), cp.getIndex(), (cp.getKey() == null) ? "".getBytes() : cp.getKey(),
                             cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
                             explicitCheckpoint,
                             tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part));
