@@ -24,6 +24,7 @@ import org.yb.cdc.CdcService;
 import org.yb.client.*;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
@@ -160,6 +161,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                         LOGGER.debug("Queue has {} items. Skipping", queue.totalCapacity() - queue.remainingCapacity());
                         continue;
                     }
+                    BigInteger safetime = BigInteger.ZERO;
 
                     for (Pair<String, String> entry : tabletPairList) {
                         final String tabletId = entry.getValue();
@@ -217,6 +219,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
                             LOGGER.debug("Processing {} records from getChanges call",
                                     response.getResp().getCdcSdkProtoRecordsList().size());
+                            safetime = Message.toUnsignedBigInteger(response.getResp().getSafeHybridTime());
                             for (CdcService.CDCSDKProtoRecordPB record : response
                                     .getResp()
                                     .getCdcSdkProtoRecordsList()) {
@@ -226,7 +229,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                     YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(record.getRowMessage(), this.yugabyteDBTypeRegistry);
                                     dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
                                             beginCountForTablet, tabletId, part,
-                                            response.getSnapshotTime(), record, record.getRowMessage(), ybMessage);
+                                            response.getSnapshotTime(), record, record.getRowMessage(), ybMessage, safetime);
                                 } else {
                                     merger.addMessage(new Message.Builder()
                                             .setRecord(record)
@@ -265,7 +268,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                 m, this.yugabyteDBTypeRegistry);
                         dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
                                 beginCountForTablet, message.tablet, new YBPartition(message.tableId, message.tablet, false),
-                                message.snapShotTime.longValue(), message.record, m, ybMessage);
+                                message.snapShotTime.longValue(), message.record, m, ybMessage, safetime);
 
                         pollMessage = merger.poll();
                     }
@@ -310,7 +313,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                  Map<String, Integer> beginCountForTablet,
                                  String tabletId, YBPartition part, long snapshotTime,
                                  CdcService.CDCSDKProtoRecordPB record, CdcService.RowMessage m,
-                                 YbProtoReplicationMessage message) throws SQLException {
+                                 YbProtoReplicationMessage message, BigInteger safetime) throws SQLException {
         String pgSchemaNameInRecord = m.getPgschemaName();
 
         // This is a hack to skip tables in case of colocated tables
@@ -419,6 +422,31 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                     }
                     schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
                 }
+            } else if (message.isUnknownMessage()) {
+                // NO_OP event
+                TableId tableId = null;
+                LOGGER.info("Received a NO_OP message for table {}", message.getTable());
+                tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                Objects.requireNonNull(tableId);
+                // If you need to print the received record, change debug level to info
+                LOGGER.debug("Received record {}", record);
+
+                BigInteger commitTime = Message.toUnsignedBigInteger(message.getRawCommitTime());
+                assert safetime.compareTo(commitTime) >= 0;
+                
+                offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                        String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
+
+                dispatcher.setIsNOOP(true);
+                boolean dispatched = dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
+                                schema, connection, tableId, message, pgSchemaNameInRecord, tabletId, taskContext.isBeforeImageEnabled()));
+                dispatcher.setIsNOOP(false); 
+
+                if (recordsInTransactionalBlock.containsKey(part.getId())) {
+                    recordsInTransactionalBlock.merge(part.getId(), 1, Integer::sum);
+                }
+
+                maybeWarnAboutGrowingWalBacklog(dispatched);
             } else {
                 // DML event
                 TableId tableId = null;

@@ -210,7 +210,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
             // Truncate events must have null key schema as they are sent to table topics without keys
             Schema keySchema = (key == null && (operation == Envelope.Operation.TRUNCATE || isNOOP)) ? null
                                  : dataCollectionSchema.keySchema();
-            String topicName = isNOOP ? null : topicSelector.topicNameFor((T) dataCollectionSchema.id());
+            String topicName = topicSelector.topicNameFor((T) dataCollectionSchema.id());
 
             SourceRecord record;
 
@@ -232,7 +232,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
                     null,
                     null,
                     headers);
-                LOGGER.info("Created a NOOP record");
+                LOGGER.info("Created a NO_OP record");
             }
 
             queue.enqueue(changeEventCreator.createDataChangeEvent(record));

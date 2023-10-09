@@ -9,6 +9,7 @@ import io.debezium.DebeziumException;
 import io.debezium.connector.yugabytedb.connection.*;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage.Operation;
 import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoReplicationMessage;
+import io.debezium.connector.yugabytedb.consistent.Message;
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.heartbeat.Heartbeat;
 import io.debezium.pipeline.ErrorHandler;
@@ -32,6 +33,7 @@ import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.client.*;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
@@ -556,7 +558,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 .getCdcSdkProtoRecordsList()) {
                             CdcService.RowMessage m = record.getRowMessage();
 
-                            // Ignore safepoint record as they are not meant to be processed here.        
+                            // Ignore safepoint record as they are not meant to be processed here.
                             if (m.getOp() == Op.SAFEPOINT) {
                                 continue;
                             }
@@ -679,12 +681,16 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 // NO_OP event
                                 else if (message.isUnknownMessage()) {
                                     TableId tableId = null;
-                                    LOGGER.info("Received a NOOP message for table {}", message.getTable());
+                                    LOGGER.info("Received a NO_OP message for table {}", message.getTable());
                                     tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
                                     Objects.requireNonNull(tableId);
                                     // If you need to print the received record, change debug level to info
                                     LOGGER.debug("Received record {}", record);
 
+                                    BigInteger safetime = Message.toUnsignedBigInteger(response.getResp().getSafeHybridTime());
+                                    BigInteger commitTime = Message.toUnsignedBigInteger(message.getRawCommitTime());
+                                    assert safetime.compareTo(commitTime) >= 0;
+                                    
                                     offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                             String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
 
