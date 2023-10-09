@@ -726,6 +726,8 @@ public class YugabyteDBSnapshotTest extends YugabytedTestBase {
             assertNoRecordsToConsume();
             TestHelper.waitFor(Duration.ofSeconds(2));
         }
+
+        YugabyteDBStreamingChangeEventSource.TEST_WAIT_BEFORE_GETTING_CHILDREN = false;
     }
 
     /**
