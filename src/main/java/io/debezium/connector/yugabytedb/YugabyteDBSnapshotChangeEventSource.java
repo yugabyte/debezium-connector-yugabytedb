@@ -380,32 +380,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       }
     }
 
-    /**
-     * Decide if we need to take snapshot or do nothing if snapshot has completed previously
-     */
-    protected boolean isSnapshotRequired(GetCheckpointResponse getCheckpointResponse,
-                                         String tableId, String tabletId,
-                                         Set<String> snapshotCompletedTablets,
-                                         Set<String> snapshotCompletedPreviously) 
-                                           throws Exception {
-      if (hasSnapshotCompletedPreviously(getCheckpointResponse)) {
-        LOGGER.info("Skipping snapshot for table {} tablet {} since tablet has streamed some data before",
-                  tableId, tabletId);
-        snapshotCompletedTablets.add(tabletId);
-        snapshotCompletedPreviously.add(tabletId);
-
-        return false;
-      } else {
-        // Set checkpoint with bootstrap and initialCheckpoint as false.
-        // A call to set the checkpoint is required first otherwise we will get an error 
-        // from the server side saying:
-        // INTERNAL_ERROR[code 21]: Stream ID {} is expired for Tablet ID {}
-        setCheckpointWithRetryBeforeSnapshot(tableId, tabletId);
-
-        return true;
-      }
-    }
-
     protected SnapshotResult<YugabyteDBOffsetContext> doExecute(ChangeEventSourceContext context, YBPartition partition, YugabyteDBOffsetContext previousOffset,
                                                                 SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
                                                                 SnapshottingTask snapshottingTask)
