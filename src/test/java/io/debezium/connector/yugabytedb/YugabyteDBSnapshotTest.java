@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBSnapshotTest extends YugabytedTestBase {
+public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @BeforeAll
     public static void beforeClass() throws Exception {
         initializeYBContainer();
@@ -631,7 +631,7 @@ public class YugabyteDBSnapshotTest extends YugabytedTestBase {
     }
 
     @Test
-    public void shouldNotBeAffectedByDroppingUnrelatedTables() throws Exception {
+    public void snapshotShouldNotBeAffectedByDroppingUnrelatedTables() throws Exception {
         /* The objective of the test is to verify that when an unrelated table is dropped, it
            should not cause any harm to the existing flow. At the same time, if tablet split
            occurs, we should ensure that the parent doesn't get deleted before we start
