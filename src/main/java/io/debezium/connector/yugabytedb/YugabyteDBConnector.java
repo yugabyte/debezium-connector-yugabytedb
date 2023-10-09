@@ -200,37 +200,6 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         }
     }
 
-    private YBClient getYBClientBase(String hostAddress, long adminTimeout, long operationTimeout, long socketReadTimeout,
-                                     int maxNumTablets, String certFile, String clientCert, String clientKey, int maxAttempts) {
-        if (maxNumTablets == -1) {
-            maxNumTablets = yugabyteDBConnectorConfig.maxNumTablets();
-        }
-
-        if (adminTimeout == -1) {
-            adminTimeout = yugabyteDBConnectorConfig.adminOperationTimeoutMs();
-        }
-
-        if (operationTimeout == -1) {
-            operationTimeout = yugabyteDBConnectorConfig.operationTimeoutMs();
-        }
-
-        if (socketReadTimeout == -1) {
-            socketReadTimeout = yugabyteDBConnectorConfig.socketReadTimeoutMs();
-        }
-
-        AsyncYBClient asyncClient = new AsyncYBClient.AsyncYBClientBuilder(hostAddress)
-                .defaultAdminOperationTimeoutMs(adminTimeout)
-                .defaultOperationTimeoutMs(operationTimeout)
-                .defaultSocketReadTimeoutMs(socketReadTimeout)
-                .numTablets(maxNumTablets)
-                .sslCertFile(certFile)
-                .sslClientCertFiles(clientCert, clientKey)
-                .maxAttempts(maxAttempts)
-                .build();
-
-        return new YBClient(asyncClient);
-    }
-
     @Override
     public void stop() {
         LOGGER.info("Stopping table monitoring thread");
@@ -300,15 +269,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
     protected void validateTServerConnection(Map<String, ConfigValue> configValues,
                                              Configuration config) {
         String hostAddress = config.getString(YugabyteDBConnectorConfig.MASTER_ADDRESSES.toString());
-        this.ybClient = getYBClientBase(hostAddress,
-                yugabyteDBConnectorConfig.adminOperationTimeoutMs(),
-                yugabyteDBConnectorConfig.operationTimeoutMs(),
-                yugabyteDBConnectorConfig.socketReadTimeoutMs(),
-                yugabyteDBConnectorConfig.maxNumTablets(),
-                yugabyteDBConnectorConfig.sslRootCert(),
-                yugabyteDBConnectorConfig.sslClientCert(),
-                yugabyteDBConnectorConfig.sslClientKey(), // always passing the ssl root certs,
-                yugabyteDBConnectorConfig.maxRPCRetryAttempts()); 
+        this.ybClient = YBClientUtils.getYbClient(yugabyteDBConnectorConfig);
         // so whenever they are null, they will just be ignored
         LOGGER.debug("The master host address is " + hostAddress);
         HostAndPort masterHostPort = ybClient.getLeaderMasterHostAndPort();
