@@ -49,6 +49,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     // Test only member variables, DO NOT try to modify in the source code.
     public static boolean FAIL_AFTER_BOOTSTRAP_GET_CHANGES;
     public static boolean FAIL_AFTER_SETTING_INITIAL_CHECKPOINT;
+    public static boolean TRACK_EXPLICIT_CHECKPOINTS = false;
+    public static CdcSdkCheckpoint LAST_EXPLICIT_CHECKPOINT;
 
     private final YugabyteDBConnectorConfig connectorConfig;
     private final YugabyteDBSchema schema;
@@ -348,13 +350,35 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
         return false;
       } else {
-        // Set checkpoint with bootstrap and initialCheckpoint as false.
-        // A call to set the checkpoint is required first otherwise we will get an error 
-        // from the server side saying:
-        // INTERNAL_ERROR[code 21]: Stream ID {} is expired for Tablet ID {}
-        makeStreamActive(tableId, tabletId, false);
+        // Mark the stream as active by setting a checkpoint.
+        if (!OpId.isValid(getCheckpointResponse.getTerm(), getCheckpointResponse.getIndex())) {
+          // Set checkpoint with bootstrap as false and initialCheckpoint as true.
+          // A call to set the checkpoint is required first otherwise we will get an error 
+          // from the server side saying:
+          // INTERNAL_ERROR[code 21]: Stream ID {} is expired for Tablet ID {}
+          makeStreamActive(tableId, tabletId, false);
+        }
 
         return true;
+      }
+    }
+
+    /**
+     * This method will ONLY be called when we are sure that we have to take the snapshot.
+     * @param getCheckpointResponse
+     * @return the from_op_id to start snapshot with
+     */
+    protected OpId getSnapshotStartLsn(GetCheckpointResponse getCheckpointResponse) {
+      Objects.requireNonNull(getCheckpointResponse);
+
+      if (getCheckpointResponse.getTerm() > 0 && getCheckpointResponse.getIndex() > 0) {
+        // This is when we are already in the middle of the snapshot and we need to directly
+        // resume snapshot from the checkpoint received from the service.
+        return OpId.from(getCheckpointResponse);
+      } else {
+        // This is the case when we have either just bootstrapped snapshot or starting snapshot
+        // for the first time.
+        return YugabyteDBOffsetContext.snapshotStartLsn();
       }
     }
 
@@ -396,7 +420,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
         GetCheckpointResponse resp = getCheckpointWithRetry(tableIdToTable.get(tableId), tabletId);
         LOGGER.info("Checkpoint before snapshotting tablet {}: Term {} Index {} SnapshotKey: {}",
-                    tabletId, resp.getTerm(), resp.getIndex(), resp.getSnapshotKey());
+                    tabletId, resp.getTerm(), resp.getIndex(), Arrays.toString(resp.getSnapshotKey()));
 
         OpId startLsn = OpId.from(resp);
         if (filteredTableIdToUuid.containsValue(tableId)) {
@@ -404,7 +428,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           tableToTabletForSnapshot.add(entry);
 
           if (isSnapshotRequired(resp, tableId, tabletId, snapshotCompletedTablets, snapshotCompletedPreviously)) {
-            startLsn = YugabyteDBOffsetContext.snapshotStartLsn();
+            startLsn = getSnapshotStartLsn(resp);
           }
         } else {
           // At this stage we know that the particular table is not a part of the
@@ -487,6 +511,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
                     explicitCdcSdkCheckpoint,
                     tabletSafeTime.getOrDefault(part.getId(), -1L));
+
+                if (TRACK_EXPLICIT_CHECKPOINTS) {
+                  LAST_EXPLICIT_CHECKPOINT = explicitCdcSdkCheckpoint;
+                }
 
                 tabletSafeTime.put(part.getId(), resp.getResp().getSafeHybridTime());
 

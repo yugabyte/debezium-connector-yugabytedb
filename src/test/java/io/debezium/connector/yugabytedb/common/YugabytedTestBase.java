@@ -31,7 +31,7 @@ public class YugabytedTestBase extends TestBaseClass {
         // Do nothing.
     }
 
-    public String getMasterAddress() {
+    public static String getMasterAddress() {
         return "127.0.0.1:7100";
     }
 
