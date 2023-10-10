@@ -632,7 +632,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withImportance(Importance.LOW)
             .withDefault(DEFAULT_MAX_RPC_RETRY_ATTEMPTS);
 
-    public static final Field RPC_RETRY_SLEEP_TIME = Field.create("rpc.retry.sleep.time")
+    public static final Field RPC_RETRY_SLEEP_TIME = Field.create("rpc.retry.sleep.time.ms")
             .withDisplayName("The base sleep time used for back-offs during rpc retries")
             .withType(Type.INT)
             .withImportance(Importance.LOW)
