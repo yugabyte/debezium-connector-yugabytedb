@@ -118,6 +118,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                 .numTablets(connectorConfig.maxNumTablets())
                 .sslCertFile(connectorConfig.sslRootCert())
                 .sslClientCertFiles(connectorConfig.sslClientCert(), connectorConfig.sslClientKey())
+                .maxRpcAttempts(connectorConfig.maxRPCRetryAttempts())
+                .sleepTime(connectorConfig.rpcRetrySleepTime())
                 .build();
 
         syncClient = new YBClient(asyncYBClient);

@@ -101,6 +101,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             .numTablets(connectorConfig.maxNumTablets())
             .sslCertFile(connectorConfig.sslRootCert())
             .sslClientCertFiles(connectorConfig.sslClientCert(), connectorConfig.sslClientKey())
+            .maxRpcAttempts(connectorConfig.maxRPCRetryAttempts())
+            .sleepTime(connectorConfig.rpcRetrySleepTime())
             .build();
         
         this.syncClient = new YBClient(this.asyncClient);
