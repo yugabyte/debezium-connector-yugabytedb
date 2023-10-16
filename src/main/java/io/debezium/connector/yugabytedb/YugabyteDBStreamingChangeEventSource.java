@@ -335,12 +335,12 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         Set<String> tIds = tabletPairList.stream().map(pair -> pair.getLeft()).collect(Collectors.toSet());
         for (String tId : tIds) {
-            LOGGER.debug("Table UUID: " + tIds);
             YBTable table = this.syncClient.openTableByUUID(tId);
             tableIdToTable.put(tId, table);
 
             GetTabletListToPollForCDCResponse resp =
                 this.syncClient.getTabletListToPollForCdc(table, streamId, tId);
+            LOGGER.info("Table: {} with number of tablets {}", tId, resp.getTabletCheckpointPairListSize());
             tabletListResponse.put(tId, resp);
         }
 
@@ -356,8 +356,15 @@ public class YugabyteDBStreamingChangeEventSource implements
                             tabletListResponse.get(entry.getKey()), entry.getValue());
 
             if (opId == null) {
-                throw new RuntimeException(String.format("OpId for the given tablet {} was not found in the response,"
-                                                           + " restart the connector to try again", entry.getValue()));
+                Set<String> tabletsForTable =
+                    tabletListResponse.get(entry.getKey()).getTabletCheckpointPairList().stream()
+                        .map(pair -> pair.getTabletLocations().getTabletId().toStringUtf8())
+                        .collect(Collectors.toSet());
+                LOGGER.error("No entry for tablet {} was found in the response for table {} from service, current entries {}",
+                             entry.getValue() entry.getValue(), tabletsForTable);
+                throw new RuntimeException(String.format("OpId for the given tablet %s was not found for table %s"
+                                                           + " in the response, restart the connector to try again",
+                                                           entry.getValue(), entry.getKey()));
             }
             
             // If we are getting a term and index as -1 and -1 from the server side it means

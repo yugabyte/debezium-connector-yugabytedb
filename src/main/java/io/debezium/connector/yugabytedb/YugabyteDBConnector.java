@@ -154,20 +154,20 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             throw new DebeziumException(errorMessage);
         }
 
-        LOGGER.debug("The streamid being used is " + streamIdValue);
+        LOGGER.info("DB stream ID being used: {}", streamIdValue);
 
         int numGroups = Math.min(this.tabletIds.size(), maxTasks);
-        LOGGER.debug("The tabletIds size are " + tabletIds.size() + " maxTasks" + maxTasks);
+        LOGGER.info("Total tablets to be grouped: " + tabletIds.size() + " within maximum tasks: " + maxTasks);
 
         List<List<Pair<String, String>>> tabletIdsGrouped = YugabyteDBConnectorUtils.groupPartitionsSmartly(this.tabletIds, numGroups);
         LOGGER.debug("The grouped tabletIds are " + tabletIdsGrouped.size());
         List<Map<String, String>> taskConfigs = new ArrayList<>(tabletIdsGrouped.size());
 
         for (List<Pair<String, String>> taskTables : tabletIdsGrouped) {
-            LOGGER.debug("The taskTables are " + taskTables);
             Map<String, String> taskProps = new HashMap<>(this.props);
             int taskId = taskConfigs.size();
             taskProps.put(YugabyteDBConnectorConfig.TASK_ID.toString(), String.valueOf(taskId));
+            LOGGER.info("Task tables for task {}: {}", taskId, taskTables);
             String taskTablesSerialized = "";
             try {
                 taskTablesSerialized = ObjectUtil.serializeObjectToString(taskTables);
@@ -324,6 +324,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                     table, this.yugabyteDBConnectorConfig.streamId(), tableId);
 
                 Set<String> tablets = new HashSet<>();
+                LOGGER.info("TabletCheckpointPair list size for table {}: {}", tableId, resp.getTabletCheckpointPairListSize());
                 for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
                     this.tabletIds.add(
                         new ImmutablePair<String,String>(
