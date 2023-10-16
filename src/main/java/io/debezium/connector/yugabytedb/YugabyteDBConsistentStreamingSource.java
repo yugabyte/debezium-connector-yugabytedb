@@ -82,7 +82,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
             tableIdToTable.put(tId, table);
 
             GetTabletListToPollForCDCResponse resp =
-                    this.syncClient.getTabletListToPollForCdc(table, streamId, tId);
+                    YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
             tabletListResponse.put(tId, resp);
         }
 

@@ -320,9 +320,8 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         try {
             for (String tableId : tableIds) {
                 YBTable table = ybClient.openTableByUUID(tableId);
-                GetTabletListToPollForCDCResponse resp = ybClient.getTabletListToPollForCdc(
-                    table, this.yugabyteDBConnectorConfig.streamId(), tableId);
-
+                GetTabletListToPollForCDCResponse resp = YBClientUtils.getTabletListToPollForCDCWithRetry(table,
+                    tableId, yugabyteDBConnectorConfig);
                 Set<String> tablets = new HashSet<>();
                 LOGGER.info("TabletCheckpointPair list size for table {}: {}", tableId, resp.getTabletCheckpointPairListSize());
                 for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {

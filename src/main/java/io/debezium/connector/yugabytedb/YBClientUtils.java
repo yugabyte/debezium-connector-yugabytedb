@@ -1,5 +1,6 @@
 package io.debezium.connector.yugabytedb;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -27,6 +28,8 @@ import org.yb.master.MasterDdlOuterClass;
 import io.debezium.DebeziumException;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.relational.TableId;
+import io.debezium.util.Clock;
+import io.debezium.util.Metronome;
 
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.master.MasterTypes;
@@ -321,5 +324,53 @@ public class YBClientUtils {
 
       return cdcStreamInfo.getOptions().get("checkpoint_type")
               .equals(CdcService.CDCCheckpointType.EXPLICIT.name());
+  }
+
+  /**
+   * Call getTabletListToPollForCDC rpc with retries
+   * @param table the {@link YBTable} instance of the table
+   * @param tableId the UUID of the table for which we need the tablets to poll for
+   * @param connectorConfig the configs used by the connector
+   * @return an RPC response containing the list of tablets to poll for
+   * @throws Exception
+   */
+  public static GetTabletListToPollForCDCResponse getTabletListToPollForCDCWithRetry(YBTable table,
+      String tableId, YugabyteDBConnectorConfig connectorConfig) throws Exception {
+    int retryCount = 0;
+    Exception exception = null;
+    GetTabletListToPollForCDCResponse resp = null;
+    
+    while (retryCount <= connectorConfig.maxConnectorRetries()) {
+      try {
+        YBClient syncClient = getYbClient(connectorConfig);
+        resp = syncClient.getTabletListToPollForCdc(table, connectorConfig.streamId(), tableId);
+        return resp;
+      } catch (Exception e) {
+        retryCount++;
+        exception = e;
+        if (retryCount > connectorConfig.maxConnectorRetries()) {
+          LOGGER.error("Too many errors while trying to get the tablet list to poll, all the {} retries failed ", connectorConfig.maxConnectorRetries());
+          throw e;
+        }
+
+        LOGGER.warn("Error while trying to get the tablet list to poll for CDC; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
+                             retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
+
+        try {
+          final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+          retryMetronome.pause();
+        } catch (InterruptedException ie) {
+          LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
+          Thread.currentThread().interrupt();
+        }
+      }
+    }
+
+     if (exception != null) {
+      throw exception;
+     }
+     
+     return resp;
+      
   }
 }
