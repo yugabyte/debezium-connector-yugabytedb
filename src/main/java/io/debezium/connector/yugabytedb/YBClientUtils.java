@@ -337,14 +337,17 @@ public class YBClientUtils {
   public static GetTabletListToPollForCDCResponse getTabletListToPollForCDCWithRetry(YBTable table,
       String tableId, YugabyteDBConnectorConfig connectorConfig) throws Exception {
     int retryCount = 0;
-    while(retryCount <= connectorConfig.maxConnectorRetries()) {
+    Exception exception = null;
+    GetTabletListToPollForCDCResponse resp = null;
+    
+    while (retryCount <= connectorConfig.maxConnectorRetries()) {
       try {
         YBClient syncClient = getYbClient(connectorConfig);
-        GetTabletListToPollForCDCResponse resp = syncClient.getTabletListToPollForCdc(table, connectorConfig.streamId(), tableId);
+        resp = syncClient.getTabletListToPollForCdc(table, connectorConfig.streamId(), tableId);
         return resp;
       } catch (Exception e) {
         retryCount++;
-
+        exception = e;
         if (retryCount > connectorConfig.maxConnectorRetries()) {
           LOGGER.error("Too many errors while trying to get the tablet list to poll, all the {} retries failed ", connectorConfig.maxConnectorRetries());
           throw e;
@@ -363,7 +366,11 @@ public class YBClientUtils {
       }
     }
 
-    //In ideal case this code will never be reached
-     return null;
+     if (exception != null) {
+      throw exception;
+     }
+     
+     return resp;
+      
   }
 }
