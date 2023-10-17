@@ -332,7 +332,7 @@ public class YBClientUtils {
    * @param tableId the UUID of the table for which we need the tablets to poll for
    * @param connectorConfig the configs used by the connector
    * @return an RPC response containing the list of tablets to poll for
-   * @throws Exception
+   * @throws Exception when there are error after trying {@link YugabyteDBConnectorConfig#maxConnectorRetries()} times
    */
   public static GetTabletListToPollForCDCResponse getTabletListToPollForCDCWithRetry(YBTable table,
       String tableId, YugabyteDBConnectorConfig connectorConfig) throws Exception {
@@ -341,9 +341,13 @@ public class YBClientUtils {
     GetTabletListToPollForCDCResponse resp = null;
     
     while (retryCount <= connectorConfig.maxConnectorRetries()) {
-      try {
-        YBClient syncClient = getYbClient(connectorConfig);
+      try (YBClient syncClient = getYbClient(connectorConfig)) {
         resp = syncClient.getTabletListToPollForCdc(table, connectorConfig.streamId(), tableId);
+
+        if (resp.getTabletCheckpointPairListSize() == 0) {
+          throw new RuntimeException("Received an empty tablet list for table " + tableId);
+        }
+
         return resp;
       } catch (Exception e) {
         retryCount++;
@@ -353,8 +357,8 @@ public class YBClientUtils {
           throw e;
         }
 
-        LOGGER.warn("Error while trying to get the tablet list to poll for CDC; will attempt retry {} of {} after {} milli-seconds. Exception message: {}",
-                             retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e.getMessage());
+        LOGGER.warn("Error while trying to get the tablet list to poll for CDC; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
+                             retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e);
 
         try {
           final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
@@ -371,6 +375,5 @@ public class YBClientUtils {
      }
      
      return resp;
-      
   }
 }
