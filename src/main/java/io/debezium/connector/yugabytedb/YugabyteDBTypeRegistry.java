@@ -379,12 +379,13 @@ public class YugabyteDBTypeRegistry {
     private void prime() throws SQLException {
         int retryCount = 0;
         while (retryCount <= maxConnectionRetries) {
-            try (final Statement statement = connection.createStatement();
-                 final ResultSet rs = statement.executeQuery(SQL_TYPES)) {
+            try {
                 final List<YugabyteDBType.Builder> delayResolvedBuilders = new ArrayList<>();
                 if (retryCount > 0) {
                     this.connection = yugabyteDBConnection.connection();
                 }
+                final Statement statement = connection.createStatement();
+                final ResultSet rs = statement.executeQuery(SQL_TYPES);
                 while (rs.next()) {
                     YugabyteDBType.Builder builder = createTypeBuilderFromResultSet(rs);
 
