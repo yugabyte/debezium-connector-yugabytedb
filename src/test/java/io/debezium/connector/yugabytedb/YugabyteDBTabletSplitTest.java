@@ -199,6 +199,88 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
     assertEquals(0, unknownRecords);
   }
 
+  @Test
+  public void successiveTabletSplit() throws Exception {
+    TestHelper.dropAllSchemas();
+    TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
+
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+
+    startEngine(configBuilder, (success, message, error) -> {
+      assertTrue(success);
+    });
+
+    awaitUntilConnectorIsReady();
+
+    int recordsCount = 100;
+
+    String insertFormat = "INSERT INTO t1 VALUES (%d, 'value for split table');";
+
+    for (int i = 0; i < recordsCount; ++i) {
+      TestHelper.execute(String.format(insertFormat, i));
+    }
+
+    YBClient ybClient = TestHelper.getYbClient(masterAddresses);
+    YBTable table = TestHelper.getYbTable(ybClient, "t1");
+    
+    // Verify that there is just a single tablet.
+    Set<String> tablets = ybClient.getTabletUUIDs(table);
+    int tabletCountBeforeSplit = tablets.size();
+    assertEquals(1, tabletCountBeforeSplit);
+
+    // Also verify that the new API to get the tablets is returning the correct tablets.
+    GetTabletListToPollForCDCResponse getTabletsResponse =
+      ybClient.getTabletListToPollForCdc(table, dbStreamId, table.getTableId());
+    assertEquals(tabletCountBeforeSplit, getTabletsResponse.getTabletCheckpointPairListSize());
+
+    // Compact the table to ready it for splitting.
+    ybClient.flushTable(table.getTableId());
+
+    // Wait for 20s for the table to be flushed.
+    TestHelper.waitFor(Duration.ofSeconds(20));
+
+    // Split the tablet. There is just one tablet so it is safe to assume that the iterator will
+    // return just the desired tablet.
+    ybClient.splitTablet(tablets.iterator().next());
+
+    waitForTablets(ybClient, table, 2);
+
+    // Get the two new tablets, so that they can be split again
+    tablets = ybClient.getTabletUUIDs(table);
+
+    int tabletCountAfterFirstSplit = tablets.size();
+    assertEquals(2, tabletCountAfterFirstSplit);
+
+    LOGGER.info("First split successful!");
+
+    // Perform split on one of the child tablets
+    ybClient.splitTablet(tablets.iterator().next());
+
+    // Wait till there are 3 tablets for the table.
+    waitForTablets(ybClient, table, 3);
+
+    tablets = ybClient.getTabletUUIDs(table);
+
+    int tabletCountAfterSecondSplit = tablets.size();
+    assertEquals(3, tabletCountAfterSecondSplit);
+
+    LOGGER.info("Second split successful!");
+
+    // Consume the records now - there will be 100 records in total.
+    SourceRecords records = consumeByTopic(100);
+    
+    // Verify that the records are there in the topic.
+    assertEquals(100, records.recordsForTopic("test_server.public.t1").size());
+
+    // Also call the CDC API to fetch tablets to verify the new tablets have been added in the
+    // cdc_state table.
+    GetTabletListToPollForCDCResponse getTabletResponse2 =
+      ybClient.getTabletListToPollForCdc(table, dbStreamId, table.getTableId());
+
+    assertEquals(3, getTabletResponse2.getTabletCheckpointPairListSize());
+  }
+
   @Order(2)
   @Test
   public void reproduceSplitWhileTransactionIsNotFinishedWithAutomaticSplitting() throws Exception {
