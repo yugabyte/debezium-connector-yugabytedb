@@ -447,10 +447,11 @@ public class YugabyteDBTypeRegistry {
         int retryCount = 0;
         Exception exception = null;
         while (retryCount <= maxConnectionRetries) {
-            try (final PreparedStatement statement = connection.prepareStatement(SQL_NAME_LOOKUP)) {
+            try {
                 if (retryCount > 0) {
                     connection = yugabyteDBConnection.connection();
                 }
+                final PreparedStatement statement = connection.prepareStatement(SQL_NAME_LOOKUP);
                 statement.setString(1, name);
                 return loadType(statement);
             } catch (SQLException e) {
@@ -474,10 +475,11 @@ public class YugabyteDBTypeRegistry {
         int retryCount = 0;
         Exception exception = null;
         while (retryCount <= maxConnectionRetries) {
-            try (final PreparedStatement statement = connection.prepareStatement(SQL_OID_LOOKUP)) {
+            try {
                 if (retryCount > 0) {
                     connection = yugabyteDBConnection.connection();
                 }
+                final PreparedStatement statement = connection.prepareStatement(SQL_OID_LOOKUP);
                 statement.setInt(1, lookupOid);
                 return loadType(statement);
             } catch (SQLException e) {
