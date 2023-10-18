@@ -240,21 +240,31 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         final ConfigValue hostnameValue = configValues.get(RelationalDatabaseConnectorConfig.HOSTNAME.name());
         // Try to connect to the database ...
         try (YugabyteDBConnection connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL)) {
-            try {
-                // Prepare connection without initial statement execution
-                connection.connection(false);
-                // check connection
-                connection.execute("SELECT version()");
-                LOGGER.info("Successfully tested connection for {} with user '{}'",
-                        connection.connectionString(),
-                        connection.username());
-            }
-            catch (SQLException e) {
-                LOGGER.error("Failed testing connection for {} with user '{}'",
-                        connection.connectionString(),
-                        connection.username(), e);
-                hostnameValue.addErrorMessage("Error while validating connector config: "
-                        + e.getMessage());
+            int retryCount = 0;
+            while (retryCount <= yugabyteDBConnectorConfig.maxConnectorRetries()) {
+                try {
+                    // Prepare connection without initial statement execution
+                    connection.connection(false);
+                    // check connection
+                    connection.execute("SELECT version()");
+                    LOGGER.info("Successfully tested connection for {} with user '{}'",
+                            connection.connectionString(),
+                            connection.username());
+                    break;
+                }
+                catch (SQLException e) {
+                    retryCount++;
+                    if (retryCount > yugabyteDBConnectorConfig.maxConnectorRetries()) {
+                        LOGGER.error("Failed testing connection for {} with user '{}'",
+                                connection.connectionString(),
+                                connection.username(), e);
+                        hostnameValue.addErrorMessage("Error while validating connector config: "
+                                + e.getMessage());
+                    }
+                    LOGGER.warn("Error while trying to test the connection for {} with user '{}' will retry, attempt {} out of {}",
+                            connection.connectionString(), connection.username(), retryCount,
+                            yugabyteDBConnectorConfig.maxConnectorRetries());
+                }
             }
         }
 
