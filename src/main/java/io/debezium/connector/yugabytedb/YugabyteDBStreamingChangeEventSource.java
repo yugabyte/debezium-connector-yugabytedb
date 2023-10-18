@@ -361,7 +361,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                         .map(pair -> pair.getTabletLocations().getTabletId().toStringUtf8())
                         .collect(Collectors.toSet());
                 LOGGER.error("No entry for tablet {} was found in the response for table {} from service, current entries {}",
-                             entry.getValue(), entry.getValue(), tabletsForTable);
+                             entry.getValue(), entry.getKey(), tabletsForTable);
                 throw new RuntimeException(String.format("OpId for the given tablet %s was not found for table %s"
                                                            + " in the response, restart the connector to try again",
                                                            entry.getValue(), entry.getKey()));
