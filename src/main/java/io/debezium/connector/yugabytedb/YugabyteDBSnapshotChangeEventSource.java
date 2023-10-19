@@ -61,7 +61,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     private final Snapshotter snapshotter;
     private final YugabyteDBConnection connection;
 
-    private final AsyncYBClient asyncClient;
     private final YBClient syncClient;
 
     private OpId lastCompletelyProcessedLsn;
@@ -93,19 +92,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.snapshotter = snapshotter;
         this.connection = connection;
         this.snapshotProgressListener = snapshotProgressListener;
-
-        this.asyncClient = new AsyncYBClient.AsyncYBClientBuilder(connectorConfig.masterAddresses())
-            .defaultAdminOperationTimeoutMs(connectorConfig.adminOperationTimeoutMs())
-            .defaultOperationTimeoutMs(connectorConfig.operationTimeoutMs())
-            .defaultSocketReadTimeoutMs(connectorConfig.socketReadTimeoutMs())
-            .numTablets(connectorConfig.maxNumTablets())
-            .sslCertFile(connectorConfig.sslRootCert())
-            .sslClientCertFiles(connectorConfig.sslClientCert(), connectorConfig.sslClientKey())
-            .maxRpcAttempts(connectorConfig.maxRPCRetryAttempts())
-            .sleepTime(connectorConfig.rpcRetrySleepTime())
-            .build();
         
-        this.syncClient = new YBClient(this.asyncClient);
+        this.syncClient = YBClientUtils.getYbClient(connectorConfig);
 
         this.yugabyteDbTypeRegistry = taskContext.schema().getTypeRegistry();
         this.tabletToExplicitCheckpoint = new HashMap<>();

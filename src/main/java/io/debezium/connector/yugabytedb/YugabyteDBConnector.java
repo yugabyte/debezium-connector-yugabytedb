@@ -127,11 +127,12 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         Configuration config = Configuration.from(this.props);
         Map<String, ConfigValue> results = validateAllFields(config);
 
-        LOGGER.info("Calling validate tserver connection from taskConfigs");
+        LOGGER.info("Validating connection with tserver to further populate table and tablets");
         try {
             validateTServerConnection(results, config);
         } catch (Exception e) {
-            LOGGER.error("Exception caught in validate connection: {}", e.toString());
+            LOGGER.error("Exception while validating tserver connection", e);
+            throw new RuntimeException(e);
         }
         
         String streamIdValue = this.yugabyteDBConnectorConfig.streamId();
@@ -241,13 +242,6 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                             yugabyteDBConnectorConfig.maxConnectorRetries());
                 }
             }
-        }
-
-        LOGGER.info("Calling validate tserver connection from validate connection");
-        try {
-            validateTServerConnection(configValues, config);
-        } catch (Exception e) {
-            LOGGER.error("Exception caught in validate connection: {}", e.toString());
         }
     }
 
