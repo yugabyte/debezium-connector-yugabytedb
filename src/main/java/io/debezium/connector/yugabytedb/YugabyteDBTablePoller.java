@@ -178,6 +178,7 @@ public class YugabyteDBTablePoller extends Thread {
     // Close YBClient instance
     if (this.ybClient != null) {
       try {
+        LOGGER.info("Closing YBClient in table monitor thread");
         this.ybClient.close();
       } catch (Exception e) {
         LOGGER.warn("Exception while closing YBClient instance", e);

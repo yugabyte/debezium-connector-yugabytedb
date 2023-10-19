@@ -339,7 +339,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             tableIdToTable.put(tId, table);
 
             GetTabletListToPollForCDCResponse resp =
-                YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
+                YBClientUtils.getTabletListToPollForCDCWithRetry(syncClient, table, tId, connectorConfig);
             LOGGER.info("Table: {} with number of tablets {}", tId, resp.getTabletCheckpointPairListSize());
             tabletListResponse.put(tId, resp);
         }
