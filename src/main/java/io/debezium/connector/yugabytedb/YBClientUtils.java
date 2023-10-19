@@ -255,14 +255,15 @@ public class YBClientUtils {
     /**
      * Get the {@link CDCStreamInfo} object for the specified configuration. Note that the connector
      * configuration is just used to extract the stream ID as well as building the YBClient.
+     * @param ybClient the {@link YBClient} instance to call RPCs with
      * @param connectorConfig the connector configuration
      * @return a {@link CDCStreamInfo} object having metadata about the stream ID
      * @throws Exception
      */
-  public static CDCStreamInfo getStreamInfo(YugabyteDBConnectorConfig connectorConfig)
-          throws Exception{
+  public static CDCStreamInfo getStreamInfo(
+      YBClient ybClient, YugabyteDBConnectorConfig connectorConfig) throws Exception {
       ListCDCStreamsResponse resp = null;
-      try (YBClient ybClient = getYbClient(connectorConfig)) {
+      try {
           GetDBStreamInfoResponse getDBStreamInfoResponse =
                   ybClient.getDBStreamInfo(connectorConfig.streamId());
 
@@ -296,9 +297,9 @@ public class YBClientUtils {
    * @return true if before image is enabled, false otherwise
    * @throws Exception if API cannot get the DB stream Info or if it cannot list the CDC streams.
    */
-  public static boolean isBeforeImageEnabled(YugabyteDBConnectorConfig connectorConfig)
-      throws Exception {
-    CDCStreamInfo cdcStreamInfo = getStreamInfo(connectorConfig);
+  public static boolean isBeforeImageEnabled(
+      YBClient ybClient, YugabyteDBConnectorConfig connectorConfig) throws Exception {
+    CDCStreamInfo cdcStreamInfo = getStreamInfo(ybClient, connectorConfig);
 
     // If streamInfo is null, it would mean that either there are no tables configured with the
     // given stream ID.
@@ -317,9 +318,9 @@ public class YBClientUtils {
    * @return true if stream has EXPLICIT checkpointing enabled, false otherwise
    * @throws Exception
    */
-  public static boolean isExplicitCheckpointingEnabled(YugabyteDBConnectorConfig connectorConfig)
-          throws Exception {
-      CDCStreamInfo cdcStreamInfo = getStreamInfo(connectorConfig);
+  public static boolean isExplicitCheckpointingEnabled(
+    YBClient ybClient, YugabyteDBConnectorConfig connectorConfig) throws Exception {
+      CDCStreamInfo cdcStreamInfo = getStreamInfo(ybClient, connectorConfig);
       Objects.requireNonNull(cdcStreamInfo);
 
       return cdcStreamInfo.getOptions().get("checkpoint_type")
@@ -328,20 +329,22 @@ public class YBClientUtils {
 
   /**
    * Call getTabletListToPollForCDC rpc with retries
+   * @param syncClient the {@link YBClient} instance to call RPCs with
    * @param table the {@link YBTable} instance of the table
    * @param tableId the UUID of the table for which we need the tablets to poll for
    * @param connectorConfig the configs used by the connector
    * @return an RPC response containing the list of tablets to poll for
    * @throws Exception when there are error after trying {@link YugabyteDBConnectorConfig#maxConnectorRetries()} times
    */
-  public static GetTabletListToPollForCDCResponse getTabletListToPollForCDCWithRetry(YBTable table,
+  public static GetTabletListToPollForCDCResponse getTabletListToPollForCDCWithRetry(
+      YBClient syncClient, YBTable table,
       String tableId, YugabyteDBConnectorConfig connectorConfig) throws Exception {
     int retryCount = 0;
     Exception exception = null;
     GetTabletListToPollForCDCResponse resp = null;
     
     while (retryCount <= connectorConfig.maxConnectorRetries()) {
-      try (YBClient syncClient = getYbClient(connectorConfig)) {
+      try {
         resp = syncClient.getTabletListToPollForCdc(table, connectorConfig.streamId(), tableId);
 
         if (resp.getTabletCheckpointPairListSize() == 0) {

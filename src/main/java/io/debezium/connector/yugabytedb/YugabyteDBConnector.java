@@ -47,10 +47,10 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
     private static final long MAX_TIMEOUT = 10000L;
 
     private Map<String, String> props;
-    private YBClient ybClient;
     private volatile YugabyteDBConnection connection;
-    private Set<String> tableIds;
     private List<Pair<String, String>> tabletIds;
+    private boolean populateBeforeImage;
+    private boolean explicitCheckpointing;
     private YugabyteDBConnectorConfig yugabyteDBConnectorConfig;
 
     private YugabyteDBTablePoller tableMonitorThread;
@@ -127,34 +127,25 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         Configuration config = Configuration.from(this.props);
         Map<String, ConfigValue> results = validateAllFields(config);
 
-        validateTServerConnection(results, config);
+        LOGGER.info("Validating connection with tserver to further populate table and tablets");
+        try {
+            validateTServerConnection(results, config);
+        } catch (Exception e) {
+            LOGGER.error("Exception while validating tserver connection", e);
+            throw new RuntimeException(e);
+        }
         
         String streamIdValue = this.yugabyteDBConnectorConfig.streamId();
-        LOGGER.debug("The streamid in config is" + this.yugabyteDBConnectorConfig.streamId());
 
-        if (streamIdValue == null) {
-            streamIdValue = results.get(YugabyteDBConnectorConfig.STREAM_ID.name()).value().toString();
-        }
+        LOGGER.info("Before image status: {}", populateBeforeImage);
+        LOGGER.info("Explicit checkpointing enabled: {}", explicitCheckpointing);
+        LOGGER.info("DB stream ID for database {}: {}", yugabyteDBConnectorConfig.databaseName(), streamIdValue);
 
-        boolean sendBeforeImage = false;
-        boolean enableExplicitCheckpointing = false;
-        try {
-            sendBeforeImage = YBClientUtils.isBeforeImageEnabled(this.yugabyteDBConnectorConfig);
-            enableExplicitCheckpointing = YBClientUtils.isExplicitCheckpointingEnabled(this.yugabyteDBConnectorConfig);
-            LOGGER.info("Before image status: {}", sendBeforeImage);
-            LOGGER.info("Explicit checkpointing enabled: {}", enableExplicitCheckpointing);
-        } catch (Exception e) {
-            LOGGER.error("Error while trying to get before image status", e);
-            throw new DebeziumException(e);
-        }
-
-        if (this.yugabyteDBConnectorConfig.transactionOrdering() && !enableExplicitCheckpointing) {
+        if (this.yugabyteDBConnectorConfig.transactionOrdering() && !explicitCheckpointing) {
             final String errorMessage = "Explicit checkpointing not enabled in consistent streaming mode, "
                 + "create a stream with explicit checkpointing and try again";
             throw new DebeziumException(errorMessage);
         }
-
-        LOGGER.info("DB stream ID being used: {}", streamIdValue);
 
         int numGroups = Math.min(this.tabletIds.size(), maxTasks);
         LOGGER.info("Total tablets to be grouped: " + tabletIds.size() + " within maximum tasks: " + maxTasks);
@@ -181,23 +172,15 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             taskProps.put(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString(), serializedNameToType);
             taskProps.put(YugabyteDBConnectorConfig.OID_TO_TYPE.toString(), serializedOidToType);
             taskProps.put(YugabyteDBConnectorConfig.STREAM_ID.toString(), streamIdValue);
-            taskProps.put(YugabyteDBConnectorConfig.SEND_BEFORE_IMAGE.toString(), String.valueOf(sendBeforeImage));
-            taskProps.put(YugabyteDBConnectorConfig.ENABLE_EXPLICIT_CHECKPOINTING.toString(), String.valueOf(enableExplicitCheckpointing));
+            taskProps.put(YugabyteDBConnectorConfig.SEND_BEFORE_IMAGE.toString(),
+                          String.valueOf(populateBeforeImage));
+            taskProps.put(YugabyteDBConnectorConfig.ENABLE_EXPLICIT_CHECKPOINTING.toString(),
+                          String.valueOf(explicitCheckpointing));
             taskConfigs.add(taskProps);
         }
 
         LOGGER.debug("Configuring {} YugabyteDB connector task(s)", taskConfigs.size());
-        closeYBClient();
         return taskConfigs;
-    }
-
-    private void closeYBClient() {
-        try {
-            ybClient.close();
-        }
-        catch (Exception e) {
-            LOGGER.warn("Received exception while shutting down the client", e);
-        }
     }
 
     @Override
@@ -215,13 +198,6 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         }
 
         this.props = null;
-        if (this.ybClient != null) {
-          try {
-            ybClient.close();
-          } catch (Exception e) {
-            LOGGER.warn("Received exception while shutting down the client", e);
-          }
-        }
     }
 
     @Override
@@ -267,8 +243,6 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                 }
             }
         }
-
-        validateTServerConnection(configValues, config);
     }
 
     @Override
@@ -277,25 +251,22 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
     }
 
     protected void validateTServerConnection(Map<String, ConfigValue> configValues,
-                                             Configuration config) {
+                                             Configuration config) throws Exception {
         String hostAddress = config.getString(YugabyteDBConnectorConfig.MASTER_ADDRESSES.toString());
-        this.ybClient = YBClientUtils.getYbClient(yugabyteDBConnectorConfig);
-        // so whenever they are null, they will just be ignored
-        LOGGER.debug("The master host address is " + hostAddress);
+        YBClient ybClient = YBClientUtils.getYbClient(yugabyteDBConnectorConfig);
+
+        LOGGER.info("Master addresses: {}", hostAddress);
         HostAndPort masterHostPort = ybClient.getLeaderMasterHostAndPort();
         if (masterHostPort == null) {
-            LOGGER.error("Failed testing connection at {}", yugabyteDBConnectorConfig.hostname());
+            throw new DebeziumException("Failed testing connection to master");
         }
 
-        // Do a get and check if the streamid exists.
+        // Do a get and check if the stream id exists.
         // TODO: Find out where to do validation for table whitelist
         String streamId = yugabyteDBConnectorConfig.streamId();
         if (streamId == null || streamId.isEmpty()) {
-            // Coming to this block means the auto.create.stream is set to false and no stream ID is provided, the connector should not proceed forward.
             throw new DebeziumException("DB Stream ID not provided, please provide a DB stream ID to proceed");
         }
-
-        final ConfigValue streamIdConfig = configValues.get(YugabyteDBConnectorConfig.STREAM_ID.name());
 
         if (yugabyteDBConnectorConfig.tableIncludeList() == null || yugabyteDBConnectorConfig.tableIncludeList().isEmpty()) {
             throw new DebeziumException("The table.include.list is empty, please provide a list of tables to get the changes from");
@@ -307,7 +278,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         // eventually saving us some network calls as well
         GetDBStreamInfoResponse getStreamInfoResp = null;
         try {
-            getStreamInfoResp = this.ybClient.getDBStreamInfo(streamId);
+            getStreamInfoResp = ybClient.getDBStreamInfo(streamId);
         } catch (Exception e) {
             String errorMessage = String.format("Failed fetching all tables for the streamid %s", streamId);
             LOGGER.error(errorMessage, e);
@@ -320,7 +291,12 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             throw new DebeziumException(errorMessage);
         }
 
-        this.tableIds = YBClientUtils.fetchTableList(this.ybClient, this.yugabyteDBConnectorConfig);
+        populateBeforeImage =
+          YBClientUtils.isBeforeImageEnabled(ybClient, yugabyteDBConnectorConfig);
+        explicitCheckpointing =
+          YBClientUtils.isExplicitCheckpointingEnabled(ybClient, yugabyteDBConnectorConfig);
+
+        Set<String> tableIds = YBClientUtils.fetchTableList(ybClient, yugabyteDBConnectorConfig);
 
         if (tableIds == null || tableIds.isEmpty()) {
             throw new DebeziumException("The tables provided in table.include.list do not exist");
@@ -330,18 +306,22 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         try {
             for (String tableId : tableIds) {
                 YBTable table = ybClient.openTableByUUID(tableId);
-                GetTabletListToPollForCDCResponse resp = YBClientUtils.getTabletListToPollForCDCWithRetry(table,
-                    tableId, yugabyteDBConnectorConfig);
+                GetTabletListToPollForCDCResponse resp = YBClientUtils.getTabletListToPollForCDCWithRetry(
+                  ybClient, table, tableId, yugabyteDBConnectorConfig);
                 Set<String> tablets = new HashSet<>();
-                LOGGER.info("TabletCheckpointPair list size for table {}: {}", tableId, resp.getTabletCheckpointPairListSize());
+                LOGGER.info("TabletCheckpointPair list size for table {}: {}", tableId,
+                            resp.getTabletCheckpointPairListSize());
                 for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
                     this.tabletIds.add(
-                        new ImmutablePair<String,String>(
-                            tableId, pair.getTabletLocations().getTabletId().toStringUtf8()));
+                      new ImmutablePair<>(
+                        tableId, pair.getTabletLocations().getTabletId().toStringUtf8()));
+
+                    // Adding tablets to this set for logging purposes only.
                     tablets.add(pair.getTabletLocations().getTabletId().toStringUtf8());
                 }
 
-                LOGGER.info("Received tablet list for table {} ({}): {}", table.getTableId(), table.getName(), tablets);
+                LOGGER.info("Received tablet list for table {} ({}): {}", table.getTableId(),
+                            table.getName(), tablets);
             }
             Collections.sort(this.tabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));
         }
@@ -350,5 +330,9 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             LOGGER.error(errorMessage, e);
             throw new DebeziumException(errorMessage, e);
         }
+
+        // Close YBClient.
+        LOGGER.info("Closing YBClient after validating tserver connection");
+        ybClient.close();
     }
 }

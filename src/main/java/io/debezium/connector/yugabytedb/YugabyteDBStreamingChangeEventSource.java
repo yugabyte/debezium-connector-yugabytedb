@@ -80,7 +80,6 @@ public class YugabyteDBStreamingChangeEventSource implements
     protected long numberOfEventsSinceLastEventSentOrWalGrowingWarning = 0;
     protected OpId lastCompletelyProcessedLsn;
 
-    protected final AsyncYBClient asyncYBClient;
     protected final YBClient syncClient;
     protected YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
     protected final Map<String, OpId> checkPointMap;
@@ -111,18 +110,8 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.connectionProbeTimer = ElapsedTimeStrategy.constant(Clock.system(), connectorConfig.statusUpdateInterval());
 
         String masterAddress = connectorConfig.masterAddresses();
-        asyncYBClient = new AsyncYBClient.AsyncYBClientBuilder(masterAddress)
-                .defaultAdminOperationTimeoutMs(connectorConfig.adminOperationTimeoutMs())
-                .defaultOperationTimeoutMs(connectorConfig.operationTimeoutMs())
-                .defaultSocketReadTimeoutMs(connectorConfig.socketReadTimeoutMs())
-                .numTablets(connectorConfig.maxNumTablets())
-                .sslCertFile(connectorConfig.sslRootCert())
-                .sslClientCertFiles(connectorConfig.sslClientCert(), connectorConfig.sslClientKey())
-                .maxRpcAttempts(connectorConfig.maxRPCRetryAttempts())
-                .sleepTime(connectorConfig.rpcRetrySleepTime())
-                .build();
 
-        syncClient = new YBClient(asyncYBClient);
+        syncClient = YBClientUtils.getYbClient(connectorConfig);
         yugabyteDBTypeRegistry = taskContext.schema().getTypeRegistry();
         this.queue = queue;
         this.tabletToExplicitCheckpoint = new ConcurrentHashMap<>();
@@ -152,23 +141,12 @@ public class YugabyteDBStreamingChangeEventSource implements
         } catch (Throwable e) {
             Objects.requireNonNull(e);
             errorHandler.setProducerThrowable(e);
-        }
-        finally {
-
-            if (!isInPreSnapshotCatchUpStreaming(offsetContext)) {
-                // Need to see in CDCSDK what can be done.
-            }
-            if (asyncYBClient != null) {
-              try {
-                asyncYBClient.close();
-              } catch (Exception e) {
-                e.printStackTrace();
-              }
-            }
+        } finally {
             if (syncClient != null) {
               try {
                 syncClient.close();
               } catch (Exception e) {
+                LOGGER.error("Exception while closing YBClient", e);
                 e.printStackTrace();
               }
             }
@@ -339,7 +317,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             tableIdToTable.put(tId, table);
 
             GetTabletListToPollForCDCResponse resp =
-                YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
+                YBClientUtils.getTabletListToPollForCDCWithRetry(syncClient, table, tId, connectorConfig);
             LOGGER.info("Table: {} with number of tablets {}", tId, resp.getTabletCheckpointPairListSize());
             tabletListResponse.put(tId, resp);
         }
