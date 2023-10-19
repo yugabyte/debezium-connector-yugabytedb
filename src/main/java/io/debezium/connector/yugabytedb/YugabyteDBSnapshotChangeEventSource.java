@@ -162,7 +162,14 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         finally {
             LOGGER.info("Snapshot - Final stage");
             complete(ctx);
-
+            if (syncClient != null) {
+                try {
+                    LOGGER.info(" Closing the client after the snapshot completed.");
+                    syncClient.close();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
             if (completedSuccessfully) {
                 snapshotProgressListener.snapshotCompleted(partition);
             }
