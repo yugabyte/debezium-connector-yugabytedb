@@ -254,11 +254,11 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                                              Configuration config) throws Exception {
         String hostAddress = config.getString(YugabyteDBConnectorConfig.MASTER_ADDRESSES.toString());
         YBClient ybClient = YBClientUtils.getYbClient(yugabyteDBConnectorConfig);
-        // so whenever they are null, they will just be ignored
-        LOGGER.debug("The master host address is " + hostAddress);
+
+        LOGGER.info("Master addresses: {}", hostAddress);
         HostAndPort masterHostPort = ybClient.getLeaderMasterHostAndPort();
         if (masterHostPort == null) {
-            LOGGER.error("Failed testing connection at {}", yugabyteDBConnectorConfig.hostname());
+            throw new DebeziumException("Failed testing connection to master");
         }
 
         // Do a get and check if the stream id exists.
@@ -291,8 +291,10 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             throw new DebeziumException(errorMessage);
         }
 
-        populateBeforeImage = YBClientUtils.isBeforeImageEnabled(ybClient, yugabyteDBConnectorConfig);
-        explicitCheckpointing = YBClientUtils.isExplicitCheckpointingEnabled(ybClient, yugabyteDBConnectorConfig);
+        populateBeforeImage =
+          YBClientUtils.isBeforeImageEnabled(ybClient, yugabyteDBConnectorConfig);
+        explicitCheckpointing =
+          YBClientUtils.isExplicitCheckpointingEnabled(ybClient, yugabyteDBConnectorConfig);
 
         Set<String> tableIds = YBClientUtils.fetchTableList(ybClient, yugabyteDBConnectorConfig);
 
@@ -307,15 +309,19 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                 GetTabletListToPollForCDCResponse resp = YBClientUtils.getTabletListToPollForCDCWithRetry(
                   ybClient, table, tableId, yugabyteDBConnectorConfig);
                 Set<String> tablets = new HashSet<>();
-                LOGGER.info("TabletCheckpointPair list size for table {}: {}", tableId, resp.getTabletCheckpointPairListSize());
+                LOGGER.info("TabletCheckpointPair list size for table {}: {}", tableId,
+                            resp.getTabletCheckpointPairListSize());
                 for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
                     this.tabletIds.add(
-                        new ImmutablePair<String,String>(
-                            tableId, pair.getTabletLocations().getTabletId().toStringUtf8()));
+                      new ImmutablePair<>(
+                        tableId, pair.getTabletLocations().getTabletId().toStringUtf8()));
+
+                    // Adding tablets to this set for logging purposes only.
                     tablets.add(pair.getTabletLocations().getTabletId().toStringUtf8());
                 }
 
-                LOGGER.info("Received tablet list for table {} ({}): {}", table.getTableId(), table.getName(), tablets);
+                LOGGER.info("Received tablet list for table {} ({}): {}", table.getTableId(),
+                            table.getName(), tablets);
             }
             Collections.sort(this.tabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));
         }
