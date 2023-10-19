@@ -32,7 +32,7 @@ public class YugabytedTestBase extends TestBaseClass {
     }
 
     public static String getMasterAddress() {
-        return "127.0.0.1:7100";
+        return "127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100";
     }
 
     @Override

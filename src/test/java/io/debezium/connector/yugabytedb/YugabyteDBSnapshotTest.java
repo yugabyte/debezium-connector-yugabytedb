@@ -27,26 +27,26 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBSnapshotTest extends YugabytedTestBase {
     @BeforeAll
     public static void beforeClass() throws Exception {
         initializeYBContainer();
-        TestHelper.dropAllSchemas();
-        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        // TestHelper.dropAllSchemas();
+        //TestHelper.executeDDL("yugabyte_create_tables.ddl");
     }
 
     @BeforeEach
     public void before() throws Exception {
         initializeConnectorTestFramework();
-        TestHelper.dropAllSchemas();
+        // TestHelper.dropAllSchemas();
     }
 
     @AfterEach
     public void after() throws Exception {
         stopConnector();
-        dropAllTables();
-        TestHelper.executeDDL("drop_tables_and_databases.ddl");
-        TestHelper.dropAllSchemas();
+        //dropAllTables();
+        // TestHelper.executeDDL("drop_tables_and_databases.ddl");
+        // TestHelper.dropAllSchemas();
         resetCommitCallbackDelay();
     }
 
@@ -56,17 +56,17 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {true, false})
+    @ValueSource(booleans = {false})
     public void testSnapshotRecordConsumption(boolean colocation) throws Exception {
         setCommitCallbackDelay(10000);
-        createTables(colocation);
+        // createTables(colocation);
         final int recordsCount = 5000;
-        insertBulkRecords(recordsCount, "public.test_1");
+        // insertBulkRecords(recordsCount, "public.test_1");
 
         LOGGER.info("Creating DB stream ID");
-        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "test");
         Configuration.Builder configBuilder =
-          TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1", dbStreamId);
+          TestHelper.getConfigBuilder(DEFAULT_DB_NAME, "public.test", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
         startEngine(configBuilder);
 

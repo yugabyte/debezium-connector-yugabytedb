@@ -247,7 +247,6 @@ public class YugabyteDBTypeRegistry {
                 r = YugabyteDBType.UNKNOWN;
             }
         }
-        // new IllegalArgumentException().printStackTrace();
         return r;
     }
 

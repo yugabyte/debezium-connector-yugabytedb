@@ -154,19 +154,13 @@ public class YugabyteDBStreamingChangeEventSource implements
             errorHandler.setProducerThrowable(e);
         }
         finally {
-
             if (!isInPreSnapshotCatchUpStreaming(offsetContext)) {
                 // Need to see in CDCSDK what can be done.
             }
-            if (asyncYBClient != null) {
-              try {
-                asyncYBClient.close();
-              } catch (Exception e) {
-                e.printStackTrace();
-              }
-            }
+
             if (syncClient != null) {
               try {
+                LOGGER.info(" Closing the client in finally of the getChanges loop.");
                 syncClient.close();
               } catch (Exception e) {
                 e.printStackTrace();
@@ -519,7 +513,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                         tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
                       } catch (CDCErrorException cdcException) {
                         // Check if exception indicates a tablet split.
-                        LOGGER.debug("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
+                        LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
                         if (cdcException.getCDCError().getCode() == Code.TABLET_SPLIT || cdcException.getCDCError().getCode() == Code.INVALID_REQUEST) {
                             LOGGER.info("Encountered a tablet split on tablet {}, handling it gracefully", tabletId);
                             if (LOGGER.isDebugEnabled()) {
@@ -532,7 +526,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 // If explicit checkpointing is enabled then we should check if we have the explicit checkpoint
                                 // the same as from_op_id, if yes then handle tablet split directly, if not, add the partition ID
                                 // (table.tablet) to be processed later.
-                                LOGGER.info("");
                                 if (explicitCheckpoint != null && (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint))) {
                                     LOGGER.info("Explicit checkpoint same as last seen record's checkpoint, handling tablet split immediately for partition {}, explicit checkpoint {}:{}:{} lastRecordCheckpoint: {}.{}.{}",
                                                 part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), explicitCheckpoint.getTime(), lastRecordCheckpoint.getTerm(), lastRecordCheckpoint.getIndex(), lastRecordCheckpoint.getTime());

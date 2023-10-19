@@ -79,10 +79,10 @@ public final class TestHelper {
     private static final String SECONDARY_DATABASE = "secondary_database";
 
     // Set the localhost value as the defaults for now
-    private static String CONTAINER_YSQL_HOST = "127.0.0.1";
+    private static String CONTAINER_YSQL_HOST = "127.0.0.1:5433,127.0.0.2:5433,127.0.0.3:5433";
     private static int CONTAINER_YSQL_PORT = 5433;
     private static String CONTAINER_MASTER_PORT = "7100";
-    private static String MASTER_ADDRESS = "127.0.0.1:7100";
+    private static String MASTER_ADDRESS = "127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100";
     private static String DEFAULT_DATABASE_NAME = "yugabyte";
 
     /**

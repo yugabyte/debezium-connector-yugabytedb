@@ -50,4 +50,12 @@
         additivity="false">
         <appender-ref ref="CONSOLE" />
     </logger>
+    <logger name="org.yb.client.AsyncYBClient" level="info"
+            additivity="false">
+        <appender-ref ref="CONSOLE" />
+    </logger>
+    <logger name="org.yb.client.YBClient" level="info"
+            additivity="false">
+        <appender-ref ref="CONSOLE" />
+    </logger>
 </configuration>

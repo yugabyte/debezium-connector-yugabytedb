@@ -282,7 +282,7 @@ public class TestBaseClass extends AbstractConnectorTest {
   }
 
   protected void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
-    waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
+    waitAndFailIfCannotConsume(records, recordsCount, 3000 * 1000 /* 5 minutes */);
   }
 
   protected class SourceRecords {

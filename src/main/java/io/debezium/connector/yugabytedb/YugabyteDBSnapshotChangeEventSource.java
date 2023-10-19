@@ -162,13 +162,21 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         finally {
             LOGGER.info("Snapshot - Final stage");
             complete(ctx);
-
+            if (syncClient != null) {
+                try {
+                    LOGGER.info("Closing the client in finally of the snapshot execute.");
+                    syncClient.close();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
             if (completedSuccessfully) {
                 snapshotProgressListener.snapshotCompleted(partition);
             }
             else {
                 snapshotProgressListener.snapshotAborted(partition);
             }
+
         }
     }
 
@@ -931,9 +939,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     @Override
     protected void complete(SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext) {
         snapshotter.snapshotCompleted();
-
-        // Todo Vaibhav: Close the YBClient instances now
-        // See if it can be closed anywhere else for the snapshotting tasks.
     }
 
     /**
