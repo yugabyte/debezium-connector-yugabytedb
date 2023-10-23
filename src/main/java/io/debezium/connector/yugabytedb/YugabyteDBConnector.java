@@ -47,7 +47,6 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
     private static final long MAX_TIMEOUT = 10000L;
 
     private Map<String, String> props;
-    private YBClient ybClient;
     private volatile YugabyteDBConnection connection;
     private Set<String> tableIds;
     private List<Pair<String, String>> tabletIds;
@@ -90,6 +89,8 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
     @Override
     public List<Map<String, String>> taskConfigs(int maxTasks) {
+        List<Map<String, String>> taskConfigs;
+
         if (props == null) {
             LOGGER.error("Configuring a maximum of {} tasks with no connector configuration" +
                     " available", maxTasks);
@@ -110,8 +111,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             LOGGER.debug("The serializedNameToType " + serializedNameToType);
             Object test = ObjectUtil.deserializeObjectFromString(serializedNameToType);
             LOGGER.debug("The deserializedNameToType " + test);
-        }
-        catch (IOException | ClassNotFoundException e) {
+        } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
         }
 
@@ -119,8 +119,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         try {
             serializedOidToType = ObjectUtil.serializeObjectToString(oidToType);
             LOGGER.debug("The serializedOidToType " + serializedOidToType);
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
 
@@ -128,7 +127,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         Map<String, ConfigValue> results = validateAllFields(config);
 
         validateTServerConnection(results, config);
-        
+
         String streamIdValue = this.yugabyteDBConnectorConfig.streamId();
         LOGGER.debug("The streamid in config is" + this.yugabyteDBConnectorConfig.streamId());
 
@@ -150,7 +149,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
         if (this.yugabyteDBConnectorConfig.transactionOrdering() && !enableExplicitCheckpointing) {
             final String errorMessage = "Explicit checkpointing not enabled in consistent streaming mode, "
-                + "create a stream with explicit checkpointing and try again";
+                    + "create a stream with explicit checkpointing and try again";
             throw new DebeziumException(errorMessage);
         }
 
@@ -161,7 +160,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
         List<List<Pair<String, String>>> tabletIdsGrouped = YugabyteDBConnectorUtils.groupPartitionsSmartly(this.tabletIds, numGroups);
         LOGGER.debug("The grouped tabletIds are " + tabletIdsGrouped.size());
-        List<Map<String, String>> taskConfigs = new ArrayList<>(tabletIdsGrouped.size());
+        taskConfigs = new ArrayList<>(tabletIdsGrouped.size());
 
         for (List<Pair<String, String>> taskTables : tabletIdsGrouped) {
             Map<String, String> taskProps = new HashMap<>(this.props);
@@ -172,8 +171,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             try {
                 taskTablesSerialized = ObjectUtil.serializeObjectToString(taskTables);
                 LOGGER.debug("The taskTablesSerialized " + taskTablesSerialized);
-            }
-            catch (IOException e) {
+            } catch (IOException e) {
                 e.printStackTrace();
             }
             taskProps.put(YugabyteDBConnectorConfig.TABLET_LIST.toString(), taskTablesSerialized);
@@ -187,17 +185,8 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         }
 
         LOGGER.debug("Configuring {} YugabyteDB connector task(s)", taskConfigs.size());
-        closeYBClient();
-        return taskConfigs;
-    }
 
-    private void closeYBClient() {
-        try {
-            ybClient.close();
-        }
-        catch (Exception e) {
-            LOGGER.warn("Received exception while shutting down the client", e);
-        }
+        return taskConfigs;
     }
 
     @Override
@@ -212,16 +201,9 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             if (LOGGER.isDebugEnabled()) {
                 ie.printStackTrace();
             }
+            Thread.currentThread().interrupt();
         }
-
         this.props = null;
-        if (this.ybClient != null) {
-          try {
-            ybClient.close();
-          } catch (Exception e) {
-            LOGGER.warn("Received exception while shutting down the client", e);
-          }
-        }
     }
 
     @Override
@@ -278,77 +260,81 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
     protected void validateTServerConnection(Map<String, ConfigValue> configValues,
                                              Configuration config) {
-        String hostAddress = config.getString(YugabyteDBConnectorConfig.MASTER_ADDRESSES.toString());
-        this.ybClient = YBClientUtils.getYbClient(yugabyteDBConnectorConfig);
-        // so whenever they are null, they will just be ignored
-        LOGGER.debug("The master host address is " + hostAddress);
-        HostAndPort masterHostPort = ybClient.getLeaderMasterHostAndPort();
-        if (masterHostPort == null) {
-            LOGGER.error("Failed testing connection at {}", yugabyteDBConnectorConfig.hostname());
-        }
-
-        // Do a get and check if the streamid exists.
-        // TODO: Find out where to do validation for table whitelist
-        String streamId = yugabyteDBConnectorConfig.streamId();
-        if (streamId == null || streamId.isEmpty()) {
-            // Coming to this block means the auto.create.stream is set to false and no stream ID is provided, the connector should not proceed forward.
-            throw new DebeziumException("DB Stream ID not provided, please provide a DB stream ID to proceed");
-        }
-
-        final ConfigValue streamIdConfig = configValues.get(YugabyteDBConnectorConfig.STREAM_ID.name());
-
-        if (yugabyteDBConnectorConfig.tableIncludeList() == null || yugabyteDBConnectorConfig.tableIncludeList().isEmpty()) {
-            throw new DebeziumException("The table.include.list is empty, please provide a list of tables to get the changes from");
-        }
-
-        // If the stream ID is not associated with any table then we should throw an exception
-        // early, this would save us some work on the connector side since we would then not be
-        // going to fetch all the tables then verify if they are a part of the stream ID,
-        // eventually saving us some network calls as well
-        GetDBStreamInfoResponse getStreamInfoResp = null;
-        try {
-            getStreamInfoResp = this.ybClient.getDBStreamInfo(streamId);
-        } catch (Exception e) {
-            String errorMessage = String.format("Failed fetching all tables for the streamid %s", streamId);
-            LOGGER.error(errorMessage, e);
-            throw new DebeziumException(errorMessage, e);
-        }
-        
-        if (getStreamInfoResp.getTableInfoList().isEmpty()) {
-            String errorMessage = "The provided stream ID is not associated with any table";
-            LOGGER.error(errorMessage);
-            throw new DebeziumException(errorMessage);
-        }
-
-        this.tableIds = YBClientUtils.fetchTableList(this.ybClient, this.yugabyteDBConnectorConfig);
-
-        if (tableIds == null || tableIds.isEmpty()) {
-            throw new DebeziumException("The tables provided in table.include.list do not exist");
-        }
-
-        this.tabletIds = new ArrayList<>();
-        try {
-            for (String tableId : tableIds) {
-                YBTable table = ybClient.openTableByUUID(tableId);
-                GetTabletListToPollForCDCResponse resp = YBClientUtils.getTabletListToPollForCDCWithRetry(table,
-                    tableId, yugabyteDBConnectorConfig);
-                Set<String> tablets = new HashSet<>();
-                LOGGER.info("TabletCheckpointPair list size for table {}: {}", tableId, resp.getTabletCheckpointPairListSize());
-                for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
-                    this.tabletIds.add(
-                        new ImmutablePair<String,String>(
-                            tableId, pair.getTabletLocations().getTabletId().toStringUtf8()));
-                    tablets.add(pair.getTabletLocations().getTabletId().toStringUtf8());
-                }
-
-                LOGGER.info("Received tablet list for table {} ({}): {}", table.getTableId(), table.getName(), tablets);
+        try (YBClient ybClient = YBClientUtils.getYbClient(yugabyteDBConnectorConfig)) {
+            String hostAddress = config.getString(YugabyteDBConnectorConfig.MASTER_ADDRESSES.toString());
+            // so whenever they are null, they will just be ignored
+            LOGGER.debug("The master host address is " + hostAddress);
+            HostAndPort masterHostPort = ybClient.getLeaderMasterHostAndPort();
+            if (masterHostPort == null) {
+                LOGGER.error("Failed testing connection at {}", yugabyteDBConnectorConfig.hostname());
             }
-            Collections.sort(this.tabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));
+
+            // Do a get and check if the streamid exists.
+            // TODO: Find out where to do validation for table whitelist
+            String streamId = yugabyteDBConnectorConfig.streamId();
+            if (streamId == null || streamId.isEmpty()) {
+                // Coming to this block means the auto.create.stream is set to false and no stream ID is provided, the connector should not proceed forward.
+                throw new DebeziumException("DB Stream ID not provided, please provide a DB stream ID to proceed");
+            }
+
+            final ConfigValue streamIdConfig = configValues.get(YugabyteDBConnectorConfig.STREAM_ID.name());
+
+            if (yugabyteDBConnectorConfig.tableIncludeList() == null || yugabyteDBConnectorConfig.tableIncludeList().isEmpty()) {
+                throw new DebeziumException("The table.include.list is empty, please provide a list of tables to get the changes from");
+            }
+
+            // If the stream ID is not associated with any table then we should throw an exception
+            // early, this would save us some work on the connector side since we would then not be
+            // going to fetch all the tables then verify if they are a part of the stream ID,
+            // eventually saving us some network calls as well
+            GetDBStreamInfoResponse getStreamInfoResp = null;
+            try {
+                getStreamInfoResp = ybClient.getDBStreamInfo(streamId);
+            } catch (Exception e) {
+                String errorMessage = String.format("Failed fetching all tables for the streamid %s", streamId);
+                LOGGER.error(errorMessage, e);
+                throw new DebeziumException(errorMessage, e);
+            }
+
+            if (getStreamInfoResp.getTableInfoList().isEmpty()) {
+                String errorMessage = "The provided stream ID is not associated with any table";
+                LOGGER.error(errorMessage);
+                throw new DebeziumException(errorMessage);
+            }
+
+            this.tableIds = YBClientUtils.fetchTableList(ybClient, this.yugabyteDBConnectorConfig);
+
+            if (tableIds == null || tableIds.isEmpty()) {
+                throw new DebeziumException("The tables provided in table.include.list do not exist");
+            }
+
+            this.tabletIds = new ArrayList<>();
+            try {
+                for (String tableId : tableIds) {
+                    YBTable table = ybClient.openTableByUUID(tableId);
+                    GetTabletListToPollForCDCResponse resp = YBClientUtils.getTabletListToPollForCDCWithRetry(table,
+                            tableId, yugabyteDBConnectorConfig);
+                    Set<String> tablets = new HashSet<>();
+                    LOGGER.info("TabletCheckpointPair list size for table {}: {}", tableId, resp.getTabletCheckpointPairListSize());
+                    for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
+                        this.tabletIds.add(
+                                new ImmutablePair<String, String>(
+                                        tableId, pair.getTabletLocations().getTabletId().toStringUtf8()));
+                        tablets.add(pair.getTabletLocations().getTabletId().toStringUtf8());
+                    }
+
+                    LOGGER.info("Received tablet list for table {} ({}): {}", table.getTableId(), table.getName(), tablets);
+                }
+                Collections.sort(this.tabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));
+            } catch (Exception e) {
+                final String errorMessage = "Error while fetching all the tablets";
+                LOGGER.error(errorMessage, e);
+                throw new DebeziumException(errorMessage, e);
+            }
         }
         catch (Exception e) {
-            final String errorMessage = "Error while fetching all the tablets";
-            LOGGER.error(errorMessage, e);
-            throw new DebeziumException(errorMessage, e);
+            LOGGER.warn("Exception while validating connection", e);
+            throw new DebeziumException("Exception while validating connection", e);
         }
     }
 }

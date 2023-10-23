@@ -79,9 +79,6 @@ public class YugabyteDBStreamingChangeEventSource implements
      */
     protected long numberOfEventsSinceLastEventSentOrWalGrowingWarning = 0;
     protected OpId lastCompletelyProcessedLsn;
-
-    protected final AsyncYBClient asyncYBClient;
-    protected final YBClient syncClient;
     protected YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
     protected final Map<String, OpId> checkPointMap;
     protected final ChangeEventQueue<DataChangeEvent> queue;
@@ -111,18 +108,6 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.connectionProbeTimer = ElapsedTimeStrategy.constant(Clock.system(), connectorConfig.statusUpdateInterval());
 
         String masterAddress = connectorConfig.masterAddresses();
-        asyncYBClient = new AsyncYBClient.AsyncYBClientBuilder(masterAddress)
-                .defaultAdminOperationTimeoutMs(connectorConfig.adminOperationTimeoutMs())
-                .defaultOperationTimeoutMs(connectorConfig.operationTimeoutMs())
-                .defaultSocketReadTimeoutMs(connectorConfig.socketReadTimeoutMs())
-                .numTablets(connectorConfig.maxNumTablets())
-                .sslCertFile(connectorConfig.sslRootCert())
-                .sslClientCertFiles(connectorConfig.sslClientCert(), connectorConfig.sslClientKey())
-                .maxRpcAttempts(connectorConfig.maxRPCRetryAttempts())
-                .sleepTime(connectorConfig.rpcRetrySleepTime())
-                .build();
-
-        syncClient = new YBClient(asyncYBClient);
         yugabyteDBTypeRegistry = taskContext.schema().getTypeRegistry();
         this.queue = queue;
         this.tabletToExplicitCheckpoint = new ConcurrentHashMap<>();
@@ -146,7 +131,6 @@ public class YugabyteDBStreamingChangeEventSource implements
             LOGGER.info("No start opid found in the context.");
                 offsetContext = YugabyteDBOffsetContext.initialContext(connectorConfig, connection, clock, partitions);
         }
-
         try {
             getChanges2(context, partition, offsetContext, hasStartLsnStoredInContext);
         } catch (Throwable e) {
@@ -154,34 +138,19 @@ public class YugabyteDBStreamingChangeEventSource implements
             errorHandler.setProducerThrowable(e);
         }
         finally {
-
             if (!isInPreSnapshotCatchUpStreaming(offsetContext)) {
                 // Need to see in CDCSDK what can be done.
-            }
-            if (asyncYBClient != null) {
-              try {
-                asyncYBClient.close();
-              } catch (Exception e) {
-                e.printStackTrace();
-              }
-            }
-            if (syncClient != null) {
-              try {
-                syncClient.close();
-              } catch (Exception e) {
-                e.printStackTrace();
-              }
             }
         }
     }
 
-    private void bootstrapTablet(YBTable table, String tabletId) throws Exception {
+    private void bootstrapTablet(YBClient syncClient, YBTable table, String tabletId) throws Exception {
         LOGGER.info("Bootstrapping the tablet {}", tabletId);
-        this.syncClient.bootstrapTablet(table, connectorConfig.streamId(), tabletId, 0, 0, true, true);
-        markNoSnapshotNeeded(table, tabletId);
+        syncClient.bootstrapTablet(table, connectorConfig.streamId(), tabletId, 0, 0, true, true);
+        markNoSnapshotNeeded(syncClient, table, tabletId);
     }
 
-    protected void bootstrapTabletWithRetry(List<Pair<String,String>> tabletPairList,
+    protected void bootstrapTabletWithRetry(YBClient syncClient, List<Pair<String,String>> tabletPairList,
                                             Map<String, YBTable> tableIdToTable) throws Exception {
         Set<String> tabletsWithoutBootstrap = new HashSet<>();
         for (Pair<String, String> entry : tabletPairList) {
@@ -189,7 +158,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             short retryCountForGetCheckpoint = 0;
             while (retryCountForGetCheckpoint <= connectorConfig.maxConnectorRetries() && shouldRetry) {
                 try {
-                    GetCheckpointResponse resp = this.syncClient.getCheckpoint(tableIdToTable.get(entry.getKey()), connectorConfig.streamId(), entry.getValue());
+                    GetCheckpointResponse resp = syncClient.getCheckpoint(tableIdToTable.get(entry.getKey()), connectorConfig.streamId(), entry.getValue());
                     if (resp.getTerm() == -1 && resp.getIndex() == -1) {
                         LOGGER.info("Bootstrap required for table {} tablet {} as it has checkpoint -1.-1", entry.getKey(), entry.getValue());
                     } else {
@@ -236,8 +205,8 @@ public class YugabyteDBStreamingChangeEventSource implements
             while (retryCountForBootstrapping <= maxBootstrapRetries && shouldRetry) {
                 try {
                     if (!tabletsWithoutBootstrap.contains(entry.getValue())) {
-                        YBTable table = this.syncClient.openTableByUUID(entry.getKey());
-                        bootstrapTablet(table, entry.getValue());
+                        YBTable table = syncClient.openTableByUUID(entry.getKey());
+                        bootstrapTablet(syncClient, table, entry.getValue());
                     } else {
                         LOGGER.info("Skipping bootstrap for table {} tablet {} as it has a checkpoint", entry.getKey(), entry.getValue());
                     }
@@ -271,13 +240,13 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
-    protected void markNoSnapshotNeeded(YBTable ybTable, String tabletId) throws Exception {
+    protected void markNoSnapshotNeeded(YBClient syncClient, YBTable ybTable, String tabletId) throws Exception {
         short retryCount = 0;
         while (retryCount <= connectorConfig.maxConnectorRetries()) {
             try {
                 LOGGER.info("Marking no snapshot on service for table {} tablet {}", ybTable.getTableId(), tabletId);
                 GetChangesResponse response =
-                    this.syncClient.getChangesCDCSDK(ybTable, connectorConfig.streamId(),
+                    syncClient.getChangesCDCSDK(ybTable, connectorConfig.streamId(),
                                                     tabletId, -1, -1, YugabyteDBOffsetContext.SNAPSHOT_DONE_KEY.getBytes(),
                                                     0, 0, false /* schema is not needed since this is a dummy call */);
 
@@ -313,300 +282,327 @@ public class YugabyteDBStreamingChangeEventSource implements
                              boolean previousOffsetPresent)
             throws Exception {
         LOGGER.info("Processing messages");
-
-        String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
-
-        // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
-        // and the value is tablet UUID
-        List<Pair<String, String>> tabletPairList = null;
-        try {
-            tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
-            LOGGER.debug("The tablet list is " + tabletPairList);
-        } catch (IOException | ClassNotFoundException e) {
-            LOGGER.error("Exception while deserializing tablet pair list", e);
-            throw new RuntimeException(e);
-        }
-
-        Map<String, YBTable> tableIdToTable = new HashMap<>();
-        Map<String, GetTabletListToPollForCDCResponse> tabletListResponse = new HashMap<>();
-        String streamId = connectorConfig.streamId();
-
-        LOGGER.info("Using DB stream ID: " + streamId);
-
-        Set<String> tIds = tabletPairList.stream().map(pair -> pair.getLeft()).collect(Collectors.toSet());
-        for (String tId : tIds) {
-            YBTable table = this.syncClient.openTableByUUID(tId);
-            tableIdToTable.put(tId, table);
-
-            GetTabletListToPollForCDCResponse resp =
-                YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
-            LOGGER.info("Table: {} with number of tablets {}", tId, resp.getTabletCheckpointPairListSize());
-            tabletListResponse.put(tId, resp);
-        }
-
-        LOGGER.debug("The init tabletSourceInfo before updating is " + offsetContext.getTabletSourceInfo());
-
-        // Initialize the offsetContext and other supporting flags.
-        // This schemaNeeded map here would have the elements as <tableId.tabletId>:<boolean-value>
-        Map<String, Boolean> schemaNeeded = new HashMap<>();
-        Map<String, Long> tabletSafeTime = new HashMap<>();
-        for (Pair<String, String> entry : tabletPairList) {
-            // entry.getValue() will give the tabletId
-            OpId opId = YBClientUtils.getOpIdFromGetTabletListResponse(
-                            tabletListResponse.get(entry.getKey()), entry.getValue());
-
-            if (opId == null) {
-                Set<String> tabletsForTable =
-                    tabletListResponse.get(entry.getKey()).getTabletCheckpointPairList().stream()
-                        .map(pair -> pair.getTabletLocations().getTabletId().toStringUtf8())
-                        .collect(Collectors.toSet());
-                LOGGER.error("No entry for tablet {} was found in the response for table {} from service, current entries {}",
-                             entry.getValue(), entry.getKey(), tabletsForTable);
-                throw new RuntimeException(String.format("OpId for the given tablet %s was not found for table %s"
-                                                           + " in the response, restart the connector to try again",
-                                                           entry.getValue(), entry.getKey()));
-            }
-            
-            // If we are getting a term and index as -1 and -1 from the server side it means
-            // that the streaming has not yet started on that tablet ID. In that case, assign a
-            // starting OpId so that the connector can poll using proper checkpoints.
-            LOGGER.info("Checkpoint from GetTabletListToPollForCDC for tablet {} as {}", entry.getValue(), opId);
-            if (opId.getTerm() == -1 && opId.getIndex() == -1) {
-                opId = YugabyteDBOffsetContext.streamingStartLsn();
-            }
-
-            // For streaming, we do not want any colocated information and want to process the tables
-            // based on just their tablet IDs - pass false as the 'colocated' flag to enforce the same.
-            YBPartition p = new YBPartition(entry.getKey(), entry.getValue(), false /* colocated */);
-            offsetContext.initSourceInfo(p, this.connectorConfig, opId);
-            // We can initialise the explicit checkpoint for this tablet to the value returned by
-            // the cdc_service through the 'GetTabletListToPollForCDC' API
-            tabletToExplicitCheckpoint.put(p.getId(), opId.toCdcSdkCheckpoint());
-            schemaNeeded.put(p.getId(), Boolean.TRUE);
-        }
-
-        // This will contain the tablet ID mapped to the number of records it has seen
-        // in the transactional block. Note that the entry will be created only when
-        // a BEGIN block is encountered.
-        Map<String, Integer> recordsInTransactionalBlock = new HashMap<>();
-
-        // This will contain the tablet ID mapped to the number of begin records observed for
-        // a tablet. Consider the scenario for a colocated tablet with two tables, it is possible
-        // that we can encounter BEGIN-BEGIN-COMMIT-COMMIT. To handle this scenario, we need the
-        // count for the BEGIN records so that we can verify that we have equal COMMIT records
-        // in the stream as well.
-        Map<String, Integer> beginCountForTablet = new HashMap<>();
-
-        LOGGER.debug("The init tabletSourceInfo after updating is " + offsetContext.getTabletSourceInfo());
-
-        // Only bootstrap if no snapshot has been enabled - if snapshot is enabled then
-        // the assumption is that there will already be some checkpoints for the tablet in
-        // the cdc_state table. Avoiding additional bootstrap call in that case will also help
-        // us avoid unnecessary network calls.
-        if (snapshotter.shouldSnapshot()) {
-            LOGGER.info("Skipping bootstrap because snapshot has been taken so streaming will resume there onwards");
-        } else {
-            bootstrapTabletWithRetry(tabletPairList, tableIdToTable);
-        }
-
-        // This log while indicate that the connector has either bootstrapped the tablets or skipped
-        // it so that streaming can begin now. This is added to indicate the tests or pipelines
-        // waiting for the bootstrapping to finish so that they can start inserting data now.
-        LOGGER.info("Beginning to poll the changes from the server");
-
-        short retryCount = 0;
-
-        // Helper internal variable to log GetChanges request at regular intervals.
-        long lastLoggedTimeForGetChanges = System.currentTimeMillis();
-
-        String curTabletId = "";
-        while (context.isRunning() && retryCount <= connectorConfig.maxConnectorRetries()) {
+        try (YBClient syncClient = YBClientUtils.getYbClient(this.connectorConfig)) {
+            String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
+            // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
+            // and the value is tablet UUID
+            List<Pair<String, String>> tabletPairList = null;
             try {
-                while (context.isRunning() && (offsetContext.getStreamingStoppingLsn() == null ||
-                        (lastCompletelyProcessedLsn.compareTo(offsetContext.getStreamingStoppingLsn()) < 0))) {
-                    // Pause for the specified duration before asking for a new set of changes from the server
-                    LOGGER.debug("Pausing for {} milliseconds before polling further", connectorConfig.cdcPollIntervalms());
-                    final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
-                    pollIntervalMetronome.pause();
+                tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
+                LOGGER.debug("The tablet list is " + tabletPairList);
+            } catch (IOException | ClassNotFoundException e) {
+                LOGGER.error("Exception while deserializing tablet pair list", e);
+                throw new RuntimeException(e);
+            }
 
-                    if (this.connectorConfig.cdcLimitPollPerIteration()
-                            && queue.remainingCapacity() < queue.totalCapacity()) {
-                        LOGGER.debug("Queue has {} items. Skipping", queue.totalCapacity() - queue.remainingCapacity());
-                        continue;
-                    }
+            Map<String, YBTable> tableIdToTable = new HashMap<>();
+            Map<String, GetTabletListToPollForCDCResponse> tabletListResponse = new HashMap<>();
+            String streamId = connectorConfig.streamId();
 
-                    for (Pair<String, String> entry : tabletPairList) {
-                        final String tabletId = entry.getValue();
-                        curTabletId = entry.getValue();
-                        YBPartition part = new YBPartition(entry.getKey() /* tableId */, tabletId, false /* colocated */);
+            LOGGER.info("Using DB stream ID: " + streamId);
 
-                      OpId cp = offsetContext.lsn(part);
+            Set<String> tIds = tabletPairList.stream().map(pair -> pair.getLeft()).collect(Collectors.toSet());
+            for (String tId : tIds) {
+                YBTable table = syncClient.openTableByUUID(tId);
+                tableIdToTable.put(tId, table);
 
-                      if (taskContext.shouldEnableExplicitCheckpointing()
-                            && splitTabletsWaitingForCallback.contains(part.getId())) {
-                        // We do not want to process anything related to the tablets which have
-                        // sent the tablet split message but we have not received an explicit
-                        // callback for the tablet. At this stage, check if the explicit
-                        // checkpoint is the same as from_op_id, if yes then handle the tablet
-                        // for split.
-                        CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                        OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
+                GetTabletListToPollForCDCResponse resp =
+                        YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
+                LOGGER.info("Table: {} with number of tablets {}", tId, resp.getTabletCheckpointPairListSize());
+                tabletListResponse.put(tId, resp);
+            }
 
-                        if (explicitCheckpoint != null && (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint))) {
-                            // At this position, we know we have received a callback for split tablet
-                            // handle tablet split and delete the tablet from the waiting list.
+            LOGGER.debug("The init tabletSourceInfo before updating is " + offsetContext.getTabletSourceInfo());
 
-                            // Call getChanges to make sure checkpoint is set on the cdc_state table.
-                            LOGGER.info("Setting explicit checkpoint is set to {}.{}", explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex());
-                            setCheckpointWithGetChanges(tableIdToTable.get(part.getTableId()), part,
-                                cp, explicitCheckpoint, schemaNeeded.get(part.getId()),
-                                tabletSafeTime.get(part.getId()), offsetContext.getWalSegmentIndex(part));
+            // Initialize the offsetContext and other supporting flags.
+            // This schemaNeeded map here would have the elements as <tableId.tabletId>:<boolean-value>
+            Map<String, Boolean> schemaNeeded = new HashMap<>();
+            Map<String, Long> tabletSafeTime = new HashMap<>();
+            for (Pair<String, String> entry : tabletPairList) {
+                // entry.getValue() will give the tabletId
+                OpId opId = YBClientUtils.getOpIdFromGetTabletListResponse(
+                        tabletListResponse.get(entry.getKey()), entry.getValue());
 
-                            LOGGER.info("Handling tablet split for enqueued tablet {} as we have now received the commit callback",
-                                        part.getTabletId());
-                            handleTabletSplit(part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
-                            splitTabletsWaitingForCallback.remove(part.getId());
+                if (opId == null) {
+                    Set<String> tabletsForTable =
+                            tabletListResponse.get(entry.getKey()).getTabletCheckpointPairList().stream()
+                                    .map(pair -> pair.getTabletLocations().getTabletId().toStringUtf8())
+                                    .collect(Collectors.toSet());
+                    LOGGER.error("No entry for tablet {} was found in the response for table {} from service, current entries {}",
+                            entry.getValue(), entry.getKey(), tabletsForTable);
+                    throw new RuntimeException(String.format("OpId for the given tablet %s was not found for table %s"
+                                    + " in the response, restart the connector to try again",
+                            entry.getValue(), entry.getKey()));
+                }
 
-                            // Break out of the loop so that processing can happen on the modified list.
-                            break;
-                        } else {
+                // If we are getting a term and index as -1 and -1 from the server side it means
+                // that the streaming has not yet started on that tablet ID. In that case, assign a
+                // starting OpId so that the connector can poll using proper checkpoints.
+                LOGGER.info("Checkpoint from GetTabletListToPollForCDC for tablet {} as {}", entry.getValue(), opId);
+                if (opId.getTerm() == -1 && opId.getIndex() == -1) {
+                    opId = YugabyteDBOffsetContext.streamingStartLsn();
+                }
+
+                // For streaming, we do not want any colocated information and want to process the tables
+                // based on just their tablet IDs - pass false as the 'colocated' flag to enforce the same.
+                YBPartition p = new YBPartition(entry.getKey(), entry.getValue(), false /* colocated */);
+                offsetContext.initSourceInfo(p, this.connectorConfig, opId);
+                // We can initialise the explicit checkpoint for this tablet to the value returned by
+                // the cdc_service through the 'GetTabletListToPollForCDC' API
+                tabletToExplicitCheckpoint.put(p.getId(), opId.toCdcSdkCheckpoint());
+                schemaNeeded.put(p.getId(), Boolean.TRUE);
+            }
+
+            // This will contain the tablet ID mapped to the number of records it has seen
+            // in the transactional block. Note that the entry will be created only when
+            // a BEGIN block is encountered.
+            Map<String, Integer> recordsInTransactionalBlock = new HashMap<>();
+
+            // This will contain the tablet ID mapped to the number of begin records observed for
+            // a tablet. Consider the scenario for a colocated tablet with two tables, it is possible
+            // that we can encounter BEGIN-BEGIN-COMMIT-COMMIT. To handle this scenario, we need the
+            // count for the BEGIN records so that we can verify that we have equal COMMIT records
+            // in the stream as well.
+            Map<String, Integer> beginCountForTablet = new HashMap<>();
+
+            LOGGER.debug("The init tabletSourceInfo after updating is " + offsetContext.getTabletSourceInfo());
+
+            // Only bootstrap if no snapshot has been enabled - if snapshot is enabled then
+            // the assumption is that there will already be some checkpoints for the tablet in
+            // the cdc_state table. Avoiding additional bootstrap call in that case will also help
+            // us avoid unnecessary network calls.
+            if (snapshotter.shouldSnapshot()) {
+                LOGGER.info("Skipping bootstrap because snapshot has been taken so streaming will resume there onwards");
+            } else {
+                bootstrapTabletWithRetry(syncClient, tabletPairList, tableIdToTable);
+            }
+
+            // This log while indicate that the connector has either bootstrapped the tablets or skipped
+            // it so that streaming can begin now. This is added to indicate the tests or pipelines
+            // waiting for the bootstrapping to finish so that they can start inserting data now.
+            LOGGER.info("Beginning to poll the changes from the server");
+
+            short retryCount = 0;
+
+            // Helper internal variable to log GetChanges request at regular intervals.
+            long lastLoggedTimeForGetChanges = System.currentTimeMillis();
+
+            String curTabletId = "";
+            while (context.isRunning() && retryCount <= connectorConfig.maxConnectorRetries()) {
+                try {
+                    while (context.isRunning() && (offsetContext.getStreamingStoppingLsn() == null ||
+                            (lastCompletelyProcessedLsn.compareTo(offsetContext.getStreamingStoppingLsn()) < 0))) {
+                        // Pause for the specified duration before asking for a new set of changes from the server
+                        LOGGER.debug("Pausing for {} milliseconds before polling further", connectorConfig.cdcPollIntervalms());
+                        final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
+                        pollIntervalMetronome.pause();
+
+                        if (this.connectorConfig.cdcLimitPollPerIteration()
+                                && queue.remainingCapacity() < queue.totalCapacity()) {
+                            LOGGER.debug("Queue has {} items. Skipping", queue.totalCapacity() - queue.remainingCapacity());
                             continue;
                         }
-                      }
 
-                      YBTable table = tableIdToTable.get(entry.getKey());
+                        for (Pair<String, String> entry : tabletPairList) {
+                            final String tabletId = entry.getValue();
+                            curTabletId = entry.getValue();
+                            YBPartition part = new YBPartition(entry.getKey() /* tableId */, tabletId, false /* colocated */);
 
-                      CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                      if (explicitCheckpoint != null) {
-                        LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpointing: {} from_op_id: {}.{}",
-                                    table.getName(), part.getId(), explicitCheckpoint.toString(), cp.getTerm(), cp.getIndex());
-                      } else {
-                        LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpoint is null and from_op_id: {}.{}",
-                                    table.getName(), part.getId(), cp.getTerm(), cp.getIndex());
-                      }
+                            OpId cp = offsetContext.lsn(part);
 
-                      // Check again if the thread has been interrupted.
-                      if (!context.isRunning()) {
-                        LOGGER.info("Connector has been stopped");
-                        break;
-                      }
-
-                      GetChangesResponse response = null;
-
-                      if (schemaNeeded.get(part.getId())) {
-                        LOGGER.debug("Requesting schema for tablet: {}", tabletId);
-                      }
-
-                      try {
-                        response = this.syncClient.getChangesCDCSDK(
-                            table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
-                            cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
-                            explicitCheckpoint,
-                            tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part));
-
-                        tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
-                      } catch (CDCErrorException cdcException) {
-                        // Check if exception indicates a tablet split.
-                        LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
-                        if (cdcException.getCDCError().getCode() == Code.TABLET_SPLIT || cdcException.getCDCError().getCode() == Code.INVALID_REQUEST) {
-                            LOGGER.info("Encountered a tablet split on tablet {}, handling it gracefully", tabletId);
-                            if (LOGGER.isDebugEnabled()) {
-                                cdcException.printStackTrace();
-                            }
-
-                            if (taskContext.shouldEnableExplicitCheckpointing()) {
+                            if (taskContext.shouldEnableExplicitCheckpointing()
+                                    && splitTabletsWaitingForCallback.contains(part.getId())) {
+                                // We do not want to process anything related to the tablets which have
+                                // sent the tablet split message but we have not received an explicit
+                                // callback for the tablet. At this stage, check if the explicit
+                                // checkpoint is the same as from_op_id, if yes then handle the tablet
+                                // for split.
+                                CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
                                 OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
 
-                                // If explicit checkpointing is enabled then we should check if we have the explicit checkpoint
-                                // the same as from_op_id, if yes then handle tablet split directly, if not, add the partition ID
-                                // (table.tablet) to be processed later.
-                                LOGGER.info("");
                                 if (explicitCheckpoint != null && (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint))) {
-                                    LOGGER.info("Explicit checkpoint same as last seen record's checkpoint, handling tablet split immediately for partition {}, explicit checkpoint {}:{}:{} lastRecordCheckpoint: {}.{}.{}",
-                                                part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), explicitCheckpoint.getTime(), lastRecordCheckpoint.getTerm(), lastRecordCheckpoint.getIndex(), lastRecordCheckpoint.getTime());
+                                    // At this position, we know we have received a callback for split tablet
+                                    // handle tablet split and delete the tablet from the waiting list.
 
-                                    handleTabletSplit(part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
+                                    // Call getChanges to make sure checkpoint is set on the cdc_state table.
+                                    LOGGER.info("Setting explicit checkpoint is set to {}.{}", explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex());
+                                    setCheckpointWithGetChanges(syncClient, tableIdToTable.get(part.getTableId()), part,
+                                            cp, explicitCheckpoint, schemaNeeded.get(part.getId()),
+                                            tabletSafeTime.get(part.getId()), offsetContext.getWalSegmentIndex(part));
+
+                                    LOGGER.info("Handling tablet split for enqueued tablet {} as we have now received the commit callback",
+                                            part.getTabletId());
+                                    handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
+                                    splitTabletsWaitingForCallback.remove(part.getId());
+                                    // Break out of the loop so that processing can happen on the modified list.
+                                    break;
                                 } else {
-                                    // Add the tablet for being processed later, this will mark the tablet as locked. There is a chance that explicit checkpoint may
-                                    // be null, in that case, just to avoid NullPointerException in the log, simply log a null value.
-                                    final String explicitString = (explicitCheckpoint == null) ? null : (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex() + ":" + explicitCheckpoint.getTime());
-                                    LOGGER.info("Adding partition {} to wait-list since the explicit checkpoint ({}) and last seen record's checkpoint ({}.{}.{}) are not the same",
-                                                part.getId(), explicitString, lastRecordCheckpoint.getTerm(), lastRecordCheckpoint.getIndex(), lastRecordCheckpoint.getTime());
-                                    splitTabletsWaitingForCallback.add(part.getId());
+                                    continue;
                                 }
+                            }
+
+                            YBTable table = tableIdToTable.get(entry.getKey());
+
+                            CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
+                            if (explicitCheckpoint != null) {
+                                LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpointing: {} from_op_id: {}.{}",
+                                        table.getName(), part.getId(), explicitCheckpoint.toString(), cp.getTerm(), cp.getIndex());
                             } else {
-                                handleTabletSplit(part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
+                                LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpoint is null and from_op_id: {}.{}",
+                                        table.getName(), part.getId(), cp.getTerm(), cp.getIndex());
                             }
 
-                            // Break out of the loop so that the iteration can start afresh on the modified list.
-                            break;
-                        } else {
-                            LOGGER.warn("Throwing error with code: {}", cdcException.getCDCError().getCode());
-                            throw cdcException;
-                        }
-                      }
-
-                        LOGGER.debug("Processing {} records from getChanges call",
-                                response.getResp().getCdcSdkProtoRecordsList().size());
-                        for (CdcService.CDCSDKProtoRecordPB record : response
-                                .getResp()
-                                .getCdcSdkProtoRecordsList()) {
-                            CdcService.RowMessage m = record.getRowMessage();
-                            YbProtoReplicationMessage message = new YbProtoReplicationMessage(
-                                    m, this.yugabyteDBTypeRegistry);
-
-                            // Ignore safepoint record as they are not meant to be processed here.
-                            if (m.getOp() == Op.SAFEPOINT) {
-                                continue;
+                            // Check again if the thread has been interrupted.
+                            if (!context.isRunning()) {
+                                LOGGER.info("Connector has been stopped");
+                                break;
                             }
 
-                            String pgSchemaNameInRecord = m.getPgschemaName();
+                            GetChangesResponse response = null;
 
-                            // This is a hack to skip tables in case of colocated tables
-                            TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-                            if (!message.isTransactionalMessage()
-                                  && !filters.tableFilter().isIncluded(tempTid)) {
-                                LOGGER.info("Skipping a record for table {} because it was not included", tempTid.table());
-                                continue;
-                            }
-
-                            // TODO: Rename to Checkpoint, since OpId is misleading.
-                            // This is the checkpoint which will be stored in Kafka and will be used for explicit checkpointing.
-                            final OpId lsn = new OpId(record.getFromOpId().getTerm(),
-                                    record.getFromOpId().getIndex(),
-                                    record.getFromOpId().getWriteIdKey().toByteArray(),
-                                    record.getFromOpId().getWriteId(),
-                                    record.getRowMessage().getCommitTime() - 1);
-
-                            if (message.isLastEventForLsn()) {
-                                lastCompletelyProcessedLsn = lsn;
+                            if (schemaNeeded.get(part.getId())) {
+                                LOGGER.debug("Requesting schema for tablet: {}", tabletId);
                             }
 
                             try {
-                                // Tx BEGIN/END event
-                                if (message.isTransactionalMessage()) {
-                                    if (!connectorConfig.shouldProvideTransactionMetadata()) {
-                                        LOGGER.debug("Received transactional message {}", record);
-                                        // Don't skip on BEGIN message as it would flush LSN for the whole transaction
-                                        // too early
+                                response = syncClient.getChangesCDCSDK(
+                                        table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
+                                        cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
+                                        explicitCheckpoint,
+                                        tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part));
+
+                                tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
+                            } catch (CDCErrorException cdcException) {
+                                // Check if exception indicates a tablet split.
+                                LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
+                                if (cdcException.getCDCError().getCode() == Code.TABLET_SPLIT || cdcException.getCDCError().getCode() == Code.INVALID_REQUEST) {
+                                    LOGGER.info("Encountered a tablet split on tablet {}, handling it gracefully", tabletId);
+                                    if (LOGGER.isDebugEnabled()) {
+                                        cdcException.printStackTrace();
+                                    }
+
+                                    if (taskContext.shouldEnableExplicitCheckpointing()) {
+                                        OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
+
+                                        // If explicit checkpointing is enabled then we should check if we have the explicit checkpoint
+                                        // the same as from_op_id, if yes then handle tablet split directly, if not, add the partition ID
+                                        // (table.tablet) to be processed later.
+                                        if (explicitCheckpoint != null && (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint))) {
+                                            LOGGER.info("Explicit checkpoint same as last seen record's checkpoint, handling tablet split immediately for partition {}, explicit checkpoint {}:{}:{} lastRecordCheckpoint: {}.{}.{}",
+                                                    part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), explicitCheckpoint.getTime(), lastRecordCheckpoint.getTerm(), lastRecordCheckpoint.getIndex(), lastRecordCheckpoint.getTime());
+
+                                            handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
+                                        } else {
+                                            // Add the tablet for being processed later, this will mark the tablet as locked. There is a chance that explicit checkpoint may
+                                            // be null, in that case, just to avoid NullPointerException in the log, simply log a null value.
+                                            final String explicitString = (explicitCheckpoint == null) ? null : (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex() + ":" + explicitCheckpoint.getTime());
+                                            LOGGER.info("Adding partition {} to wait-list since the explicit checkpoint ({}) and last seen record's checkpoint ({}.{}.{}) are not the same",
+                                                    part.getId(), explicitString, lastRecordCheckpoint.getTerm(), lastRecordCheckpoint.getIndex(), lastRecordCheckpoint.getTime());
+                                            splitTabletsWaitingForCallback.add(part.getId());
+                                        }
+                                    } else {
+                                        handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
+                                    }
+
+                                    // Break out of the loop so that the iteration can start afresh on the modified list.
+                                    break;
+                                } else {
+                                    LOGGER.warn("Throwing error with code: {}", cdcException.getCDCError().getCode());
+                                    throw cdcException;
+                                }
+                            }
+
+                            LOGGER.debug("Processing {} records from getChanges call",
+                                    response.getResp().getCdcSdkProtoRecordsList().size());
+                            for (CdcService.CDCSDKProtoRecordPB record : response
+                                    .getResp()
+                                    .getCdcSdkProtoRecordsList()) {
+                                CdcService.RowMessage m = record.getRowMessage();
+                                YbProtoReplicationMessage message = new YbProtoReplicationMessage(
+                                        m, this.yugabyteDBTypeRegistry);
+
+                                // Ignore safepoint record as they are not meant to be processed here.
+                                if (m.getOp() == Op.SAFEPOINT) {
+                                    continue;
+                                }
+
+                                String pgSchemaNameInRecord = m.getPgschemaName();
+
+                                // This is a hack to skip tables in case of colocated tables
+                                TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                if (!message.isTransactionalMessage()
+                                        && !filters.tableFilter().isIncluded(tempTid)) {
+                                    LOGGER.info("Skipping a record for table {} because it was not included", tempTid.table());
+                                    continue;
+                                }
+
+                                // TODO: Rename to Checkpoint, since OpId is misleading.
+                                // This is the checkpoint which will be stored in Kafka and will be used for explicit checkpointing.
+                                final OpId lsn = new OpId(record.getFromOpId().getTerm(),
+                                        record.getFromOpId().getIndex(),
+                                        record.getFromOpId().getWriteIdKey().toByteArray(),
+                                        record.getFromOpId().getWriteId(),
+                                        record.getRowMessage().getCommitTime() - 1);
+
+                                if (message.isLastEventForLsn()) {
+                                    lastCompletelyProcessedLsn = lsn;
+                                }
+
+                                try {
+                                    // Tx BEGIN/END event
+                                    if (message.isTransactionalMessage()) {
+                                        if (!connectorConfig.shouldProvideTransactionMetadata()) {
+                                            LOGGER.debug("Received transactional message {}", record);
+                                            // Don't skip on BEGIN message as it would flush LSN for the whole transaction
+                                            // too early
+                                            if (message.getOperation() == Operation.BEGIN) {
+                                                LOGGER.debug("LSN in case of BEGIN is " + lsn);
+
+                                                recordsInTransactionalBlock.put(part.getId(), 0);
+                                                beginCountForTablet.merge(part.getId(), 1, Integer::sum);
+                                            }
+                                            if (message.getOperation() == Operation.COMMIT) {
+                                                LOGGER.debug("LSN in case of COMMIT is " + lsn);
+                                                offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                                                        String.valueOf(message.getTransactionId()), null, message.getRecordTime());
+
+                                                if (recordsInTransactionalBlock.containsKey(part.getId())) {
+                                                    if (recordsInTransactionalBlock.get(part.getId()) == 0) {
+                                                        LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                                message.getTransactionId(), lsn, part.getId());
+                                                    } else {
+                                                        LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
+                                                                message.getTransactionId(), lsn, part.getId(), recordsInTransactionalBlock.get(part.getId()));
+                                                    }
+                                                } else if (beginCountForTablet.get(part.getId()).intValue() == 0) {
+                                                    throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");
+                                                }
+
+                                                recordsInTransactionalBlock.remove(part.getId());
+                                                beginCountForTablet.merge(part.getId(), -1, Integer::sum);
+                                            }
+                                            continue;
+                                        }
+
                                         if (message.getOperation() == Operation.BEGIN) {
                                             LOGGER.debug("LSN in case of BEGIN is " + lsn);
+                                            dispatcher.dispatchTransactionStartedEvent(part, message.getTransactionId(), offsetContext);
 
                                             recordsInTransactionalBlock.put(part.getId(), 0);
                                             beginCountForTablet.merge(part.getId(), 1, Integer::sum);
-                                        }
-                                        if (message.getOperation() == Operation.COMMIT) {
+                                        } else if (message.getOperation() == Operation.COMMIT) {
                                             LOGGER.debug("LSN in case of COMMIT is " + lsn);
                                             offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                     String.valueOf(message.getTransactionId()), null, message.getRecordTime());
+                                            dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
 
                                             if (recordsInTransactionalBlock.containsKey(part.getId())) {
                                                 if (recordsInTransactionalBlock.get(part.getId()) == 0) {
                                                     LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
-                                                                message.getTransactionId(), lsn, part.getId());
+                                                            message.getTransactionId(), lsn, part.getId());
                                                 } else {
                                                     LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
-                                                                 message.getTransactionId(), lsn, part.getId(), recordsInTransactionalBlock.get(part.getId()));
+                                                            message.getTransactionId(), lsn, part.getId(), recordsInTransactionalBlock.get(part.getId()));
                                                 }
                                             } else if (beginCountForTablet.get(part.getId()).intValue() == 0) {
                                                 throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");
@@ -615,148 +611,116 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             recordsInTransactionalBlock.remove(part.getId());
                                             beginCountForTablet.merge(part.getId(), -1, Integer::sum);
                                         }
-                                        continue;
-                                    }
+                                        maybeWarnAboutGrowingWalBacklog(true);
+                                    } else if (message.isDDLMessage()) {
+                                        LOGGER.debug("Received DDL message {}", message.getSchema().toString()
+                                                + " the table is " + message.getTable());
 
-                                    if (message.getOperation() == Operation.BEGIN) {
-                                        LOGGER.debug("LSN in case of BEGIN is " + lsn);
-                                        dispatcher.dispatchTransactionStartedEvent(part, message.getTransactionId(), offsetContext);
+                                        // If a DDL message is received for a tablet, we do not need its schema again
+                                        schemaNeeded.put(part.getId(), Boolean.FALSE);
 
-                                        recordsInTransactionalBlock.put(part.getId(), 0);
-                                        beginCountForTablet.merge(part.getId(), 1, Integer::sum);
+                                        TableId tableId = null;
+                                        if (message.getOperation() != Operation.NOOP) {
+                                            tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                            Objects.requireNonNull(tableId);
+                                        }
+                                        // Getting the table with the help of the schema.
+                                        Table t = schema.tableForTablet(tableId, tabletId);
+                                        if (YugabyteDBSchema.shouldRefreshSchema(t, message.getSchema())) {
+                                            // If we fail to achieve the table, that means we have not specified correct schema information,
+                                            // now try to refresh the schema.
+                                            if (t == null) {
+                                                LOGGER.info("Registering the schema for table {} tablet {} since it was not registered already", entry.getKey(), tabletId);
+                                            } else {
+                                                LOGGER.info("Refreshing the schema for table {} tablet {} because of mismatch in cached schema and received schema", entry.getKey(), tabletId);
+                                            }
+                                            schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
+                                        }
                                     }
-                                    else if (message.getOperation() == Operation.COMMIT) {
-                                        LOGGER.debug("LSN in case of COMMIT is " + lsn);
+                                    // DML event
+                                    else {
+                                        TableId tableId = null;
+                                        if (message.getOperation() != Operation.NOOP) {
+                                            tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                            Objects.requireNonNull(tableId);
+                                        }
+                                        // If you need to print the received record, change debug level to info
+                                        LOGGER.debug("Received DML record {}", record);
+
                                         offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                                                String.valueOf(message.getTransactionId()), null, message.getRecordTime());
-                                        dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
+                                                String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
+
+                                        boolean dispatched = message.getOperation() != Operation.NOOP
+                                                && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
+                                                schema, connection, tableId, message, pgSchemaNameInRecord, tabletId, taskContext.isBeforeImageEnabled()));
 
                                         if (recordsInTransactionalBlock.containsKey(part.getId())) {
-                                            if (recordsInTransactionalBlock.get(part.getId()) == 0) {
-                                                LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
-                                                            message.getTransactionId(), lsn, part.getId());
-                                            } else {
-                                                LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
-                                                             message.getTransactionId(), lsn, part.getId(), recordsInTransactionalBlock.get(part.getId()));
-                                            }
-                                        } else if (beginCountForTablet.get(part.getId()).intValue() == 0) {
-                                            throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");
+                                            recordsInTransactionalBlock.merge(part.getId(), 1, Integer::sum);
                                         }
 
-                                        recordsInTransactionalBlock.remove(part.getId());
-                                        beginCountForTablet.merge(part.getId(), -1, Integer::sum);
+                                        maybeWarnAboutGrowingWalBacklog(dispatched);
                                     }
-                                    maybeWarnAboutGrowingWalBacklog(true);
+                                } catch (InterruptedException ie) {
+                                    LOGGER.error("Interrupted exception while processing change records", ie);
+                                    Thread.currentThread().interrupt();
                                 }
-                                else if (message.isDDLMessage()) {
-                                    LOGGER.debug("Received DDL message {}", message.getSchema().toString()
-                                            + " the table is " + message.getTable());
-
-                                    // If a DDL message is received for a tablet, we do not need its schema again
-                                    schemaNeeded.put(part.getId(), Boolean.FALSE);
-
-                                    TableId tableId = null;
-                                    if (message.getOperation() != Operation.NOOP) {
-                                        tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-                                        Objects.requireNonNull(tableId);
-                                    }
-                                    // Getting the table with the help of the schema.
-                                    Table t = schema.tableForTablet(tableId, tabletId);
-                                    if (YugabyteDBSchema.shouldRefreshSchema(t, message.getSchema())) {
-                                        // If we fail to achieve the table, that means we have not specified correct schema information,
-                                        // now try to refresh the schema.
-                                        if (t == null) {
-                                            LOGGER.info("Registering the schema for table {} tablet {} since it was not registered already", entry.getKey(), tabletId);
-                                        } else {
-                                            LOGGER.info("Refreshing the schema for table {} tablet {} because of mismatch in cached schema and received schema", entry.getKey(), tabletId);
-                                        }
-                                        schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
-                                    }
-                                }
-                                // DML event
-                                else {
-                                    TableId tableId = null;
-                                    if (message.getOperation() != Operation.NOOP) {
-                                        tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-                                        Objects.requireNonNull(tableId);
-                                    }
-                                    // If you need to print the received record, change debug level to info
-                                    LOGGER.debug("Received DML record {}", record);
-
-                                    offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                                            String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
-
-                                    boolean dispatched = message.getOperation() != Operation.NOOP
-                                            && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
-                                                    schema, connection, tableId, message, pgSchemaNameInRecord, tabletId, taskContext.isBeforeImageEnabled()));
-
-                                    if (recordsInTransactionalBlock.containsKey(part.getId())) {
-                                        recordsInTransactionalBlock.merge(part.getId(), 1, Integer::sum);
-                                    }
-
-                                    maybeWarnAboutGrowingWalBacklog(dispatched);
-                                }
-                            } catch (InterruptedException ie) {
-                                LOGGER.error("Interrupted exception while processing change records", ie);
-                                Thread.currentThread().interrupt();
                             }
-                        }
 
-                        probeConnectionIfNeeded();
+                            probeConnectionIfNeeded();
 
-                        if (!isInPreSnapshotCatchUpStreaming(offsetContext)) {
-                            // During catch up streaming, the streaming phase needs to hold a transaction open so that
-                            // the phase can stream event up to a specific lsn and the snapshot that occurs after the catch up
-                            // streaming will not lose the current view of data. Since we need to hold the transaction open
-                            // for the snapshot, this block must not commit during catch up streaming.
-                            // CDCSDK Find out why this fails : connection.commit();
-                        }
-
-                        OpId finalOpid = new OpId(
-                                response.getTerm(),
-                                response.getIndex(),
-                                response.getKey(),
-                                response.getWriteId(),
-                                response.getResp().getSafeHybridTime());
-                        offsetContext.updateWalPosition(part, finalOpid);
-                        offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
-
-                        // In cases where there is no transactions on the server, the response checkpoint can still move ahead and we should
-                        // also move the explicit checkpoint forward, given that it was already greater than the lsn of the last seen valid record.
-                        // Otherwise the explicit checkpoint can get stuck at older values, and upon connector restart
-                        // we will resume from an older point than necessary.
-                        if (taskContext.shouldEnableExplicitCheckpointing()) {
-                            OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
-                            if (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint)) {
-                                tabletToExplicitCheckpoint.put(part.getId(), finalOpid.toCdcSdkCheckpoint());
+                            if (!isInPreSnapshotCatchUpStreaming(offsetContext)) {
+                                // During catch up streaming, the streaming phase needs to hold a transaction open so that
+                                // the phase can stream event up to a specific lsn and the snapshot that occurs after the catch up
+                                // streaming will not lose the current view of data. Since we need to hold the transaction open
+                                // for the snapshot, this block must not commit during catch up streaming.
+                                // CDCSDK Find out why this fails : connection.commit();
                             }
-                        }
 
-                        LOGGER.debug("The final opid for tablet {} is {}", part.getId(), finalOpid);
+                            OpId finalOpid = new OpId(
+                                    response.getTerm(),
+                                    response.getIndex(),
+                                    response.getKey(),
+                                    response.getWriteId(),
+                                    response.getResp().getSafeHybridTime());
+                            offsetContext.updateWalPosition(part, finalOpid);
+                            offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
+
+                            // In cases where there is no transactions on the server, the response checkpoint can still move ahead and we should
+                            // also move the explicit checkpoint forward, given that it was already greater than the lsn of the last seen valid record.
+                            // Otherwise the explicit checkpoint can get stuck at older values, and upon connector restart
+                            // we will resume from an older point than necessary.
+                            if (taskContext.shouldEnableExplicitCheckpointing()) {
+                                OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
+                                if (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint)) {
+                                    tabletToExplicitCheckpoint.put(part.getId(), finalOpid.toCdcSdkCheckpoint());
+                                }
+                            }
+
+                            LOGGER.debug("The final opid for tablet {} is {}", part.getId(), finalOpid);
+                        }
+                        // Reset the retry count, because if flow reached at this point, it means that the connection
+                        // has succeeded
+                        retryCount = 0;
                     }
-                    // Reset the retry count, because if flow reached at this point, it means that the connection
-                    // has succeeded
-                    retryCount = 0;
-                }
-            } catch (Exception e) {
-                ++retryCount;
-                // If the retry limit is exceeded, log an error with a description and throw the exception.
-                if (retryCount > connectorConfig.maxConnectorRetries()) {
-                    LOGGER.error("Too many errors while trying to get the changes from server for tablet: {}. All {} retries failed.", curTabletId, connectorConfig.maxConnectorRetries());
-                    throw e;
-                }
+                } catch (Exception e) {
+                    ++retryCount;
+                    // If the retry limit is exceeded, log an error with a description and throw the exception.
+                    if (retryCount > connectorConfig.maxConnectorRetries()) {
+                        LOGGER.error("Too many errors while trying to get the changes from server for tablet: {}. All {} retries failed.", curTabletId, connectorConfig.maxConnectorRetries());
+                        throw e;
+                    }
 
-                // If there are retries left, perform them after the specified delay.
-                LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
-                        retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e);
+                    // If there are retries left, perform them after the specified delay.
+                    LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
+                            retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e);
 
-                try {
-                    final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-                    retryMetronome.pause();
-                }
-                catch (InterruptedException ie) {
-                    LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-                    Thread.currentThread().interrupt();
+                    try {
+                        final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+                        retryMetronome.pause();
+                    } catch (InterruptedException ie) {
+                        LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
+                        Thread.currentThread().interrupt();
+                    }
                 }
             }
         }
@@ -783,7 +747,7 @@ public class YugabyteDBStreamingChangeEventSource implements
      * @throws Exception if we receive any other error than the one for tablet split upon calling
      * GetChanges
      */
-    protected void setCheckpointWithGetChanges(YBTable ybTable, YBPartition partition,
+    protected void setCheckpointWithGetChanges(YBClient syncClient, YBTable ybTable, YBPartition partition,
                                                OpId fromOpId, CdcSdkCheckpoint explicitCheckpoint,
                                                boolean schemaNeeded, long tabletSafeTime,
                                                int walSegmentIndex) throws Exception {
@@ -975,7 +939,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
-    protected void handleTabletSplit(String splitTabletId,
+    protected void handleTabletSplit(YBClient syncClient, String splitTabletId,
                                      List<Pair<String,String>> tabletPairList,
                                      YugabyteDBOffsetContext offsetContext,
                                      String streamId,
@@ -986,10 +950,10 @@ public class YugabyteDBStreamingChangeEventSource implements
         Objects.requireNonNull(entryToBeDeleted);
 
         String tableId = entryToBeDeleted.getKey();
-
+        YBTable ybTable = syncClient.openTableByUUID(tableId);
         GetTabletListToPollForCDCResponse getTabletListResponse =
-          getTabletListResponseWithRetry(
-              this.syncClient.openTableByUUID(tableId),
+          getTabletListResponseWithRetry(syncClient,
+              ybTable,
               streamId,
               tableId,
               splitTabletId);
@@ -1036,7 +1000,7 @@ public class YugabyteDBStreamingChangeEventSource implements
      * @return {@link GetTabletListToPollForCDCResponse} containing the list of child tablets
      * @throws Exception when the retry limit has been hit or the metronome pause is interrupted
      */
-    private GetTabletListToPollForCDCResponse getTabletListResponseWithRetry(
+    private GetTabletListToPollForCDCResponse getTabletListResponseWithRetry(YBClient syncClient,
         YBTable ybTable, String streamId, String tableId, String splitTabletId) throws Exception {
         short retryCount = 0;
         while (retryCount <= connectorConfig.maxConnectorRetries()) {
@@ -1044,7 +1008,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // Note that YBClient also retries internally if it encounters an error which can
                 // be retried.
                 GetTabletListToPollForCDCResponse response =
-                    this.syncClient.getTabletListToPollForCdc(
+                    syncClient.getTabletListToPollForCdc(
                         ybTable,
                         streamId,
                         tableId,

@@ -51,21 +51,33 @@ public class YugabyteDBTablePoller extends Thread {
   @Override
   public void run() {
     LOGGER.info("Starting thread to monitor the tables");
-    while (shutdownLatch.getCount() > 0) {
-      if (areThereNewTablesInStream()) {
-        this.connectorContext.requestTaskReconfiguration();
-      }
-
-      try {
-        LOGGER.debug("Waiting for {} ms to poll again for new tables", pollMs);
-        boolean shuttingDown = shutdownLatch.await(pollMs, TimeUnit.MILLISECONDS);
-        if (shuttingDown) {
-          return;
+    try {
+      while (shutdownLatch.getCount() > 0) {
+        if (areThereNewTablesInStream()) {
+          this.connectorContext.requestTaskReconfiguration();
         }
-      } catch (InterruptedException ie) {
-        LOGGER.error("Unexpected interrupted exception, ignoring", ie);
+        try {
+          LOGGER.debug("Waiting for {} ms to poll again for new tables", pollMs);
+          boolean shuttingDown = shutdownLatch.await(pollMs, TimeUnit.MILLISECONDS);
+          if (shuttingDown) {
+            return;
+          }
+        } catch (InterruptedException ie) {
+          LOGGER.error("Unexpected interrupted exception, ignoring", ie);
+          Thread.currentThread().interrupt();
+        }
+      }
+    } finally {
+      if (this.ybClient != null) {
+        LOGGER.info("Closing the ybclient in the Poller thread.");
+        try {
+          this.ybClient.close();
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
       }
     }
+
   }
 
   /**
