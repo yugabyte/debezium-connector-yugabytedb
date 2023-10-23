@@ -60,10 +60,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     protected final Clock clock;
     private final Snapshotter snapshotter;
     private final YugabyteDBConnection connection;
-
-    private final AsyncYBClient asyncClient;
     private final YBClient syncClient;
-
     private OpId lastCompletelyProcessedLsn;
 
     private YugabyteDBTypeRegistry yugabyteDbTypeRegistry;
@@ -94,7 +91,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.connection = connection;
         this.snapshotProgressListener = snapshotProgressListener;
 
-        this.asyncClient = new AsyncYBClient.AsyncYBClientBuilder(connectorConfig.masterAddresses())
+        AsyncYBClient asyncClient = new AsyncYBClient.AsyncYBClientBuilder(connectorConfig.masterAddresses())
             .defaultAdminOperationTimeoutMs(connectorConfig.adminOperationTimeoutMs())
             .defaultOperationTimeoutMs(connectorConfig.operationTimeoutMs())
             .defaultSocketReadTimeoutMs(connectorConfig.socketReadTimeoutMs())
@@ -105,7 +102,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             .sleepTime(connectorConfig.rpcRetrySleepTime())
             .build();
         
-        this.syncClient = new YBClient(this.asyncClient);
+        this.syncClient = new YBClient(asyncClient);
 
         this.yugabyteDbTypeRegistry = taskContext.schema().getTypeRegistry();
         this.tabletToExplicitCheckpoint = new HashMap<>();
