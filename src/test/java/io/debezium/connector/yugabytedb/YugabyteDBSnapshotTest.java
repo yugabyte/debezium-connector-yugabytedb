@@ -16,6 +16,7 @@ import org.yb.client.YBTable;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -627,6 +628,106 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
             // Increment startIdx for next record verification.
             ++startIdx;
         }
+    }
+
+    @Test
+    public void snapshotShouldNotBeAffectedByDroppingUnrelatedTables() throws Exception {
+        /* The objective of the test is to verify that when an unrelated table is dropped, it
+           should not cause any harm to the existing flow. At the same time, if tablet split
+           occurs, we should ensure that the parent doesn't get deleted before we start
+           consuming from the children, and when it does, if the connector restarts it 
+           should not take the snapshot on the children in any situation. The test performs
+           the following steps:
+           1. Creates 3 tables: t1, t2 and t3
+           2. Starts streaming on table t1 only
+           3. We set a static flag to wait before getting children - this will ensure that we
+              wait 60s after receiving tablet split and before asking for the children
+           4. Insert some records in t1 and start the connector in snapshot mode
+           5. Drop table t2
+           6. Verify that we have consumed snapshot records
+           7. Restart the connector
+           8. Ensure that we are not receiving any record
+         */
+        TestHelper.dropAllSchemas();
+        TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE t2 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE t3 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false, false);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
+
+        YugabyteDBStreamingChangeEventSource.TEST_WAIT_BEFORE_GETTING_CHILDREN = true;
+
+        int recordsCount = 50;
+        String insertFormat = "INSERT INTO t1 VALUES (%d, 'value for split table');";
+        for (int i = 0; i < recordsCount; ++i) {
+            TestHelper.execute(String.format(insertFormat, i));
+        }
+
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        // Drop another unrelated table.
+        LOGGER.info("Dropping table t2");
+        TestHelper.execute("DROP TABLE t2;");
+        LOGGER.info("Waiting 10s after dropping table t2");
+        TestHelper.waitFor(Duration.ofSeconds(10));
+
+        YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
+        YBTable table = TestHelper.getYbTable(ybClient, "t1");
+        
+        // Verify that there is just a single tablet.
+        Set<String> tablets = ybClient.getTabletUUIDs(table);
+        int tabletCountBeforeSplit = tablets.size();
+        assertEquals(1, tabletCountBeforeSplit);
+
+        // Compact the table to ready it for splitting.
+        ybClient.flushTable(table.getTableId());
+
+        // Wait for 20s for the table to be flushed.
+        TestHelper.waitFor(Duration.ofSeconds(20));
+
+        // Split the tablet. There is just one tablet so it is safe to assume that the iterator will
+        // return just the desired tablet.
+        ybClient.splitTablet(tablets.iterator().next());
+
+        // Wait till there are 2 tablets for the table.
+        TestHelper.waitForTablets(ybClient, table, 2);
+
+        LOGGER.info("Dummy wait to see the logs in connector");
+        TestHelper.waitFor(Duration.ofSeconds(120));
+
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, recordsCount);
+
+        assertEquals(recordsCount, records.size());
+
+        // Also verify all of them are snapshot records.
+        for (SourceRecord record : records) {
+            assertEquals("r", TestHelper.getOpValue(record));
+        }
+
+        // Stop the connector, wait till it stops and then restart.
+        stopConnector();
+
+        Awaitility.await()
+            .pollDelay(Duration.ofSeconds(1))
+            .atMost(Duration.ofSeconds(60))
+            .until(() -> {
+                return engine == null;
+            });
+
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        // No record should be consumed now.
+        for (int i = 0; i < 10; ++i) {
+            assertNoRecordsToConsume();
+            TestHelper.waitFor(Duration.ofSeconds(2));
+        }
+
+        YugabyteDBStreamingChangeEventSource.TEST_WAIT_BEFORE_GETTING_CHILDREN = false;
     }
 
     /**
