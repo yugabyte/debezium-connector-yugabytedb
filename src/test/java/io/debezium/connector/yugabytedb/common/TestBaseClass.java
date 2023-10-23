@@ -196,6 +196,17 @@ public class TestBaseClass extends AbstractConnectorTest {
     });
   }
 
+  protected void restartConnector() throws InterruptedException {
+      engineExecutor.shutdownNow();
+      this.engineExecutor.awaitTermination(1000, TimeUnit.MILLISECONDS);
+
+      engineExecutor = Executors.newFixedThreadPool(1);
+      engineExecutor.submit(() -> {
+          LoggingContext.forConnector(getClass().getSimpleName(), "", "engine");
+          engine.run();
+      });
+  }
+
   protected int consumeAvailableRecords(Consumer<SourceRecord> recordConsumer) {
     List<SourceRecord> records = new ArrayList<>();
     linesConsumed.drainTo(records);
@@ -282,7 +293,7 @@ public class TestBaseClass extends AbstractConnectorTest {
   }
 
   protected void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
-    waitAndFailIfCannotConsume(records, recordsCount, 3000 * 1000 /* 5 minutes */);
+    waitAndFailIfCannotConsume(records, recordsCount, 60 * 1000 /* 5 minutes */);
   }
 
   protected class SourceRecords {

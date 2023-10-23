@@ -48,7 +48,7 @@
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
         <!-- TODO Suranjan change this -->
-        <version.ybclient>0.8.67-SNAPSHOT</version.ybclient>
+        <version.ybclient>0.8.68-SNAPSHOT</version.ybclient>
         <version.gson>2.8.9</version.gson>
 
         <!--

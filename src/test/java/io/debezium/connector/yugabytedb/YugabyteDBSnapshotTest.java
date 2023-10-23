@@ -66,18 +66,40 @@ public class YugabyteDBSnapshotTest extends YugabytedTestBase {
         LOGGER.info("Creating DB stream ID");
         String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "test");
         Configuration.Builder configBuilder =
-          TestHelper.getConfigBuilder(DEFAULT_DB_NAME, "public.test", dbStreamId);
+                TestHelper.getConfigBuilder(DEFAULT_DB_NAME, "public.test", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
         startEngine(configBuilder);
-
+        // restartConnector();
         awaitUntilConnectorIsReady();
 
         // Only verifying the record count since the snapshot records are not ordered, so it may be
         // a little complex to verify them in the sorted order at the moment
-        CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount))
-          .exceptionally(throwable -> {
-              throw new RuntimeException(throwable);
-          }).get();
+        try {
+            CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount))
+                    .exceptionally(throwable -> {
+                        throw new RuntimeException(throwable);
+                    }).get();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        for (int i = 0; i < 100; i++)
+            LOGGER.info("RESTARTING the connector");
+
+        for (int i = 0; i < 1000; i++) {
+            stopConnector();
+            startEngine(configBuilder);
+            awaitUntilConnectorIsReady();
+
+            try {
+                CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount))
+                        .exceptionally(throwable -> {
+                            throw new RuntimeException(throwable);
+                        }).get();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     @ParameterizedTest

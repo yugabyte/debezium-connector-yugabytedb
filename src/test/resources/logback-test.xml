@@ -42,19 +42,19 @@
         additivity="false">
         <appender-ref ref="CONSOLE" />
     </logger>
-    <logger name="com.stumbleupon.async.Deferred" level="info"
+    <logger name="com.stumbleupon.async.Deferred" level="debug"
         additivity="false">
         <appender-ref ref="CONSOLE" />
     </logger>
-    <logger name="org.yb.client.TabletClient" level="info"
+    <logger name="org.yb.client.TabletClient" level="debug"
         additivity="false">
         <appender-ref ref="CONSOLE" />
     </logger>
-    <logger name="org.yb.client.AsyncYBClient" level="info"
+    <logger name="org.yb.client.AsyncYBClient" level="debug"
             additivity="false">
         <appender-ref ref="CONSOLE" />
     </logger>
-    <logger name="org.yb.client.YBClient" level="info"
+    <logger name="org.yb.client.YBClient" level="debug"
             additivity="false">
         <appender-ref ref="CONSOLE" />
     </logger>
