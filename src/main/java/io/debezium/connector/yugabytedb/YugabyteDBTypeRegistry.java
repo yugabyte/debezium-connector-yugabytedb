@@ -111,7 +111,11 @@ public class YugabyteDBTypeRegistry {
     private final Map<String, YugabyteDBType> nameToType;
     private final Map<Integer, YugabyteDBType> oidToType;
 
-    private final transient Connection connection;
+    private transient Connection connection;
+
+    private final int maxConnectionRetries = 5;
+
+    private final YugabyteDBConnection yugabyteDBConnection;
     private final transient TypeInfo typeInfo;
     private SqlTypeMapper sqlTypeMapper;
 
@@ -136,6 +140,7 @@ public class YugabyteDBTypeRegistry {
     public YugabyteDBTypeRegistry(YugabyteDBConnection connection) {
         try {
             this.connection = connection.connection();
+            this.yugabyteDBConnection = connection;
             this.oidToType = new HashMap<>();
             this.nameToType = new HashMap<>();
             typeInfo = ((BaseConnection) this.connection).getTypeInfo();
@@ -149,8 +154,10 @@ public class YugabyteDBTypeRegistry {
 
     public YugabyteDBTypeRegistry(YugabyteDBTaskConnection connection,
                                   Map<String, YugabyteDBType> nameToType,
-                                  Map<Integer, YugabyteDBType> oidToType) {
+                                  Map<Integer, YugabyteDBType> oidToType,
+                                  YugabyteDBConnection yugabyteDBConnection) {
         this.connection = connection;
+        this.yugabyteDBConnection = yugabyteDBConnection;
         typeInfo = ((BaseConnection) this.connection).getTypeInfo();
         this.oidToType = oidToType;
         this.nameToType = nameToType;
@@ -369,25 +376,41 @@ public class YugabyteDBTypeRegistry {
      * Prime the {@link YugabyteDBTypeRegistry} with all existing database types
      */
     private void prime() throws SQLException {
-        try (final Statement statement = connection.createStatement();
-                final ResultSet rs = statement.executeQuery(SQL_TYPES)) {
-            final List<YugabyteDBType.Builder> delayResolvedBuilders = new ArrayList<>();
-            while (rs.next()) {
-                YugabyteDBType.Builder builder = createTypeBuilderFromResultSet(rs);
+        int retryCount = 0;
+        while (retryCount <= maxConnectionRetries) {
+            try {
+                final List<YugabyteDBType.Builder> delayResolvedBuilders = new ArrayList<>();
+                if (retryCount > 0) {
+                    this.connection = yugabyteDBConnection.connection();
+                }
+                final Statement statement = connection.createStatement();
+                final ResultSet rs = statement.executeQuery(SQL_TYPES);
+                while (rs.next()) {
+                    YugabyteDBType.Builder builder = createTypeBuilderFromResultSet(rs);
 
-                // If the type does have have a base type, we can build/add immediately.
-                if (!builder.hasParentType()) {
-                    addType(builder.build());
-                    continue;
+                    // If the type does have have a base type, we can build/add immediately.
+                    if (!builder.hasParentType()) {
+                        addType(builder.build());
+                        continue;
+                    }
+
+                    // For types with base type mappings, they need to be delayed.
+                    delayResolvedBuilders.add(builder);
                 }
 
-                // For types with base type mappings, they need to be delayed.
-                delayResolvedBuilders.add(builder);
-            }
+                // Resolve delayed builders
+                for (YugabyteDBType.Builder builder : delayResolvedBuilders) {
+                    addType(builder.build());
+                }
+                break;
+            } catch (SQLException e) {
+                retryCount++;
 
-            // Resolve delayed builders
-            for (YugabyteDBType.Builder builder : delayResolvedBuilders) {
-                addType(builder.build());
+                if (retryCount > maxConnectionRetries) {
+                    LOGGER.error("Error while executing query on database, all the {} retries failed.", maxConnectionRetries);
+                    throw e;
+                }
+                LOGGER.warn("Error while executing query on database, will retry. Attempt {} out of {}",retryCount, maxConnectionRetries );
             }
         }
     }
@@ -420,31 +443,59 @@ public class YugabyteDBTypeRegistry {
     }
 
     private YugabyteDBType resolveUnknownType(String name) {
-        try {
-            LOGGER.trace("Type '{}' not cached, attempting to lookup from database.", name);
-
-            try (final PreparedStatement statement = connection.prepareStatement(SQL_NAME_LOOKUP)) {
+        LOGGER.trace("Type '{}' not cached, attempting to lookup from database.", name);
+        int retryCount = 0;
+        Exception exception = null;
+        while (retryCount <= maxConnectionRetries) {
+            try {
+                if (retryCount > 0) {
+                    connection = yugabyteDBConnection.connection();
+                }
+                final PreparedStatement statement = connection.prepareStatement(SQL_NAME_LOOKUP);
                 statement.setString(1, name);
                 return loadType(statement);
+            } catch (SQLException e) {
+                retryCount++;
+                exception = e;
+                if (retryCount > maxConnectionRetries) {
+                    LOGGER.error("Error while resolving unknown type, all {} retries failed", maxConnectionRetries);
+                    throw new ConnectException("Database connection failed during resolving unknown type", e);
+                }
+                LOGGER.warn("Error while resolving unknown type, will retry. Attempt {} of {}", retryCount, maxConnectionRetries);
             }
         }
-        catch (SQLException e) {
-            throw new ConnectException("Database connection failed during resolving unknown type", e);
+        if (exception != null) {
+            throw new ConnectException("Database connection failed during resolving unknown type", exception);
         }
+        return null;
     }
 
     private YugabyteDBType resolveUnknownType(int lookupOid) {
-        try {
-            LOGGER.trace("Type OID '{}' not cached, attempting to lookup from database.", lookupOid);
-
-            try (final PreparedStatement statement = connection.prepareStatement(SQL_OID_LOOKUP)) {
+        LOGGER.trace("Type OID '{}' not cached, attempting to lookup from database.", lookupOid);
+        int retryCount = 0;
+        Exception exception = null;
+        while (retryCount <= maxConnectionRetries) {
+            try {
+                if (retryCount > 0) {
+                    connection = yugabyteDBConnection.connection();
+                }
+                final PreparedStatement statement = connection.prepareStatement(SQL_OID_LOOKUP);
                 statement.setInt(1, lookupOid);
                 return loadType(statement);
+            } catch (SQLException e) {
+                retryCount++;
+                exception = e;
+                if (retryCount > maxConnectionRetries) {
+                    LOGGER.error("Error while resolving unknown type, all {} retries failed", maxConnectionRetries);
+                    throw new ConnectException("Database connection failed during resolving unknown type", e);
+                }
+                LOGGER.warn("Error while resolving unknown type, will retry. Attempt {} of {}",retryCount,maxConnectionRetries);
             }
         }
-        catch (SQLException e) {
-            throw new ConnectException("Database connection failed during resolving unknown type", e);
+        if (exception != null) {
+            throw new ConnectException("Database connection failed during resolving unknown type", exception);
         }
+        return null;
     }
 
     private YugabyteDBType loadType(PreparedStatement statement) throws SQLException {
