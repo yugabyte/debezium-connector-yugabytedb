@@ -46,6 +46,8 @@ import io.debezium.pipeline.DataChangeEvent;
  */
 public class YugabyteDBStreamingChangeEventSource implements
         StreamingChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
+    // Test only flags, DO NOT modify in the source code.
+    public static boolean TEST_WAIT_BEFORE_GETTING_CHILDREN = false;
 
     protected static final String KEEP_ALIVE_THREAD_NAME = "keep-alive";
 
@@ -986,6 +988,14 @@ public class YugabyteDBStreamingChangeEventSource implements
         Objects.requireNonNull(entryToBeDeleted);
 
         String tableId = entryToBeDeleted.getKey();
+
+        if (TEST_WAIT_BEFORE_GETTING_CHILDREN) {
+            final int secondsToWait = 60;
+            LOGGER.info("[TEST ONLY] Waiting for {} seconds before getting children for tablet {}",
+                        secondsToWait, splitTabletId);
+            final Metronome waitMetronome = Metronome.parker(Duration.ofSeconds(secondsToWait), Clock.SYSTEM);
+            waitMetronome.pause();
+        }
 
         GetTabletListToPollForCDCResponse getTabletListResponse =
           getTabletListResponseWithRetry(
