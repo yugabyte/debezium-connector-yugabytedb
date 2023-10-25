@@ -550,9 +550,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final int DEFAULT_MASTER_PORT = 7100;
     protected static final String DEFAULT_MASTER_ADDRESS = "127.0.0.1:7100";
     protected static final int DEFAULT_MAX_NUM_TABLETS = 300;
-    protected static final long DEFAULT_ADMIN_OPERATION_TIMEOUT_MS = 60000;
-    protected static final long DEFAULT_OPERATION_TIMEOUT_MS = 60000;
+    protected static final long DEFAULT_ADMIN_OPERATION_TIMEOUT_MS = 900000; //15 minutes
+    protected static final long DEFAULT_OPERATION_TIMEOUT_MS = 900000;  //15 minutes
     protected static final long DEFAULT_SOCKET_READ_TIMEOUT_MS = 60000;
+    protected static final int DEFAULT_MAX_RPC_RETRY_ATTEMPTS = 1800; // Number of retries, large enough, to last till timeout
+    protected static final int DEFAULT_RPC_RETRY_SLEEP_TIME_MS = 500;
     protected static final long DEFAULT_CDC_POLL_INTERVAL_MS = 500;
     protected static final int DEFAULT_MAX_CONNECTOR_RETRIES = 5;
     protected static final long DEFAULT_CONNECTOR_RETRY_DELAY_MS = 60000;
@@ -624,6 +626,18 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withType(Type.LONG)
             .withImportance(Importance.LOW)
             .withDefault(DEFAULT_OPERATION_TIMEOUT_MS);
+
+    public static final Field MAX_RPC_RETRY_ATTEMPTS = Field.create("max.rpc.retry.attempts")
+            .withDisplayName("Maximum number of RPC retry attempts")
+            .withType(Type.INT)
+            .withImportance(Importance.LOW)
+            .withDefault(DEFAULT_MAX_RPC_RETRY_ATTEMPTS);
+
+    public static final Field RPC_RETRY_SLEEP_TIME = Field.create("rpc.retry.sleep.time.ms")
+            .withDisplayName("The base sleep time used for back-offs during rpc retries")
+            .withType(Type.INT)
+            .withImportance(Importance.LOW)
+            .withDefault(DEFAULT_RPC_RETRY_SLEEP_TIME_MS);
 
     public static final Field SOCKET_READ_TIMEOUT_MS = Field.create("socket.read.timeout.ms")
             .withDisplayName("Socket read timeout in milliseconds")
@@ -1181,6 +1195,14 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
     public long operationTimeoutMs() {
         return getConfig().getLong(OPERATION_TIMEOUT_MS);
+    }
+
+    public int maxRPCRetryAttempts() {
+        return getConfig().getInteger(MAX_RPC_RETRY_ATTEMPTS);
+    }
+
+    public int rpcRetrySleepTime() {
+        return getConfig().getInteger(RPC_RETRY_SLEEP_TIME);
     }
 
     public long socketReadTimeoutMs() {

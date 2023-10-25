@@ -455,6 +455,8 @@ public final class TestHelper {
                 .defaultOperationTimeoutMs(YugabyteDBConnectorConfig.DEFAULT_OPERATION_TIMEOUT_MS)
                 .defaultSocketReadTimeoutMs(YugabyteDBConnectorConfig.DEFAULT_SOCKET_READ_TIMEOUT_MS)
                 .numTablets(YugabyteDBConnectorConfig.DEFAULT_MAX_NUM_TABLETS)
+                .maxRpcAttempts(YugabyteDBConnectorConfig.DEFAULT_MAX_RPC_RETRY_ATTEMPTS)
+                .sleepTime(YugabyteDBConnectorConfig.DEFAULT_RPC_RETRY_SLEEP_TIME_MS)
                 .build();
 
         return new YBClient(asyncClient);
@@ -657,6 +659,21 @@ public final class TestHelper {
             .until(() -> {
                 return true;
             });
+    }
+
+    /**
+     * Wait until we see the given number of tablets for a table
+     * @param ybClient
+     * @param table {@link YBTable} object for the table in picture
+     * @param tabletCount expected number of tablets
+     */
+    public static void waitForTablets(YBClient ybClient, YBTable table, int tabletCount) {
+        Awaitility.await()
+          .pollDelay(Duration.ofSeconds(2))
+          .atMost(Duration.ofSeconds(20))
+          .until(() -> {
+            return ybClient.getTabletUUIDs(table).size() == tabletCount;
+          });
     }
 
     /**

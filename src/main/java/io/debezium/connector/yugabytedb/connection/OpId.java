@@ -49,12 +49,28 @@ public class OpId implements Comparable<OpId> {
         this.time = 0;
     }
 
+    public String getKeyString() {
+        if (key == null) {
+            return "null";
+        }
+
+        return Base64.getEncoder().encodeToString(key);
+    }
+
+    private static byte[] parseKey(String keyString) {
+        if (keyString.equals("null")) {
+            return null;
+        }
+
+        return Base64.getDecoder().decode(keyString);
+    }
+
     public static OpId valueOf(String stringId) {
         if (stringId != null && !stringId.isEmpty()) {
             String[] arr = stringId.split(":");
             return new OpId(Long.valueOf(arr[0]),
                     Long.valueOf(arr[1]),
-                    Base64.getDecoder().decode(arr[2]),
+                    parseKey(arr[2]),
                     Integer.valueOf(arr[3]),
                     Long.valueOf(arr[4]));
         }
@@ -74,9 +90,7 @@ public class OpId implements Comparable<OpId> {
      * </pre>
      */
     public String toSerString() {
-        String keyStr = Base64.getEncoder().encodeToString(key);
-
-        return "" + term + ":" + index + ":" + keyStr + ":" + write_id + ":" + time;
+        return "" + term + ":" + index + ":" + getKeyString() + ":" + write_id + ":" + time;
     }
 
     // todo vaibhav: the ending bracket can be removed here
@@ -85,10 +99,9 @@ public class OpId implements Comparable<OpId> {
         return "" +
                 "term=" + term +
                 ", index=" + index +
-                ", key=" + Arrays.toString(key) +
+                ", key=" + getKeyString() +
                 ", write_id=" + write_id +
-                ", time=" + time +
-                '}';
+                ", time=" + time;
     }
 
     @Override

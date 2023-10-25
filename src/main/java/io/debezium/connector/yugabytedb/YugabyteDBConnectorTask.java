@@ -122,7 +122,7 @@ public class YugabyteDBConnectorTask
             // CDCSDK We can just build the type registry on the co-ordinator and then send
             // the map of Postgres Type and Oid to the Task using Config
             final YugabyteDBTypeRegistry yugabyteDBTypeRegistry = new YugabyteDBTypeRegistry(taskConnection, nameToType,
-                    oidToType);
+                    oidToType, jdbcConnection);
 
             schema = new YugabyteDBSchema(connectorConfig, yugabyteDBTypeRegistry, topicSelector,
                     valueConverterBuilder.build(yugabyteDBTypeRegistry));
