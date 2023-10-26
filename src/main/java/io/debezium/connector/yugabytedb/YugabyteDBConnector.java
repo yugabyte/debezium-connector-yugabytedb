@@ -96,7 +96,6 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             return Collections.emptyList();
         }
         String serializedNameToType = "";
-
         String serializedOidToType = "";
         try (YugabyteDBConnection connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL)) {
             YugabyteDBTypeRegistry typeRegistry = new YugabyteDBTypeRegistry(connection);

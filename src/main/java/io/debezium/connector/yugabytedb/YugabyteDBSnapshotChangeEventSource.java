@@ -173,7 +173,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             else {
                 snapshotProgressListener.snapshotAborted(partition);
             }
-
         }
     }
 
@@ -936,6 +935,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     @Override
     protected void complete(SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext) {
         snapshotter.snapshotCompleted();
+
+        // Todo Vaibhav: Close the YBClient instances now
+        // See if it can be closed anywhere else for the snapshotting tasks.
     }
 
     /**

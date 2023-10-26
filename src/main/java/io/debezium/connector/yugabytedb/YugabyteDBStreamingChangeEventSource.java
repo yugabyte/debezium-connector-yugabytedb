@@ -46,6 +46,8 @@ import io.debezium.pipeline.DataChangeEvent;
  */
 public class YugabyteDBStreamingChangeEventSource implements
         StreamingChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
+    // Test only flags, DO NOT modify in the source code.
+    public static boolean TEST_WAIT_BEFORE_GETTING_CHILDREN = false;
 
     protected static final String KEEP_ALIVE_THREAD_NAME = "keep-alive";
 
