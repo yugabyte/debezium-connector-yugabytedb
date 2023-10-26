@@ -11,6 +11,8 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.net.InetSocketAddress;
 import java.sql.SQLException;
@@ -78,6 +80,32 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
         verifyRecordCount(recordsCount);
 
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"initial", "initial_only"})
+    public void testSnapshotConsumption(String snapshotMode) throws Exception {
+        setCommitCallbackDelay(10000);
+
+        String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
+        session.execute(createKeyspace);
+
+        session.execute("create table if not exists cdctest.test_snapshot(a int primary key);");
+
+        int recordsCount = 500;
+        insertRecords(recordsCount, "cdctest", "test_snapshot");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_snapshot", false, true, BeforeImageMode.CHANGE, true);
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_snapshot", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, snapshotMode);
+
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        verifyRecordCount(recordsCount);
+        resetCommitCallbackDelay();
+    }
+
     @Test
     public void testDatatypes() throws Exception {
         String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
@@ -120,6 +148,7 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
         verifyRecordCount(recordsCount);
 
     }
+
     @Test
     public void testBeforeImageWithCQL() throws Exception {
         String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
@@ -154,6 +183,13 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
 
     private void verifyRecordCount(long recordsCount) {
         waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
+    }
+
+    private void insertRecords(int recordsCount, String keyspaceName, String tableName) {
+        String formatString = "insert into " + keyspaceName + "." +tableName + "(a) values (%d);";
+        for(int i=0; i<recordsCount; i++) {
+            session.execute(String.format(formatString, i));
+        }
     }
 
     private void assertAfterImage(SourceRecord record, Integer id, String firstName, String lastName,
