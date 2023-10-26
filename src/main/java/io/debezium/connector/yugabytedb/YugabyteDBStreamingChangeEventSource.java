@@ -106,8 +106,6 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.snapshotter = snapshotter;
         checkPointMap = new ConcurrentHashMap<>();
         this.connectionProbeTimer = ElapsedTimeStrategy.constant(Clock.system(), connectorConfig.statusUpdateInterval());
-
-        String masterAddress = connectorConfig.masterAddresses();
         yugabyteDBTypeRegistry = taskContext.schema().getTypeRegistry();
         this.queue = queue;
         this.tabletToExplicitCheckpoint = new ConcurrentHashMap<>();
@@ -420,9 +418,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
                                 OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
 
-                                if (explicitCheckpoint != null && (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint))) {
-                                    // At this position, we know we have received a callback for split tablet
-                                    // handle tablet split and delete the tablet from the waiting list.
+                        if (explicitCheckpoint != null && (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint))) {
+                            // At this position, we know we have received a callback for split tablet
+                            // handle tablet split and delete the tablet from the waiting list.
 
                                     // Call getChanges to make sure checkpoint is set on the cdc_state table.
                                     LOGGER.info("Setting explicit checkpoint is set to {}.{}", explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex());
