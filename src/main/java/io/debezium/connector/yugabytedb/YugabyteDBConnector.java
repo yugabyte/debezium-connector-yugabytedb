@@ -47,7 +47,6 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
     private static final long MAX_TIMEOUT = 10000L;
 
     private Map<String, String> props;
-    private volatile YugabyteDBConnection connection;
     private Set<String> tableIds;
     private List<Pair<String, String>> tabletIds;
     private YugabyteDBConnectorConfig yugabyteDBConnectorConfig;
@@ -96,33 +95,31 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                     " available", maxTasks);
             return Collections.emptyList();
         }
-
-        connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL);
-        final Charset databaseCharset = connection.getDatabaseCharset();
-        String charSetName = databaseCharset.name();
-
-        YugabyteDBTypeRegistry typeRegistry = new YugabyteDBTypeRegistry(connection);
-
-        Map<String, YugabyteDBType> nameToType = typeRegistry.getNameToType();
-        Map<Integer, YugabyteDBType> oidToType = typeRegistry.getOidToType();
         String serializedNameToType = "";
-        try {
-            serializedNameToType = ObjectUtil.serializeObjectToString(nameToType);
-            LOGGER.debug("The serializedNameToType " + serializedNameToType);
-            Object test = ObjectUtil.deserializeObjectFromString(serializedNameToType);
-            LOGGER.debug("The deserializedNameToType " + test);
-        } catch (IOException | ClassNotFoundException e) {
-            e.printStackTrace();
-        }
 
         String serializedOidToType = "";
-        try {
-            serializedOidToType = ObjectUtil.serializeObjectToString(oidToType);
-            LOGGER.debug("The serializedOidToType " + serializedOidToType);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        try (YugabyteDBConnection connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL)) {
+            YugabyteDBTypeRegistry typeRegistry = new YugabyteDBTypeRegistry(connection);
+            Map<String, YugabyteDBType> nameToType = typeRegistry.getNameToType();
+            Map<Integer, YugabyteDBType> oidToType = typeRegistry.getOidToType();
 
+            try {
+                serializedNameToType = ObjectUtil.serializeObjectToString(nameToType);
+                LOGGER.debug("The serializedNameToType " + serializedNameToType);
+                Object test = ObjectUtil.deserializeObjectFromString(serializedNameToType);
+                LOGGER.debug("The deserializedNameToType " + test);
+            } catch (IOException | ClassNotFoundException e) {
+                e.printStackTrace();
+            }
+
+            try {
+                serializedOidToType = ObjectUtil.serializeObjectToString(oidToType);
+                LOGGER.debug("The serializedOidToType " + serializedOidToType);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        String charSetName = Charset.forName("UTF-8").name();
         Configuration config = Configuration.from(this.props);
         Map<String, ConfigValue> results = validateAllFields(config);
 

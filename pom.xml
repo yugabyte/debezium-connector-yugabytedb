@@ -12,7 +12,7 @@
         <connection>scm:git:git@github.com:yugabyte/debezium-connector-yugabytedb.git</connection>
         <developerConnection>scm:git:git@github.com:yugabyte/debezium-connector-yugabytedb.git</developerConnection>
         <url>https://github.com/yugabyte/debezium-connector-yugabytedb</url>
-        <tag>v1.9.5.y.31</tag>
+        <tag>v1.9.5.y.33</tag>
     </scm>
 
 
