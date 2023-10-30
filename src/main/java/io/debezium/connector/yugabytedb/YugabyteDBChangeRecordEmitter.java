@@ -277,6 +277,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
             return Optional.empty();
         }
         else {
+            LOGGER.debug("refreshed DB schema to include table '{}'", tableId);
             return Optional.of(tableSchema);
         }
     }
@@ -284,6 +285,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     private void refreshTableFromDatabase(TableId tableId) {
         try {
             // Using another implementation of refresh() to take into picture the schema information too.
+            LOGGER.debug("Refreshing schema for the table {}", tableId);
             if (connectorConfig.isYSQLDbType()) {
                 schema.refresh(connection, tableId,
                         connectorConfig.skipRefreshSchemaOnMissingToastableData(),

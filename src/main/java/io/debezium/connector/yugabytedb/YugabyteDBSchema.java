@@ -361,7 +361,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                 column.jdbcType(resolveJdbcType(column.nativeType()));
                 return Optional.of(column);
             } else {
-                column.length(0);
+                column.length(0); // TODO: Set length and scale properly for Decimal and Varint
                 column.scale(0);
                 column.nativeType(resolveQLType(QLType.createFromQLTypePB(columnMetadata.getType()))); 
                 return Optional.of(column);

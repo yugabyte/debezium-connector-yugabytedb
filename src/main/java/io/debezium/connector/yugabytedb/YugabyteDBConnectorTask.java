@@ -71,7 +71,7 @@ public class YugabyteDBConnectorTask
         final Snapshotter snapshotter = connectorConfig.getSnapshotter();
         final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
 
-        LOGGER.debug("Inside task The config is " + config);
+        LOGGER.debug("The config is " + config);
 
         if (snapshotter == null) {
             throw new ConnectException("Unable to load snapshotter, if using custom snapshot mode," +

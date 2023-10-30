@@ -101,7 +101,6 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         String serializedOidToType = "";
         try (YugabyteDBConnection connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL)) {
             if (yugabyteDBConnectorConfig.isYSQLDbType()) {
-                LOGGER.info("Creating a type registry for ysql tables");
                 YugabyteDBTypeRegistry typeRegistry = new YugabyteDBTypeRegistry(connection);
                 Map<String, YugabyteDBType> nameToType = typeRegistry.getNameToType();
                 Map<Integer, YugabyteDBType> oidToType = typeRegistry.getOidToType();

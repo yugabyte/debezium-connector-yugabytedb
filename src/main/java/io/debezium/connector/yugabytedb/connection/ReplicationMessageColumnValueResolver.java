@@ -222,10 +222,10 @@ public class ReplicationMessageColumnValueResolver {
 
             case TIMESTAMP: return value.getValuepb().getTimestampValue();
             case TIME: return value.getValuepb().getTimeValue();
-            case TIMEUUID: ;return value.getValuepb().getTimeuuidValue();
+            case TIMEUUID: return value.getValuepb().getTimeuuidValue();
             case DECIMAL: return value.getValuepb().getDecimalValue();
             case DATE: return value.getValuepb().getDateValue();
-            case VARINT: return "varint";
+            case VARINT: return value.getValuepb().getVarintValue();
             case INET: return value.getValuepb().getInetaddressValue();
             case LIST: return "list";
             case MAP: return "map";
