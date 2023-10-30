@@ -146,16 +146,19 @@
             <groupId>com.yugabyte</groupId>
             <artifactId>cassandra-driver-core</artifactId>
             <version>3.10.3-yb-2</version>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>com.datastax.oss</groupId>
             <artifactId>java-driver-core</artifactId>
             <version>4.1.0</version>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>com.datastax.oss</groupId>
             <artifactId>java-driver-query-builder</artifactId>
             <version>4.1.0</version>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>

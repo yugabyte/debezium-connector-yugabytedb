@@ -1142,11 +1142,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 config,
                 config.getString(RelationalDatabaseConnectorConfig.SERVER_NAME),
                 new SystemTablesPredicate(),
-                YBClientUtils.isYSQLDatabaseType(config.getString(YugabyteDBConnectorConfig.STREAM_ID), YBClientUtils.getYbClient(config))? x -> x.schema() + "." + x.table() : x -> x.table(),
+                YBClientUtils.isYSQLStream(config.getString(YugabyteDBConnectorConfig.STREAM_ID), YBClientUtils.getYbClient(config))? x -> x.schema() + "." + x.table() : x -> x.table(),
                 DEFAULT_SNAPSHOT_FETCH_SIZE,
                 ColumnFilterMode.SCHEMA);
 
-        this.isYSQL = YBClientUtils.isYSQLDatabaseType(config.getString(YugabyteDBConnectorConfig.STREAM_ID), YBClientUtils.getYbClient(config));
+        this.isYSQL = YBClientUtils.isYSQLStream(config.getString(YugabyteDBConnectorConfig.STREAM_ID), YBClientUtils.getYbClient(config));
         this.truncateHandlingMode = TruncateHandlingMode.parse(config.getString(YugabyteDBConnectorConfig.TRUNCATE_HANDLING_MODE));
         this.consistencyMode = ConsistencyMode.parse(config.getString(YugabyteDBConnectorConfig.CONSISTENCY_MODE));
         this.logicalDecodingMessageFilter = new LogicalDecodingMessageFilter(config.getString(LOGICAL_DECODING_MESSAGE_PREFIX_INCLUDE_LIST),
@@ -1475,7 +1475,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     private class CQLTablesPredicate implements TableFilter {
         @Override
         public boolean isIncluded(TableId tableId) {
-            if(Objects.equals(tableId.catalog(), getConfig().getString(DATABASE_NAME))) {
+            if (Objects.equals(tableId.catalog(), getConfig().getString(DATABASE_NAME))) {
                 return tableIncludeList().contains(tableId.table());
             }
             return false;

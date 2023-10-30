@@ -24,7 +24,6 @@ import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService.TabletCheckpointPair;
 import org.yb.client.*;
 
-import com.datastax.oss.driver.api.core.CqlSession;
 import com.google.common.net.HostAndPort;
 
 import io.debezium.DebeziumException;

@@ -104,7 +104,7 @@ public class YBClientUtils {
 
               }
               else {
-                  //Since there is no concept of schema in CQL we will be using nameSpaceName.tableName 
+                  // Since there is no concept of schema in CQL we will be using namespaceName.tableName 
                   fqlTableName = tableInfo.getNamespace().getName() + "."
                                   + tableInfo.getName();
                   tableId = YugabyteDBSchema.parseWithKeyspace(fqlTableName, tableInfo.getNamespace().getName());
@@ -360,7 +360,7 @@ public class YBClientUtils {
               .equals(CdcService.CDCCheckpointType.EXPLICIT.name());
   }
 
-  public static Boolean isYSQLDatabaseType(String streamId, YBClient ybClient) {
+  public static Boolean isYSQLStream(String streamId, YBClient ybClient) {
     GetDBStreamInfoResponse cdcStreamInfo = null;
     ListNamespacesResponse resp = null;
     try {

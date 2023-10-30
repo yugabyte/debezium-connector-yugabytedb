@@ -17,10 +17,6 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.DataException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.cdc.CdcService.CDCSDKSchemaPB;
-
-import com.google.common.base.Optional;
-import com.google.protobuf.Option;
 
 import io.debezium.annotation.Immutable;
 import io.debezium.annotation.ThreadSafe;

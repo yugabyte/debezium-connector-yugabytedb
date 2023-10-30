@@ -110,6 +110,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
                 dispatchFilteredEvent(changeRecordEmitter.getPartition(), changeRecordEmitter.getOffset());
             } else {
                 DataCollectionSchema dataCollectionSchema = schema.schemaFor(dataCollectionId);
+
                 // TODO handle as per inconsistent schema info option
                 if (dataCollectionSchema == null) {
                     final Optional<DataCollectionSchema> replacementSchema = inconsistentSchemaHandler.handle(partition,

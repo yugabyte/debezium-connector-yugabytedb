@@ -11,6 +11,11 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
+/**
+ * Replication message column for cql tables
+ * 
+ * @author Suranjan Kumar
+ */
 public class YbProtoCqlColumnValue {
 
     private final Value.QLValuePB valuepb;

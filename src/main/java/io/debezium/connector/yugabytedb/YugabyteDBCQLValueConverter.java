@@ -6,64 +6,35 @@
 
 package io.debezium.connector.yugabytedb;
 
-import static java.time.ZoneId.systemDefault;
-
-import java.io.StringWriter;
-import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.sql.SQLException;
-import java.sql.SQLXML;
 import java.sql.Types;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
-import java.time.OffsetTime;
-import java.time.ZoneId;
 import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
 import java.time.temporal.TemporalAdjuster;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.BitSet;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.Base64.Encoder;
 import java.util.Base64;
-import java.util.stream.Collectors;
 
 import io.debezium.util.HexConverter;
-import org.apache.kafka.connect.data.Decimal;
 import org.apache.kafka.connect.data.Field;
-import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
-import org.apache.kafka.connect.errors.ConnectException;
 import org.postgresql.PGStatement;
-import org.postgresql.geometric.PGpoint;
-import org.postgresql.util.HStoreConverter;
-import org.postgresql.util.PGInterval;
-import org.postgresql.util.PGobject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.datastax.driver.core.Duration;
 import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonGenerator;
 import com.google.protobuf.ByteString;
 
 import io.debezium.config.CommonConnectorConfig.BinaryHandlingMode;
@@ -73,14 +44,7 @@ import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig.IntervalHandli
 import static io.debezium.util.NumberConversions.SHORT_FALSE;
 import static io.debezium.util.NumberConversions.BYTE_ZERO;
 
-import io.debezium.connector.yugabytedb.data.Ltree;
-import io.debezium.data.Json;
 import io.debezium.data.SpecialValueDecimal;
-import io.debezium.data.Uuid;
-import io.debezium.data.VariableScaleDecimal;
-import io.debezium.data.geometry.Geography;
-import io.debezium.data.geometry.Geometry;
-import io.debezium.data.geometry.Point;
 import io.debezium.jdbc.JdbcValueConverters.DecimalMode;
 import io.debezium.jdbc.ResultReceiver;
 import io.debezium.jdbc.TemporalPrecisionMode;
@@ -90,10 +54,9 @@ import io.debezium.relational.ValueConverter;
 import io.debezium.relational.ValueConverterProvider;
 import io.debezium.time.*;
 import io.debezium.util.NumberConversions;
-import io.debezium.util.Strings;
 
 /**
- * A provider of {@link ValueConverter}s and {@link SchemaBuilder}s for various YugabyteDB (ycql) 
+ * A provider of {@link ValueConverter}s and {@link SchemaBuilder}s for various YugabyteDB YCQL 
  * specific column types.
  *
  * It handles data type conversion for values coming from CDC stream.
@@ -171,13 +134,10 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
 
     private final TemporalAdjuster adjuster;
 
-
-
     private static final Logger logger = LoggerFactory.getLogger(YugabyteDBConnector.class);
 
 
-    public static YugabyteDBCQLValueConverter of(YugabyteDBConnectorConfig connectorConfig,
-                                              Charset databaseCharset) {
+    public static YugabyteDBCQLValueConverter of(YugabyteDBConnectorConfig connectorConfig, Charset databaseCharset) {
         return new YugabyteDBCQLValueConverter(
                 databaseCharset,
                 connectorConfig.getDecimalMode(),
@@ -606,10 +566,8 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     }
 
     /**
-     * Converts a value object for an expected type of {@link Types#CHAR}, {@link Types#VARCHAR},
-     * {@link Types#LONGVARCHAR}, {@link Types#CLOB}, {@link Types#NCHAR}, {@link Types#NVARCHAR}, {@link Types#LONGNVARCHAR},
-     * {@link Types#NCLOB}, {@link Types#DATALINK}, and {@link Types#SQLXML}.
-     *
+     * Converts a value object for an expected type of TEXT and {@link Types#VARCHAR},
+     * 
      * @param column the column definition describing the {@code data} value; never null
      * @param fieldDefn the field definition; never null
      * @param data the data object to be converted into a {@link Date Kafka Connect date} type; never null
@@ -628,18 +586,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
             data_ = data;
         }
         return convertValue(column, fieldDefn, data_, "", (r) -> {
-            if (data_ instanceof SQLXML) {
-                try {
-                    r.deliver(((SQLXML) data_).getString());
-                }
-                catch (SQLException e) {
-                    throw new RuntimeException("Error processing data from " + column.typeName() + " and column " + column +
-                            ": class=" + data_.getClass(), e);
-                }
-            }
-            else {
-                r.deliver(data_.toString());
-            }
+            r.deliver(data_.toString());
         });
     }
 
@@ -653,18 +600,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
             return convertString(column, fieldDefn, data);
         }
         return convertValue(column, fieldDefn, data_, "", (r) -> {
-            if (data_ instanceof SQLXML) {
-                try {
-                    r.deliver(((SQLXML) data_).getString());
-                }
-                catch (SQLException e) {
-                    throw new RuntimeException("Error processing data from " + column.typeName() + " and column " + column +
-                            ": class=" + data_.getClass(), e);
-                }
-            }
-            else {
-                r.deliver(data_.toString());
-            }
+            r.deliver(data_.toString());            
         });
     }
 
@@ -973,6 +909,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 r.deliver(MicroTime.toMicroOfDay(data, supportsLargeTimeValues()));
             }
             catch (IllegalArgumentException e) {
+                logger.error("Exception encountered while converting time", e);
             }
         });
     }
@@ -989,6 +926,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 r.deliver(NanoTime.toNanoOfDay(d, supportsLargeTimeValues()));
             }
             catch (IllegalArgumentException e) {
+                logger.error("Exception encountered while converting time", e);
             }
         });
     }
@@ -1000,6 +938,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 r.deliver(NanoTime.toNanoOfDay(data, supportsLargeTimeValues()));
             }
             catch (IllegalArgumentException e) {
+                logger.error("Exception encountered while converting time", e);
             }
         });
     }
@@ -1011,6 +950,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 r.deliver(new java.util.Date(Time.toMilliOfDay(data, supportsLargeTimeValues())));
             }
             catch (IllegalArgumentException e) {
+                logger.error("Exception encountered while converting time", e);
             }
         });
     }
@@ -1022,6 +962,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 r.deliver(Timestamp.toEpochMillis(data, adjuster));
             }
             catch (IllegalArgumentException e) {
+                logger.error("Exception encountered while converting timestamp", e);
             }
         });
     }
@@ -1033,6 +974,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 r.deliver(MicroTimestamp.toEpochMicros(data, adjuster));
             }
             catch (IllegalArgumentException e) {
+                logger.error("Exception encountered while converting timestamp", e);
             }
         });
     }
@@ -1044,6 +986,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 r.deliver(NanoTimestamp.toEpochNanos(data, adjuster));
             }
             catch (IllegalArgumentException e) {
+                logger.error("Exception encountered while converting timestamp", e);
             }
         });
     }
@@ -1055,6 +998,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 r.deliver(new java.util.Date(Timestamp.toEpochMillis(data, adjuster)));
             }
             catch (IllegalArgumentException e) {
+                logger.error("Exception encountered while converting timestamp", e);
             }
         });
     }

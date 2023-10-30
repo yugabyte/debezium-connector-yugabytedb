@@ -530,7 +530,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                 String pgSchemaNameInRecord = m.getPgschemaName();; 
                                 TableId tempTid;
-                                if(connectorConfig.isYSQLDbType()) {
+                                if (connectorConfig.isYSQLDbType()) {
                                     // This is a hack to skip tables in case of colocated tables
                                     tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
                                 } else {
@@ -657,7 +657,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     else {
                                         TableId tableId = null;
                                         if (message.getOperation() != Operation.NOOP) {
-                                            if(connectorConfig.isYSQLDbType()) {
+                                            if (connectorConfig.isYSQLDbType()) {
                                                 tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
                                             } else {
                                                 tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());

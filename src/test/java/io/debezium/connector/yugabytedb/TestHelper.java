@@ -86,6 +86,7 @@ public final class TestHelper {
     private static String CONTAINER_MASTER_PORT = "7100";
     private static String MASTER_ADDRESS = "127.0.0.1:7100";
     private static String DEFAULT_DATABASE_NAME = "yugabyte";
+    private static String DEFAULT_CASSANDRA_USER = "cassandra";
 
     /**
      * Key for schema parameter used to store DECIMAL/NUMERIC columns' precision.
@@ -388,7 +389,7 @@ public final class TestHelper {
                 .with(YugabyteDBConnectorConfig.DATABASE_NAME, keyspaceName)
                 .with(YugabyteDBConnectorConfig.HOSTNAME,CONTAINER_YCQL_HOST)
                 .with(YugabyteDBConnectorConfig.PORT, CONTAINER_YCQL_PORT)
-                .with(YugabyteDBConnectorConfig.USER, "cassandra")
+                .with(YugabyteDBConnectorConfig.USER, DEFAULT_CASSANDRA_USER)
                 .with(YugabyteDBConnectorConfig.PASSWORD, "Yugabyte@123")
                 .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.NEVER.getValue())
                 .with(YugabyteDBConnectorConfig.DELETE_STREAM_ON_STOP, Boolean.TRUE)

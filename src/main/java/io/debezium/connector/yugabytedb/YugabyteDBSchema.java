@@ -145,7 +145,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         if (!tabletIdToCdcsdkSchemaPB.containsKey(lookupKey) || cdcsdkSchemaPB == null) {
             tabletIdToCdcsdkSchemaPB.put(lookupKey, schemaPB);
         }
-        if(config.isYSQLDbType()) {
+
+        if (config.isYSQLDbType()) {
             readSchemaWithTablet(tables(), null, schemaName,
                 getTableFilter(), null, true, schemaPB, tableId, tabletId);
         } else {

@@ -129,16 +129,14 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
                                 return datum.toString();
                             }
                         };
-                    }
-                    else {
+                    } else {
                         final Common.QLTypePB type = datum.getCqlType();
                         final String fullType = typeInfo.map(CdcService.TypeInfo::getModifier).orElse(null);
                         return new AbstractReplicationMessageColumn(columnName, type, fullType,
                                 typeInfo.map(CdcService.TypeInfo::getValueOptional).orElse(Boolean.FALSE), hasTypeMetadata()) {
                             @Override
                             public Object getValue(PgConnectionSupplier connection, boolean includeUnknownDatatypes) {
-                                return YbProtoReplicationMessage.this.getValue(columnName, type
-                                        , datum);
+                                return YbProtoReplicationMessage.this.getValue(columnName, type, datum);
                             }
                             @Override
                             public String toString() {
