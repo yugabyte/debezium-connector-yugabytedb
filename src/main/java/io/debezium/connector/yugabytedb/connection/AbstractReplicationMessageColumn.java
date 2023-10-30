@@ -117,13 +117,12 @@ public abstract class AbstractReplicationMessageColumn implements ReplicationMes
         this.qlTypePB = null;
     }
 
-    public AbstractReplicationMessageColumn(String columnName, Common.QLTypePB type, boolean optional) {
+    public AbstractReplicationMessageColumn(String columnName, Common.QLTypePB type, String typeWithModifiers, boolean optional, boolean hasMetadata) {
         super();
         this.columnName = columnName;
         this.qlTypePB = type;
-
-        this.typeWithModifiers= "";
-        this.hasMetadata = false;
+        this.typeWithModifiers= typeWithModifiers;
+        this.hasMetadata = hasMetadata;
         this.optional = optional;
         this.type = null;
     }

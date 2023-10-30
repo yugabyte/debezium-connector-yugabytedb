@@ -361,6 +361,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                 column.jdbcType(resolveJdbcType(column.nativeType()));
                 return Optional.of(column);
             } else {
+                column.length(0);
+                column.scale(0);
                 column.nativeType(resolveQLType(QLType.createFromQLTypePB(columnMetadata.getType()))); 
                 return Optional.of(column);
             }
@@ -384,8 +386,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     private int resolveQLType(QLType type)
     {
         switch (type.getMain()) {
-            case INT8: return Types.TINYINT;
-            case INT16: return Types.SMALLINT;
+            case INT8: return Types.INTEGER;
+            case INT16: return Types.INTEGER;
             case INT32: return Types.INTEGER;
             case INT64: return Types.BIGINT;
             case STRING: return Types.VARCHAR;
@@ -394,6 +396,11 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             case DOUBLE: return Types.DOUBLE;
             case BINARY: return Types.BINARY;
             case DATE: return Types.DATE;
+            case INET: return PgOid.INET;
+            case TIME: return PgOid.TIME;
+            case TIMESTAMP: return PgOid.TIMESTAMP;  
+            case TIMEUUID: 
+            case UUID: return PgOid.UUID;
             default:
                 LOGGER.error("Invalid column type for CQL column");
                 return -1;

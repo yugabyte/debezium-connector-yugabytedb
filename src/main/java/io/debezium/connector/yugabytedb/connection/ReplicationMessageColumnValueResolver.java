@@ -210,8 +210,8 @@ public class ReplicationMessageColumnValueResolver {
             return null;
         }
         switch (type.getMain()) {
-            case INT8:value.getValuepb().getInt8Value();
-            case INT16:value.getValuepb().getInt16Value();
+            case INT8: return value.getValuepb().getInt8Value();
+            case INT16: return value.getValuepb().getInt16Value();
             case INT32: return value.getValuepb().getInt32Value();
             case INT64: return value.getValuepb().getInt64Value();
             case STRING: return value.getValuepb().getStringValue();
@@ -221,15 +221,16 @@ public class ReplicationMessageColumnValueResolver {
             case BINARY: return value.getValuepb().getBinaryValue();
 
             case TIMESTAMP: return value.getValuepb().getTimestampValue();
-            case DECIMAL: return value.getValuepb().getDecimalValue().toStringUtf8();
+            case TIME: return value.getValuepb().getTimeValue();
+            case TIMEUUID: ;return value.getValuepb().getTimeuuidValue();
+            case DECIMAL: return value.getValuepb().getDecimalValue();
             case DATE: return value.getValuepb().getDateValue();
             case VARINT: return "varint";
-            case INET: return "inet";
+            case INET: return value.getValuepb().getInetaddressValue();
             case LIST: return "list";
             case MAP: return "map";
             case SET: return "set";
-            case UUID: return "uuid";
-            case TIMEUUID: return "timeuuid";
+            case UUID: return value.getValuepb().getUuidValue();
             case FROZEN: return "frozen";
             case USER_DEFINED_TYPE: return "user_defined_type";
 

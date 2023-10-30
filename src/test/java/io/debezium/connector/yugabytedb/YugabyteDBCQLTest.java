@@ -111,7 +111,7 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
         String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
         session.execute(createKeyspace);
 
-        session.execute("create table if not exists cdctest.test_datatypes(a int primary key, b varchar, c text, d bigint, e boolean, f float, g date, h double );");
+        session.execute("create table if not exists cdctest.test_datatypes(a int primary key, b varchar, c text, d bigint, e boolean, f float, g date, h double, i smallint, j tinyint, k inet, l uuid, m timeuuid, n time, o timestamp);");
 
         String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_datatypes", false, false,BeforeImageMode.CHANGE, true);
 
@@ -122,7 +122,7 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
 
         awaitUntilConnectorIsReady();
 
-        session.execute("insert into cdctest.test_datatypes(a,b,c,d,e,f,g,h) values (2,'abc','def', 100000, false, 11.2, todate(now()),17.8);");
+        session.execute("insert into cdctest.test_datatypes(a,b,c,d,e,f,g,h,i,j,k,l,m,n,o) values (2, 'abc', 'def', 100000, false, 11.2, todate(now()), 17.8, 100, 8, '127.0.0.1', Uuid(), 123e4567-e89b-12d3-a456-426655440000, currenttime(), 1499171430000);");
         
         verifyRecordCount(recordsCount);
     }
@@ -181,6 +181,26 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
         assertAfterImage(updateRecord, 1, "VKVK", "Kushwaha", 30);
     }
 
+    @Test
+    public void testTransactions() throws Exception {
+        String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
+        session.execute(createKeyspace);
+
+        session.execute("create table if not exists cdctest.test_transaction(a int primary key) WITH transactions = { 'enabled' : true };");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_transaction", false, false,BeforeImageMode.CHANGE, true);
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_transaction", dbStreamId);
+        startEngine(configBuilder);
+
+        int recordsCount = 5;
+
+        awaitUntilConnectorIsReady();
+        executeTransaction(recordsCount, "cdctest", "test_transaction");
+
+        verifyRecordCount(recordsCount);
+    }
+
     private void verifyRecordCount(long recordsCount) {
         waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
     }
@@ -190,6 +210,15 @@ public class YugabyteDBCQLTest extends YugabytedTestBase/*YugabyteDBContainerTes
         for(int i=0; i<recordsCount; i++) {
             session.execute(String.format(formatString, i));
         }
+    }
+
+    private void executeTransaction (int recordsCount, String keyspaceName, String tableName) {
+        session.execute("start transaction;");
+        String formatString = "insert into " + keyspaceName + "." + tableName + "(a) values (%d);";
+        for(int i=0; i<recordsCount; i++) {
+            session.execute(String.format(formatString, i));
+        }
+        session.execute("commit;");
     }
 
     private void assertAfterImage(SourceRecord record, Integer id, String firstName, String lastName,

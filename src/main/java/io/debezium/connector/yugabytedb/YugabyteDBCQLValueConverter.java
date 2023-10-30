@@ -11,19 +11,20 @@ import static java.time.ZoneId.systemDefault;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.sql.SQLXML;
-import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.OffsetTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -40,6 +41,7 @@ import java.util.Map.Entry;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.Base64.Encoder;
 import java.util.Base64;
@@ -53,15 +55,16 @@ import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.postgresql.PGStatement;
 import org.postgresql.geometric.PGpoint;
-import org.postgresql.jdbc.PgArray;
 import org.postgresql.util.HStoreConverter;
 import org.postgresql.util.PGInterval;
 import org.postgresql.util.PGobject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.datastax.driver.core.Duration;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
+import com.google.protobuf.ByteString;
 
 import io.debezium.config.CommonConnectorConfig.BinaryHandlingMode;
 import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig.HStoreHandlingMode;
@@ -78,8 +81,6 @@ import io.debezium.data.VariableScaleDecimal;
 import io.debezium.data.geometry.Geography;
 import io.debezium.data.geometry.Geometry;
 import io.debezium.data.geometry.Point;
-import io.debezium.jdbc.JdbcValueConverters;
-import io.debezium.jdbc.JdbcValueConverters.BigIntUnsignedMode;
 import io.debezium.jdbc.JdbcValueConverters.DecimalMode;
 import io.debezium.jdbc.ResultReceiver;
 import io.debezium.jdbc.TemporalPrecisionMode;
@@ -100,13 +101,13 @@ import io.debezium.util.Strings;
  * @author Sumukh Phalgaonkar (sumukh.phalgaonkar@yugabyte.com)
  */
 public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
-    public static final Timestamp POSITIVE_INFINITY_TIMESTAMP = new Timestamp(PGStatement.DATE_POSITIVE_INFINITY);
+    public static final java.sql.Timestamp POSITIVE_INFINITY_TIMESTAMP = new java.sql.Timestamp(PGStatement.DATE_POSITIVE_INFINITY);
     public static final Instant POSITIVE_INFINITY_INSTANT = Conversions.toInstantFromMicros(PGStatement.DATE_POSITIVE_INFINITY);
     public static final LocalDateTime POSITIVE_INFINITY_LOCAL_DATE_TIME = LocalDateTime.ofInstant(POSITIVE_INFINITY_INSTANT, ZoneOffset.UTC);
     public static final OffsetDateTime POSITIVE_INFINITY_OFFSET_DATE_TIME = OffsetDateTime.ofInstant(Conversions.toInstantFromMillis(PGStatement.DATE_POSITIVE_INFINITY),
             ZoneOffset.UTC);
 
-    public static final Timestamp NEGATIVE_INFINITY_TIMESTAMP = new Timestamp(PGStatement.DATE_NEGATIVE_INFINITY);
+    public static final java.sql.Timestamp NEGATIVE_INFINITY_TIMESTAMP = new java.sql.Timestamp(PGStatement.DATE_NEGATIVE_INFINITY);
     public static final Instant NEGATIVE_INFINITY_INSTANT = Conversions.toInstantFromMicros(PGStatement.DATE_NEGATIVE_INFINITY);
     public static final LocalDateTime NEGATIVE_INFINITY_LOCAL_DATE_TIME = LocalDateTime.ofInstant(NEGATIVE_INFINITY_INSTANT, ZoneOffset.UTC);
     public static final OffsetDateTime NEGATIVE_INFINITY_OFFSET_DATE_TIME = OffsetDateTime.ofInstant(Conversions.toInstantFromMillis(PGStatement.DATE_NEGATIVE_INFINITY),
@@ -228,7 +229,9 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
             // values are double precision floating point number which supports 15 digits of mantissa.
             return SchemaBuilder.float64();
         case Types.DECIMAL:
-            return SpecialValueDecimal.builder(decimalMode, column.length(), 0/*column.scale().get()*/);
+            return SpecialValueDecimal.builder(decimalMode, column.length(), column.scale().get());
+        case PgOid.INET:
+        case PgOid.UUID:
         case Types.VARCHAR:
             return SchemaBuilder.string();
         case Types.BINARY:
@@ -240,6 +243,31 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 return Date.builder();
             }
             return org.apache.kafka.connect.data.Date.builder();
+        case PgOid.TIME:
+            if (adaptiveTimeMicrosecondsPrecisionMode) {
+                return MicroTime.builder();
+            }
+            if (adaptiveTimePrecisionMode) {
+                if (getTimePrecision(column) <= 3) {
+                    return NanoTime.builder();
+                }
+                if (getTimePrecision(column) <= 6) {
+                    return MicroTime.builder();
+                }
+                return NanoTime.builder();
+            }
+            return org.apache.kafka.connect.data.Time.builder();
+        case PgOid.TIMESTAMP:
+            if (adaptiveTimePrecisionMode || adaptiveTimeMicrosecondsPrecisionMode) {
+                if (getTimePrecision(column) <= 3) {
+                    return Timestamp.builder();
+                }
+                if (getTimePrecision(column) <= 6) {
+                    return MicroTimestamp.builder();
+                }
+                return NanoTimestamp.builder();
+            }
+            return org.apache.kafka.connect.data.Timestamp.builder();
         default :
             logger.error("Required type not found in YugabyteDBCQLValueConverter SchemaBuilder ");
             return null;
@@ -270,6 +298,10 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 return (data) -> convertNumeric(column, fieldDefn, data);
             case Types.DECIMAL:
                 return (data) -> convertDecimal(column, fieldDefn, data);
+            case PgOid.INET:
+                return (data) -> convertInet(column, fieldDefn, data);
+            case PgOid.UUID:
+                return (data) -> convertUUID(column, fieldDefn, data);
             case Types.VARCHAR:
                 return (data) -> convertString(column, fieldDefn, data);
             case Types.BINARY:
@@ -281,6 +313,19 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                     return (data) -> convertDateToEpochDays(column, fieldDefn, data);
                 }
                 return (data) -> convertDateToEpochDaysAsDate(column, fieldDefn, data);
+            case PgOid.TIME:
+                return (data) -> convertTime(column, fieldDefn, data);
+            case PgOid.TIMESTAMP:
+                if (adaptiveTimePrecisionMode || adaptiveTimeMicrosecondsPrecisionMode) {
+                    if (getTimePrecision(column) <= 3) {
+                        return data -> convertTimestampToEpochMillis(column, fieldDefn, data);
+                    }
+                    if (getTimePrecision(column) <= 6) {
+                        return data -> convertTimestampToEpochMicros(column, fieldDefn, data);
+                    }
+                    return (data) -> convertTimestampToEpochNanos(column, fieldDefn, data);
+                }
+                return (data) -> convertTimestampToEpochMillisAsDate(column, fieldDefn, data);
             default:
                 logger.error("Required type not found in YugabyteDBCQLValueConverter Converter ");
                 return null;
@@ -289,7 +334,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     }
 
     /**
-     * Converts a value object for an expected JDBC type of {@link Types#TINYINT}.
+     * Converts a value object for an expected type of {@link Types#TINYINT}.
      *
      * @param column the column definition describing the {@code data} value; never null
      * @param fieldDefn the field definition; never null
@@ -302,7 +347,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     }
 
     /**
-     * Converts a value object for an expected JDBC type of {@link Types#SMALLINT}.
+     * Converts a value object for an expected type of {@link Types#SMALLINT}.
      *
      * @param column the column definition describing the {@code data} value; never null
      * @param fieldDefn the field definition; never null
@@ -313,7 +358,11 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     protected Object convertSmallInt(Column column, Field fieldDefn, Object data) {
         return convertValue(column, fieldDefn, data, SHORT_FALSE, (r) -> {
             if (data instanceof Short) {
-                r.deliver(data);
+                Short value = (Short) data;
+                r.deliver(Short.valueOf(value.shortValue()));
+            } else if (data instanceof Byte) {
+                Byte value  = (Byte) data;
+                r.deliver(Byte.valueOf(value.byteValue()));
             }
             else if (data instanceof Number) {
                 Number value = (Number) data;
@@ -329,7 +378,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     }
 
     /**
-     * Converts a value object for an expected JDBC type of {@link Types#INTEGER}.
+     * Converts a value object for an expected type of {@link Types#INTEGER}.
      *
      * @param column the column definition describing the {@code data} value; never null
      * @param fieldDefn the field definition; never null
@@ -356,7 +405,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     }
 
     /**
-     * Converts a value object for an expected JDBC type of {@link Types#INTEGER}.
+     * Converts a value object for an expected type of {@link Types#INTEGER}.
      *
      * @param column the column definition describing the {@code data} value; never null
      * @param fieldDefn the field definition; never null
@@ -383,7 +432,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     }
 
     /**
-     * Converts a value object for an expected JDBC type of {@link Types#FLOAT}.
+     * Converts a value object for an expected type of {@link Types#FLOAT}.
      *
      * @param column the column definition describing the {@code data} value; never null
      * @param fieldDefn the field definition; never null
@@ -396,7 +445,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     }
 
     /**
-     * Converts a value object for an expected JDBC type of {@link Types#DOUBLE}.
+     * Converts a value object for an expected type of {@link Types#DOUBLE}.
      *
      * @param column the column definition describing the {@code data} value; never null
      * @param fieldDefn the field definition; never null
@@ -424,7 +473,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     }
 
     /**
-     * Converts a value object for an expected JDBC type of {@link Types#REAL}.
+     * Converts a value object for an expected type of {@link Types#REAL}.
      *
      * @param column the column definition describing the {@code data} value; never null
      * @param fieldDefn the field definition; never null
@@ -449,7 +498,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     }
 
     /**
-     * Converts a value object for an expected JDBC type of {@link Types#NUMERIC}.
+     * Converts a value object for an expected type of {@link Types#NUMERIC}.
      *
      * @param column the column definition describing the {@code data} value; never null
      * @param fieldDefn the field definition; never null
@@ -461,7 +510,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         return convertDecimal(column, fieldDefn, data);
     }
     /**
-     * Converts a value object for an expected JDBC type of {@link Types#NUMERIC}.
+     * Converts a value object for an expected type of {@link Types#NUMERIC}.
      *
      * @param column the column definition describing the {@code data} value; never null
      * @param fieldDefn the field definition; never null
@@ -547,18 +596,17 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         if (column.isOptional() || fieldDefn.schema().isOptional()) {
             Class<?> dataClass = data.getClass();
             if (logger.isWarnEnabled()) {
-                logger.warn("Unexpected value for JDBC type {} and column {}: class={}", column.jdbcType(), column,
-                        dataClass.isArray() ? dataClass.getSimpleName() : dataClass.getName()); // don't include value in case its
-                                                                                                // sensitive
+                logger.warn("Unexpected value for type {} and column {}: class={}", column.nativeType(), column,
+                        dataClass.isArray() ? dataClass.getSimpleName() : dataClass.getName()); 
             }
             return null;
         }
-        throw new IllegalArgumentException("Unexpected value for JDBC type " + column.jdbcType() + " and column " + column +
-                ": class=" + data.getClass()); // don't include value in case its sensitive
+        throw new IllegalArgumentException("Unexpected value for type " + column.nativeType() + " and column " + column +
+                ": class=" + data.getClass());
     }
 
     /**
-     * Converts a value object for an expected JDBC type of {@link Types#CHAR}, {@link Types#VARCHAR},
+     * Converts a value object for an expected type of {@link Types#CHAR}, {@link Types#VARCHAR},
      * {@link Types#LONGVARCHAR}, {@link Types#CLOB}, {@link Types#NCHAR}, {@link Types#NVARCHAR}, {@link Types#LONGNVARCHAR},
      * {@link Types#NCLOB}, {@link Types#DATALINK}, and {@link Types#SQLXML}.
      *
@@ -595,6 +643,75 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         });
     }
 
+    protected Object convertInet(Column column, Field fieldDefn, Object data) {
+        Object data_;
+        if (data instanceof ByteString) {
+            ByteString inetBytes = (ByteString) data;
+            String ipAddress = convertInetToIPAddress(inetBytes);
+            data_ = ipAddress;
+        } else {
+            return convertString(column, fieldDefn, data);
+        }
+        return convertValue(column, fieldDefn, data_, "", (r) -> {
+            if (data_ instanceof SQLXML) {
+                try {
+                    r.deliver(((SQLXML) data_).getString());
+                }
+                catch (SQLException e) {
+                    throw new RuntimeException("Error processing data from " + column.typeName() + " and column " + column +
+                            ": class=" + data_.getClass(), e);
+                }
+            }
+            else {
+                r.deliver(data_.toString());
+            }
+        });
+    }
+
+    public static String convertInetToIPAddress(ByteString inetBytes) {
+        byte[] inetBytesArray = inetBytes.toByteArray();
+        if (inetBytesArray.length == 4) {
+            int[] octets = new int[4];
+            for (int i = 0; i < 4; i++) {
+                octets[i] = inetBytesArray[i] & 0xFF;
+            }
+            return String.format("%d.%d.%d.%d", octets[0], octets[1], octets[2], octets[3]);
+        } else {
+            return "Invalid INET representation";
+        }
+    }
+
+    protected Object convertUUID(Column column, Field fieldDefn, Object data) {
+        Object data_;
+        if (data instanceof ByteString) {
+            ByteString uuidBytes = (ByteString) data;
+            UUID uuid = convertByteStringToUUID(uuidBytes);
+            String uuidString = uuid.toString();
+            data_ = uuidString;
+        } else {
+            return convertString(column, fieldDefn, data);
+        }
+        return convertValue(column, fieldDefn, data_, "", (r) -> {
+            r.deliver(data_.toString());
+            });
+    }
+
+    public static UUID convertByteStringToUUID(ByteString byteString) {
+        byte[] byteArray = byteString.toByteArray();
+        long msb = 0;
+        long lsb = 0;
+
+        for (int i = 0; i < 8; i++) {
+            msb = (msb << 8) | (byteArray[i] & 0xff);
+        }
+
+        for (int i = 8; i < 16; i++) {
+            lsb = (lsb << 8) | (byteArray[i] & 0xff);
+        }
+
+        return new UUID(msb, lsb);
+    }
+
     protected Object convertBinary(Column column, Field fieldDefn, Object data, BinaryHandlingMode mode) {
         switch (mode) {
             case BASE64:
@@ -608,7 +725,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     }
 
     /**
-     * Converts a value object for an expected JDBC type of {@link Types#BLOB}, {@link Types#BINARY},
+     * Converts a value object for an expected type of {@link Types#BLOB}, {@link Types#BINARY},
      * {@link Types#VARBINARY}, {@link Types#LONGVARBINARY}.
      *
      * @param column the column definition describing the {@code data} value; never null
@@ -638,7 +755,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     }
 
     /**
-     * Converts a value object for an expected JDBC type of {@link Types#BLOB}, {@link Types#BINARY},
+     * Converts a value object for an expected type of {@link Types#BLOB}, {@link Types#BINARY},
      * {@link Types#VARBINARY}, {@link Types#LONGVARBINARY}.
      *
      * @param column the column definition describing the {@code data} value; never null
@@ -667,7 +784,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     }
 
     /**
-     * Converts a value object for an expected JDBC type of {@link Types#BLOB}, {@link Types#BINARY},
+     * Converts a value object for an expected type of {@link Types#BLOB}, {@link Types#BINARY},
      * {@link Types#VARBINARY}, {@link Types#LONGVARBINARY}.
      *
      * @param column the column definition describing the {@code data} value; never null
@@ -745,7 +862,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     }
 
     /**
-     * Converts a value object for an expected JDBC type of {@link Types#BOOLEAN}.
+     * Converts a value object for an expected type of {@link Types#BOOLEAN}.
      *
      * @param column the column definition describing the {@code data} value; never null
      * @param fieldDefn the field definition; never null
@@ -771,12 +888,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
     }
 
     /**
-     * Converts a value object for an expected JDBC type of {@link Types#DATE} to the number of days past epoch.
-     * <p>
-     * Per the JDBC specification, databases should return {@link java.sql.Date} instances that have no notion of time or
-     * time zones. This method handles {@link java.sql.Date} objects plus any other standard date-related objects such as
-     * {@link java.util.Date}, {@link java.time.LocalDate}, and {@link java.time.LocalDateTime}. If any of the types might
-     * have time components, those time components are ignored.
+     * Converts a value object for an expected type of {@link Types#DATE} to the number of days past epoch.
      *
      * @param column the column definition describing the {@code data} value; never null
      * @param fieldDefn the field definition; never null
@@ -791,20 +903,15 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 r.deliver(Date.toEpochDay(data, adjuster));
             }
             catch (IllegalArgumentException e) {
-                logger.warn("Unexpected JDBC DATE value for field {} with schema {}: class={}, value={}", fieldDefn.name(),
+                logger.warn("Unexpected  DATE value for field {} with schema {}: class={}, value={}", fieldDefn.name(),
                         fieldDefn.schema(), data.getClass(), data);
             }
         });
     }
 
     /**
-     * Converts a value object for an expected JDBC type of {@link Types#DATE} to the number of days past epoch, but represented
+     * Converts a value object for an expected type of {@link Types#DATE} to the number of days past epoch, but represented
      * as a {@link java.util.Date} value at midnight on the date.
-     * <p>
-     * Per the JDBC specification, databases should return {@link java.sql.Date} instances that have no notion of time or
-     * time zones. This method handles {@link java.sql.Date} objects plus any other standard date-related objects such as
-     * {@link java.util.Date}, {@link java.time.LocalDate}, and {@link java.time.LocalDateTime}. If any of the types might
-     * have time components, those time components are ignored.
      *
      * @param column the column definition describing the {@code data} value; never null
      * @param fieldDefn the field definition; never null
@@ -821,11 +928,135 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 r.deliver(new java.util.Date(epochMillis));
             }
             catch (IllegalArgumentException e) {
-                logger.warn("Unexpected JDBC DATE value for field {} with schema {}: class={}, value={}", fieldDefn.name(),
+                logger.warn("Unexpected DATE value for field {} with schema {}: class={}, value={}", fieldDefn.name(),
                         fieldDefn.schema(), data.getClass(), data);
             }
         });
     }
 
+    protected int getTimePrecision(Column column) {
+        return column.length();
+    }
+
+    protected Object convertTime(Column column, Field fieldDefn, Object data) {
+        if (adaptiveTimeMicrosecondsPrecisionMode) {
+            return convertTimeToMicrosPastMidnight(column, fieldDefn, data);
+        }
+        if (adaptiveTimePrecisionMode) {
+            if (getTimePrecision(column) <= 3) {
+                return convertTimeToMillisPastMidnight(column, fieldDefn, data);
+            }
+            if (getTimePrecision(column) <= 6) {
+                return convertTimeToMicrosPastMidnight(column, fieldDefn, data);
+            }
+            return convertTimeToNanosPastMidnight(column, fieldDefn, data);
+        }
+        else {
+            return convertTimeToMillisPastMidnightAsDate(column, fieldDefn, data);
+        }
+    }
+
+    /**
+     * Converts a value object for an expected type of {@link Types#TIME} to {@link MicroTime} values, or microseconds past
+     * midnight.
+     *
+     * @param column the column definition describing the {@code data} value; never null
+     * @param fieldDefn the field definition; never null
+     * @param data the data object to be converted into a {@link Date Kafka Connect date} type; never null
+     * @return the converted value, or null if the conversion could not be made and the column allows nulls
+     * @throws IllegalArgumentException if the value could not be converted but the column does not allow nulls
+     */
+    protected Object convertTimeToMicrosPastMidnight(Column column, Field fieldDefn, Object data) {
+        // epoch is the fallback value
+        return convertValue(column, fieldDefn, data, 0L, (r) -> {
+            try {
+                r.deliver(MicroTime.toMicroOfDay(data, supportsLargeTimeValues()));
+            }
+            catch (IllegalArgumentException e) {
+            }
+        });
+    }
+
+    private boolean supportsLargeTimeValues() {
+        return adaptiveTimePrecisionMode || adaptiveTimeMicrosecondsPrecisionMode;
+    }
+
+    protected Object convertTimeToMillisPastMidnight(Column column, Field fieldDefn, Object data) {
+        // epoch is the fallback value
+        return convertValue(column, fieldDefn, data, 0, (r) -> {
+            try {
+                java.time.Duration d = java.time.Duration.ofNanos((Long) data);
+                r.deliver(NanoTime.toNanoOfDay(d, supportsLargeTimeValues()));
+            }
+            catch (IllegalArgumentException e) {
+            }
+        });
+    }
+
+    protected Object convertTimeToNanosPastMidnight(Column column, Field fieldDefn, Object data) {
+        // epoch is the fallback value
+        return convertValue(column, fieldDefn, data, 0L, (r) -> {
+            try {
+                r.deliver(NanoTime.toNanoOfDay(data, supportsLargeTimeValues()));
+            }
+            catch (IllegalArgumentException e) {
+            }
+        });
+    }
+
+    protected Object convertTimeToMillisPastMidnightAsDate(Column column, Field fieldDefn, Object data) {
+        // epoch is the fallback value
+        return convertValue(column, fieldDefn, data, new java.util.Date(0L), (r) -> {
+            try {
+                r.deliver(new java.util.Date(Time.toMilliOfDay(data, supportsLargeTimeValues())));
+            }
+            catch (IllegalArgumentException e) {
+            }
+        });
+    }
+
+    protected Object convertTimestampToEpochMillis(Column column, Field fieldDefn, Object data) {
+        // epoch is the fallback value
+        return convertValue(column, fieldDefn, data, 0L, (r) -> {
+            try {
+                r.deliver(Timestamp.toEpochMillis(data, adjuster));
+            }
+            catch (IllegalArgumentException e) {
+            }
+        });
+    }
+
+    protected Object convertTimestampToEpochMicros(Column column, Field fieldDefn, Object data) {
+        // epoch is the fallback value
+        return convertValue(column, fieldDefn, data, 0L, (r) -> {
+            try {
+                r.deliver(MicroTimestamp.toEpochMicros(data, adjuster));
+            }
+            catch (IllegalArgumentException e) {
+            }
+        });
+    }
+
+    protected Object convertTimestampToEpochNanos(Column column, Field fieldDefn, Object data) {
+        // epoch is the fallback value
+        return convertValue(column, fieldDefn, data, 0L, (r) -> {
+            try {
+                r.deliver(NanoTimestamp.toEpochNanos(data, adjuster));
+            }
+            catch (IllegalArgumentException e) {
+            }
+        });
+    }
+
+    protected Object convertTimestampToEpochMillisAsDate(Column column, Field fieldDefn, Object data) {
+        // epoch is the fallback value
+        return convertValue(column, fieldDefn, data, new java.util.Date(0L), (r) -> {
+            try {
+                r.deliver(new java.util.Date(Timestamp.toEpochMillis(data, adjuster)));
+            }
+            catch (IllegalArgumentException e) {
+            }
+        });
+    }
 
 }
