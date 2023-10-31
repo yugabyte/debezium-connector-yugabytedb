@@ -307,7 +307,9 @@ public class YBClientUtils {
       return false;
     }
 
-    return (cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.FULL.name())
+    return (cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.ALL.name())
+           || cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES.name()))
+           || (cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.FULL.name())
            || cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.CHANGE_OLD_NEW.name()));
   }
 

@@ -6,9 +6,9 @@ public class HelperBeforeImageModes {
     public enum BeforeImageMode implements EnumeratedValue {
 
         /**
-         * ALL mode, both old and new images of the item
+         * [Deprecated] ALL mode, both old and new images of the item
          */
-        FULL("FULL"),
+        ALL("ALL"),
 
         /**
          * CHANGE mode (default), only the changed columns
@@ -19,6 +19,16 @@ public class HelperBeforeImageModes {
          * FULL_ROW_NEW_IMAGE mode, the entire updated row as new image
          */
         FULL_ROW_NEW_IMAGE("FULL_ROW_NEW_IMAGE"),
+
+        /**
+         * [Deprecated] MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES mode, old and new images of modified column
+         */
+        MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES"),
+
+        /**
+         * FULL mode, both old and new images of the item
+         */
+        FULL("FULL"),
 
         /**
          * CHANGE_OLD_NEW mode, old and new images of modified column
