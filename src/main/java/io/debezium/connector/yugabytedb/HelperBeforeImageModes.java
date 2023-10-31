@@ -8,7 +8,7 @@ public class HelperBeforeImageModes {
         /**
          * ALL mode, both old and new images of the item
          */
-        ALL("ALL"),
+        FULL("FULL"),
 
         /**
          * CHANGE mode (default), only the changed columns
@@ -21,9 +21,19 @@ public class HelperBeforeImageModes {
         FULL_ROW_NEW_IMAGE("FULL_ROW_NEW_IMAGE"),
 
         /**
-         * MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES mode, old and new images of modified column
+         * CHANGE_OLD_NEW mode, old and new images of modified column
          */
-        MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES");
+        CHANGE_OLD_NEW("CHANGE_OLD_NEW"),
+
+        /**
+         * DEFAULT mode, entire updated row as new image, only key as old image for DELETE
+         */
+        DEFAULT("DEFAULT"),
+
+        /**
+         * NOTHING mode, No old image for any operation
+         */
+        NOTHING("NOTHING");
 
         private final String value;
 
