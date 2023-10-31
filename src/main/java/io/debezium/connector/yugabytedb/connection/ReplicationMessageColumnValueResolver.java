@@ -5,6 +5,7 @@
  */
 package io.debezium.connector.yugabytedb.connection;
 
+import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoCqlColumnValue;
 import org.postgresql.util.PGmoney;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +14,7 @@ import io.debezium.connector.yugabytedb.YugabyteDBStreamingChangeEventSource.PgC
 import io.debezium.connector.yugabytedb.YugabyteDBType;
 import io.debezium.connector.yugabytedb.YugabyteDBTypeRegistry;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage.ColumnValue;
+import org.yb.QLType;
 
 /**
  * @author Chris Cranford
@@ -199,5 +201,43 @@ public class ReplicationMessageColumnValueResolver {
 
         return value.asDefault(yugabyteDBTypeRegistry, type.getOid(), columnName, fullType,
                 includeUnknownDatatypes, connection);
+    }
+
+    public static Object resolveValue(String columnName, QLType type,
+                                      YbProtoCqlColumnValue value) {
+        if (!value.getValuepb().isInitialized()) {
+            // nulls are null
+            return null;
+        }
+        switch (type.getMain()) {
+            case INT8: return value.getValuepb().getInt8Value();
+            case INT16: return value.getValuepb().getInt16Value();
+            case INT32: return value.getValuepb().getInt32Value();
+            case INT64: return value.getValuepb().getInt64Value();
+            case STRING: return value.getValuepb().getStringValue();
+            case BOOL: return value.getValuepb().getBoolValue();
+            case FLOAT: return value.getValuepb().getFloatValue();
+            case DOUBLE: return value.getValuepb().getDoubleValue();
+            case BINARY: return value.getValuepb().getBinaryValue();
+
+            case TIMESTAMP: return value.getValuepb().getTimestampValue();
+            case TIME: return value.getValuepb().getTimeValue();
+            case TIMEUUID: return value.getValuepb().getTimeuuidValue();
+            case DECIMAL: return value.getValuepb().getDecimalValue();
+            case DATE: return value.getValuepb().getDateValue();
+            case VARINT: return value.getValuepb().getVarintValue();
+            case INET: return value.getValuepb().getInetaddressValue();
+            case LIST: return "list";
+            case MAP: return "map";
+            case SET: return "set";
+            case UUID: return value.getValuepb().getUuidValue();
+            case FROZEN: return "frozen";
+            case USER_DEFINED_TYPE: return "user_defined_type";
+
+            default:
+                break;
+        }
+
+        return null;
     }
 }

@@ -528,12 +528,18 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     continue;
                                 }
 
-                                String pgSchemaNameInRecord = m.getPgschemaName();
-
-                                // This is a hack to skip tables in case of colocated tables
-                                TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                String pgSchemaNameInRecord = m.getPgschemaName();; 
+                                TableId tempTid;
+                                if (connectorConfig.isYSQLDbType()) {
+                                    // This is a hack to skip tables in case of colocated tables
+                                    tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                } else {
+                                    tempTid = YugabyteDBSchema.parseWithKeyspace(message.getTable(),
+                                                connectorConfig.databaseName());
+                                }
+                            
                                 if (!message.isTransactionalMessage()
-                                        && !filters.tableFilter().isIncluded(tempTid)) {
+                                      && !filters.tableFilter().isIncluded(tempTid) && !connectorConfig.cqlTableFilter().isIncluded(tempTid)) {
                                     LOGGER.info("Skipping a record for table {} because it was not included", tempTid.table());
                                     continue;
                                 }
@@ -623,7 +629,11 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                         TableId tableId = null;
                                         if (message.getOperation() != Operation.NOOP) {
-                                            tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                            if (connectorConfig.isYSQLDbType()) {
+                                                tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                            } else {
+                                                tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(),connectorConfig.databaseName());
+                                            }
                                             Objects.requireNonNull(tableId);
                                         }
                                         // Getting the table with the help of the schema.
@@ -636,14 +646,22 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             } else {
                                                 LOGGER.info("Refreshing the schema for table {} tablet {} because of mismatch in cached schema and received schema", entry.getKey(), tabletId);
                                             }
-                                            schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
+                                            if (connectorConfig.isYSQLDbType()) {
+                                                schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
+                                            } else {
+                                                schema.refreshSchemaWithTabletId(tableId, message.getSchema(), tableId.catalog(), tabletId);
+                                            }
                                         }
                                     }
                                     // DML event
                                     else {
                                         TableId tableId = null;
                                         if (message.getOperation() != Operation.NOOP) {
-                                            tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                            if (connectorConfig.isYSQLDbType()) {
+                                                tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                            } else {
+                                                tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
+                                            }
                                             Objects.requireNonNull(tableId);
                                         }
                                         // If you need to print the received record, change debug level to info
@@ -653,8 +671,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                 String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
 
                                         boolean dispatched = message.getOperation() != Operation.NOOP
-                                                && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
-                                                schema, connection, tableId, message, pgSchemaNameInRecord, tabletId, taskContext.isBeforeImageEnabled()));
+                                            && dispatcher.dispatchDataChangeEvent(part, tableId,
+                                                    new YugabyteDBChangeRecordEmitter(part, offsetContext, clock,
+                                                            connectorConfig,
+                                                            schema, connection, tableId, message,
+                                                            connectorConfig.isYSQLDbType()? pgSchemaNameInRecord : tableId.catalog(), tabletId,
+                                                            taskContext.isBeforeImageEnabled()));
 
                                         if (recordsInTransactionalBlock.containsKey(part.getId())) {
                                             recordsInTransactionalBlock.merge(part.getId(), 1, Integer::sum);

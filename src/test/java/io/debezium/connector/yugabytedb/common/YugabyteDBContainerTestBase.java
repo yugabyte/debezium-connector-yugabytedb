@@ -45,10 +45,11 @@ public class YugabyteDBContainerTestBase extends TestBaseClass {
 
             logger.info("Started yugabyted inside container: {}", result.getStdout());
         } catch (Exception e) {
+            e.printStackTrace();
             throw new RuntimeException(e);
         }
 
-        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
+        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433), ybContainer.getMappedPort(9042));
         TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
     }
 

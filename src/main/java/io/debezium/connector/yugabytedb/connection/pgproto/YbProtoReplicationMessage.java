@@ -16,6 +16,8 @@ import java.util.stream.IntStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.Common;
+import org.yb.QLType;
+import org.yb.Value;
 import org.yb.cdc.CdcService;
 
 import io.debezium.connector.yugabytedb.YugabyteDBStreamingChangeEventSource.PgConnectionSupplier;
@@ -111,23 +113,37 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
                     final Common.DatumMessagePB datum = messageList.get(index);
                     final Optional<CdcService.TypeInfo> typeInfo = Optional.ofNullable(hasTypeMetadata() && typeInfoList != null ? typeInfoList.get(index) : null);
                     final String columnName = Strings.unquoteIdentifierPart(datum.getColumnName());
-                    final YugabyteDBType type = yugabyteDBTypeRegistry.get((int) datum.getColumnType());
 
-                    final String fullType = typeInfo.map(CdcService.TypeInfo::getModifier).orElse(null);
-                    return new AbstractReplicationMessageColumn(columnName, type, fullType,
-                            typeInfo.map(CdcService.TypeInfo::getValueOptional).orElse(Boolean.FALSE), hasTypeMetadata()) {
-
-                        @Override
-                        public Object getValue(PgConnectionSupplier connection, boolean includeUnknownDatatypes) {
-                            return YbProtoReplicationMessage.this.getValue(columnName, type,
-                                    fullType, datum, connection, includeUnknownDatatypes);
-                        }
-
-                        @Override
-                        public String toString() {
-                            return datum.toString();
-                        }
-                    };
+                    if (!datum.hasCqlType()) {
+                        final YugabyteDBType type = yugabyteDBTypeRegistry.get((int) datum.getColumnType());
+                        final String fullType = typeInfo.map(CdcService.TypeInfo::getModifier).orElse(null);
+                        return new AbstractReplicationMessageColumn(columnName, type, fullType,
+                                typeInfo.map(CdcService.TypeInfo::getValueOptional).orElse(Boolean.FALSE), hasTypeMetadata()) {
+                            @Override
+                            public Object getValue(PgConnectionSupplier connection, boolean includeUnknownDatatypes) {
+                                return YbProtoReplicationMessage.this.getValue(columnName, type,
+                                        fullType, datum, connection, includeUnknownDatatypes);
+                            }
+                            @Override
+                            public String toString() {
+                                return datum.toString();
+                            }
+                        };
+                    } else {
+                        final Common.QLTypePB type = datum.getCqlType();
+                        final String fullType = typeInfo.map(CdcService.TypeInfo::getModifier).orElse(null);
+                        return new AbstractReplicationMessageColumn(columnName, type, fullType,
+                                typeInfo.map(CdcService.TypeInfo::getValueOptional).orElse(Boolean.FALSE), hasTypeMetadata()) {
+                            @Override
+                            public Object getValue(PgConnectionSupplier connection, boolean includeUnknownDatatypes) {
+                                return YbProtoReplicationMessage.this.getValue(columnName, type, datum);
+                            }
+                            @Override
+                            public String toString() {
+                                return datum.toString();
+                            }
+                        };
+                    }
                 })
                 .collect(Collectors.toList());
     }
@@ -145,6 +161,13 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
         final YbProtoColumnValue columnValue = new YbProtoColumnValue(datumMessage);
         return ReplicationMessageColumnValueResolver.resolveValue(columnName, type, fullType,
                 columnValue, connection, includeUnknownDatatypes, yugabyteDBTypeRegistry);
+    }
+
+    public Object getValue(String columnName, Common.QLTypePB type,
+                           Common.DatumMessagePB datumMessage) {
+        final YbProtoCqlColumnValue columnValue = new YbProtoCqlColumnValue(datumMessage.getCqlValue());
+        return ReplicationMessageColumnValueResolver.resolveValue(columnName, QLType.createFromQLTypePB(type),
+                columnValue);
     }
 
     public CdcService.CDCSDKSchemaPB getSchema() {

@@ -12,6 +12,8 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.CommonTypes;
+import org.yb.CommonTypes.YQLDatabase;
 import org.yb.cdc.CdcService;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.CDCStreamInfo;
@@ -20,12 +22,14 @@ import org.yb.cdc.CdcService.TabletCheckpointPair;
 import org.yb.client.GetDBStreamInfoResponse;
 import org.yb.client.GetTabletListToPollForCDCResponse;
 import org.yb.client.ListCDCStreamsResponse;
+import org.yb.client.ListNamespacesResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 import org.yb.master.MasterDdlOuterClass;
 
 import io.debezium.DebeziumException;
+import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.relational.TableId;
 import io.debezium.util.Clock;
@@ -34,6 +38,8 @@ import io.debezium.util.Metronome;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterTypes.NamespaceIdentifierPB;
+
 
 /**
  * Utility class to provide function to help functioning of the connector processes.
@@ -67,6 +73,7 @@ public class YBClientUtils {
     Set<String> tableIds = new HashSet<>();
       try {
           ListTablesResponse tablesResp = ybClient.getTablesList();
+
           for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo : 
               tablesResp.getTableInfoList()) {
               if (tableInfo.getRelationType() == MasterTypes.RelationType.INDEX_TABLE_RELATION ||
@@ -75,23 +82,33 @@ public class YBClientUtils {
                   continue;
               }
 
-              // Ignore the tables without a pgschema_name, these tables are the ones created with 
-              // the older versions of YugabyteDB where the changes for CDCSDK were not present. 
-              // For more details, visit https://github.com/yugabyte/yugabyte-db/issues/11976
-              if (tableInfo.getPgschemaName() == null || tableInfo.getPgschemaName().isEmpty()) {
-                  LOGGER.warn(String.format("Ignoring the table %s.%s since it does not have" 
-                    + " a pgschema_name value (possibly because it was created using an older"
-                    + " YugabyteDB version)", tableInfo.getNamespace().getName(),
-                      tableInfo.getName()));
-                  continue;
+              TableId tableId;
+              String fqlTableName;
+              if (tableInfo.getNamespace().getDatabaseType() == CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL) {
+                  // Ignore the tables without a pgschema_name, these tables are the ones created with
+                  // the older versions of YugabyteDB where the changes for CDCSDK were not present.
+                  // For more details, visit https://github.com/yugabyte/yugabyte-db/issues/11976
+                  if (tableInfo.getPgschemaName() == null || tableInfo.getPgschemaName().isEmpty()) {
+                      LOGGER.warn(String.format("Ignoring the table %s.%s since it does not have"
+                                      + " a pgschema_name value (possibly because it was created using an older"
+                                      + " YugabyteDB version)", tableInfo.getNamespace().getName(),
+                              tableInfo.getName()));
+                      continue;
+                  }
+
+                  fqlTableName = tableInfo.getNamespace().getName() + "."
+                                  + tableInfo.getPgschemaName() + "."
+                                  + tableInfo.getName();
+                  tableId = YugabyteDBSchema.parseWithSchema(fqlTableName,
+                              tableInfo.getPgschemaName());
+
               }
-
-              String fqlTableName = tableInfo.getNamespace().getName() + "." 
-                                    + tableInfo.getPgschemaName() + "." 
-                                    + tableInfo.getName();
-              TableId tableId = YugabyteDBSchema.parseWithSchema(fqlTableName, 
-                                                                 tableInfo.getPgschemaName());
-
+              else {
+                  // Since there is no concept of schema in CQL we will be using namespaceName.tableName 
+                  fqlTableName = tableInfo.getNamespace().getName() + "."
+                                  + tableInfo.getName();
+                  tableId = YugabyteDBSchema.parseWithKeyspace(fqlTableName, tableInfo.getNamespace().getName());
+              }
               // Retrieve the list of tables in the stream ID,
               GetDBStreamInfoResponse dbStreamInfoResponse = ybClient.getDBStreamInfo(
                                                                connectorConfig.streamId());
@@ -235,7 +252,24 @@ public class YBClientUtils {
                                   .build();
     return new YBClient(asyncClient);
   }
-  
+
+  /**
+   * Get a {@link YBClient} instance to perform client operations on YugabyteDB server for initializing {@link YugabyteDBConnectorConfig}
+   * @param config configuration for the connector
+   * @return a YBClient instance
+   */
+  public static YBClient getYbClient(Configuration config) {
+    AsyncYBClient asyncClient = new AsyncYBClient.AsyncYBClientBuilder(config.getString(YugabyteDBConnectorConfig.MASTER_ADDRESSES))
+                                  .defaultAdminOperationTimeoutMs(config.getLong(YugabyteDBConnectorConfig.ADMIN_OPERATION_TIMEOUT_MS))
+                                  .defaultOperationTimeoutMs(config.getLong(YugabyteDBConnectorConfig.OPERATION_TIMEOUT_MS))
+                                  .defaultSocketReadTimeoutMs(config.getLong(YugabyteDBConnectorConfig.SOCKET_READ_TIMEOUT_MS))
+                                  .numTablets(config.getInteger(YugabyteDBConnectorConfig.MAX_NUM_TABLETS))
+                                  .sslCertFile(config.getString(YugabyteDBConnectorConfig.SSL_ROOT_CERT))
+                                  .sslClientCertFiles(config.getString(YugabyteDBConnectorConfig.SSL_CLIENT_CERT), config.getString(YugabyteDBConnectorConfig.SSL_CLIENT_KEY))
+                                  .build();
+    return new YBClient(asyncClient);
+  }
+
   public static OpId getOpIdFromGetTabletListResponse(GetTabletListToPollForCDCResponse resp, String tabletId) {
     List<TabletCheckpointPair> tabletCheckpointPairs = resp.getTabletCheckpointPairList();
     for (TabletCheckpointPair p : tabletCheckpointPairs) {
@@ -324,6 +358,39 @@ public class YBClientUtils {
 
       return cdcStreamInfo.getOptions().get("checkpoint_type")
               .equals(CdcService.CDCCheckpointType.EXPLICIT.name());
+  }
+
+  public static Boolean isYSQLStream(String streamId, YBClient ybClient) {
+    GetDBStreamInfoResponse cdcStreamInfo = null;
+    ListNamespacesResponse resp = null;
+    try {
+      cdcStreamInfo = ybClient.getDBStreamInfo(streamId);
+      resp = ybClient.getNamespacesList();
+    } catch (Exception e) {
+      LOGGER.error("Could not get Stream info for {} due to error : {}", streamId, e.getMessage());
+    }
+    Objects.requireNonNull(cdcStreamInfo);
+    Objects.requireNonNull(resp);
+
+    YQLDatabase dbType = null;
+
+    for (NamespaceIdentifierPB namespace : resp.getNamespacesList()) {
+      String dbId = namespace.getId().toStringUtf8();
+      if (dbId.equals(cdcStreamInfo.getNamespaceId())) {
+        dbType = namespace.getDatabaseType();
+        break;
+      }
+    }
+
+    Objects.requireNonNull(dbType);
+
+    if (dbType.equals(YQLDatabase.YQL_DATABASE_PGSQL)) {
+      LOGGER.info("Query Language used for tables is ysql");
+      return true;
+    } else {
+      LOGGER.info("Query Language used for tables is ycql");
+      return false;
+    }
   }
 
   /**
