@@ -130,15 +130,11 @@ public class HashPartition implements Comparable<HashPartition> {
 	}
 
 	public boolean containsPartition(HashPartition other) {
-		int startCompareResult = Bytes.memcmp(this.partitionKeyStart, other.partitionKeyStart);
-		int endCompareResult = Bytes.memcmp(this.partitionKeyEnd, other.partitionKeyEnd);
-
+		LOGGER.info("This partition: {} other: {}", this, other);
 		int arrStartResult = Arrays.compare(this.partitionKeyStart, other.partitionKeyStart);
 		int arrEndResult = Arrays.compare(this.partitionKeyEnd, other.partitionKeyEnd);
-		LOGGER.info("Internal comparison res: {}", (arrStartResult <= 0) && (arrEndResult >= 0));
-		LOGGER.info("Start result: {} end result: {}", startCompareResult, endCompareResult);
 
-		return (startCompareResult <= 0) && (endCompareResult >= 0);
+		return (arrStartResult <= 0) && (arrEndResult >= 0);
 	}
 
 	/**
