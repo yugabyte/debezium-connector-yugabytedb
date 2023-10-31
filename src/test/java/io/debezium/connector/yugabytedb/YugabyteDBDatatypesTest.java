@@ -2,24 +2,25 @@ package io.debezium.connector.yugabytedb;
 
 import java.sql.SQLException;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
+import io.debezium.connector.yugabytedb.connection.HashPartition;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
-import org.yb.client.GetDBStreamInfoResponse;
-import org.yb.client.YBClient;
+import org.yb.cdc.CdcService;
+import org.yb.client.*;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState;
 import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
+import org.yb.master.MasterClientOuterClass;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -131,7 +132,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        initializeYBContainer();
+        initializeYBContainer("enable_tablet_split_of_cdcsdk_streamed_tables=true", null);
         TestHelper.dropAllSchemas();
     }
 
@@ -183,6 +184,66 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
                 .exceptionally(throwable -> {
                     throw new RuntimeException(throwable);
                 }).get();
+    }
+
+    @Test
+    public void testKeyInRange() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
+        YBTable ybTable = TestHelper.getYbTable(ybClient, "t1");
+        Objects.requireNonNull(ybTable);
+
+        insertRecords(100);
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+        LOGGER.info("Created stream ID: {}", dbStreamId);
+
+        GetTabletListToPollForCDCResponse resp1 = ybClient.getTabletListToPollForCdc(ybTable, dbStreamId, ybTable.getTableId());
+        LOGGER.info("Got get tablet list to poll response with tablet pair size: {}", resp1.getTabletCheckpointPairListSize());
+
+        assertEquals(1, resp1.getTabletCheckpointPairListSize());
+
+        CdcService.TabletCheckpointPair tcp = resp1.getTabletCheckpointPairList().get(0);
+        HashPartition originalPartition = new HashPartition(tcp.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
+          tcp.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray(), tcp.getTabletLocations().getPartition().getHashBucketsList());
+
+        ybClient.flushTable(ybTable.getTableId());
+        LOGGER.info("Waiting for 30s for table to be flushed");
+        TestHelper.waitFor(Duration.ofSeconds(30));
+
+        ybClient.splitTablet(tcp.getTabletLocations().getTabletId().toStringUtf8());
+        LOGGER.info("Waiting for children for tablet {} to be split", tcp.getTabletLocations().getTabletId().toStringUtf8());
+        TestHelper.waitForTablets(ybClient, ybTable, 2);
+
+        Set<String> children = ybClient.getTabletUUIDs(ybTable);
+
+//        Awaitility.await()
+//          .pollDelay(Duration.ofSeconds(2))
+//          .atMost(Duration.ofSeconds(20))
+//          .until(() -> {
+//              GetTabletLocationsResponse r = ybClient.getTabletLocations(List.of(tcp.getTabletLocations().getTabletId().toStringUtf8()), ybTable.getTableId(), true, false);
+//              LOGGER.info("Got response size: {}", r.getTabletLocations().size());
+//              return r.getTabletLocations().size() == 2;
+//          });
+
+        GetTabletLocationsResponse tResp = ybClient.getTabletLocations(new ArrayList<>(children), ybTable.getTableId(), true, false);
+//        GetTabletListToPollForCDCResponse resp2 = ybClient.getTabletListToPollForCdc(ybTable, dbStreamId, ybTable.getTableId());
+        assertEquals(2, tResp.getTabletLocations().size());
+
+        MasterClientOuterClass.TabletLocationsPB c1 = tResp.getTabletLocations().get(0);
+        HashPartition child1 = new HashPartition(c1.getPartition().getPartitionKeyStart().toByteArray(),
+          c1.getPartition().getPartitionKeyEnd().toByteArray(), c1.getPartition().getHashBucketsList());
+
+        MasterClientOuterClass.TabletLocationsPB c2 = tResp.getTabletLocations().get(1);
+        HashPartition child2 = new HashPartition(c2.getPartition().getPartitionKeyStart().toByteArray(),
+          c2.getPartition().getPartitionKeyEnd().toByteArray(), c2.getPartition().getHashBucketsList());
+
+        LOGGER.info("Got 2 tablets, comparing their partition now");
+
+        LOGGER.info("Child 1 status: {}", originalPartition.containsPartition(child1));
+        LOGGER.info("Child 2 status: {}", originalPartition.containsPartition(child2));
     }
 
     @Test

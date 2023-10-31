@@ -10,7 +10,9 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.stream.Collectors;
 
+import io.debezium.connector.yugabytedb.connection.HashPartition;
 import io.debezium.connector.yugabytedb.util.YugabyteDBConnectorUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
@@ -311,12 +313,23 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                     GetTabletListToPollForCDCResponse resp = YBClientUtils.getTabletListToPollForCDCWithRetry(table,
                             tableId, yugabyteDBConnectorConfig);
                     Set<String> tablets = new HashSet<>();
+                    Set<HashPartition> partitions;
                     LOGGER.info("TabletCheckpointPair list size for table {}: {}", tableId, resp.getTabletCheckpointPairListSize());
                     for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
                         this.tabletIds.add(
                                 new ImmutablePair<String, String>(
                                         tableId, pair.getTabletLocations().getTabletId().toStringUtf8()));
                         tablets.add(pair.getTabletLocations().getTabletId().toStringUtf8());
+
+                        HashPartition p = new HashPartition(pair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
+                                                    pair.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray(),
+                                                    pair.getTabletLocations().getPartition().getHashBucketsList());
+                        LOGGER.info("Got partition for tablet {}: {}", pair.getTabletLocations().getTabletId(), p);
+
+                        /*
+                            1. How to convert the partition key to string in order to pass it via configuration?
+                            2. How to check whether a given key is within certain bounds?
+                         */
                     }
 
                     LOGGER.info("Received tablet list for table {} ({}): {}", table.getTableId(), table.getName(), tablets);
