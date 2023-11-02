@@ -400,7 +400,11 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         return convertValue(column, fieldDefn, data, 0L, (r) -> {
             if (data instanceof ByteString) {
                 String dataString = ((ByteString) data).toStringUtf8();
-                r.deliver(Long.valueOf(dataString));
+                if(dataString.equals("")) {
+                    r.deliver(Long.valueOf(0));
+                } else {
+                    r.deliver(Long.valueOf(dataString));
+                }
             }
         });    
     }
@@ -532,7 +536,11 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
             }
             else if (data instanceof ByteString) {
                 String dataString = ((ByteString)data).toStringUtf8();
-                r.deliver(Double.valueOf(dataString));
+                if (dataString.equals("")) {
+                    r.deliver(Double.valueOf(0));
+                } else {
+                    r.deliver(Double.valueOf(dataString));
+                }
             }
         });
     }
@@ -631,7 +639,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
             }
             return String.format("%d.%d.%d.%d", octets[0], octets[1], octets[2], octets[3]);
         } else {
-            return "Invalid INET representation";
+            return "";
         }
     }
 
@@ -640,7 +648,12 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         if (data instanceof ByteString) {
             ByteString uuidBytes = (ByteString) data;
             UUID uuid = convertByteStringToUUID(uuidBytes);
-            String uuidString = uuid.toString();
+            String uuidString;
+            if (uuid == null) {
+                uuidString = "";
+            } else {
+                uuidString = uuid.toString();
+            }
             data_ = uuidString;
         } else {
             return convertString(column, fieldDefn, data);
@@ -652,6 +665,9 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
 
     public static UUID convertByteStringToUUID(ByteString byteString) {
         byte[] byteArray = byteString.toByteArray();
+        if (byteArray.length == 0) {
+            return null;
+        }
         long msb = 0;
         long lsb = 0;
 
