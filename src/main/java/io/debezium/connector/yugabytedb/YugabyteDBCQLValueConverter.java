@@ -639,6 +639,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
             }
             return String.format("%d.%d.%d.%d", octets[0], octets[1], octets[2], octets[3]);
         } else {
+            logger.warn("Invalid INET representation or null value");
             return "";
         }
     }
