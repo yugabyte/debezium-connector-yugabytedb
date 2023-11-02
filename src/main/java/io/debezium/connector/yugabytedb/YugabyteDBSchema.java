@@ -395,11 +395,13 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             case BOOL: return Types.BOOLEAN;
             case FLOAT: return Types.FLOAT;
             case DOUBLE: return Types.DOUBLE;
+            case DECIMAL: return Types.DECIMAL;
             case BINARY: return Types.BINARY;
             case DATE: return Types.DATE;
             case INET: return PgOid.INET;
             case TIME: return PgOid.TIME;
             case TIMESTAMP: return PgOid.TIMESTAMP;  
+            case VARINT: return PgOid.VARINT;
             case TIMEUUID: 
             case UUID: return PgOid.UUID;
             default:

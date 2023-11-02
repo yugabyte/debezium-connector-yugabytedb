@@ -179,6 +179,9 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         case Types.BIGINT:
             // values are a 64-bit signed integer value between -9223372036854775808 and 9223372036854775807
             return SchemaBuilder.int64();
+        case PgOid.VARINT:
+            return SchemaBuilder.int64();
+
 
         // Numeric decimal numbers
         case Types.REAL:
@@ -246,6 +249,8 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 return (data) -> convertInteger(column, fieldDefn, data);
             case Types.BIGINT:
                 return (data) -> convertBigInt(column, fieldDefn, data);
+            case PgOid.VARINT:
+                return (data) -> convertVarInt(column, fieldDefn, data);
 
             // Numeric decimal numbers
             case Types.FLOAT:
@@ -391,6 +396,15 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         });
     }
 
+    protected Object convertVarInt(Column column, Field fieldDefn, Object data) {
+        return convertValue(column, fieldDefn, data, 0L, (r) -> {
+            if (data instanceof ByteString) {
+                String dataString = ((ByteString) data).toStringUtf8();
+                r.deliver(Long.valueOf(dataString));
+            }
+        });    
+    }
+
     /**
      * Converts a value object for an expected type of {@link Types#FLOAT}.
      *
@@ -515,6 +529,10 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
             }
             else if (data instanceof String) {
                 r.deliver(new BigDecimal((String) data));
+            }
+            else if (data instanceof ByteString) {
+                String dataString = ((ByteString)data).toStringUtf8();
+                r.deliver(Double.valueOf(dataString));
             }
         });
     }

@@ -27,7 +27,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 
-public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBCQLTest extends YugabytedTestBase {
     CqlSession session;
 
     @BeforeAll
@@ -112,7 +112,7 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
         String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
         session.execute(createKeyspace);
 
-        session.execute("create table if not exists cdctest.test_datatypes(a int primary key, b varchar, c text, d bigint, e boolean, f float, g date, h double, i smallint, j tinyint, k inet, l uuid, m timeuuid, n time, o timestamp);");
+        session.execute("create table if not exists cdctest.test_datatypes(a int primary key, b varchar, c text, d bigint, e boolean, f float, g date, h double, i smallint, j tinyint, k inet, l uuid, m timeuuid, n time, o timestamp, p decimal, q varint);");
 
         String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_datatypes", false, false,BeforeImageMode.CHANGE, true);
 
@@ -123,7 +123,7 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
 
         awaitUntilConnectorIsReady();
 
-        session.execute("insert into cdctest.test_datatypes(a,b,c,d,e,f,g,h,i,j,k,l,m,n,o) values (2, 'abc', 'def', 100000, false, 11.2, todate(now()), 17.8, 100, 8, '127.0.0.1', Uuid(), 123e4567-e89b-12d3-a456-426655440000, currenttime(), 1499171430000);");
+        session.execute("insert into cdctest.test_datatypes(a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q) values (2, 'abc', 'def', 100000, false, 11.2, todate(now()), 17.8, 100, 8, '127.0.0.1', Uuid(), 123e4567-e89b-12d3-a456-426655440000, currenttime(), 1499171430000, 11.2, 34);");
         
         verifyRecordCount(recordsCount);
     }
