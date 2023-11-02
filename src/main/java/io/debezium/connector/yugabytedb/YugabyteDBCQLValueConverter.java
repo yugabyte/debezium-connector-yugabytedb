@@ -179,6 +179,9 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         case Types.BIGINT:
             // values are a 64-bit signed integer value between -9223372036854775808 and 9223372036854775807
             return SchemaBuilder.int64();
+        case PgOid.VARINT:
+            return SchemaBuilder.int64();
+
 
         // Numeric decimal numbers
         case Types.REAL:
@@ -246,6 +249,8 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
                 return (data) -> convertInteger(column, fieldDefn, data);
             case Types.BIGINT:
                 return (data) -> convertBigInt(column, fieldDefn, data);
+            case PgOid.VARINT:
+                return (data) -> convertVarInt(column, fieldDefn, data);
 
             // Numeric decimal numbers
             case Types.FLOAT:
@@ -391,6 +396,19 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         });
     }
 
+    protected Object convertVarInt(Column column, Field fieldDefn, Object data) {
+        return convertValue(column, fieldDefn, data, 0L, (r) -> {
+            if (data instanceof ByteString) {
+                String dataString = ((ByteString) data).toStringUtf8();
+                if(dataString.equals("")) {
+                    r.deliver(Long.valueOf(0));
+                } else {
+                    r.deliver(Long.valueOf(dataString));
+                }
+            }
+        });    
+    }
+
     /**
      * Converts a value object for an expected type of {@link Types#FLOAT}.
      *
@@ -516,6 +534,14 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
             else if (data instanceof String) {
                 r.deliver(new BigDecimal((String) data));
             }
+            else if (data instanceof ByteString) {
+                String dataString = ((ByteString)data).toStringUtf8();
+                if (dataString.equals("")) {
+                    r.deliver(Double.valueOf(0));
+                } else {
+                    r.deliver(Double.valueOf(dataString));
+                }
+            }
         });
     }
 
@@ -613,7 +639,8 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
             }
             return String.format("%d.%d.%d.%d", octets[0], octets[1], octets[2], octets[3]);
         } else {
-            return "Invalid INET representation";
+            logger.warn("Invalid INET representation or null value");
+            return "";
         }
     }
 
@@ -622,7 +649,12 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
         if (data instanceof ByteString) {
             ByteString uuidBytes = (ByteString) data;
             UUID uuid = convertByteStringToUUID(uuidBytes);
-            String uuidString = uuid.toString();
+            String uuidString;
+            if (uuid == null) {
+                uuidString = "";
+            } else {
+                uuidString = uuid.toString();
+            }
             data_ = uuidString;
         } else {
             return convertString(column, fieldDefn, data);
@@ -634,6 +666,9 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
 
     public static UUID convertByteStringToUUID(ByteString byteString) {
         byte[] byteArray = byteString.toByteArray();
+        if (byteArray.length == 0) {
+            return null;
+        }
         long msb = 0;
         long lsb = 0;
 
