@@ -4,51 +4,53 @@ import io.debezium.config.EnumeratedValue;
 public class HelperBeforeImageModes {
 
     public enum BeforeImageMode implements EnumeratedValue {
+      /**
+       * [Old type that is no longer allowed to be created] ALL mode, both old and new images of the
+       * item
+       */
+      ALL("ALL"),
 
-        /**
-         * [Deprecated] ALL mode, both old and new images of the item
-         */
-        ALL("ALL"),
+      /**
+       * CHANGE mode (default), only the changed columns
+       */
+      CHANGE("CHANGE"),
 
-        /**
-         * CHANGE mode (default), only the changed columns
-         */
-        CHANGE("CHANGE"),
+      /**
+       * [Old type that is no longer allowed to be created] FULL_ROW_NEW_IMAGE mode, the entire
+       * updated row as new image, entire row as old image for DELETE
+       */
+      FULL_ROW_NEW_IMAGE("FULL_ROW_NEW_IMAGE"),
 
-        /**
-         * FULL_ROW_NEW_IMAGE mode, the entire updated row as new image
-         */
-        FULL_ROW_NEW_IMAGE("FULL_ROW_NEW_IMAGE"),
+      /**
+       * [Old type that is no longer allowed to be created] MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES
+       * mode, old and new images of modified column
+       */
+      MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES"),
 
-        /**
-         * [Deprecated] MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES mode, old and new images of modified column
-         */
-        MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES"),
+      /**
+       * PG_FULL mode, both old and new images of the item
+       */
+      PG_FULL("PG_FULL"),
 
-        /**
-         * FULL mode, both old and new images of the item
-         */
-        FULL("FULL"),
+      /**
+       * PG_CHANGE_OLD_NEW mode, old and new images of modified column
+       */
+      PG_CHANGE_OLD_NEW("PG_CHANGE_OLD_NEW"),
 
-        /**
-         * CHANGE_OLD_NEW mode, old and new images of modified column
-         */
-        CHANGE_OLD_NEW("CHANGE_OLD_NEW"),
+      /**
+       * PG_DEFAULT mode, entire updated row as new image, only key as old image for DELETE
+       */
+      PG_DEFAULT("PG_DEFAULT"),
 
-        /**
-         * DEFAULT mode, entire updated row as new image, only key as old image for DELETE
-         */
-        DEFAULT("DEFAULT"),
+      /**
+       * PG_NOTHING mode, No old image for any operation
+       */
+      PG_NOTHING("PG_NOTHING");
 
-        /**
-         * NOTHING mode, No old image for any operation
-         */
-        NOTHING("NOTHING");
+      private final String value;
 
-        private final String value;
-
-        BeforeImageMode(String value) {
-            this.value = value;
+      BeforeImageMode(String value) {
+        this.value = value;
         }
 
         @Override
