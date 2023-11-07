@@ -349,9 +349,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // based on just their tablet IDs - pass false as the 'colocated' flag to enforce the same.
                 YBPartition p = new YBPartition(entry.getKey(), entry.getValue(), false /* colocated */);
                 offsetContext.initSourceInfo(p, this.connectorConfig, opId);
-                // We can initialise the explicit checkpoint for this tablet to the value returned by
-                // the cdc_service through the 'GetTabletListToPollForCDC' API
-                tabletToExplicitCheckpoint.put(p.getId(), opId.toCdcSdkCheckpoint());
+
+                if (taskContext.shouldEnableExplicitCheckpointing()) {
+                    // We can initialise the explicit checkpoint for this tablet to the value returned by
+                    // the cdc_service through the 'GetTabletListToPollForCDC' API
+                    tabletToExplicitCheckpoint.put(p.getId(), opId.toCdcSdkCheckpoint());
+                }
+
                 schemaNeeded.put(p.getId(), Boolean.TRUE);
             }
 
@@ -446,12 +450,17 @@ public class YugabyteDBStreamingChangeEventSource implements
                             YBTable table = tableIdToTable.get(entry.getKey());
 
                             CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                            if (explicitCheckpoint != null) {
-                                LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpointing: {} from_op_id: {}.{}",
-                                        table.getName(), part.getId(), explicitCheckpoint.toString(), cp.getTerm(), cp.getIndex());
-                            } else {
-                                LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpoint is null and from_op_id: {}.{}",
-                                        table.getName(), part.getId(), cp.getTerm(), cp.getIndex());
+                            if (connectorConfig.logGetChanges() || LOGGER.isDebugEnabled()
+                                  || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
+                                if (explicitCheckpoint != null) {
+                                    LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpointing: {} from_op_id: {}.{}",
+                                      table.getName(), part.getId(), explicitCheckpoint.toString(), cp.getTerm(), cp.getIndex());
+                                } else {
+                                    LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpoint is null and from_op_id: {}.{}",
+                                      table.getName(), part.getId(), cp.getTerm(), cp.getIndex());
+                                }
+
+                                lastLoggedTimeForGetChanges = System.currentTimeMillis();
                             }
 
                             // Check again if the thread has been interrupted.

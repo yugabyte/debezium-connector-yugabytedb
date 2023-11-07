@@ -943,7 +943,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withDisplayName("Whether to log GetChanges request at intervals")
             .withImportance(Importance.LOW)
             .withType(Type.BOOLEAN)
-            .withDefault(true)
+            .withDefault(false)
             .withValidation(Field::isBoolean)
             .withDescription("Whether we want the connector to log at regular intervals that it is calling GetChanges RPC on the server side");
 
