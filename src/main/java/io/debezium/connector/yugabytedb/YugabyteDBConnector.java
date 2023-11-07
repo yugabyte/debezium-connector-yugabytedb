@@ -320,16 +320,6 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                                 new ImmutablePair<String, String>(
                                         tableId, pair.getTabletLocations().getTabletId().toStringUtf8()));
                         tablets.add(pair.getTabletLocations().getTabletId().toStringUtf8());
-
-                        HashPartition p = new HashPartition(pair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
-                                                    pair.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray(),
-                                                    pair.getTabletLocations().getPartition().getHashBucketsList());
-                        LOGGER.info("Got partition for tablet {}: {}", pair.getTabletLocations().getTabletId(), p);
-
-                        /*
-                            1. How to convert the partition key to string in order to pass it via configuration?
-                            2. How to check whether a given key is within certain bounds?
-                         */
                     }
 
                     LOGGER.info("Received tablet list for table {} ({}): {}", table.getTableId(), table.getName(), tablets);

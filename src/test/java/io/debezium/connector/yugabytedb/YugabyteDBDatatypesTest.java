@@ -206,7 +206,8 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         assertEquals(1, resp1.getTabletCheckpointPairListSize());
 
         CdcService.TabletCheckpointPair tcp = resp1.getTabletCheckpointPairList().get(0);
-        HashPartition originalPartition = new HashPartition(tcp.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
+        HashPartition originalPartition = new HashPartition(tcp.getTabletLocations().getTableId().toStringUtf8(),
+          tcp.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
           tcp.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray(), tcp.getTabletLocations().getPartition().getHashBucketsList());
 
         ybClient.flushTable(ybTable.getTableId());
@@ -217,7 +218,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         LOGGER.info("Waiting for children for tablet {} to be split", tcp.getTabletLocations().getTabletId().toStringUtf8());
         TestHelper.waitForTablets(ybClient, ybTable, 2);
 
-        Set<String> children = ybClient.getTabletUUIDs(ybTable);
+        List<String> children = new ArrayList<>(ybClient.getTabletUUIDs(ybTable));
 
 //        Awaitility.await()
 //          .pollDelay(Duration.ofSeconds(2))
@@ -228,22 +229,60 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 //              return r.getTabletLocations().size() == 2;
 //          });
 
-        GetTabletLocationsResponse tResp = ybClient.getTabletLocations(new ArrayList<>(children), ybTable.getTableId(), true, false);
+        GetTabletLocationsResponse tResp = ybClient.getTabletLocations(children, ybTable.getTableId(), true, false);
 //        GetTabletListToPollForCDCResponse resp2 = ybClient.getTabletListToPollForCdc(ybTable, dbStreamId, ybTable.getTableId());
         assertEquals(2, tResp.getTabletLocations().size());
 
+        LOGGER.info("Hash buckets list size in parent: {}", originalPartition.getHashBuckets());
+
         MasterClientOuterClass.TabletLocationsPB c1 = tResp.getTabletLocations().get(0);
-        HashPartition child1 = new HashPartition(c1.getPartition().getPartitionKeyStart().toByteArray(),
+        HashPartition child1 = new HashPartition(c1.getTableId().toStringUtf8(), c1.getPartition().getPartitionKeyStart().toByteArray(),
           c1.getPartition().getPartitionKeyEnd().toByteArray(), c1.getPartition().getHashBucketsList());
+        LOGGER.info("Child 1 hash buckets count: {}", child1.getHashBuckets());
 
         MasterClientOuterClass.TabletLocationsPB c2 = tResp.getTabletLocations().get(1);
-        HashPartition child2 = new HashPartition(c2.getPartition().getPartitionKeyStart().toByteArray(),
+        HashPartition child2 = new HashPartition(c2.getTableId().toStringUtf8(), c2.getPartition().getPartitionKeyStart().toByteArray(),
           c2.getPartition().getPartitionKeyEnd().toByteArray(), c2.getPartition().getHashBucketsList());
+        LOGGER.info("Child 2 hash buckets count: {}", child2.getHashBuckets());
 
         LOGGER.info("Got 2 tablets, comparing their partition now");
 
-        LOGGER.info("Child 1 status: {}", originalPartition.containsPartition(child1));
-        LOGGER.info("Child 2 status: {}", originalPartition.containsPartition(child2));
+        LOGGER.info("Child 1 contain status: {}", originalPartition.containsPartition(child1));
+        LOGGER.info("Child 2 contain status: {}", originalPartition.containsPartition(child2));
+
+        LOGGER.info("Child 1 conflict status: {}", originalPartition.isConflictingWith(child1));
+        LOGGER.info("Child 2 conflict status: {}", originalPartition.isConflictingWith(child2));
+
+        // Split both the children too now.
+        ybClient.flushTable(ybTable.getTableId());
+        LOGGER.info("Waiting for 30s for table to be flushed");
+        TestHelper.waitFor(Duration.ofSeconds(30));
+        ybClient.splitTablet(children.get(0));
+        ybClient.splitTablet(children.get(1));
+        LOGGER.info("Waiting for children to be split further");
+        TestHelper.waitForTablets(ybClient, ybTable, 4);
+
+        List<String> finalChildren = new ArrayList<>(ybClient.getTabletUUIDs(ybTable));
+        GetTabletLocationsResponse r = ybClient.getTabletLocations(finalChildren, ybTable.getTableId(), true, false);
+        assertEquals(4, r.getTabletLocations().size());
+
+        MasterClientOuterClass.TabletLocationsPB finalC1 = r.getTabletLocations().get(0);
+        HashPartition finalChild1 = new HashPartition(finalC1.getTableId().toStringUtf8(), finalC1.getPartition().getPartitionKeyStart().toByteArray(),
+          finalC1.getPartition().getPartitionKeyEnd().toByteArray(), finalC1.getPartition().getHashBucketsList());
+
+        MasterClientOuterClass.TabletLocationsPB finalC2 = r.getTabletLocations().get(1);
+        HashPartition finalChild2 = new HashPartition(finalC2.getTableId().toStringUtf8(), finalC2.getPartition().getPartitionKeyStart().toByteArray(),
+          finalC2.getPartition().getPartitionKeyEnd().toByteArray(), finalC2.getPartition().getHashBucketsList());
+
+        MasterClientOuterClass.TabletLocationsPB finalC3 = r.getTabletLocations().get(2);
+        HashPartition finalChild3 = new HashPartition(finalC3.getTableId().toStringUtf8(), finalC3.getPartition().getPartitionKeyStart().toByteArray(),
+          finalC3.getPartition().getPartitionKeyEnd().toByteArray(), finalC3.getPartition().getHashBucketsList());
+
+        MasterClientOuterClass.TabletLocationsPB finalC4 = r.getTabletLocations().get(3);
+        HashPartition finalChild4 = new HashPartition(finalC4.getTableId().toStringUtf8(), finalC4.getPartition().getPartitionKeyStart().toByteArray(),
+          finalC4.getPartition().getPartitionKeyEnd().toByteArray(), finalC4.getPartition().getHashBucketsList());
+
+        LOGGER.info("All the final partitions are: {} {} {} {}", finalChild1, finalChild2, finalChild3, finalChild4);
     }
 
     @Test

@@ -7,16 +7,23 @@ import org.yb.cdc.CdcService;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.Bytes;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * What we need at the higher level:
+ * 1. all the tasks will get a range
+ * 2. validate that complete set of tablets fulfil the range
+ */
 public class HashPartition implements Comparable<HashPartition> {
+	private final String tableId;
 	private static final Logger LOGGER = LoggerFactory.getLogger(HashPartition.class);
-	final byte[] partitionKeyStart;
-	final byte[] partitionKeyEnd;
+	private final byte[] partitionKeyStart;
+	private final byte[] partitionKeyEnd;
 
-	final byte[] rangeKeyStart;
-	final byte[] rangeKeyEnd;
+	private final byte[] rangeKeyStart;
+	private final byte[] rangeKeyEnd;
 
 	final List<Integer> hashBuckets;
 
@@ -31,14 +38,24 @@ public class HashPartition implements Comparable<HashPartition> {
 	 * @param partitionKeyEnd the end partition key
 	 * @param hashBuckets the partition hash buckets
 	 */
-	public HashPartition(byte[] partitionKeyStart,
-						byte[] partitionKeyEnd,
-						List<Integer> hashBuckets) {
+	public HashPartition(String tableId, byte[] partitionKeyStart, byte[] partitionKeyEnd,
+											 List<Integer> hashBuckets) {
+		this.tableId = tableId;
 		this.partitionKeyStart = partitionKeyStart;
 		this.partitionKeyEnd = partitionKeyEnd;
 		this.hashBuckets = hashBuckets;
 		this.rangeKeyStart = rangeKey(partitionKeyStart, hashBuckets.size());
 		this.rangeKeyEnd = rangeKey(partitionKeyEnd, hashBuckets.size());
+
+		LOGGER.info("End key for {}: {}", Bytes.pretty(partitionKeyEnd), Arrays.toString(partitionKeyEnd));
+	}
+
+	/**
+	 * Get the table ID to which the partition belongs.
+	 * @return the table UUID
+	 */
+	public String getTableId() {
+		return tableId;
 	}
 
 	/**
@@ -100,6 +117,14 @@ public class HashPartition implements Comparable<HashPartition> {
 		if (this == o) return true;
 		if (o == null || getClass() != o.getClass()) return false;
 		HashPartition partition = (HashPartition) o;
+
+		if (!this.tableId.equals(partition.tableId)) {
+			return false;
+		}
+
+		LOGGER.info("Start: {}", Arrays.equals(partitionKeyStart, partition.partitionKeyStart));
+		LOGGER.info("End: {}", Arrays.equals(partitionKeyEnd, partition.partitionKeyEnd));
+
 		return Arrays.equals(partitionKeyStart, partition.partitionKeyStart)
 						 && Arrays.equals(partitionKeyEnd, partition.partitionKeyEnd);
 	}
@@ -129,12 +154,61 @@ public class HashPartition implements Comparable<HashPartition> {
 		return Bytes.memcmp(this.partitionKeyStart, other.partitionKeyStart);
 	}
 
+	/**
+	 * Compare two partitions
+	 * @param other {@link HashPartition} to compare with
+	 * @return true if other partition is contained in current, false otherwise
+	 */
 	public boolean containsPartition(HashPartition other) {
-		LOGGER.info("This partition: {} other: {}", this, other);
-		int arrStartResult = Arrays.compare(this.partitionKeyStart, other.partitionKeyStart);
-		int arrEndResult = Arrays.compare(this.partitionKeyEnd, other.partitionKeyEnd);
+		if (!this.tableId.equals(other.tableId)) {
+			return false;
+		}
 
-		return (arrStartResult <= 0) && (arrEndResult >= 0);
+		return ((this.partitionKeyStart.length == 0) || (compareKey(this.partitionKeyStart, other.partitionKeyStart) <= 0))
+						 && ((this.partitionKeyEnd.length == 0) || (compareKey(this.partitionKeyEnd, other.partitionKeyStart) > 0))
+						 && ((this.partitionKeyStart.length == 0) || (compareKey(this.partitionKeyStart, other.partitionKeyEnd) <= 0))
+						 && ((this.partitionKeyEnd.length == 0) || (compareKey(this.partitionKeyEnd, other.partitionKeyEnd) > 0));
+	}
+
+	public boolean isConflictingWith(HashPartition other) {
+		if (!this.tableId.equals(other.tableId)) {
+			return false;
+		}
+
+		boolean isStartConflicting = false;
+		boolean isEndConflicting = false;
+
+		if (this.partitionKeyStart.length != 0) {
+			isStartConflicting = (compareKey(this.partitionKeyStart, other.partitionKeyStart) > 0)
+														 && (compareKey(this.partitionKeyStart, other.partitionKeyEnd) <= 0);
+		}
+
+		if (this.partitionKeyEnd.length != 0) {
+			isEndConflicting = (compareKey(this.partitionKeyEnd, other.partitionKeyEnd) <= 0)
+													 && (compareKey(this.partitionKeyEnd, other.partitionKeyStart) > 0);
+		}
+
+		return isStartConflicting || isEndConflicting;
+	}
+
+	public static int compareKey(byte[] keyOne, byte[] keyTwo) {
+		int sizeOne = keyOne.length;
+		int sizeTwo = keyTwo.length;
+
+		final int minLength = Math.min(sizeOne, sizeTwo);
+
+		int r = Bytes.memcmp(keyOne, keyTwo);
+		if (r == 0) {
+			if (sizeOne < sizeTwo) {
+				return -1;
+			}
+
+			if (sizeOne > sizeTwo) {
+				return 1;
+			}
+		}
+
+		return r;
 	}
 
 	/**
@@ -153,6 +227,7 @@ public class HashPartition implements Comparable<HashPartition> {
 		}
 	}
 
+	// We can also use Bytes.pretty to get a shorter string
 	@Override
 	public String toString() {
 		return String.format("[%s, %s)",
@@ -161,8 +236,11 @@ public class HashPartition implements Comparable<HashPartition> {
 	}
 
 	public static HashPartition from(CdcService.TabletCheckpointPair tabletCheckpointPair) {
-		return new HashPartition(tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
+		return new HashPartition(tabletCheckpointPair.getTabletLocations().getTableId().toStringUtf8(),
+			tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
 			tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray(),
 			tabletCheckpointPair.getTabletLocations().getPartition().getHashBucketsList());
 	}
+
+
 }
