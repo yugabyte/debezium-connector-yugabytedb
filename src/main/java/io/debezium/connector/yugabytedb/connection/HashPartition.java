@@ -12,22 +12,19 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * What we need at the higher level:
- * 1. all the tasks will get a range
- * 2. validate that complete set of tablets fulfil the range
+ * Partition class to store a representation of a tablet with its ranges.
+ *
+ * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class HashPartition implements Comparable<HashPartition> {
 	private final String tableId;
-
-	private String tabletId;
+	private final String tabletId;
 	private static final Logger LOGGER = LoggerFactory.getLogger(HashPartition.class);
 	private final byte[] partitionKeyStart;
 	private final byte[] partitionKeyEnd;
-
 	private final byte[] rangeKeyStart;
 	private final byte[] rangeKeyEnd;
-
-	final List<Integer> hashBuckets;
+	private final List<Integer> hashBuckets;
 
 	/**
 	 * Size of an encoded hash bucket component in a partition key.
@@ -130,9 +127,6 @@ public class HashPartition implements Comparable<HashPartition> {
 		if (!this.tabletId.equals(partition.tabletId)) {
 			return false;
 		}
-
-		LOGGER.info("Start: {}", Arrays.equals(partitionKeyStart, partition.partitionKeyStart));
-		LOGGER.info("End: {}", Arrays.equals(partitionKeyEnd, partition.partitionKeyEnd));
 
 		return Arrays.equals(partitionKeyStart, partition.partitionKeyStart)
 						 && Arrays.equals(partitionKeyEnd, partition.partitionKeyEnd);
@@ -244,22 +238,17 @@ public class HashPartition implements Comparable<HashPartition> {
 			Arrays.toString(partitionKeyEnd));
 	}
 
+	/**
+	 * @param tabletCheckpointPair a {@link org.yb.cdc.CdcService.TabletCheckpointPair}  from the {@link org.yb.client.GetTabletListToPollForCDCResponse}
+	 * @return
+	 */
 	public static HashPartition from(CdcService.TabletCheckpointPair tabletCheckpointPair) {
-		LOGGER.info("tablet while forming partition {}", tabletCheckpointPair.getTabletLocations().getTabletId().toStringUtf8());
 		return new HashPartition(tabletCheckpointPair.getTabletLocations().getTableId().toStringUtf8(),
 			tabletCheckpointPair.getTabletLocations().getTabletId().toStringUtf8(),
 			tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
 			tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray(),
 			tabletCheckpointPair.getTabletLocations().getPartition().getHashBucketsList());
 	}
-
-//	public static HashPartition from(CdcService.TabletCheckpointPair tabletCheckpointPair, boolean blankTablet) {
-//		return new HashPartition(tabletCheckpointPair.getTabletLocations().getTableId().toStringUtf8(),
-//			"",
-//			tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
-//			tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray(),
-//			tabletCheckpointPair.getTabletLocations().getPartition().getHashBucketsList());
-//	}
 
 	public static HashPartition from(String tableId, String tabletId, String partitionKeyStartStr, String partitionKeyEndStr) {
 		return new HashPartition(tableId, tabletId, getByteArray(partitionKeyStartStr), getByteArray(partitionKeyEndStr), new ArrayList<>());

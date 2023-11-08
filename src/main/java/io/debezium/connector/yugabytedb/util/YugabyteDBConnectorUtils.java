@@ -1,8 +1,11 @@
 package io.debezium.connector.yugabytedb.util;
 
+import io.debezium.connector.yugabytedb.ObjectUtil;
+import io.debezium.connector.yugabytedb.connection.HashPartition;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 
+import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -109,5 +112,93 @@ public class YugabyteDBConnectorUtils {
 		}
 
 		return result;
+	}
+
+	public static List<List<Pair<Pair<String, String>, Pair<String, String>>>> groupHashPartitions(
+		List<Pair<Pair<String, String>, Pair<String, String>>> elements, int numGroups) {
+		if (elements.size() == 0) {
+			throw new IllegalStateException("Elements to be grouped must be positive");
+		}
+
+		if (numGroups <= 0) {
+			throw new IllegalArgumentException("Number of groups must be positive");
+		}
+
+		List<List<Pair<Pair<String, String>, Pair<String, String>>>> result = new ArrayList<>(numGroups);
+
+		List<Pair<String, String>> commonElements = elements.stream().map(Pair::getKey).collect(Collectors.toList());
+
+		// Filter out groups having the same tabletId as value
+		// The map will have tabletId -> table1,table2,table3 map
+		Map<String, ArrayList<String>> reverseMap = new HashMap<>(
+			commonElements.stream().collect(Collectors.groupingBy(Pair::getValue)).values().stream()
+				.collect(Collectors.toMap(
+					item -> item.get(0).getValue(),
+					item -> new ArrayList<>(
+						item.stream()
+							.map(Map.Entry::getKey)
+							.collect(Collectors.toList())
+					))
+				));
+
+		// If there are same number of tablets in the grouped reverse map then use the older function
+		// to group rather than going to the complicated logic of grouping colocated and non-colocated
+		// tablets differently.
+		// Note: The keySet of the reverse map will only contain tablets.
+		if (reverseMap.keySet().size() == elements.size()) {
+			groupPartitions(elements, numGroups, result);
+			return result;
+		}
+
+		// TODO Vaibhav: Handle this for colocated tablets
+		// Divide tablets into tasks and then form groups based on that.
+		List<List<String>> groupedTablets = new ArrayList<>();
+		groupPartitions(new ArrayList<>(reverseMap.keySet()), numGroups, groupedTablets);
+
+		// Iterate over grouped tablets now.
+		// The assumption here is that at this stage, the division of tablets across tasks would be
+		// something similar to:
+		// 1. Task 1 -
+		//    a. tablet_1
+		//    b. tablet_2
+		//    b. tablet_3
+		// 2. Task 2 -
+		//    a. tablet_4
+		//    b. tablet_5
+		// After this, we can simply iterate over the reversed map and just put proper table-tablet
+		// pairs to the task list.
+		for (List<String> tablets : groupedTablets) {
+			List<Pair<String, String>> groupList = new ArrayList<>();
+			for (String tablet : tablets) {
+				for (String table : reverseMap.get(tablet)) {
+					groupList.add(new ImmutablePair<>(table, tablet));
+				}
+			}
+
+//			result.add(groupList);
+		}
+
+		return result;
+	}
+
+	/**
+	 * Populate the partition ranges with the {@link HashPartition} objects. Internally, the serialized
+	 * string is deserialized to a list object with each element being a {@link Pair} where the key is
+	 * a {@link Pair} of <tableId, tabletId> and value is another {@link Pair} of <partitionKeyStart, partitionKeyEnd>
+	 * @param serializedString
+	 * @param partitionRanges a {@link List} of {@link HashPartition}
+	 * @throws IOException if unable to deserialize the string
+	 * @throws ClassNotFoundException if unable to deserialize the string
+	 */
+	public static void populatePartitionRanges(String serializedString, List<HashPartition> partitionRanges)
+			throws IOException, ClassNotFoundException {
+		List<Pair<Pair<String, String>, Pair<String, String>>> tableToTabletRanges =
+				(List<Pair<Pair<String, String>, Pair<String, String>>>) ObjectUtil.deserializeObjectFromString(serializedString);
+
+		for (Pair<Pair<String, String>, Pair<String, String>> entry : tableToTabletRanges) {
+			partitionRanges.add(
+				HashPartition.from(
+					entry.getKey().getKey(), entry.getKey().getValue(), entry.getValue().getKey(), entry.getValue().getValue()));
+		}
 	}
 }

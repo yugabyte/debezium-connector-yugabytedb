@@ -10,6 +10,7 @@ import io.debezium.connector.yugabytedb.connection.*;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage.Operation;
 import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoReplicationMessage;
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
+import io.debezium.connector.yugabytedb.util.YugabyteDBConnectorUtils;
 import io.debezium.heartbeat.Heartbeat;
 import io.debezium.pipeline.ErrorHandler;
 import io.debezium.pipeline.source.spi.StreamingChangeEventSource;
@@ -31,7 +32,6 @@ import org.yb.cdc.CdcService.CDCErrorPB.Code;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.client.*;
 
-import java.io.IOException;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
@@ -92,6 +92,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     // This set will contain the list of partition IDs for the tablets which have been split
     // and waiting for the callback from Kafka.
     protected Set<String> splitTabletsWaitingForCallback;
+    protected List<HashPartition> partitionRanges;
 
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
                                                 YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
@@ -115,6 +116,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.tabletToExplicitCheckpoint = new ConcurrentHashMap<>();
         this.splitTabletsWaitingForCallback = new HashSet<>();
         this.filters = new Filters(connectorConfig);
+        this.partitionRanges = new ArrayList<>();
     }
 
     @Override
@@ -134,6 +136,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                 offsetContext = YugabyteDBOffsetContext.initialContext(connectorConfig, connection, clock, partitions);
         }
         try {
+            // Populate partition ranges.
+            YugabyteDBConnectorUtils.populatePartitionRanges(connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST), partitionRanges);
             getChanges2(context, partition, offsetContext, hasStartLsnStoredInContext);
         } catch (Throwable e) {
             Objects.requireNonNull(e);
@@ -277,27 +281,14 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
-    protected void getTabletPairListFromRange(List<Pair<String, Pair<String, String>>> dString, GetTabletListToPollForCDCResponse r, List<Pair<String, String>> res) {
-        // Form a list of hash partitions from tablet list response
-        List<HashPartition> hp = new ArrayList<>();
+    protected void getTabletPairListFromRange(GetTabletListToPollForCDCResponse r, List<Pair<String, String>> res) {
+        // Iterate over the stored partitions and add valid tablets for streaming.
+        for (TabletCheckpointPair pair : r.getTabletCheckpointPairList()) {
+            HashPartition hp = HashPartition.from(pair);
 
-        for (TabletCheckpointPair p : r.getTabletCheckpointPairList()) {
-            hp.add(HashPartition.from(p));
-        }
-
-        LOGGER.info("ELement 0: {}", hp.get(0).getTabletId());
-
-        // Iterate over the dString and if any tablet range matches, add it to res
-        for (Pair<String, Pair<String, String>> pair : dString) {
-            LOGGER.info("Key: {} Value: {}", pair.getValue().getKey(), pair.getValue().getValue());
-            HashPartition parent = HashPartition.from(pair.getKey(), "", pair.getValue().getKey(), pair.getValue().getValue());
-
-//            YBClient ybClient = YBClientUtils.getYbClient(connectorConfig);
-
-            for (HashPartition hphp : hp) {
-                if (parent.containsPartition(hphp)) {
-                    LOGGER.info("table: {} tablet {}", hphp.getTableId(), hphp.getTabletId());
-                    res.add(new ImmutablePair<>(hphp.getTableId(), hphp.getTabletId()));
+            for (HashPartition parent : partitionRanges) {
+                if (parent.containsPartition(hp)) {
+                    res.add(new ImmutablePair<>(hp.getTableId(), hp.getTabletId()));
                 }
             }
         }
@@ -310,19 +301,9 @@ public class YugabyteDBStreamingChangeEventSource implements
             throws Exception {
         LOGGER.info("Processing messages");
         try (YBClient syncClient = YBClientUtils.getYbClient(this.connectorConfig)) {
-//            String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
-            String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST_HASH);
             // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
             // and the value is tablet UUID
-            List<Pair<String, Pair<String, String>>> dString = (List<Pair<String, Pair<String, String>>>) ObjectUtil.deserializeObjectFromString(tabletList);
             List<Pair<String, String>> tabletPairList = new ArrayList<>();
-//            try {
-//                tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
-//                LOGGER.debug("The tablet list is " + tabletPairList);
-//            } catch (IOException | ClassNotFoundException e) {
-//                LOGGER.error("Exception while deserializing tablet pair list", e);
-//                throw new RuntimeException(e);
-//            }
 
             Map<String, YBTable> tableIdToTable = new HashMap<>();
             Map<String, GetTabletListToPollForCDCResponse> tabletListResponse = new HashMap<>();
@@ -330,14 +311,16 @@ public class YugabyteDBStreamingChangeEventSource implements
 
             LOGGER.info("Using DB stream ID: " + streamId);
 
-            Set<String> tIds = dString.stream().map(Pair::getLeft).collect(Collectors.toSet());
+            Set<String> tIds = partitionRanges.stream().map(HashPartition::getTableId).collect(Collectors.toSet());
             for (String tId : tIds) {
                 YBTable table = syncClient.openTableByUUID(tId);
                 tableIdToTable.put(tId, table);
 
                 GetTabletListToPollForCDCResponse resp =
                         YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
-                getTabletPairListFromRange(dString, resp, tabletPairList);
+
+                // TODO: One optimisation where we initialise the offset context here itself without storing the GetTabletListToPollForCDCResponse
+                getTabletPairListFromRange(resp, tabletPairList);
                 LOGGER.info("Table: {} with number of tablets {}", tId, resp.getTabletCheckpointPairListSize());
                 tabletListResponse.put(tId, resp);
             }

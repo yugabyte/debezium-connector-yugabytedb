@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import io.debezium.connector.yugabytedb.connection.HashPartition;
 import io.debezium.connector.yugabytedb.util.YugabyteDBConnectorUtils;
@@ -52,7 +51,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
     private Set<String> tableIds;
     private List<Pair<String, String>> tabletIds;
 
-    private List<Pair<String, Pair<String, String>>> hashRanges;
+    private List<Pair<Pair<String, String>, Pair<String, String>>> hashRanges;
     private YugabyteDBConnectorConfig yugabyteDBConnectorConfig;
 
     private YugabyteDBTablePoller tableMonitorThread;
@@ -158,14 +157,12 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         int numGroups = Math.min(this.tabletIds.size(), maxTasks);
         LOGGER.info("Total tablets to be grouped: " + tabletIds.size() + " within maximum tasks: " + maxTasks);
 
-//        List<List<Pair<String, String>>> tabletIdsGrouped = YugabyteDBConnectorUtils.groupPartitionsSmartly(this.tabletIds, numGroups);
+        List<List<Pair<Pair<String, String>, Pair<String, String>>>> hashRangesGrouped = YugabyteDBConnectorUtils.groupHashPartitions(this.hashRanges, numGroups);
 
-        // Assume one tablet for a test.
-        List<List<Pair<String, Pair<String, String>>>> hashRangesGrouped = List.of(this.hashRanges);
 //        LOGGER.debug("The grouped tabletIds are " + tabletIdsGrouped.size());
         taskConfigs = new ArrayList<>(hashRangesGrouped.size());
 
-        for (List<Pair<String, Pair<String, String>>> taskTables : hashRangesGrouped) {
+        for (List<Pair<Pair<String, String>, Pair<String, String>>> taskTables : hashRangesGrouped) {
             Map<String, String> taskProps = new HashMap<>(this.props);
             int taskId = taskConfigs.size();
             taskProps.put(YugabyteDBConnectorConfig.TASK_ID.toString(), String.valueOf(taskId));
@@ -173,15 +170,13 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             String taskTablesSerialized = "";
             String hashRangesSerialized = "";
             try {
-//                taskTablesSerialized = ObjectUtil.serializeObjectToString(taskTables);
                 hashRangesSerialized = ObjectUtil.serializeObjectToString(taskTables);
                 LOGGER.debug("The taskTablesSerialized " + taskTablesSerialized);
             } catch (IOException e) {
                 e.printStackTrace();
             }
-//            taskProps.put(YugabyteDBConnectorConfig.TABLET_LIST.toString(), taskTablesSerialized);
             taskProps.put(YugabyteDBConnectorConfig.CHAR_SET.toString(), charSetName);
-            taskProps.put(YugabyteDBConnectorConfig.TABLET_LIST_HASH.toString(), hashRangesSerialized);
+            taskProps.put(YugabyteDBConnectorConfig.HASH_RANGES_LIST.toString(), hashRangesSerialized);
             taskProps.put(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString(), serializedNameToType);
             taskProps.put(YugabyteDBConnectorConfig.OID_TO_TYPE.toString(), serializedOidToType);
             taskProps.put(YugabyteDBConnectorConfig.STREAM_ID.toString(), streamIdValue);
@@ -334,7 +329,8 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                         String end = Arrays.toString(pair.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray());
                         this.hashRanges.add(
                           new ImmutablePair<>(
-                            tableId, new ImmutablePair<>(start, end)
+                            new ImmutablePair<>(tableId, pair.getTabletLocations().getTabletId().toStringUtf8()),
+                            new ImmutablePair<>(start, end)
                           )
                         );
                     }
