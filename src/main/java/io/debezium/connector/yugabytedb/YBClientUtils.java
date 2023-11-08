@@ -237,6 +237,7 @@ public class YBClientUtils {
   }
   
   public static OpId getOpIdFromGetTabletListResponse(GetTabletListToPollForCDCResponse resp, String tabletId) {
+    LOGGER.info("Looking for tablet {}", tabletId);
     List<TabletCheckpointPair> tabletCheckpointPairs = resp.getTabletCheckpointPairList();
     for (TabletCheckpointPair p : tabletCheckpointPairs) {
       if (p.getTabletLocations().getTabletId().toStringUtf8().equals(tabletId)) {

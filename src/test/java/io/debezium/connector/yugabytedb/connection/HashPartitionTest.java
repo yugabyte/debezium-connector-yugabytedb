@@ -21,34 +21,41 @@ public class HashPartitionTest {
 		start --- one --- two --- three --- end
 	 */
 	private static final String start = "";
-	private static final String one = "7\\xFA";
-	private static final String two = "q\\xCF";
-	private static final String three = "\\xCDq";
+	private static final String one = "[55, -6]";
+	private static final String two = "[113, -49]";
+	private static final String three = "[-51, 113]";
 	private static final String end = "";
 
 	private static final byte[] oneArrayRepresentation = {55, -6};
 
 	private static final String tableId1 = "3fe122ffe3f24ad39c2cf8a57fa124b3";
-	private static final String tableId2 = "3fe122ffe3f24ad39c2cf8a57fa124b3";
+	private static final String tableId2 = "ddc122ffe3f24ad39c2cf8a57fa124b3";
+	private static final String tabletId1 = "111111ffe3f24ad39c2cf8a57fa124b3";
+	private static final String tabletId2 = "222222ffe3f24ad39c2cf8a57fa124b3";
 
 	@ParameterizedTest
 	@MethodSource("parameterSourceForChildRanges")
-	public void parentShouldContainAllRanges(String childStartKey, String childEndKey) {
-//		HashPartition parent = HashPartition.from(tableId1, "", "");
-//		HashPartition child = HashPartition.from(tableId1, childStartKey, childEndKey);
-//
-//		assertTrue(parent.containsPartition(child));
+	public void parentShouldContainAllRanges(String childStartKeyStr, String childEndKeyStr) {
+		HashPartition parent = HashPartition.from(tableId1, tabletId1, "", "");
+		HashPartition child = HashPartition.from(tableId1, tabletId2, childStartKeyStr, childEndKeyStr);
+
+		assertTrue(parent.containsPartition(child));
 	}
 
 	@Test
 	public void verifyPartitionsMadeFromArrayAndStringRepresentationEqual() {
-//		HashPartition a = HashPartition.from(tableId1, start, one);
-		HashPartition b = new HashPartition(tableId1, new byte[]{}, oneArrayRepresentation, new ArrayList<>());
+		HashPartition a = HashPartition.from(tableId1, tabletId1, start, one);
+		HashPartition b = new HashPartition(tableId1, tabletId1, new byte[]{}, oneArrayRepresentation, new ArrayList<>());
 
-		System.out.println("a end key: " + one + " in partition: " + Arrays.toString(a.getPartitionKeyEnd()));
-		System.out.println("b end key: " + Bytes.pretty(oneArrayRepresentation) + " in partition: " + Arrays.toString(b.getPartitionKeyEnd()));
+		assertTrue(a.equals(b));
+	}
 
-//		assertTrue(a.equals(b));
+	@Test
+	public void verifyPartitionsUnequalForDifferentTables() {
+		HashPartition a = HashPartition.from(tableId1, tableId1, start, one);
+		HashPartition b = HashPartition.from(tableId2, tabletId2, start, one);
+
+		assertFalse(a.equals(b));
 	}
 
 	private static Stream<Arguments> parameterSourceForChildRanges() {

@@ -606,6 +606,12 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withWidth(ConfigDef.Width.MEDIUM)
             .withDescription("Internal task config: List of TabletIds to be fetched by this task");
 
+    public static final Field TABLET_LIST_HASH = Field.create(TASK_CONFIG_PREFIX + "tabletlist.hash")
+                                              .withDisplayName("YugabyteDB Tablet LIST for a Task")
+                                              .withType(ConfigDef.Type.STRING)
+                                              .withWidth(ConfigDef.Width.MEDIUM)
+                                              .withDescription("Internal task config: List of TabletIds to be fetched by this task");
+
     public static final Field MAX_NUM_TABLETS = Field.create("table.max.num.tablets")
             .withDisplayName("Maximum number of tablets that can be polled for in a table")
             .withType(Type.INT)

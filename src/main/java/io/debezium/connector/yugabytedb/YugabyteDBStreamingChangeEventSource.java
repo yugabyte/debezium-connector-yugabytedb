@@ -277,6 +277,31 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
+    protected void getTabletPairListFromRange(List<Pair<String, Pair<String, String>>> dString, GetTabletListToPollForCDCResponse r, List<Pair<String, String>> res) {
+        // Form a list of hash partitions from tablet list response
+        List<HashPartition> hp = new ArrayList<>();
+
+        for (TabletCheckpointPair p : r.getTabletCheckpointPairList()) {
+            hp.add(HashPartition.from(p));
+        }
+
+        LOGGER.info("ELement 0: {}", hp.get(0).getTabletId());
+
+        // Iterate over the dString and if any tablet range matches, add it to res
+        for (Pair<String, Pair<String, String>> pair : dString) {
+            LOGGER.info("Key: {} Value: {}", pair.getValue().getKey(), pair.getValue().getValue());
+            HashPartition parent = HashPartition.from(pair.getKey(), "", pair.getValue().getKey(), pair.getValue().getValue());
+
+//            YBClient ybClient = YBClientUtils.getYbClient(connectorConfig);
+
+            for (HashPartition hphp : hp) {
+                if (parent.containsPartition(hphp)) {
+                    LOGGER.info("table: {} tablet {}", hphp.getTableId(), hphp.getTabletId());
+                    res.add(new ImmutablePair<>(hphp.getTableId(), hphp.getTabletId()));
+                }
+            }
+        }
+    }
 
     protected void getChanges2(ChangeEventSourceContext context,
                              YBPartition partitionn,
@@ -285,17 +310,19 @@ public class YugabyteDBStreamingChangeEventSource implements
             throws Exception {
         LOGGER.info("Processing messages");
         try (YBClient syncClient = YBClientUtils.getYbClient(this.connectorConfig)) {
-            String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
+//            String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
+            String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST_HASH);
             // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
             // and the value is tablet UUID
-            List<Pair<String, String>> tabletPairList = null;
-            try {
-                tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
-                LOGGER.debug("The tablet list is " + tabletPairList);
-            } catch (IOException | ClassNotFoundException e) {
-                LOGGER.error("Exception while deserializing tablet pair list", e);
-                throw new RuntimeException(e);
-            }
+            List<Pair<String, Pair<String, String>>> dString = (List<Pair<String, Pair<String, String>>>) ObjectUtil.deserializeObjectFromString(tabletList);
+            List<Pair<String, String>> tabletPairList = new ArrayList<>();
+//            try {
+//                tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
+//                LOGGER.debug("The tablet list is " + tabletPairList);
+//            } catch (IOException | ClassNotFoundException e) {
+//                LOGGER.error("Exception while deserializing tablet pair list", e);
+//                throw new RuntimeException(e);
+//            }
 
             Map<String, YBTable> tableIdToTable = new HashMap<>();
             Map<String, GetTabletListToPollForCDCResponse> tabletListResponse = new HashMap<>();
@@ -303,13 +330,14 @@ public class YugabyteDBStreamingChangeEventSource implements
 
             LOGGER.info("Using DB stream ID: " + streamId);
 
-            Set<String> tIds = tabletPairList.stream().map(pair -> pair.getLeft()).collect(Collectors.toSet());
+            Set<String> tIds = dString.stream().map(Pair::getLeft).collect(Collectors.toSet());
             for (String tId : tIds) {
                 YBTable table = syncClient.openTableByUUID(tId);
                 tableIdToTable.put(tId, table);
 
                 GetTabletListToPollForCDCResponse resp =
                         YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
+                getTabletPairListFromRange(dString, resp, tabletPairList);
                 LOGGER.info("Table: {} with number of tablets {}", tId, resp.getTabletCheckpointPairListSize());
                 tabletListResponse.put(tId, resp);
             }

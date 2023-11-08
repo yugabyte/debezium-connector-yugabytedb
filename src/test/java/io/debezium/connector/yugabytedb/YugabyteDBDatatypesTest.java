@@ -207,6 +207,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         CdcService.TabletCheckpointPair tcp = resp1.getTabletCheckpointPairList().get(0);
         HashPartition originalPartition = new HashPartition(tcp.getTabletLocations().getTableId().toStringUtf8(),
+          tcp.getTabletLocations().getTabletId().toStringUtf8(),
           tcp.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
           tcp.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray(), tcp.getTabletLocations().getPartition().getHashBucketsList());
 
@@ -236,12 +237,12 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         LOGGER.info("Hash buckets list size in parent: {}", originalPartition.getHashBuckets());
 
         MasterClientOuterClass.TabletLocationsPB c1 = tResp.getTabletLocations().get(0);
-        HashPartition child1 = new HashPartition(c1.getTableId().toStringUtf8(), c1.getPartition().getPartitionKeyStart().toByteArray(),
+        HashPartition child1 = new HashPartition(c1.getTableId().toStringUtf8(), c1.getTabletId().toStringUtf8(),  c1.getPartition().getPartitionKeyStart().toByteArray(),
           c1.getPartition().getPartitionKeyEnd().toByteArray(), c1.getPartition().getHashBucketsList());
         LOGGER.info("Child 1 hash buckets count: {}", child1.getHashBuckets());
 
         MasterClientOuterClass.TabletLocationsPB c2 = tResp.getTabletLocations().get(1);
-        HashPartition child2 = new HashPartition(c2.getTableId().toStringUtf8(), c2.getPartition().getPartitionKeyStart().toByteArray(),
+        HashPartition child2 = new HashPartition(c2.getTableId().toStringUtf8(), c2.getTabletId().toStringUtf8(), c2.getPartition().getPartitionKeyStart().toByteArray(),
           c2.getPartition().getPartitionKeyEnd().toByteArray(), c2.getPartition().getHashBucketsList());
         LOGGER.info("Child 2 hash buckets count: {}", child2.getHashBuckets());
 
@@ -267,20 +268,28 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         assertEquals(4, r.getTabletLocations().size());
 
         MasterClientOuterClass.TabletLocationsPB finalC1 = r.getTabletLocations().get(0);
-        HashPartition finalChild1 = new HashPartition(finalC1.getTableId().toStringUtf8(), finalC1.getPartition().getPartitionKeyStart().toByteArray(),
+        HashPartition finalChild1 = new HashPartition(finalC1.getTableId().toStringUtf8(), finalC1.getTableId().toStringUtf8(), finalC1.getPartition().getPartitionKeyStart().toByteArray(),
           finalC1.getPartition().getPartitionKeyEnd().toByteArray(), finalC1.getPartition().getHashBucketsList());
 
         MasterClientOuterClass.TabletLocationsPB finalC2 = r.getTabletLocations().get(1);
-        HashPartition finalChild2 = new HashPartition(finalC2.getTableId().toStringUtf8(), finalC2.getPartition().getPartitionKeyStart().toByteArray(),
+        HashPartition finalChild2 = new HashPartition(finalC2.getTableId().toStringUtf8(), finalC2.getTableId().toStringUtf8(), finalC2.getPartition().getPartitionKeyStart().toByteArray(),
           finalC2.getPartition().getPartitionKeyEnd().toByteArray(), finalC2.getPartition().getHashBucketsList());
 
         MasterClientOuterClass.TabletLocationsPB finalC3 = r.getTabletLocations().get(2);
-        HashPartition finalChild3 = new HashPartition(finalC3.getTableId().toStringUtf8(), finalC3.getPartition().getPartitionKeyStart().toByteArray(),
+        HashPartition finalChild3 = new HashPartition(finalC3.getTableId().toStringUtf8(), finalC3.getTableId().toStringUtf8(), finalC3.getPartition().getPartitionKeyStart().toByteArray(),
           finalC3.getPartition().getPartitionKeyEnd().toByteArray(), finalC3.getPartition().getHashBucketsList());
 
         MasterClientOuterClass.TabletLocationsPB finalC4 = r.getTabletLocations().get(3);
-        HashPartition finalChild4 = new HashPartition(finalC4.getTableId().toStringUtf8(), finalC4.getPartition().getPartitionKeyStart().toByteArray(),
+        HashPartition finalChild4 = new HashPartition(finalC4.getTableId().toStringUtf8(), finalC4.getTableId().toStringUtf8(), finalC4.getPartition().getPartitionKeyStart().toByteArray(),
           finalC4.getPartition().getPartitionKeyEnd().toByteArray(), finalC4.getPartition().getHashBucketsList());
+
+        List<String> e = List.of(finalChild1.toString(), finalChild2.toString(), finalChild3.toString(), finalChild4.toString());
+        List<String> elements = new ArrayList<>(e);
+        Collections.sort(elements);
+
+        for (String sorted : elements) {
+            LOGGER.info(sorted);
+        }
 
         LOGGER.info("All the final partitions are: {} {} {} {}", finalChild1, finalChild2, finalChild3, finalChild4);
     }

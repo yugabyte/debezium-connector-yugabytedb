@@ -18,6 +18,8 @@ import java.util.List;
  */
 public class HashPartition implements Comparable<HashPartition> {
 	private final String tableId;
+
+	private String tabletId;
 	private static final Logger LOGGER = LoggerFactory.getLogger(HashPartition.class);
 	private final byte[] partitionKeyStart;
 	private final byte[] partitionKeyEnd;
@@ -38,7 +40,7 @@ public class HashPartition implements Comparable<HashPartition> {
 	 * @param partitionKeyEnd the end partition key
 	 * @param hashBuckets the partition hash buckets
 	 */
-	public HashPartition(String tableId, byte[] partitionKeyStart, byte[] partitionKeyEnd,
+	public HashPartition(String tableId, String tabletId, byte[] partitionKeyStart, byte[] partitionKeyEnd,
 											 List<Integer> hashBuckets) {
 		this.tableId = tableId;
 		this.partitionKeyStart = partitionKeyStart;
@@ -46,8 +48,7 @@ public class HashPartition implements Comparable<HashPartition> {
 		this.hashBuckets = hashBuckets;
 		this.rangeKeyStart = rangeKey(partitionKeyStart, hashBuckets.size());
 		this.rangeKeyEnd = rangeKey(partitionKeyEnd, hashBuckets.size());
-
-		LOGGER.info("End key for {}: {}", Bytes.pretty(partitionKeyEnd), Arrays.toString(partitionKeyEnd));
+		this.tabletId = tabletId;
 	}
 
 	/**
@@ -56,6 +57,10 @@ public class HashPartition implements Comparable<HashPartition> {
 	 */
 	public String getTableId() {
 		return tableId;
+	}
+
+	public String getTabletId() {
+		return tabletId;
 	}
 
 	/**
@@ -119,6 +124,10 @@ public class HashPartition implements Comparable<HashPartition> {
 		HashPartition partition = (HashPartition) o;
 
 		if (!this.tableId.equals(partition.tableId)) {
+			return false;
+		}
+
+		if (!this.tabletId.equals(partition.tabletId)) {
 			return false;
 		}
 
@@ -231,16 +240,48 @@ public class HashPartition implements Comparable<HashPartition> {
 	@Override
 	public String toString() {
 		return String.format("[%s, %s)",
-			Bytes.pretty(partitionKeyStart),
-			Bytes.pretty(partitionKeyEnd));
+			Arrays.toString(partitionKeyStart),
+			Arrays.toString(partitionKeyEnd));
 	}
 
 	public static HashPartition from(CdcService.TabletCheckpointPair tabletCheckpointPair) {
+		LOGGER.info("tablet while forming partition {}", tabletCheckpointPair.getTabletLocations().getTabletId().toStringUtf8());
 		return new HashPartition(tabletCheckpointPair.getTabletLocations().getTableId().toStringUtf8(),
+			tabletCheckpointPair.getTabletLocations().getTabletId().toStringUtf8(),
 			tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
 			tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray(),
 			tabletCheckpointPair.getTabletLocations().getPartition().getHashBucketsList());
 	}
 
+//	public static HashPartition from(CdcService.TabletCheckpointPair tabletCheckpointPair, boolean blankTablet) {
+//		return new HashPartition(tabletCheckpointPair.getTabletLocations().getTableId().toStringUtf8(),
+//			"",
+//			tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
+//			tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray(),
+//			tabletCheckpointPair.getTabletLocations().getPartition().getHashBucketsList());
+//	}
+
+	public static HashPartition from(String tableId, String tabletId, String partitionKeyStartStr, String partitionKeyEndStr) {
+		return new HashPartition(tableId, tabletId, getByteArray(partitionKeyStartStr), getByteArray(partitionKeyEndStr), new ArrayList<>());
+	}
+
+	private static byte[] getByteArray(String str) {
+		String[] elements;
+
+		// length 2 means [] only
+		if (str.isEmpty() || str.length() == 2) {
+			return new byte[0];
+		}
+
+		elements = str.substring(1, str.length() - 1).trim().split(", ");
+
+		byte[] byteValues = new byte[elements.length];
+		for (int i = 0; i < elements.length; ++i) {
+			int intValue = Integer.parseInt(elements[i].trim());
+			byteValues[i] = (byte) intValue;
+		}
+
+		return byteValues;
+	}
 
 }
