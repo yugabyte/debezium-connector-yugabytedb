@@ -158,7 +158,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                             YBTable table = tableIdToTable.get(entry.getKey());
 
                             if (LOGGER.isDebugEnabled()
-                                    || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
+                                    || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
                                 LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
                                         tabletId, cp, table.getName());
                                 lastLoggedTimeForGetChanges = System.currentTimeMillis();

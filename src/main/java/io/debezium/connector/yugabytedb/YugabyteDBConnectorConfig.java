@@ -541,6 +541,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
     protected static final String DATABASE_CONFIG_PREFIX = "database.";
     protected static final String TASK_CONFIG_PREFIX = "task.";
+    protected static final String DEFAULT_QL_TYPE = "ysql";
 
     protected static final int DEFAULT_PORT = 5_433;
     protected static final int DEFAULT_SNAPSHOT_FETCH_SIZE = 10_240;
@@ -1135,6 +1136,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     private final SchemaRefreshMode schemaRefreshMode;
 
     private final TableFilter databaseFilter;
+    private final TableFilter cqlTableFilter;
+
+    private final boolean isYSQL;
 
     private final LogicalDecodingMessageFilter logicalDecodingMessageFilter;
 
@@ -1143,10 +1147,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 config,
                 config.getString(RelationalDatabaseConnectorConfig.SERVER_NAME),
                 new SystemTablesPredicate(),
-                x -> x.schema() + "." + x.table(),
+                YBClientUtils.isYSQLStream(config.getString(YugabyteDBConnectorConfig.STREAM_ID), YBClientUtils.getYbClient(config))? x -> x.schema() + "." + x.table() : x -> x.table(),
                 DEFAULT_SNAPSHOT_FETCH_SIZE,
                 ColumnFilterMode.SCHEMA);
 
+        this.isYSQL = YBClientUtils.isYSQLStream(config.getString(YugabyteDBConnectorConfig.STREAM_ID), YBClientUtils.getYbClient(config));
         this.truncateHandlingMode = TruncateHandlingMode.parse(config.getString(YugabyteDBConnectorConfig.TRUNCATE_HANDLING_MODE));
         this.consistencyMode = ConsistencyMode.parse(config.getString(YugabyteDBConnectorConfig.CONSISTENCY_MODE));
         this.logicalDecodingMessageFilter = new LogicalDecodingMessageFilter(config.getString(LOGICAL_DECODING_MESSAGE_PREFIX_INCLUDE_LIST),
@@ -1158,6 +1163,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         this.schemaRefreshMode = SchemaRefreshMode.parse(config.getString(SCHEMA_REFRESH_MODE));
 
         this.databaseFilter = new DatabasePredicate();
+        this.cqlTableFilter = new CQLTablesPredicate();
     }
 
     protected String hostname() {
@@ -1307,12 +1313,20 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return this.databaseFilter;
     }
 
+    protected TableFilter cqlTableFilter() {
+        return this.cqlTableFilter;
+    }
+
     protected boolean autoAddNewTables() {
         return getConfig().getBoolean(AUTO_ADD_NEW_TABLES);
     }
 
     protected long newTablePollIntervalMs() {
         return getConfig().getLong(NEW_TABLE_POLL_INTERVAL_MS);
+    }
+
+    protected boolean isYSQLDbType() {
+        return this.isYSQL;
     }
 
     /*
@@ -1460,6 +1474,16 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         @Override
         public boolean isIncluded(TableId tableId) {
             return Objects.equals(tableId.catalog(), getConfig().getString(DATABASE_NAME));
+        }
+    }
+
+    private class CQLTablesPredicate implements TableFilter {
+        @Override
+        public boolean isIncluded(TableId tableId) {
+            if (Objects.equals(tableId.catalog(), getConfig().getString(DATABASE_NAME))) {
+                return tableIncludeList().contains(tableId.table());
+            }
+            return false;
         }
     }
 }

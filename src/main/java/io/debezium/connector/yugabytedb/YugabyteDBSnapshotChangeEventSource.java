@@ -507,7 +507,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 OpId cp = previousOffset.snapshotLSN(part);
 
                 if (LOGGER.isDebugEnabled()
-                    || (connectorConfig.logGetChanges() && System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
+                    || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
                   LOGGER.info("Requesting changes for tablet {} from OpId {} for table {} with explicit checkpoint {}",
                               tabletId, cp, table.getName(), explicitCdcSdkCheckpoint);
                   lastLoggedTimeForGetChanges = System.currentTimeMillis();
@@ -563,7 +563,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                       TableId tId = null;
                       if (message.getOperation() != Operation.NOOP) {
-                        tId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaName);
+                        if (connectorConfig.isYSQLDbType()) {
+                          tId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaName);
+                        } else {
+                          tId = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
+                        }
                         Objects.requireNonNull(tId);
                       }
                       // Getting the table with the help of the schema.
@@ -571,7 +575,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       if (YugabyteDBSchema.shouldRefreshSchema(t, message.getSchema())) {
                         // If we fail to achieve the table, that means we have not specified
                         // correct schema information. Now try to refresh the schema.
-                        schema.refreshSchemaWithTabletId(tId, message.getSchema(), pgSchemaName, tabletId);
+                        if (connectorConfig.isYSQLDbType()) {
+                          schema.refreshSchemaWithTabletId(tId, message.getSchema(), pgSchemaName, tabletId);
+                        } else {
+                          schema.refreshSchemaWithTabletId(tId, message.getSchema(), tId.catalog(), tabletId);
+                        }
                       }
                     } else {
                       // DML event
@@ -580,7 +588,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                       TableId tId = null;
                       if (message.getOperation() != Operation.NOOP) {
-                        tId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaName);
+                        if (connectorConfig.isYSQLDbType()) {
+                          tId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaName);
+                        } else {
+                          tId = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
+                        }
                         Objects.requireNonNull(tId);
                       }
 
@@ -596,7 +608,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                               new YugabyteDBChangeRecordEmitter(part, previousOffset, clock,
                                                                 this.connectorConfig, schema,
                                                                 connection, tId, message,
-                                                                pgSchemaName, tabletId,
+                                                                connectorConfig.isYSQLDbType() ? pgSchemaName : tId.catalog(), tabletId,
                                                                 taskContext.isBeforeImageEnabled()));
 
                       LOGGER.debug("Dispatched snapshot record successfully");
