@@ -943,6 +943,26 @@ public class YugabyteDBStreamingChangeEventSource implements
     }
 
     /**
+     * Verify that the passed tablet is present in the original ranges assigned to this task.
+     * This method is generally supposed to be called in the tablet split flow to check whether
+     * the child tablet we have received has a parent partition already.
+     * @param tabletCheckpointPair the {@link TabletCheckpointPair} for the tablet to be verified
+     */
+    private void assertTabletPresentInOriginalRanges(TabletCheckpointPair tabletCheckpointPair) {
+        boolean tabletFound = false;
+
+        HashPartition tabletToVerify = HashPartition.from(tabletCheckpointPair);
+        for (HashPartition parent : partitionRanges) {
+            if (parent.containsPartition(tabletToVerify)) {
+                tabletFound = true;
+                break;
+            }
+        }
+
+        assert tabletFound;
+    }
+
+    /**
      * Add the tablet from the provided tablet checkpoint pair to the list of tablets to poll from
      * if it is not present there
      * @param tabletPairList the list of tablets to poll from - list having Pair<tableId, tabletId>
@@ -956,6 +976,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                        String tableId,
                                        YugabyteDBOffsetContext offsetContext,
                                        Map<String, Boolean> schemaNeeded) {
+        assertTabletPresentInOriginalRanges(pair);
+
         String tabletId = pair.getTabletLocations().getTabletId().toStringUtf8();
         ImmutablePair<String, String> tableTabletPair =
           new ImmutablePair<String, String>(tableId, tabletId);
