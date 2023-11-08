@@ -14,6 +14,8 @@ import java.util.stream.Stream;
 
 /**
  * Basic unit tests to verify functioning of the class {@link HashPartition}
+ *
+ * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class HashPartitionTest {
 	/*
@@ -54,6 +56,16 @@ public class HashPartitionTest {
 	public void verifyPartitionsUnequalForDifferentTables() {
 		HashPartition a = HashPartition.from(tableId1, tableId1, start, one);
 		HashPartition b = HashPartition.from(tableId2, tabletId2, start, one);
+
+		assertFalse(a.equals(b));
+	}
+
+	@Test
+	public void verifyPartitionsUnequalForDifferentTablets() {
+		HashPartition a = HashPartition.from(tableId1, tableId1, start, one);
+
+		// The start and end key doesn't matter here as the equality check will fail at the tablet ID itself.
+		HashPartition b = HashPartition.from(tableId1, tabletId2, start, one);
 
 		assertFalse(a.equals(b));
 	}

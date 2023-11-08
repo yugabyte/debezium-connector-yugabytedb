@@ -161,7 +161,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         LOGGER.info("Total tablets to be grouped: " + tabletIds.size() + " within maximum tasks: " + maxTasks);
 
         List<List<Pair<Pair<String, String>, Pair<String, String>>>> hashRangesGrouped = YugabyteDBConnectorUtils.groupHashPartitions(this.hashRanges, numGroups);
-        
+
         taskConfigs = new ArrayList<>(hashRangesGrouped.size());
 
         for (List<Pair<Pair<String, String>, Pair<String, String>>> taskTables : hashRangesGrouped) {
