@@ -66,6 +66,16 @@ public class YugabyteDBConnectorTask
 
     @Override
     public ChangeEventSourceCoordinator<YBPartition, YugabyteDBOffsetContext> start(Configuration config) {
+        String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
+        String tableIncludeList = config.getString(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST);
+        
+        // For CQL tables streamId will be non null
+        tableIncludeList = (streamId == null || streamId.isEmpty()) ? YugabyteDBConnectorConfig.extractTableListFromPublication(config) : tableIncludeList;
+        streamId = (streamId == null || streamId.isEmpty()) ? YugabyteDBConnectorConfig.extractStreamIdFromSlot(config) : streamId;
+        config = config.edit()
+                        .with(YugabyteDBConnectorConfig.STREAM_ID, streamId)
+                        .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, tableIncludeList)
+                        .build();
         final YugabyteDBConnectorConfig connectorConfig = new YugabyteDBConnectorConfig(config);
         final TopicSelector<TableId> topicSelector = YugabyteDBTopicSelector.create(connectorConfig);
         final Snapshotter snapshotter = connectorConfig.getSnapshotter();

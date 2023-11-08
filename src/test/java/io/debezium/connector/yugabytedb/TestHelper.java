@@ -372,6 +372,19 @@ public final class TestHelper {
     }
 
 
+    public static Configuration.Builder getConfigBuilderWithPublication(String namespaceName, String publicationName, String slotName) throws Exception {
+        return TestHelper.defaultConfig()
+                .with(YugabyteDBConnectorConfig.DATABASE_NAME, namespaceName)
+                .with(YugabyteDBConnectorConfig.HOSTNAME, CONTAINER_YSQL_HOST)
+                .with(YugabyteDBConnectorConfig.PORT, CONTAINER_YSQL_PORT)
+                .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.NEVER.getValue())
+                .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, MASTER_ADDRESS)
+                .with(YugabyteDBConnectorConfig.PLUGIN_NAME , "yboutput")
+                .with(YugabyteDBConnectorConfig.PUBLICATION_NAME, publicationName)
+                .with(YugabyteDBConnectorConfig.PUBLICATION_AUTOCREATE_MODE , "disabled")
+                .with(YugabyteDBConnectorConfig.SLOT_NAME , slotName);
+    }
+
     public static Configuration.Builder getConfigBuilder(String namespaceName, String fullTableNameWithSchema, String dbStreamId) throws Exception {
         return TestHelper.defaultConfig()
                 .with(YugabyteDBConnectorConfig.DATABASE_NAME, namespaceName)

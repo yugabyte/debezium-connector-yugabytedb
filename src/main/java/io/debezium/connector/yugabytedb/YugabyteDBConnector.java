@@ -72,6 +72,19 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         this.props = props;
         LOGGER.debug("Props " + props);
         Configuration config = Configuration.from(this.props);
+
+        String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
+        String tableIncludeList = config.getString(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST);
+        
+        // For CQL tables streamId will be non null
+        tableIncludeList = (streamId == null || streamId.isEmpty()) ? YugabyteDBConnectorConfig.extractTableListFromPublication(config) : tableIncludeList;
+        streamId = (streamId == null || streamId.isEmpty()) ? YugabyteDBConnectorConfig.extractStreamIdFromSlot(config) : streamId;
+
+        config = config.edit()
+                        .with(YugabyteDBConnectorConfig.STREAM_ID, streamId)
+                        .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, tableIncludeList)
+                        .build();
+        LOGGER.info("Streamid before calling constructor" + config.getString(YugabyteDBConnectorConfig.STREAM_ID)+ " table list  "+ YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST);
         this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
         
         tableMonitorThread = new YugabyteDBTablePoller(yugabyteDBConnectorConfig, context);
@@ -218,6 +231,17 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         if (!databaseValue.errorMessages().isEmpty()) {
             return;
         }
+
+        String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
+        String tableIncludeList = config.getString(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST);
+        
+        // For CQL tables streamId will be non null
+        tableIncludeList = (streamId == null || streamId.isEmpty()) ? YugabyteDBConnectorConfig.extractTableListFromPublication(config) : tableIncludeList;
+        streamId = (streamId == null || streamId.isEmpty()) ? YugabyteDBConnectorConfig.extractStreamIdFromSlot(config) : streamId;
+        config = config.edit()
+                        .with(YugabyteDBConnectorConfig.STREAM_ID, streamId)
+                        .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, tableIncludeList)
+                        .build();
 
         this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
 
