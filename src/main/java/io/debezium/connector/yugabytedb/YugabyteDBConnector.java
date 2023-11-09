@@ -41,7 +41,7 @@ import io.debezium.relational.RelationalDatabaseConnectorConfig;
  * This connector is configured with the set of properties described in
  * {@link YugabyteDBConnectorConfig}.
  *
- * @author Suranjan Kumar (skumar@yugabyte.com)
+ * @author Suranjan Kumar (skumar@yugabyte.com), Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
@@ -50,8 +50,6 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
     private Map<String, String> props;
     private Set<String> tableIds;
-    private List<Pair<String, String>> tabletIds;
-
     private List<Pair<Pair<String, String>, Pair<String, String>>> hashRanges;
     private YugabyteDBConnectorConfig yugabyteDBConnectorConfig;
 
@@ -157,8 +155,8 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
         LOGGER.info("DB stream ID being used: {}", streamIdValue);
 
-        int numGroups = Math.min(this.tabletIds.size(), maxTasks);
-        LOGGER.info("Total tablets to be grouped: " + tabletIds.size() + " within maximum tasks: " + maxTasks);
+        int numGroups = Math.min(hashRanges.size(), maxTasks);
+        LOGGER.info("Total tablets to be grouped: " + hashRanges.size() + " within maximum tasks: " + maxTasks);
 
         List<List<Pair<Pair<String, String>, Pair<String, String>>>> hashRangesGrouped =
             YugabyteDBConnectorUtils.groupPartitionsSmartly(this.hashRanges, numGroups);
@@ -320,7 +318,6 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                 throw new DebeziumException("The tables provided in table.include.list do not exist");
             }
 
-            this.tabletIds = new ArrayList<>();
             this.hashRanges = new ArrayList<>();
             try {
                 for (String tableId : tableIds) {
@@ -328,27 +325,28 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                     GetTabletListToPollForCDCResponse resp = YBClientUtils.getTabletListToPollForCDCWithRetry(table,
                             tableId, yugabyteDBConnectorConfig);
                     Set<String> tablets = new HashSet<>();
-                    Set<HashPartition> partitions;
+                    List<HashPartition> partitions = new ArrayList<>();
                     LOGGER.info("TabletCheckpointPair list size for table {}: {}", tableId, resp.getTabletCheckpointPairListSize());
                     for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
-                        this.tabletIds.add(
-                                new ImmutablePair<String, String>(
-                                        tableId, pair.getTabletLocations().getTabletId().toStringUtf8()));
-                        tablets.add(pair.getTabletLocations().getTabletId().toStringUtf8());
+                        HashPartition tempPartition = HashPartition.from(pair);
 
-                        String start = Arrays.toString(pair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray());
-                        String end = Arrays.toString(pair.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray());
+                        tablets.add(tempPartition.getTabletId());
+                        partitions.add(tempPartition);
+
                         this.hashRanges.add(
                           new ImmutablePair<>(
-                            new ImmutablePair<>(tableId, pair.getTabletLocations().getTabletId().toStringUtf8()),
-                            new ImmutablePair<>(start, end)
+                            new ImmutablePair<>(tableId, tempPartition.getTabletId()),
+                            new ImmutablePair<>(Arrays.toString(tempPartition.getPartitionKeyStart()),
+                                                Arrays.toString(tempPartition.getPartitionKeyEnd()))
                           )
                         );
                     }
 
+                    // Validate that we have received the complete range of partitions.
+                    HashPartition.validateCompleteRanges(partitions);
+
                     LOGGER.info("Received tablet list for table {} ({}): {}", table.getTableId(), table.getName(), tablets);
                 }
-                Collections.sort(this.tabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));
             } catch (Exception e) {
                 final String errorMessage = "Error while fetching all the tablets";
                 LOGGER.error(errorMessage, e);

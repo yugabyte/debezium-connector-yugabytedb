@@ -9,6 +9,7 @@ import org.yb.client.Bytes;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -214,6 +215,11 @@ public class HashPartition implements Comparable<HashPartition> {
 						 && (compareKey(this.partitionKeyEnd, other.partitionKeyEnd) > 0);
 	}
 
+	/**
+	 *
+	 * @param other the {@link HashPartition} to compare with
+	 * @return true if the partitions have conflicting boundaries, false otherwise
+	 */
 	public boolean isConflictingWith(HashPartition other) {
 		if (!this.tableId.equals(other.tableId)) {
 			return false;
@@ -235,7 +241,7 @@ public class HashPartition implements Comparable<HashPartition> {
 		return isStartConflicting || isEndConflicting;
 	}
 
-	public static int compareKey(byte[] keyOne, byte[] keyTwo) {
+	private int compareKey(byte[] keyOne, byte[] keyTwo) {
 		int sizeOne = keyOne.length;
 		int sizeTwo = keyTwo.length;
 
@@ -281,7 +287,7 @@ public class HashPartition implements Comparable<HashPartition> {
 
 	/**
 	 * @param tabletCheckpointPair a {@link org.yb.cdc.CdcService.TabletCheckpointPair}  from the {@link org.yb.client.GetTabletListToPollForCDCResponse}
-	 * @return
+	 * @return {@link HashPartition}
 	 */
 	public static HashPartition from(CdcService.TabletCheckpointPair tabletCheckpointPair) {
 		return new HashPartition(tabletCheckpointPair.getTabletLocations().getTableId().toStringUtf8(),
@@ -295,15 +301,28 @@ public class HashPartition implements Comparable<HashPartition> {
 		return new HashPartition(tableId, tabletId, getByteArray(partitionKeyStartStr), getByteArray(partitionKeyEndStr), new ArrayList<>());
 	}
 
-	private static byte[] getByteArray(String str) {
-		String[] elements;
+	/**
+	 * Validate that the partitions we have make up the full exhaustive range of keys.
+	 * @param hashPartitions a list of all the HashPartitions
+	 */
+	public static void validateCompleteRanges(List<HashPartition> hashPartitions) {
+		hashPartitions.sort(Collections.reverseOrder());
 
-		// length 2 means [] only
+		byte[] nextKey = new byte[0];
+		for (HashPartition hashPartition : hashPartitions) {
+			assert Arrays.equals(nextKey, hashPartition.getPartitionKeyStart());
+
+			nextKey = hashPartition.getPartitionKeyEnd();
+		}
+	}
+
+	private static byte[] getByteArray(String str) {
+		// Length 2 also means it is an empty byte array as it would just contain "[]"
 		if (str.isEmpty() || str.length() == 2) {
 			return new byte[0];
 		}
 
-		elements = str.substring(1, str.length() - 1).trim().split(", ");
+		String[] elements = str.substring(1, str.length() - 1).trim().split(", ");
 
 		byte[] byteValues = new byte[elements.length];
 		for (int i = 0; i < elements.length; ++i) {
@@ -313,5 +332,4 @@ public class HashPartition implements Comparable<HashPartition> {
 
 		return byteValues;
 	}
-
 }
