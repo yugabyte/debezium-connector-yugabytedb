@@ -12,8 +12,12 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Partition class to store a representation of a tablet with its ranges.
+ * Partition class to store a representation of a tablet with its ranges. Most of the logic for
+ * this class has been taken from
+ * <a href="https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-client/src/main/java/org/yb/client/Bytes.java">Bytes.java</a><br><br>
  *
+ * Part of the logic to compare the two partitions has been borrowed from
+ * <a href="https://github.com/yugabyte/yugabyte-db/blob/master/src/yb/util/slice.h#L311">slice.h</a>
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class HashPartition implements Comparable<HashPartition> {
@@ -107,6 +111,9 @@ public class HashPartition implements Comparable<HashPartition> {
 		return partitionKeyEnd.length == 0;
 	}
 
+	/**
+	 * @return true if the partition is the absolute beginning partition
+	 */
 	public boolean isStartPartition() {
 		return partitionKeyStart.length == 0;
 	}
@@ -183,17 +190,28 @@ public class HashPartition implements Comparable<HashPartition> {
 			return true;
 		}
 
-		// This is only start partition. Also, this indicates that this is not end since we have already evaluated the condition before.
+		// If this is the start partition and the flow reaches here then assume that this is not the
+		// end partition as the condition has been evaluated already. Now if the other partition being
+		// compared is the end partition, we know it cannot be contained in this as this = ["", key)
+		// and other = [someOtherKey, "") so it's different, now if that is also false then simply
+		// evaluate whether this partition's end key is after the other partition's end key.
+		// Note that other partition's start key doesn't matter as it can be anything and still be after
+		// the start key of this partition.
 		if (this.isStartPartition()) {
-			return !other.isEndPartition() && (compareKey(this.partitionKeyEnd, other.partitionKeyEnd) > 0);
+			return !other.isEndPartition()
+					&& (compareKey(this.partitionKeyEnd, other.partitionKeyEnd) > 0);
 		}
 
+		// Similar logic as being used for start partition, values are reversed.
 		if (this.isEndPartition()) {
-			return !other.isStartPartition() && (compareKey(this.partitionKeyStart, other.partitionKeyStart) <= 0);
+			return !other.isStartPartition()
+					&& (compareKey(this.partitionKeyStart, other.partitionKeyStart) <= 0);
 		}
 
-		return (compareKey(this.partitionKeyStart, other.partitionKeyStart) < 0) && (compareKey(this.partitionKeyStart, other.partitionKeyEnd) < 0)
-						 && (compareKey(this.partitionKeyEnd, other.partitionKeyStart) > 0) && (compareKey(this.partitionKeyEnd, other.partitionKeyEnd) > 0);
+		return (compareKey(this.partitionKeyStart, other.partitionKeyStart) < 0)
+						 && (compareKey(this.partitionKeyStart, other.partitionKeyEnd) < 0)
+						 && (compareKey(this.partitionKeyEnd, other.partitionKeyStart) > 0)
+						 && (compareKey(this.partitionKeyEnd, other.partitionKeyEnd) > 0);
 	}
 
 	public boolean isConflictingWith(HashPartition other) {

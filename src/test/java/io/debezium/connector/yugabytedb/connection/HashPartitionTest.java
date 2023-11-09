@@ -41,7 +41,7 @@ public class HashPartitionTest {
 		HashPartition parent = HashPartition.from(tableId1, tabletId1, start, end);
 		HashPartition child = HashPartition.from(tableId1, tabletId2, childStartKeyStr, childEndKeyStr);
 
-		assertTrue(parent.contains(child));
+		assertTrue(parent.containsPartition(child));
 	}
 
 	@ParameterizedTest
@@ -50,7 +50,7 @@ public class HashPartitionTest {
 		HashPartition parent = HashPartition.from(tableId1, tabletId1, start, end);
 		HashPartition child = HashPartition.from(tableId1, tabletId2, childStartKeyStr, childEndKeyStr);
 
-		assertFalse(child.contains(parent));
+		assertFalse(child.containsPartition(parent));
 	}
 
 	@Test
