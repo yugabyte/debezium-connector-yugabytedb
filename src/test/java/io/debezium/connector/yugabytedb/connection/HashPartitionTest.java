@@ -38,7 +38,7 @@ public class HashPartitionTest {
 	@ParameterizedTest
 	@MethodSource("parameterSourceForChildRanges")
 	public void parentShouldContainAllRanges(String childStartKeyStr, String childEndKeyStr) {
-		HashPartition parent = HashPartition.from(tableId1, tabletId1, "", "");
+		HashPartition parent = HashPartition.from(tableId1, tabletId1, start, end);
 		HashPartition child = HashPartition.from(tableId1, tabletId2, childStartKeyStr, childEndKeyStr);
 
 		assertTrue(parent.containsPartition(child));
