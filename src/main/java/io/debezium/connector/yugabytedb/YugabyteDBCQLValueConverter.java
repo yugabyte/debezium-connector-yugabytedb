@@ -601,13 +601,10 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
      * @throws IllegalArgumentException if the value could not be converted but the column does not allow nulls
      */
     protected Object convertString(Column column, Field fieldDefn, Object data) {
-        String dataString = data.toString();
-        Pattern pattern = Pattern.compile("contents=\"(.*?)\"");
-        Matcher matcher = pattern.matcher(dataString);
         Object data_;
-        if(matcher.find()) {
-            String contentString = matcher.group(1);
-            data_ = contentString;
+        if (data instanceof ByteString) {
+            String dataString = ((ByteString) data).toStringUtf8();
+            data_ = dataString;
         } else {
             data_ = data;
         }

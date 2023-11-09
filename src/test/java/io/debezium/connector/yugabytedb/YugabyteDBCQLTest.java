@@ -20,6 +20,7 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -203,6 +204,28 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
         verifyRecordCount(recordsCount);
     }
 
+    @Test
+    public void testLargeStrings() throws Exception {
+        String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
+        session.execute(createKeyspace);
+
+        session.execute("create table if not exists cdctest.test_big_string(a varchar primary key);");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_big_string", false, false,BeforeImageMode.CHANGE, true);
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_big_string", dbStreamId);
+        startEngine(configBuilder);
+
+        final long recordsCount = 1;
+
+        String bigInput = getBigInputString(5000);
+        awaitUntilConnectorIsReady();
+
+        session.execute("insert into cdctest.test_big_string(a) values ('" + bigInput + "');");
+        
+        verifyPrimaryKey(recordsCount, bigInput);
+    }
+
     private void verifyRecordCount(long recordsCount) {
         waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
     }
@@ -265,5 +288,24 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
 
         assertEquals(totalRecordsToConsume, totalConsumedRecords.get());
     }
+
+    private String getBigInputString(int length) {
+        StringBuilder sb = new StringBuilder();
+        Random r = new Random();
+        for (int i = 0; i < length; i++) {
+            sb.append((char) (r.nextInt(26) + 'A'));
+        }
+        return sb.toString();
+    }
+
+    private void verifyPrimaryKey(long recordsCount, String input) {
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, recordsCount);
+
+        for (int i = 0; i < records.size(); ++i) {
+            assertValueField(records.get(i), "after/a/value", input);
+        }
+    }
+
 
 }
