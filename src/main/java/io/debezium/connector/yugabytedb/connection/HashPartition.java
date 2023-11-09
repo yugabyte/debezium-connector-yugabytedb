@@ -107,6 +107,10 @@ public class HashPartition implements Comparable<HashPartition> {
 		return partitionKeyEnd.length == 0;
 	}
 
+	public boolean isStartPartition() {
+		return partitionKeyStart.length == 0;
+	}
+
 	/**
 	 * Equality only holds for partitions from the same table. Partition equality only takes into
 	 * account the partition keys, since there is a 1 to 1 correspondence between partition keys and
@@ -167,10 +171,29 @@ public class HashPartition implements Comparable<HashPartition> {
 			return false;
 		}
 
-		return ((this.partitionKeyStart.length == 0) || (compareKey(this.partitionKeyStart, other.partitionKeyStart) <= 0))
-						 && ((this.partitionKeyEnd.length == 0) || (compareKey(this.partitionKeyEnd, other.partitionKeyStart) > 0))
-						 && ((this.partitionKeyStart.length == 0) || (compareKey(this.partitionKeyStart, other.partitionKeyEnd) <= 0))
-						 && ((this.partitionKeyEnd.length == 0) || (compareKey(this.partitionKeyEnd, other.partitionKeyEnd) > 0));
+		/* We know that this partition can contain another for sure in case of following:
+		 	 1. If both the partitions have the same start and end key then technically it means they
+		 	 		represent the same tablet.
+		 	 2. If this partition is the single partition then also it will contain the other partition,
+		 	    no matter what other partition's boundaries are.
+		 */
+		if ((Arrays.equals(partitionKeyStart, other.partitionKeyStart)
+					&& Arrays.equals(partitionKeyEnd, other.partitionKeyEnd))
+						|| (this.isStartPartition() && this.isEndPartition())) {
+			return true;
+		}
+
+		// This is only start partition. Also, this indicates that this is not end since we have already evaluated the condition before.
+		if (this.isStartPartition()) {
+			return !other.isEndPartition() && (compareKey(this.partitionKeyEnd, other.partitionKeyEnd) > 0);
+		}
+
+		if (this.isEndPartition()) {
+			return !other.isStartPartition() && (compareKey(this.partitionKeyStart, other.partitionKeyStart) <= 0);
+		}
+
+		return (compareKey(this.partitionKeyStart, other.partitionKeyStart) < 0) && (compareKey(this.partitionKeyStart, other.partitionKeyEnd) < 0)
+						 && (compareKey(this.partitionKeyEnd, other.partitionKeyStart) > 0) && (compareKey(this.partitionKeyEnd, other.partitionKeyEnd) > 0);
 	}
 
 	public boolean isConflictingWith(HashPartition other) {

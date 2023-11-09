@@ -41,7 +41,16 @@ public class HashPartitionTest {
 		HashPartition parent = HashPartition.from(tableId1, tabletId1, start, end);
 		HashPartition child = HashPartition.from(tableId1, tabletId2, childStartKeyStr, childEndKeyStr);
 
-		assertTrue(parent.containsPartition(child));
+		assertTrue(parent.contains(child));
+	}
+
+	@ParameterizedTest
+	@MethodSource("parameterSourceForChildRangesWithoutFullRange")
+	public void childShouldNotContainParent(String childStartKeyStr, String childEndKeyStr) {
+		HashPartition parent = HashPartition.from(tableId1, tabletId1, start, end);
+		HashPartition child = HashPartition.from(tableId1, tabletId2, childStartKeyStr, childEndKeyStr);
+
+		assertFalse(child.contains(parent));
 	}
 
 	@Test
@@ -80,6 +89,18 @@ public class HashPartitionTest {
 			Arguments.of(one, end),
 			Arguments.of(two, end),
 			Arguments.of(start, end)
+		);
+	}
+
+	private static Stream<Arguments> parameterSourceForChildRangesWithoutFullRange() {
+		return Stream.of(
+			Arguments.of(start, one),
+			Arguments.of(one, two),
+			Arguments.of(two, three),
+			Arguments.of(three, end),
+			Arguments.of(one, three),
+			Arguments.of(one, end),
+			Arguments.of(two, end)
 		);
 	}
 }
