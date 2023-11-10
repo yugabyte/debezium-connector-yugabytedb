@@ -280,7 +280,8 @@ public class HashPartition implements Comparable<HashPartition> {
 	// We can also use Bytes.pretty to get a shorter string
 	@Override
 	public String toString() {
-		return String.format("[%s, %s)",
+		return String.format("Tablet %s: [%s, %s)",
+			tabletId,
 			Arrays.toString(partitionKeyStart),
 			Arrays.toString(partitionKeyEnd));
 	}
@@ -290,6 +291,7 @@ public class HashPartition implements Comparable<HashPartition> {
 	 * @return {@link HashPartition}
 	 */
 	public static HashPartition from(CdcService.TabletCheckpointPair tabletCheckpointPair) {
+		LOGGER.info("Creating a hash partition from tablet checkpoint pair");
 		return new HashPartition(tabletCheckpointPair.getTabletLocations().getTableId().toStringUtf8(),
 			tabletCheckpointPair.getTabletLocations().getTabletId().toStringUtf8(),
 			tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),

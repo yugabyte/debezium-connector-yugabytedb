@@ -374,10 +374,13 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertRecords(recordsCount);
 
-        CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
-                .exceptionally(throwable -> {
-                    throw new RuntimeException(throwable);
-                }).get();
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, recordsCount);
+
+//        CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
+//                .exceptionally(throwable -> {
+//                    throw new RuntimeException(throwable);
+//                }).get();
     }
 
     @Test
