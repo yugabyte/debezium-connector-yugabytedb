@@ -49,7 +49,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
     private Map<String, String> props;
     private Set<String> tableIds;
-    private List<Pair<String, String>> tabletIds;
+    private List<Pair<Pair<String, String>, Pair<String, String>>> hashRanges;
     private YugabyteDBConnectorConfig yugabyteDBConnectorConfig;
 
     private YugabyteDBTablePoller tableMonitorThread;
@@ -154,31 +154,35 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
         LOGGER.info("DB stream ID being used: {}", streamIdValue);
 
-        int numGroups = Math.min(this.tabletIds.size(), maxTasks);
-        LOGGER.info("Total tablets to be grouped: " + tabletIds.size() + " within maximum tasks: " + maxTasks);
+        int numGroups = Math.min(hashRanges.size(), maxTasks);
+        LOGGER.info("Total tablets to be grouped: " + hashRanges.size() + " within maximum tasks: " + maxTasks);
 
-        List<List<Pair<String, String>>> tabletIdsGrouped = YugabyteDBConnectorUtils.groupPartitionsSmartly(this.tabletIds, numGroups);
-        LOGGER.debug("The grouped tabletIds are " + tabletIdsGrouped.size());
-        taskConfigs = new ArrayList<>(tabletIdsGrouped.size());
+        List<List<Pair<Pair<String, String>, Pair<String, String>>>> hashRangesGrouped =
+          YugabyteDBConnectorUtils.groupPartitionsSmartly(this.hashRanges, numGroups);
 
-        for (List<Pair<String, String>> taskTables : tabletIdsGrouped) {
+        taskConfigs = new ArrayList<>(hashRangesGrouped.size());
+
+        for (List<Pair<Pair<String, String>, Pair<String, String>>> taskTables : hashRangesGrouped) {
             Map<String, String> taskProps = new HashMap<>(this.props);
             int taskId = taskConfigs.size();
             taskProps.put(YugabyteDBConnectorConfig.TASK_ID.toString(), String.valueOf(taskId));
             LOGGER.info("Task tables for task {}: {}", taskId, taskTables);
-            String taskTablesSerialized = "";
+            String hashRangesSerialized = "";
             try {
-                taskTablesSerialized = ObjectUtil.serializeObjectToString(taskTables);
+                hashRangesSerialized = ObjectUtil.serializeObjectToString(taskTables);
                 LOGGER.debug("The taskTablesSerialized " + taskTablesSerialized);
             } catch (IOException e) {
                 e.printStackTrace();
             }
-            taskProps.put(YugabyteDBConnectorConfig.TABLET_LIST.toString(), taskTablesSerialized);
+
             taskProps.put(YugabyteDBConnectorConfig.CHAR_SET.toString(), charSetName);
+            taskProps.put(YugabyteDBConnectorConfig.HASH_RANGES_LIST.toString(), hashRangesSerialized);
+
             if (yugabyteDBConnectorConfig.isYSQLDbType()) {
                 taskProps.put(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString(), serializedNameToType);
                 taskProps.put(YugabyteDBConnectorConfig.OID_TO_TYPE.toString(), serializedOidToType);
             }
+
             taskProps.put(YugabyteDBConnectorConfig.STREAM_ID.toString(), streamIdValue);
             taskProps.put(YugabyteDBConnectorConfig.SEND_BEFORE_IMAGE.toString(), String.valueOf(sendBeforeImage));
             taskProps.put(YugabyteDBConnectorConfig.ENABLE_EXPLICIT_CHECKPOINTING.toString(), String.valueOf(enableExplicitCheckpointing));
@@ -312,7 +316,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                 throw new DebeziumException("The tables provided in table.include.list do not exist");
             }
 
-            this.tabletIds = new ArrayList<>();
+            this.hashRanges = new ArrayList<>();
             try {
                 for (String tableId : tableIds) {
                     YBTable table = ybClient.openTableByUUID(tableId);
