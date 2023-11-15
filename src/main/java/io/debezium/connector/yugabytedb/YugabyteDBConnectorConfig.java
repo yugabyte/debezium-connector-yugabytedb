@@ -36,6 +36,7 @@ import io.debezium.connector.yugabytedb.snapshot.InitialOnlySnapshotter;
 import io.debezium.connector.yugabytedb.snapshot.InitialSnapshotter;
 import io.debezium.connector.yugabytedb.snapshot.NeverSnapshotter;
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
+import io.debezium.heartbeat.DatabaseHeartbeatImpl;
 import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.jdbc.JdbcConnection;
 import io.debezium.jdbc.JdbcValueConverters;
@@ -605,12 +606,6 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withType(ConfigDef.Type.STRING)
             .withWidth(ConfigDef.Width.MEDIUM)
             .withDescription("Internal task config: List of TabletIds to be fetched by this task");
-
-    public static final Field HASH_RANGES_LIST = Field.create(TASK_CONFIG_PREFIX + ".hash.ranges.list")
-                                              .withDisplayName("YugabyteDB tablet list with hash ranges")
-                                              .withType(ConfigDef.Type.STRING)
-                                              .withWidth(ConfigDef.Width.MEDIUM)
-                                              .withDescription("Internal task config: List of TabletIds to be fetched by this task");
 
     public static final Field MAX_NUM_TABLETS = Field.create("table.max.num.tablets")
             .withDisplayName("Maximum number of tablets that can be polled for in a table")
