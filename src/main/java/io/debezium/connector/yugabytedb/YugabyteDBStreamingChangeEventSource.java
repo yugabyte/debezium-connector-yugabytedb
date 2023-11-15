@@ -288,14 +288,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
             // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
             // and the value is tablet UUID
-            List<Pair<String, String>> tabletPairList = null;
-            try {
-                tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
-                LOGGER.debug("The tablet list is " + tabletPairList);
-            } catch (IOException | ClassNotFoundException e) {
-                LOGGER.error("Exception while deserializing tablet pair list", e);
-                throw new RuntimeException(e);
-            }
+            List<Pair<String, String>> tabletPairList = new ArrayList<>();
 
             Map<String, YBTable> tableIdToTable = new HashMap<>();
             Map<String, GetTabletListToPollForCDCResponse> tabletListResponse = new HashMap<>();
