@@ -159,7 +159,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         LOGGER.info("Total tablets to be grouped: " + hashRanges.size() + " within maximum tasks: " + maxTasks);
 
         List<List<Pair<Pair<String, String>, Pair<String, String>>>> hashRangesGrouped =
-            YugabyteDBConnectorUtils.groupPartitionsSmartly(this.hashRanges, numGroups);
+          YugabyteDBConnectorUtils.groupPartitionsSmartly(this.hashRanges, numGroups);
 
         taskConfigs = new ArrayList<>(hashRangesGrouped.size());
 
@@ -168,7 +168,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             int taskId = taskConfigs.size();
             taskProps.put(YugabyteDBConnectorConfig.TASK_ID.toString(), String.valueOf(taskId));
             LOGGER.info("Task tables for task {}: {}", taskId, taskTables);
-            String taskTablesSerialized = "";
+
             String hashRangesSerialized = "";
             try {
                 hashRangesSerialized = ObjectUtil.serializeObjectToString(taskTables);
