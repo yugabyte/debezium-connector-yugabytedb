@@ -4,53 +4,53 @@ import io.debezium.config.EnumeratedValue;
 public class HelperBeforeImageModes {
 
     public enum BeforeImageMode implements EnumeratedValue {
-      /**
-       * [Old type that is no longer allowed to be created] ALL mode, both old and new images of the
-       * item
-       */
-      ALL("ALL"),
+        /**
+         * [Old type that is no longer allowed to be created] ALL mode, both old and new images of the
+         * item
+         */
+        ALL("ALL"),
 
-      /**
-       * CHANGE mode (default), only the changed columns
-       */
-      CHANGE("CHANGE"),
+        /**
+         * CHANGE mode (default), only the changed columns
+         */
+        CHANGE("CHANGE"),
 
-      /**
-       * [Old type that is no longer allowed to be created] FULL_ROW_NEW_IMAGE mode, the entire
-       * updated row as new image, entire row as old image for DELETE
-       */
-      FULL_ROW_NEW_IMAGE("FULL_ROW_NEW_IMAGE"),
+        /**
+         * [Old type that is no longer allowed to be created] FULL_ROW_NEW_IMAGE mode, the entire
+         * updated row as new image, entire row as old image for DELETE
+         */
+        FULL_ROW_NEW_IMAGE("FULL_ROW_NEW_IMAGE"),
 
-      /**
-       * [Old type that is no longer allowed to be created] MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES
-       * mode, old and new images of modified column
-       */
-      MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES"),
+        /**
+         * [Old type that is no longer allowed to be created] MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES
+         * mode, old and new images of modified column
+         */
+        MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES"),
 
-      /**
-       * FULL mode, both old and new images of the item
-       */
-      FULL("FULL"),
+        /**
+         * FULL mode, both old and new images of the item
+         */
+        FULL("FULL"),
 
-      /**
-       * CHANGE_OLD_NEW mode, old and new images of modified column
-       */
-      CHANGE_OLD_NEW("CHANGE_OLD_NEW"),
+        /**
+         * CHANGE_OLD_NEW mode, old and new images of modified column
+         */
+        CHANGE_OLD_NEW("CHANGE_OLD_NEW"),
 
-      /**
-       * DEFAULT mode, entire updated row as new image, only key as old image for DELETE
-       */
-      DEFAULT("DEFAULT"),
+        /**
+         * DEFAULT mode, entire updated row as new image, only key as old image for DELETE
+         */
+        DEFAULT("DEFAULT"),
 
-      /**
-       * NOTHING mode, No old image for any operation
-       */
-      NOTHING("NOTHING");
+        /**
+         * NOTHING mode, No old image for any operation
+         */
+        NOTHING("NOTHING");
 
-      private final String value;
+        private final String value;
 
-      BeforeImageMode(String value) {
-        this.value = value;
+        BeforeImageMode(String value) {
+            this.value = value;
         }
 
         @Override
