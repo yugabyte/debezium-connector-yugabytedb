@@ -28,24 +28,24 @@ public class HelperBeforeImageModes {
       MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES"),
 
       /**
-       * PG_FULL mode, both old and new images of the item
+       * FULL mode, both old and new images of the item
        */
-      PG_FULL("PG_FULL"),
+      FULL("FULL"),
 
       /**
-       * PG_CHANGE_OLD_NEW mode, old and new images of modified column
+       * CHANGE_OLD_NEW mode, old and new images of modified column
        */
-      PG_CHANGE_OLD_NEW("PG_CHANGE_OLD_NEW"),
+      CHANGE_OLD_NEW("CHANGE_OLD_NEW"),
 
       /**
-       * PG_DEFAULT mode, entire updated row as new image, only key as old image for DELETE
+       * DEFAULT mode, entire updated row as new image, only key as old image for DELETE
        */
-      PG_DEFAULT("PG_DEFAULT"),
+      DEFAULT("DEFAULT"),
 
       /**
-       * PG_NOTHING mode, No old image for any operation
+       * NOTHING mode, No old image for any operation
        */
-      PG_NOTHING("PG_NOTHING");
+      NOTHING("NOTHING");
 
       private final String value;
 
