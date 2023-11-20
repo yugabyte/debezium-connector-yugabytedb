@@ -81,48 +81,62 @@ public class YugabyteDBConnectorTask
         final String databaseCharsetName = config.getString(YugabyteDBConnectorConfig.CHAR_SET);
         final Charset databaseCharset = Charset.forName(databaseCharsetName);
 
-        String nameToTypeStr = config.getString(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString());
-        String oidToTypeStr = config.getString(YugabyteDBConnectorConfig.OID_TO_TYPE.toString());
         Encoding encoding = Encoding.defaultEncoding(); // UTF-8
-
-        Map<String, YugabyteDBType> nameToType = null;
-        Map<Integer, YugabyteDBType> oidToType = null;
-        try {
-            nameToType = (Map<String, YugabyteDBType>) ObjectUtil
-                    .deserializeObjectFromString(nameToTypeStr);
-        } catch (IOException | ClassNotFoundException e) {
-            LOGGER.error("Error while deserializing name to type string", e);
-            throw new RuntimeException(e);
-        }
-
-        try {
-            oidToType = (Map<Integer, YugabyteDBType>) ObjectUtil
-                    .deserializeObjectFromString(oidToTypeStr);
-        } catch (IOException | ClassNotFoundException e) {
-            LOGGER.error("Error while deserializing object to type string", e);
-        }
-
         YugabyteDBTaskConnection taskConnection = new YugabyteDBTaskConnection(encoding);
+                                                                                          
+
         final YugabyteDBValueConverterBuilder valueConverterBuilder = (typeRegistry) -> YugabyteDBValueConverter.of(
                 connectorConfig,
                 databaseCharset,
                 typeRegistry);
 
-        // Global JDBC connection used both for snapshotting and streaming.
-        // Must be able to resolve datatypes.
-        jdbcConnection = new YugabyteDBConnection(connectorConfig.getJdbcConfig(), valueConverterBuilder, YugabyteDBConnection.CONNECTION_GENERAL);
 
-        // CDCSDK We can just build the type registry on the co-ordinator and then send the
-        // map of Postgres Type and Oid to the Task using Config
-        final YugabyteDBTypeRegistry yugabyteDBTypeRegistry =
-            new YugabyteDBTypeRegistry(taskConnection, nameToType, oidToType, jdbcConnection);
 
-        schema = new YugabyteDBSchema(connectorConfig, yugabyteDBTypeRegistry, topicSelector,
-                valueConverterBuilder.build(yugabyteDBTypeRegistry));
+        if (connectorConfig.isYSQLDbType()) {
+
+            String nameToTypeStr = config.getString(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString());
+            String oidToTypeStr = config.getString(YugabyteDBConnectorConfig.OID_TO_TYPE.toString());
+
+            Map<String, YugabyteDBType> nameToType = null;
+            Map<Integer, YugabyteDBType> oidToType = null;
+            try {
+                nameToType = (Map<String, YugabyteDBType>) ObjectUtil
+                        .deserializeObjectFromString(nameToTypeStr);
+            } catch (IOException | ClassNotFoundException e) {
+                LOGGER.error("Error while deserializing name to type string", e);
+                throw new RuntimeException(e);
+            }
+
+            try {
+                oidToType = (Map<Integer, YugabyteDBType>) ObjectUtil
+                        .deserializeObjectFromString(oidToTypeStr);
+            } catch (IOException | ClassNotFoundException e) {
+                LOGGER.error("Error while deserializing object to type string", e);
+            }
+
+            // Global JDBC connection used both for snapshotting and streaming.
+            // Must be able to resolve datatypes.
+            jdbcConnection = new YugabyteDBConnection(connectorConfig.getJdbcConfig(), valueConverterBuilder,
+                    YugabyteDBConnection.CONNECTION_GENERAL);
+
+            // CDCSDK We can just build the type registry on the co-ordinator and then send
+            // the map of Postgres Type and Oid to the Task using Config
+            final YugabyteDBTypeRegistry yugabyteDBTypeRegistry = new YugabyteDBTypeRegistry(taskConnection, nameToType,
+                    oidToType, jdbcConnection);
+
+            schema = new YugabyteDBSchema(connectorConfig, yugabyteDBTypeRegistry, topicSelector,
+                    valueConverterBuilder.build(yugabyteDBTypeRegistry));
+
+        } else {
+            final YugabyteDBCQLValueConverter cqlValueConverter = YugabyteDBCQLValueConverter.of(connectorConfig,
+                    databaseCharset);
+            schema = new YugabyteDBSchema(connectorConfig, topicSelector, cqlValueConverter);
+        }
 
         String taskId = config.getString(YugabyteDBConnectorConfig.TASK_ID.toString());
         boolean sendBeforeImage = config.getBoolean(YugabyteDBConnectorConfig.SEND_BEFORE_IMAGE.toString());
         boolean enableExplicitCheckpointing = config.getBoolean(YugabyteDBConnectorConfig.ENABLE_EXPLICIT_CHECKPOINTING.toString());
+
         this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector, taskId, sendBeforeImage, enableExplicitCheckpointing);
 
         String tabletList = config.getString(YugabyteDBConnectorConfig.TABLET_LIST);

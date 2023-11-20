@@ -79,10 +79,13 @@ public final class TestHelper {
 
     // Set the localhost value as the defaults for now
     private static String CONTAINER_YSQL_HOST = "127.0.0.1";
+    private static String CONTAINER_YCQL_HOST = "127.0.0.1";
     private static int CONTAINER_YSQL_PORT = 5433;
+    private static int CONTAINER_YCQL_PORT = 9042;
     private static String CONTAINER_MASTER_PORT = "7100";
     private static String MASTER_ADDRESS = "127.0.0.1:7100";
     private static String DEFAULT_DATABASE_NAME = "yugabyte";
+    private static String DEFAULT_CASSANDRA_USER = "cassandra";
 
     /**
      * Key for schema parameter used to store DECIMAL/NUMERIC columns' precision.
@@ -367,6 +370,7 @@ public final class TestHelper {
         return getConfigBuilder("yugabyte", fullTableNameWithSchema, dbStreamId);
     }
 
+
     public static Configuration.Builder getConfigBuilder(String namespaceName, String fullTableNameWithSchema, String dbStreamId) throws Exception {
         return TestHelper.defaultConfig()
                 .with(YugabyteDBConnectorConfig.DATABASE_NAME, namespaceName)
@@ -379,9 +383,24 @@ public final class TestHelper {
                 .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId);
     }
 
-    public static void setContainerHostPort(String host, int port) {
+    public static Configuration.Builder getConfigBuilderForCQL(String keyspaceName, String fullTableNameWithSchema, String dbStreamId) throws Exception {
+        return TestHelper.defaultConfig()
+                .with(YugabyteDBConnectorConfig.DATABASE_NAME, keyspaceName)
+                .with(YugabyteDBConnectorConfig.HOSTNAME,CONTAINER_YCQL_HOST)
+                .with(YugabyteDBConnectorConfig.PORT, CONTAINER_YCQL_PORT)
+                .with(YugabyteDBConnectorConfig.USER, DEFAULT_CASSANDRA_USER)
+                .with(YugabyteDBConnectorConfig.PASSWORD, "Yugabyte@123")
+                .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.NEVER.getValue())
+                .with(YugabyteDBConnectorConfig.DELETE_STREAM_ON_STOP, Boolean.TRUE)
+                .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, CONTAINER_YCQL_HOST + ":" + CONTAINER_MASTER_PORT)
+                .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, fullTableNameWithSchema)
+                .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId);
+    }
+
+    public static void setContainerHostPort(String host, int sqlPort, int cqlPort) {
         CONTAINER_YSQL_HOST = host;
-        CONTAINER_YSQL_PORT = port;
+        CONTAINER_YSQL_PORT = sqlPort;
+        CONTAINER_YCQL_PORT = cqlPort;
     }
 
     public static void setContainerMasterPort(int masterPort) {
@@ -464,7 +483,7 @@ public final class TestHelper {
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
-                                          boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode)
+                                          boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode, boolean withCQL)
             throws Exception {
         YBClient syncClient = getYbClient(MASTER_ADDRESS);
 
@@ -478,7 +497,7 @@ public final class TestHelper {
         try {
             dbStreamId = syncClient.createCDCStream(placeholderTable, namespaceName,
                                                     "PROTO", explicitCheckpointing ? "EXPLICIT" : "IMPLICIT",
-                                                    withBeforeImage ? mode.toString() : BeforeImageMode.CHANGE.toString()).getStreamId();
+                                                    withBeforeImage ? mode.toString() : BeforeImageMode.CHANGE.toString(), withCQL).getStreamId();
         } finally {
             syncClient.close();
         }
@@ -487,13 +506,18 @@ public final class TestHelper {
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
+                                          boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode) throws Exception {
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing, mode, false);
+    }
+
+    public static String getNewDbStreamId(String namespaceName, String tableName,
                                           boolean withBeforeImage, boolean explicitCheckpointing) throws Exception {
-        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing /* explicit */, BeforeImageMode.CHANGE);
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing, BeforeImageMode.CHANGE);
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
                                           boolean withBeforeImage) throws Exception {
-        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, true /* explicit */, BeforeImageMode.CHANGE);
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, true /* explicit */);
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName) throws Exception {

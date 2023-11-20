@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.connector.yugabytedb.YugabyteDBType;
+import org.yb.Common;
 
 /**
  * Extracts type information from replication messages and associates them with each column.
@@ -103,6 +104,9 @@ public abstract class AbstractReplicationMessageColumn implements ReplicationMes
     private final boolean hasMetadata;
     private final YugabyteDBType type;
 
+    private final Common.QLTypePB qlTypePB;
+
+
     public AbstractReplicationMessageColumn(String columnName, YugabyteDBType type, String typeWithModifiers, boolean optional, boolean hasMetadata) {
         super();
         this.columnName = columnName;
@@ -110,6 +114,17 @@ public abstract class AbstractReplicationMessageColumn implements ReplicationMes
         this.typeWithModifiers = typeWithModifiers;
         this.optional = optional;
         this.hasMetadata = hasMetadata;
+        this.qlTypePB = null;
+    }
+
+    public AbstractReplicationMessageColumn(String columnName, Common.QLTypePB type, String typeWithModifiers, boolean optional, boolean hasMetadata) {
+        super();
+        this.columnName = columnName;
+        this.qlTypePB = type;
+        this.typeWithModifiers= typeWithModifiers;
+        this.hasMetadata = hasMetadata;
+        this.optional = optional;
+        this.type = null;
     }
 
     private void initMetadata() {

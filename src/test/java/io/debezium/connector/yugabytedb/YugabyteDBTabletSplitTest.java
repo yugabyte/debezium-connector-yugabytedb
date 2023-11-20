@@ -151,7 +151,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
       throw new RuntimeException(e);
     }
 
-    TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433));
+    TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433), ybContainer.getMappedPort(9042));
     TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
     
     TestHelper.dropAllSchemas();

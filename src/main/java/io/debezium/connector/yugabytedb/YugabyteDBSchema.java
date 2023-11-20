@@ -7,6 +7,7 @@
 package io.debezium.connector.yugabytedb;
 
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -16,14 +17,18 @@ import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.Common.QLTypePB;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.CDCSDKColumnInfoPB;
 import org.yb.cdc.CdcService.CDCSDKSchemaPB;
+import org.yb.QLType;
+
 
 import io.debezium.annotation.NotThreadSafe;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.relational.*;
 import io.debezium.relational.Tables.TableFilter;
+import io.debezium.schema.DataCollectionSchema;
 import io.debezium.schema.TopicSelector;
 import io.debezium.util.Collect;
 import io.debezium.util.SchemaNameAdjuster;
@@ -55,6 +60,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
     private YugabyteDBConnectorConfig config;
     private YugabyteDBValueConverter valueConverter;
+    private YugabyteDBCQLValueConverter cqlValueConverter;
     private TopicSelector<TableId> topicSelector;
     private TableFilter tableFilter;
 
@@ -75,12 +81,28 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
         this.config = config;
         this.valueConverter = valueConverter;
+        this.cqlValueConverter = null;
         this.topicSelector = topicSelector;
         this.tableFilter = new Filters(config).tableFilter();
     }
 
+    protected YugabyteDBSchema(YugabyteDBConnectorConfig config,TopicSelector<TableId> topicSelector, YugabyteDBCQLValueConverter cqlValueConverter) {
+        super(config, topicSelector, new Filters(config).tableFilter(),
+                config.getColumnFilter(), getTableSchemaBuilder(config, cqlValueConverter), false,
+                config.getKeyMapper());
+        this.yugabyteDBTypeRegistry = null;
+        this.tableIdToToastableColumns = new HashMap<>();
+        this.relationIdToTableId = new HashMap<>();
+
+        this.config = config;
+        this.valueConverter = null;
+        this.cqlValueConverter = cqlValueConverter;
+        this.topicSelector = topicSelector;
+        this.tableFilter = config.cqlTableFilter();
+    }
+
     private static TableSchemaBuilder getTableSchemaBuilder(YugabyteDBConnectorConfig config,
-                                                            YugabyteDBValueConverter valueConverter) {
+            ValueConverterProvider valueConverter) {
         return new YBTableSchemaBuilder(valueConverter, SchemaNameAdjuster.create(),
                 config.customConverterRegistry(), config.getSourceInfoStructMaker().schema(),
                 config.getSanitizeFieldNames(), false);
@@ -124,8 +146,14 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             tabletIdToCdcsdkSchemaPB.put(lookupKey, schemaPB);
         }
 
-        readSchemaWithTablet(tables(), null, schemaName,
+        if (config.isYSQLDbType()) {
+            readSchemaWithTablet(tables(), null, schemaName,
                 getTableFilter(), null, true, schemaPB, tableId, tabletId);
+        } else {
+            readSchemaWithTablet(tables(), tableId.catalog(), schemaName,
+                    config.cqlTableFilter(), null, true, schemaPB, tableId, tabletId);
+        }
+        
         refreshSchemasWithTabletId(tableId, tabletId);
     }
 
@@ -223,12 +251,13 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
         // Find regular and materialized views as they cannot be snapshotted
         final Set<TableId> tableIds = new HashSet<>();
+
         if (tableFilter == null || tableFilter.isIncluded(tableId)) {
             tableIds.add(tableId);
         }
 
         for (TableId includeTable : tableIds) {
-            Map<TableId, List<Column>> cols = getColumnsDetailsWithSchema(databaseCatalog, schemaNamePattern,
+            Map<TableId, List<Column>> cols = getColumnsDetailsWithSchema(databaseCatalog, schemaNamePattern, 
                     includeTable.table(), tableFilter,
                     columnFilter, schemaPB, schemaNamePattern);
             columnsByTable.putAll(cols);
@@ -319,17 +348,25 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                 tableId.table(), columnName)) {
             final ColumnEditor column = Column.editor().name(columnName);
             column.type(columnMetadata.getType().toString());
-            // TODO: Handle the non default length/scale later.
-            column.length(getLength(oid));
-            column.scale(getScale(oid));
             column.optional(columnMetadata.getIsNullable());
             column.position(position);
             // TODO: Handle it later, Mark it as false for now
             column.autoIncremented(false);
             column.generated(false);
-            column.nativeType(resolveNativeType(oid));
-            column.jdbcType(resolveJdbcType(column.nativeType()));
-            return Optional.of(column);
+
+            if (config.isYSQLDbType()) {
+                // TODO: Handle the non default length/scale later.
+                column.length(getLength(oid));
+                column.scale(getScale(oid));
+                column.nativeType(resolveNativeType(oid));
+                column.jdbcType(resolveJdbcType(column.nativeType()));
+                return Optional.of(column);
+            } else {
+                column.length(0); // TODO: Set length and scale properly for Decimal and Varint
+                column.scale(0);
+                column.nativeType(resolveQLType(QLType.createFromQLTypePB(columnMetadata.getType()))); 
+                return Optional.of(column);
+            }
         }
 
         return Optional.empty();
@@ -345,6 +382,33 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
     private int resolveNativeType(int oid) {
         return getTypeRegistry().get(oid).getRootType().getOid();
+    }
+
+    private int resolveQLType(QLType type)
+    {
+        switch (type.getMain()) {
+            case INT8: return Types.INTEGER;
+            case INT16: return Types.INTEGER;
+            case INT32: return Types.INTEGER;
+            case INT64: return Types.BIGINT;
+            case STRING: return Types.VARCHAR;
+            case BOOL: return Types.BOOLEAN;
+            case FLOAT: return Types.FLOAT;
+            case DOUBLE: return Types.DOUBLE;
+            case DECIMAL: return Types.DECIMAL;
+            case BINARY: return Types.BINARY;
+            case DATE: return Types.DATE;
+            case INET: return PgOid.INET;
+            case TIME: return PgOid.TIME;
+            case TIMESTAMP: return PgOid.TIMESTAMP;  
+            case VARINT: return PgOid.VARINT;
+            case TIMEUUID: 
+            case UUID: return PgOid.UUID;
+            default:
+                LOGGER.error("Invalid column type for CQL column");
+                return -1;
+
+        }
     }
 
     private int resolveJdbcType(int nativeType) {
@@ -371,11 +435,18 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                            String tabletId) throws SQLException {
         readSchemaWithTablet(null /* dummy object */, null, tableId.schema(), tableId::equals,
                              null, true, schemaPB, tableId, tabletId);
-
+        
         if (refreshToastableColumns) {
             // and refresh toastable columns info
             refreshToastableColumnsMap(connection, tableId);
         }
+    }
+
+    protected void refresh(TableId tableId,
+            boolean refreshToastableColumns, CdcService.CDCSDKSchemaPB schemaPB,
+            String tabletId) {
+        readSchemaWithTablet(null /* dummy object */, tableId.catalog(), tableId.schema(), tableId::equals,
+                null, true, schemaPB, tableId, tabletId);
     }
 
     protected boolean isFilteredOut(TableId id) {
@@ -393,8 +464,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     protected void refreshSchemasWithTabletId(TableId tableId, String tabletId) {
-        String lookupKey = getLookupKey(tableId, tabletId);
-        
+        String lookupKey = getLookupKey(tableId, tabletId);;
         tabletIdToTableSchema.remove(lookupKey);
 
         refreshSchemaWithTablet(tableId, tabletId);
@@ -410,13 +480,22 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
      */
     protected void buildAndRegisterSchemaForTablet(TableId id, String tabletId) {
         String lookupKey = getLookupKey(id, tabletId);
-        Table table = tabletIdToTable.get(lookupKey);
-        TableSchemaBuilder schemaBuilder = getTableSchemaBuilder(config, valueConverter);
-        TableSchema schema = schemaBuilder.create(getSchemaPrefix(config.getLogicalName()), getEnvelopeSchemaName(table), table, config.getColumnFilter(), ColumnMappers.create(config), config.getKeyMapper());
+        TableSchemaBuilder schemaBuilder;
+        if (config.isYSQLDbType()) {
+            schemaBuilder = getTableSchemaBuilder(config, valueConverter);
+        } else {
+            schemaBuilder = getTableSchemaBuilder(config, cqlValueConverter);
+        }
 
+        Table table = tabletIdToTable.get(lookupKey);
+
+        TableSchema schema = schemaBuilder.create(getSchemaPrefix(config.getLogicalName()), getEnvelopeSchemaName(table), table, config.getColumnFilter(), ColumnMappers.create(config), config.getKeyMapper());
+      
         if (tableFilter.isIncluded(table.id())) {
             LOGGER.debug("Updating table schema with lookup key {}", lookupKey);
             tabletIdToTableSchema.put(lookupKey, schema);
+        } else {
+            LOGGER.warn("{} not included in the table filter list",table.id());
         }
     }
 
@@ -483,14 +562,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         tableIdToToastableColumns.put(tableId, Collections.unmodifiableList(toastableColumns));
     }
 
-    protected static TableId parse(String table) {
-        TableId tableId = TableId.parse(table, false);
-        if (tableId == null) {
-            return null;
-        }
-        return tableId.schema() == null ? new TableId(tableId.catalog(), PUBLIC_SCHEMA_NAME, tableId.table()) : tableId;
-    }
-
     protected static TableId parseWithSchema(String table, String pgSchemaName) {
         TableId tableId = TableId.parse(table, false);
         if (tableId == null) {
@@ -498,6 +569,17 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         }
 
         return tableId.schema() == null ? new TableId(tableId.catalog(), pgSchemaName, tableId.table()) : tableId;
+    }
+
+    protected static TableId parseWithKeyspace(String table, String keyspace) {
+        TableId tableId = TableId.parse(table, true);
+        if (tableId == null) {
+            return null;
+        }
+        // Since there is no schema in CQL we will use a static String as schema name for topic creation
+        return tableId.catalog() == null ? new TableId(keyspace, keyspace, tableId.table())
+                                         : new TableId(tableId.catalog(),
+                                                       tableId.catalog(), tableId.table());
     }
 
     public YugabyteDBTypeRegistry getTypeRegistry() {
@@ -585,4 +667,5 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         return config.databaseName() + "." + tableId.schema() + "." + tableId.table()
                 + "." + tabletId;
     }
+
 }

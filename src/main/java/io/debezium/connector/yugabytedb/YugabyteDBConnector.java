@@ -7,6 +7,7 @@
 package io.debezium.connector.yugabytedb;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.util.*;
@@ -98,24 +99,25 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         String serializedNameToType = "";
         String serializedOidToType = "";
         try (YugabyteDBConnection connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL)) {
-            YugabyteDBTypeRegistry typeRegistry = new YugabyteDBTypeRegistry(connection);
-            Map<String, YugabyteDBType> nameToType = typeRegistry.getNameToType();
-            Map<Integer, YugabyteDBType> oidToType = typeRegistry.getOidToType();
+            if (yugabyteDBConnectorConfig.isYSQLDbType()) {
+                YugabyteDBTypeRegistry typeRegistry = new YugabyteDBTypeRegistry(connection);
+                Map<String, YugabyteDBType> nameToType = typeRegistry.getNameToType();
+                Map<Integer, YugabyteDBType> oidToType = typeRegistry.getOidToType();
+                try {
+                    serializedNameToType = ObjectUtil.serializeObjectToString(nameToType);
+                    LOGGER.debug("The serializedNameToType " + serializedNameToType);
+                    Object test = ObjectUtil.deserializeObjectFromString(serializedNameToType);
+                    LOGGER.debug("The deserializedNameToType " + test);
+                } catch (IOException | ClassNotFoundException e) {
+                    e.printStackTrace();
+                }
 
-            try {
-                serializedNameToType = ObjectUtil.serializeObjectToString(nameToType);
-                LOGGER.debug("The serializedNameToType " + serializedNameToType);
-                Object test = ObjectUtil.deserializeObjectFromString(serializedNameToType);
-                LOGGER.debug("The deserializedNameToType " + test);
-            } catch (IOException | ClassNotFoundException e) {
-                e.printStackTrace();
-            }
-
-            try {
-                serializedOidToType = ObjectUtil.serializeObjectToString(oidToType);
-                LOGGER.debug("The serializedOidToType " + serializedOidToType);
-            } catch (IOException e) {
-                e.printStackTrace();
+                try {
+                    serializedOidToType = ObjectUtil.serializeObjectToString(oidToType);
+                    LOGGER.debug("The serializedOidToType " + serializedOidToType);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
         }
         String charSetName = Charset.forName("UTF-8").name();
@@ -126,6 +128,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
         String streamIdValue = this.yugabyteDBConnectorConfig.streamId();
         LOGGER.debug("The streamid in config is" + this.yugabyteDBConnectorConfig.streamId());
+        LOGGER.debug("The port in config is "+ this.yugabyteDBConnectorConfig.port());
 
         if (streamIdValue == null) {
             streamIdValue = results.get(YugabyteDBConnectorConfig.STREAM_ID.name()).value().toString();
@@ -172,8 +175,10 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             }
             taskProps.put(YugabyteDBConnectorConfig.TABLET_LIST.toString(), taskTablesSerialized);
             taskProps.put(YugabyteDBConnectorConfig.CHAR_SET.toString(), charSetName);
-            taskProps.put(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString(), serializedNameToType);
-            taskProps.put(YugabyteDBConnectorConfig.OID_TO_TYPE.toString(), serializedOidToType);
+            if (yugabyteDBConnectorConfig.isYSQLDbType()) {
+                taskProps.put(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString(), serializedNameToType);
+                taskProps.put(YugabyteDBConnectorConfig.OID_TO_TYPE.toString(), serializedOidToType);
+            }
             taskProps.put(YugabyteDBConnectorConfig.STREAM_ID.toString(), streamIdValue);
             taskProps.put(YugabyteDBConnectorConfig.SEND_BEFORE_IMAGE.toString(), String.valueOf(sendBeforeImage));
             taskProps.put(YugabyteDBConnectorConfig.ENABLE_EXPLICIT_CHECKPOINTING.toString(), String.valueOf(enableExplicitCheckpointing));
@@ -215,33 +220,36 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         }
 
         this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
+
         final ConfigValue hostnameValue = configValues.get(RelationalDatabaseConnectorConfig.HOSTNAME.name());
+
         // Try to connect to the database ...
-        try (YugabyteDBConnection connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL)) {
-            int retryCount = 0;
-            while (retryCount <= yugabyteDBConnectorConfig.maxConnectorRetries()) {
-                try {
-                    // Prepare connection without initial statement execution
-                    connection.connection(false);
-                    // check connection
-                    connection.execute("SELECT version()");
-                    LOGGER.info("Successfully tested connection for {} with user '{}'",
-                            connection.connectionString(),
-                            connection.username());
-                    break;
-                }
-                catch (SQLException e) {
-                    retryCount++;
-                    if (retryCount > yugabyteDBConnectorConfig.maxConnectorRetries()) {
-                        LOGGER.error("Failed testing connection for {} with user '{}'",
+        if (yugabyteDBConnectorConfig.isYSQLDbType()) {
+            try (YugabyteDBConnection connection = new YugabyteDBConnection(yugabyteDBConnectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL)) {
+                int retryCount = 0;
+                while (retryCount <= yugabyteDBConnectorConfig.maxConnectorRetries()) {
+                    try {
+                        // Prepare connection without initial statement execution
+                        connection.connection(false);
+                        // check connection
+                        connection.execute("SELECT version()");
+                        LOGGER.info("Successfully tested connection for {} with user '{}'",
                                 connection.connectionString(),
-                                connection.username(), e);
-                        hostnameValue.addErrorMessage("Error while validating connector config: "
-                                + e.getMessage());
+                                connection.username());
+                        break;
+                    } catch (SQLException e) {
+                        retryCount++;
+                        if (retryCount > yugabyteDBConnectorConfig.maxConnectorRetries()) {
+                            LOGGER.error("Failed testing connection for {} with user '{}'",
+                                    connection.connectionString(),
+                                    connection.username(), e);
+                            hostnameValue.addErrorMessage("Error while validating connector config: "
+                                    + e.getMessage());
+                        }
+                        LOGGER.warn("Error while trying to test the connection for {} with user '{}' will retry, attempt {} out of {}",
+                                connection.connectionString(), connection.username(), retryCount,
+                                yugabyteDBConnectorConfig.maxConnectorRetries());
                     }
-                    LOGGER.warn("Error while trying to test the connection for {} with user '{}' will retry, attempt {} out of {}",
-                            connection.connectionString(), connection.username(), retryCount,
-                            yugabyteDBConnectorConfig.maxConnectorRetries());
                 }
             }
         }
@@ -333,4 +341,5 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             throw new DebeziumException("Exception while validating connection", e);
         }
     }
+
 }

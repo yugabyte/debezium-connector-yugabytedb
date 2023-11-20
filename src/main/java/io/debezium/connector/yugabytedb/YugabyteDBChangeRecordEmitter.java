@@ -272,7 +272,6 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         LOGGER.debug("Creating a new schema entry for table: {} and tablet {}", tableId, tabletId);
         refreshTableFromDatabase(tableId);
         final TableSchema tableSchema = schema.schemaForTablet(tableId, tabletId);
-
         if (tableSchema == null) {
             LOGGER.warn("cannot load schema for table '{}'", tableId);
             return Optional.empty();
@@ -287,9 +286,17 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         try {
             // Using another implementation of refresh() to take into picture the schema information too.
             LOGGER.debug("Refreshing schema for the table {}", tableId);
-            schema.refresh(connection, tableId,
-                           connectorConfig.skipRefreshSchemaOnMissingToastableData(),
-                           schema.getSchemaPBForTablet(tableId, tabletId), tabletId);
+            if (connectorConfig.isYSQLDbType()) {
+                schema.refresh(connection, tableId,
+                        connectorConfig.skipRefreshSchemaOnMissingToastableData(),
+                        schema.getSchemaPBForTablet(tableId, tabletId), tabletId);
+
+            } else {
+                // This implementation of refresh is for cql tables where we do not have a JDBC connection
+                schema.refresh(tableId, connectorConfig.skipRefreshSchemaOnMissingToastableData(),
+                        schema.getSchemaPBForTablet(tableId, tabletId), tabletId);
+            }
+
         }
         catch (SQLException e) {
             throw new ConnectException("Database error while refresing table schema", e);
