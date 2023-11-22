@@ -1,5 +1,8 @@
 package io.debezium.connector.yugabytedb;
 
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -16,6 +19,7 @@ import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 import org.yb.master.MasterReplicationOuterClass.GetCDCDBStreamInfoResponsePB.TableInfo;
 
+import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.relational.TableId;
 
 /**
@@ -33,19 +37,20 @@ public class YugabyteDBTablePoller extends Thread {
   private final YBClient ybClient;
   private final CountDownLatch shutdownLatch;
   private final long pollMs;
-
-  private short retryCount = 0;
+  private final boolean usePublication;
   
   private Set<TableInfo> cachedTableInfoSet = null;
+  private Set<String> cachedTableNameSet = null;
 
   public YugabyteDBTablePoller(YugabyteDBConnectorConfig connectorConfig,
-                               ConnectorContext connectorContext) {
+                               ConnectorContext connectorContext, boolean usePublication) {
     super();
     this.connectorConfig = connectorConfig;
     this.connectorContext = connectorContext;
     this.ybClient = YBClientUtils.getYbClient(connectorConfig);
     this.shutdownLatch = new CountDownLatch(1);
     this.pollMs = connectorConfig.newTablePollIntervalMs();
+    this.usePublication = usePublication;
   }
 
   @Override
@@ -53,8 +58,11 @@ public class YugabyteDBTablePoller extends Thread {
     LOGGER.info("Starting thread to monitor the tables");
     try {
       while (shutdownLatch.getCount() > 0) {
-        if (areThereNewTablesInStream()) {
+        LOGGER.info("Sumukh: inside run method will ask areThereNewTables?");
+        if (areThereNewTables()) {
+          LOGGER.info("Sumukh: inside areThereNewTables calling requestTaskReconfiguration");
           this.connectorContext.requestTaskReconfiguration();
+          LOGGER.info("Sumukh: inside areThereNewTables called requestTaskReconfiguration ===============");
         }
         try {
           LOGGER.debug("Waiting for {} ms to poll again for new tables", pollMs);
@@ -87,69 +95,146 @@ public class YugabyteDBTablePoller extends Thread {
    * @return true if there is a new table in the stream info
    */
   private boolean areThereNewTablesInStream() {
-    try {
-      boolean shouldRestart = false;
-      GetDBStreamInfoResponse resp = this.ybClient.getDBStreamInfo(this.connectorConfig.streamId());
+    short retryCount = 0;
+    while (retryCount <= MAX_RETRY_COUNT) {
+      try {
+        boolean shouldRestart = false;
+        GetDBStreamInfoResponse resp = this.ybClient.getDBStreamInfo(this.connectorConfig.streamId());
 
-      // Reset the retry counter.
-      retryCount = 0;
+        // Reset the retry counter.
+        if (cachedTableInfoSet == null) {
+          LOGGER.debug("Cached table list in the poller thread is null, initializing it now");
+          cachedTableInfoSet = resp.getTableInfoList().stream().collect(Collectors.toSet());
+        } else {
+          if (cachedTableInfoSet.size() != resp.getTableInfoList().size()) {
+            Set<TableInfo> tableInfoSetFromResponse =
+              resp.getTableInfoList().stream().collect(Collectors.toSet());
 
-      if (cachedTableInfoSet == null) {
-        LOGGER.debug("Cached table list in the poller thread is null, initializing it now");
-        cachedTableInfoSet = resp.getTableInfoList().stream().collect(Collectors.toSet());
-      } else {
-        if (cachedTableInfoSet.size() != resp.getTableInfoList().size()) {
-          Set<TableInfo> tableInfoSetFromResponse =
-            resp.getTableInfoList().stream().collect(Collectors.toSet());
+            Set<TableInfo> cachedSet = new HashSet<>(cachedTableInfoSet);
+            Set<TableInfo> responseSet = new HashSet<>(tableInfoSetFromResponse);
 
-          Set<TableInfo> cachedSet = new HashSet<>(cachedTableInfoSet);
-          Set<TableInfo> responseSet = new HashSet<>(tableInfoSetFromResponse);
+            Set<TableInfo> intersection = new HashSet<>(cachedSet);
+            intersection.retainAll(responseSet);
 
-          Set<TableInfo> intersection = new HashSet<>(cachedSet);
-          intersection.retainAll(responseSet);
+            Set<TableInfo> difference = new HashSet<>(responseSet);
+            difference.removeAll(cachedSet);
+            
+            if (LOGGER.isDebugEnabled()) {
+              LOGGER.debug("Common tables between the cached table info set and the set received "
+                          + "from GetDBStreamInfoResponse:");
+              intersection.forEach(tableInfo -> {
+                LOGGER.debug(tableInfo.getTableId().toStringUtf8());
+              });
 
-          Set<TableInfo> difference = new HashSet<>(responseSet);
-          difference.removeAll(cachedSet);
+              LOGGER.debug("New tables as received in the GetDBStreamInfoResponse: ");
+              difference.forEach(tableInfo -> {
+                LOGGER.debug(tableInfo.getTableId().toStringUtf8());
+              });
+            }
+
+            for (TableInfo tableInfo : difference) {
+              if (isTableIncludedForStreaming(tableInfo.getTableId().toStringUtf8())) {
+                String message = "Found {} new table(s), signalling context reconfiguration";
+                LOGGER.info(message, difference.size());
+                shouldRestart = true;
+              }
+            }
           
-          if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug("Common tables between the cached table info set and the set received "
-                        + "from GetDBStreamInfoResponse:");
-            intersection.forEach(tableInfo -> {
-              LOGGER.debug(tableInfo.getTableId().toStringUtf8());
-            });
-
-            LOGGER.debug("New tables as received in the GetDBStreamInfoResponse: ");
-            difference.forEach(tableInfo -> {
-              LOGGER.debug(tableInfo.getTableId().toStringUtf8());
-            });
+            // Update the cached table list.
+            cachedTableInfoSet = tableInfoSetFromResponse;
           }
+        }
 
-          for (TableInfo tableInfo : difference) {
-            if (isTableIncludedForStreaming(tableInfo.getTableId().toStringUtf8())) {
+        return shouldRestart;
+      } catch (Exception e) {
+        ++retryCount;
+
+        if (retryCount > MAX_RETRY_COUNT) {
+          LOGGER.error("Retries exceeded the maximum retry count in table poller thread,"
+                    + " all {} retries failed", MAX_RETRY_COUNT);
+          throw fail(e);
+        }
+
+        LOGGER.warn("Exception while trying to get DB stream Info in poller thread,"
+                  + "will retry again", e);
+        return false;
+      }
+    }
+    return false;
+  }
+
+  private boolean areThereNewTablesInPublication() {
+    LOGGER.info("Sumukh: inside areThereNewTablesInPublication ");
+    // Reset the retry counter.
+    short retryCount = 0;
+
+    while (retryCount <= MAX_RETRY_COUNT) {
+      try {
+        boolean shouldRestart = false;
+        Set<String> tablesInPublication = getTablesInPublication();
+
+
+        if (cachedTableNameSet == null) {
+          LOGGER.info("Cached table list in the poller thread is null, initializing it now");// Changes this to Debug
+          cachedTableNameSet = tablesInPublication;
+        } else {
+          LOGGER.info("Sumukh: inside the else part in areThereNewTablesInPublication");
+          if (cachedTableNameSet.size() != tablesInPublication.size()) {
+            LOGGER.info("Sumukh: inside the UNEQUAL SIZES part in areThereNewTablesInPublication");
+            Set<String> cachedSet = new HashSet<>(cachedTableNameSet);
+            Set<String> responseSet = new HashSet<>(tablesInPublication);
+
+            Set<String> intersection = new HashSet<>(cachedSet);
+            intersection.retainAll(responseSet);
+
+            Set<String> difference = new HashSet<>(responseSet);
+            difference.removeAll(cachedSet);
+
+            if (LOGGER.isDebugEnabled()) {
+              LOGGER.debug("Common tables between the cached table info set and the set received "
+                          + "from GetDBStreamInfoResponse:");
+              intersection.forEach(table -> LOGGER.debug(table));
+
+              LOGGER.debug("New tables as received in the GetDBStreamInfoResponse: ");
+              difference.forEach(table -> LOGGER.debug(table));
+            }
+
+            for (String table : difference) {
+              LOGGER.info("Sumukh: Since the table is added to the publication we will reconfigure the tasks");
               String message = "Found {} new table(s), signalling context reconfiguration";
               LOGGER.info(message, difference.size());
               shouldRestart = true;
+              
             }
+            
+            // Update the cached table list.
+            cachedTableNameSet = tablesInPublication;
           }
-          
-          // Update the cached table list.
-          cachedTableInfoSet = tableInfoSetFromResponse;
         }
+        LOGGER.info("Sumukh: inside areThereNewTablesInPublication and the answer is " + shouldRestart);
+        return shouldRestart;
+      } catch (Exception e) {
+        ++retryCount;
+
+        if (retryCount > MAX_RETRY_COUNT) {
+          LOGGER.error("Retries exceeded the maximum retry count in table poller thread,"
+                    + " all {} retries failed", MAX_RETRY_COUNT);
+          throw fail(e);
+        }
+
+        LOGGER.warn("Exception while trying to get DB stream Info in poller thread,"
+                  + "will retry again", e);
+        return false;
       }
+    }
+    return false;
+  }
 
-      return shouldRestart;
-    } catch (Exception e) {
-      ++retryCount;
-
-      if (retryCount > MAX_RETRY_COUNT) {
-        LOGGER.error("Retries exceeded the maximum retry count in table poller thread,"
-                   + " all {} retries failed", MAX_RETRY_COUNT);
-        throw fail(e);
-      }
-
-      LOGGER.warn("Exception while trying to get DB stream Info in poller thread,"
-                + "will retry again", e);
-      return false;
+  private boolean areThereNewTables() {
+    if (usePublication) {
+      return areThereNewTablesInPublication();
+    } else {
+      return areThereNewTablesInStream();    
     }
   }
 
@@ -161,7 +246,6 @@ public class YugabyteDBTablePoller extends Thread {
    */
   public boolean isTableIncludedForStreaming(String tableUUID) throws Exception {
     YBTable ybTable = this.ybClient.openTableByUUID(tableUUID);
-
     ListTablesResponse resp = this.ybClient.getTablesList(ybTable.getName(),
                                                           true, null);
 
@@ -170,8 +254,11 @@ public class YugabyteDBTablePoller extends Thread {
       String fqlTableName = tableInfo.getNamespace().getName() + "."
                             + tableInfo.getPgschemaName() + "."
                             + tableInfo.getName();
+      LOGGER.info("Sumukh: fqltablename = " + fqlTableName);
       TableId tableId = YugabyteDBSchema.parseWithSchema(fqlTableName, tableInfo.getPgschemaName());
-
+      LOGGER.info("Sumukh: tableId = " + tableId);
+      LOGGER.info("Sumukh: tablefilter result " +connectorConfig.getTableFilters().dataCollectionFilter().isIncluded(tableId));
+      LOGGER.info("Sumukh: databaseFilter result " + connectorConfig.databaseFilter().isIncluded(tableId));
       if (connectorConfig.getTableFilters().dataCollectionFilter().isIncluded(tableId)
             && connectorConfig.databaseFilter().isIncluded(tableId)) {
         return true;
@@ -179,6 +266,22 @@ public class YugabyteDBTablePoller extends Thread {
     }
 
     return false;
+  }
+
+  private Set<String> getTablesInPublication() throws Exception {
+    try (YugabyteDBConnection ybConnection = new YugabyteDBConnection(this.connectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL);
+        Connection connection = ybConnection.connection()) {
+          Set<String> tablesInPublication = new HashSet<String>();
+          Statement statement = connection.createStatement();
+          String getTablesFromPublicationQuery = "SELECT * FROM pg_publication_tables WHERE pubname = '"+this.connectorConfig.publicationName()+"' ;";
+          ResultSet rs = statement.executeQuery(getTablesFromPublicationQuery);
+          while(rs.next()) {
+            String tableName = rs.getString("tablename");
+            LOGGER.info("Sumukh: inside getTablesInPublication, tableName = " + tableName);
+            tablesInPublication.add(tableName);
+          }
+          return tablesInPublication;
+    } 
   }
 
   /**

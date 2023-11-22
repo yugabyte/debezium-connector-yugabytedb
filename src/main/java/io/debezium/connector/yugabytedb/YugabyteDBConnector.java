@@ -76,18 +76,19 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
         String tableIncludeList = config.getString(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST);
         
-        // For CQL tables streamId will be non null
-        tableIncludeList = (streamId == null || streamId.isEmpty()) ? YugabyteDBConnectorConfig.extractTableListFromPublication(config) : tableIncludeList;
-        streamId = (streamId == null || streamId.isEmpty()) ? YugabyteDBConnectorConfig.extractStreamIdFromSlot(config) : streamId;
+        boolean usePublication = streamId == null || streamId.isEmpty();
+
+        tableIncludeList = usePublication ? YugabyteDBConnectorConfig.extractTableListFromPublication(config) : tableIncludeList;
+        streamId = usePublication ? YugabyteDBConnectorConfig.extractStreamIdFromSlot(config) : streamId;
 
         config = config.edit()
                         .with(YugabyteDBConnectorConfig.STREAM_ID, streamId)
                         .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, tableIncludeList)
                         .build();
-        LOGGER.info("Streamid before calling constructor" + config.getString(YugabyteDBConnectorConfig.STREAM_ID)+ " table list  "+ YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST);
+        LOGGER.info("Streamid before calling constructor " + config.getString(YugabyteDBConnectorConfig.STREAM_ID)+ " table list  "+ config.getString(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST));
         this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
         
-        tableMonitorThread = new YugabyteDBTablePoller(yugabyteDBConnectorConfig, context);
+        tableMonitorThread = new YugabyteDBTablePoller(yugabyteDBConnectorConfig, context, usePublication);
         if (this.yugabyteDBConnectorConfig.autoAddNewTables()) {
             tableMonitorThread.start();
         }
@@ -192,13 +193,14 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                 taskProps.put(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString(), serializedNameToType);
                 taskProps.put(YugabyteDBConnectorConfig.OID_TO_TYPE.toString(), serializedOidToType);
             }
-            taskProps.put(YugabyteDBConnectorConfig.STREAM_ID.toString(), streamIdValue);
+            // taskProps.put(YugabyteDBConnectorConfig.STREAM_ID.toString(), streamIdValue);
+            // taskProps.put(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST.toString(), this.yugabyteDBConnectorConfig.tableIncludeList());
             taskProps.put(YugabyteDBConnectorConfig.SEND_BEFORE_IMAGE.toString(), String.valueOf(sendBeforeImage));
             taskProps.put(YugabyteDBConnectorConfig.ENABLE_EXPLICIT_CHECKPOINTING.toString(), String.valueOf(enableExplicitCheckpointing));
             taskConfigs.add(taskProps);
         }
 
-        LOGGER.debug("Configuring {} YugabyteDB connector task(s)", taskConfigs.size());
+        LOGGER.info("Configuring {} YugabyteDB connector task(s)", taskConfigs.size());
 
         return taskConfigs;
     }

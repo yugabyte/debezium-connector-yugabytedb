@@ -1572,6 +1572,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     }
 
     public static String extractTableListFromPublication(Configuration config) {
+        LOGGER.info("Sumukh: inside extractTableList");
         String publicationName = config.getString(PUBLICATION_NAME);
         String autoCreateMode = config.getString(PUBLICATION_AUTOCREATE_MODE);
         Exception exception = null;
@@ -1582,6 +1583,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 if (autoCreateMode.equalsIgnoreCase("disabled")) {
                     LOGGER.info("Sumukh: inside disabled");
                     if (!checkIfPublicationExists(publicationName, ybConnection)) {
+                        LOGGER.info("Sumukh: throw exception");
                         throw new DebeziumException(
                          "Publication autocreation is disabled and the provided publication does not exist. Create the publication and restart the connector or change the publication.autocreate.mode");
                     } else {
@@ -1592,6 +1594,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     if (!checkIfPublicationExists(publicationName, ybConnection)) {
                         LOGGER.info("Creating a publication with name {}", publicationName);
                         query = "CREATE PUBLICATION " + publicationName + " FOR ALL TABLES;";
+                        LOGGER.info("Querry  ==== " + query);
                         ybConnection.connection();
                         ybConnection.execute(query);
                     } else {
@@ -1609,8 +1612,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
                     Connection connection = ybConnection.connection();
                     final Statement statement = connection.createStatement();
-                    Boolean createNeeded = checkIfPublicationExists(publicationName, ybConnection);
-
+                    Boolean createNeeded = !checkIfPublicationExists(publicationName, ybConnection);
+                    LOGGER.info("Sumukh: inside filtered case " + createNeeded);
+                    LOGGER.info("Sumukh create querry " + createQuery);
                     statement.execute(createNeeded ? createQuery : alterQuery);
                     return tableList;
                 } else {
@@ -1663,6 +1667,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 + publicationName + "';";
         LOGGER.info("Check publication exists query " + query);
         final ResultSet rs = statement.executeQuery(query);
+        LOGGER.info("Query result returned");
         return rs.next();
     }
 
