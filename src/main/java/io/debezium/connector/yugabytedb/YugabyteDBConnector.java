@@ -51,6 +51,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
     private Set<String> tableIds;
     private List<Pair<String, String>> tabletIds;
     private YugabyteDBConnectorConfig yugabyteDBConnectorConfig;
+    private boolean usePublication;
 
     private YugabyteDBTablePoller tableMonitorThread;
 
@@ -59,16 +60,22 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
     @Override
     public String version() {
+        LOGGER.info("======Sumukh: Inside version=====");
+
         return Module.version();
     }
 
     @Override
     public Class<? extends Task> taskClass() {
+        LOGGER.info("======Sumukh: Inside taskClass=====");
+
         return YugabyteDBConnectorTask.class;
     }
 
     @Override
     public void start(Map<String, String> props) {
+        LOGGER.info("========Sumukh: Inside Start");
+
         this.props = props;
         LOGGER.debug("Props " + props);
         Configuration config = Configuration.from(this.props);
@@ -76,7 +83,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
         String tableIncludeList = config.getString(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST);
         
-        boolean usePublication = streamId == null || streamId.isEmpty();
+        usePublication = streamId == null || streamId.isEmpty();
 
         tableIncludeList = usePublication ? YugabyteDBConnectorConfig.extractTableListFromPublication(config) : tableIncludeList;
         streamId = usePublication ? YugabyteDBConnectorConfig.extractStreamIdFromSlot(config) : streamId;
@@ -103,6 +110,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
     @Override
     public List<Map<String, String>> taskConfigs(int maxTasks) {
+        LOGGER.info("============Sumukh: Inside taskConfigs");
         List<Map<String, String>> taskConfigs;
 
         if (props == null) {
@@ -132,6 +140,17 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
+
+                if(usePublication) {
+                    // Refresh the table include list in case of Alter publication
+                    Configuration config = this.yugabyteDBConnectorConfig.getConfig();
+                    String tableIncludeList =  YugabyteDBConnectorConfig.extractTableListFromPublication(config);
+                    config  = config.edit()
+                                    .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, tableIncludeList)
+                                    .build();
+                    LOGGER.info("Streamid before calling constructor inside task configs " + config.getString(YugabyteDBConnectorConfig.STREAM_ID)+ " table list  "+ config.getString(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST));
+                    this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
+                }
             }
         }
         String charSetName = Charset.forName("UTF-8").name();
@@ -141,7 +160,8 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         validateTServerConnection(results, config);
 
         String streamIdValue = this.yugabyteDBConnectorConfig.streamId();
-        LOGGER.debug("The streamid in config is" + this.yugabyteDBConnectorConfig.streamId());
+        LOGGER.info("The streamid in config inside taskConfigs is" + this.yugabyteDBConnectorConfig.streamId());
+        LOGGER.info("The table include list inside taskConfigs is " + this.yugabyteDBConnectorConfig.tableIncludeList());
         LOGGER.debug("The port in config is "+ this.yugabyteDBConnectorConfig.port());
 
         if (streamIdValue == null) {
@@ -207,7 +227,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
     @Override
     public void stop() {
-        LOGGER.info("Stopping table monitoring thread");
+        LOGGER.info("===========Stopping table monitoring thread");
         tableMonitorThread.shutdown();
         try {
             tableMonitorThread.join(MAX_TIMEOUT);
@@ -224,11 +244,13 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
     @Override
     public ConfigDef config() {
+        LOGGER.info("=========Sumukh: Inside config");
         return YugabyteDBConnectorConfig.configDef();
     }
 
     @Override
     protected void validateConnection(Map<String, ConfigValue> configValues, Configuration config) {
+        LOGGER.info("========Sumukh: Inside validateConnection");
         final ConfigValue databaseValue = configValues.get(RelationalDatabaseConnectorConfig.DATABASE_NAME.name());
         if (!databaseValue.errorMessages().isEmpty()) {
             return;
@@ -238,6 +260,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         String tableIncludeList = config.getString(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST);
         
         // For CQL tables streamId will be non null
+        LOGGER.info("=====BEFORE: Sumukh: inside validateConnection, table list = " + tableIncludeList + ". StreamID = " + streamId);
         tableIncludeList = (streamId == null || streamId.isEmpty()) ? YugabyteDBConnectorConfig.extractTableListFromPublication(config) : tableIncludeList;
         streamId = (streamId == null || streamId.isEmpty()) ? YugabyteDBConnectorConfig.extractStreamIdFromSlot(config) : streamId;
         config = config.edit()
@@ -285,11 +308,13 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
     @Override
     protected Map<String, ConfigValue> validateAllFields(Configuration config) {
+                LOGGER.info("========Sumukh: Inside validateAllFields");
         return config.validate(YugabyteDBConnectorConfig.ALL_FIELDS);
     }
 
     protected void validateTServerConnection(Map<String, ConfigValue> configValues,
                                              Configuration config) {
+        LOGGER.info("========Sumukh: Inside validateTServerConnection");
         try (YBClient ybClient = YBClientUtils.getYbClient(yugabyteDBConnectorConfig)) {
             String hostAddress = config.getString(YugabyteDBConnectorConfig.MASTER_ADDRESSES.toString());
             // so whenever they are null, they will just be ignored

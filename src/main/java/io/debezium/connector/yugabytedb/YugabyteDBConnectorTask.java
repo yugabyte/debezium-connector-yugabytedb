@@ -73,7 +73,7 @@ public class YugabyteDBConnectorTask
 
         // For CQL tables streamId will be non null
         tableIncludeList = (streamId == null || streamId.isEmpty()) ? YugabyteDBConnectorConfig.extractTableListFromPublication(config) : tableIncludeList;
-        tableIncludeList = YugabyteDBConnectorConfig.extractTableListFromPublication(config);
+        // tableIncludeList = YugabyteDBConnectorConfig.extractTableListFromPublication(config);
         streamId = (streamId == null || streamId.isEmpty()) ? YugabyteDBConnectorConfig.extractStreamIdFromSlot(config) : streamId;
         LOGGER.info("Sumukh: inside YugabyteDBConnectorTask streamid = "+ streamId + " table list " + tableIncludeList);
         config = config.edit()
