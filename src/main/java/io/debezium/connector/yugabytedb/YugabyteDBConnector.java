@@ -172,7 +172,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             String hashRangesSerialized = "";
             try {
                 hashRangesSerialized = ObjectUtil.serializeObjectToString(taskTables);
-                LOGGER.debug("The taskTablesSerialized " + taskTablesSerialized);
+                LOGGER.debug("The taskTablesSerialized " + hashRangesSerialized);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -342,9 +342,8 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                         );
                     }
 
-                    // TODO: This validation function fails in case of range based tables.
                     // Validate that we have received the complete range of partitions.
-                    // HashPartition.validateCompleteRanges(partitions);
+                    HashPartition.validateCompleteRanges(partitions);
 
                     LOGGER.info("Received tablet list for table {} ({}): {}", table.getTableId(), table.getName(), tablets);
                 }

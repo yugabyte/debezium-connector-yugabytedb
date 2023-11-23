@@ -319,7 +319,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                 GetTabletListToPollForCDCResponse resp =
                         YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
 
-                // TODO: One optimisation where we initialise the offset context here itself without storing the GetTabletListToPollForCDCResponse
+                // Validate that we receive the complete range of tablets.
+                HashPartition.validateCompleteRanges(HashPartition.from(resp));
+
+                // TODO: One optimisation where we initialise the offset context here itself
+                //  without storing the GetTabletListToPollForCDCResponse
                 getTabletPairListFromRange(resp, tabletPairList);
                 LOGGER.info("Table: {} with number of tablets {}", tId, resp.getTabletCheckpointPairListSize());
                 tabletListResponse.put(tId, resp);

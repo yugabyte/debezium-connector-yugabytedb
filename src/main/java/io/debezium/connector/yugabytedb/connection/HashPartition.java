@@ -1,11 +1,13 @@
 package io.debezium.connector.yugabytedb.connection;
 
 import com.google.common.base.Objects;
+import io.debezium.DebeziumException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.Bytes;
+import org.yb.client.GetTabletListToPollForCDCResponse;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -304,11 +306,26 @@ public class HashPartition implements Comparable<HashPartition> {
 	}
 
 	/**
+	 * Form a {@link List} of hash partitions based on {@link GetTabletListToPollForCDCResponse}
+	 * @param response of type {@link GetTabletListToPollForCDCResponse}
+	 * @return a list of {@link HashPartition}
+	 */
+	public static List<HashPartition> from(GetTabletListToPollForCDCResponse response) {
+		List<HashPartition> result = new ArrayList<>();
+
+		for (CdcService.TabletCheckpointPair tcp : response.getTabletCheckpointPairList()) {
+			result.add(from(tcp));
+		}
+
+		return result;
+	}
+
+	/**
 	 * Validate that the partitions we have make up the full exhaustive range of keys.
 	 * @param hashPartitions a list of all the HashPartitions
 	 */
 	public static void validateCompleteRanges(List<HashPartition> hashPartitions) {
-		hashPartitions.sort(Collections.reverseOrder());
+		sort(hashPartitions);
 
 		byte[] nextKey = new byte[0];
 		for (HashPartition hashPartition : hashPartitions) {
@@ -316,6 +333,42 @@ public class HashPartition implements Comparable<HashPartition> {
 
 			nextKey = hashPartition.getPartitionKeyEnd();
 		}
+	}
+
+	/**
+	 * Sort the given list of {@link HashPartition} so that they complete the chain.
+	 * @param hashPartitions a list of {@link HashPartition}
+	 */
+	public static void sort(List<HashPartition> hashPartitions) {
+		List<HashPartition> tempList = new ArrayList<>();
+
+		byte[] nextStartKey = new byte[0];
+
+		// This loop will exit when all the partitions have been found.
+		while (tempList.size() != hashPartitions.size()) {
+			HashPartition hp = findPartitionByStartKey(hashPartitions, nextStartKey);
+			tempList.add(hp);
+
+			nextStartKey = hp.getPartitionKeyEnd();
+		}
+
+		LOGGER.info("Sorted list");
+		for (HashPartition hp : tempList) {
+			LOGGER.info(hp.toString());
+		}
+
+		Collections.copy(hashPartitions, tempList);
+	}
+
+	private static HashPartition findPartitionByStartKey(List<HashPartition> hashPartitions, byte[] startKey) {
+		for (HashPartition hp : hashPartitions) {
+			if (Arrays.equals(hp.getPartitionKeyStart(), startKey)) {
+				return hp;
+			}
+		}
+
+		throw new DebeziumException("Given start key " + Arrays.toString(startKey)
+																	+ " not found in the list of partitions");
 	}
 
 	private static byte[] getByteArray(String str) {
