@@ -92,7 +92,6 @@ public class YugabyteDBPublicationReplicationTest extends YugabytedTestBase {
 
     @Test
     public void testPublicationReplicationSnapshotConsumption() throws Exception {
-        TestHelper.execute("CREATE TABLE t2 IF NOT EXISTS (id int primary key);");
         String insertStatement = "INSERT INTO t2 values (%d);";
         final int recordsCount = 1000;
         TestHelper.executeBulk(insertStatement, recordsCount);
@@ -111,8 +110,6 @@ public class YugabyteDBPublicationReplicationTest extends YugabytedTestBase {
 
     @Test
     public void testAllTablesPublicationAutoCreateMode() throws Exception {
-        TestHelper.execute("CREATE TABLE IF NOT EXISTS t2 (id int primary key);");
-        TestHelper.execute("CREATE TABLE IF NOT EXISTS t3 (id int primary key);");
         TestHelper.execute(createReplicationSlotStatement);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot");
@@ -132,8 +129,6 @@ public class YugabyteDBPublicationReplicationTest extends YugabytedTestBase {
 
     @Test
     public void testFilteredPublicationAutoCreateMode() throws Exception {
-        TestHelper.execute("CREATE TABLE IF NOT EXISTS t2 (id int primary key);");
-        TestHelper.execute("CREATE TABLE IF NOT EXISTS t3 (id int primary key);");
         TestHelper.execute(createReplicationSlotStatement);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot");
@@ -150,34 +145,6 @@ public class YugabyteDBPublicationReplicationTest extends YugabytedTestBase {
         TestHelper.executeBulk(insertStatementFormatfort2, recordsCount);
         TestHelper.executeBulk(insertStatementFormatfort3, recordsCount);
 
-        verifyRecordCount(recordsCount);
-
-    }
-
-    @Test
-    public void testAlterPublication() throws Exception {
-        TestHelper.execute("CREATE TABLE IF NOT EXISTS t2 (id int primary key);");
-        TestHelper.execute("CREATE TABLE IF NOT EXISTS t3 (id int primary key);");
-        TestHelper.execute(String.format(createPublicationForTableStatement, "pub", "t2"));
-        TestHelper.execute(createReplicationSlotStatement);
-
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot");
-        configBuilder.with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, "public.t2, public.t3");
-        configBuilder.with(YugabyteDBConnectorConfig.NEW_TABLE_POLL_INTERVAL_MS, 5000);
-
-        startEngine(configBuilder);
-        final int recordsCount = 10;
-
-        awaitUntilConnectorIsReady();
-
-        Thread.sleep(30000);
-
-        TestHelper.executeBulk(insertStatementFormatfort2, recordsCount);
-        verifyRecordCount(recordsCount);
-
-        TestHelper.execute("ALTER PUBLICATION pub ADD TABLE t3;");
-
-        TestHelper.executeBulk(insertStatementFormatfort3, recordsCount);
         verifyRecordCount(recordsCount);
 
     }
@@ -207,8 +174,8 @@ public class YugabyteDBPublicationReplicationTest extends YugabytedTestBase {
     }
     
     private boolean dropReplicationSlot() throws Exception {
-        try (YugabyteDBConnection ybConnection = TestHelper.create()) {
-            Connection connection = ybConnection.connection();
+        try (YugabyteDBConnection ybConnection = TestHelper.create();
+             Connection connection = ybConnection.connection()) {
             final Statement statement = connection.createStatement();
             final ResultSet rs = statement.executeQuery(dropReplicationSlotStatement);
             return rs.next();

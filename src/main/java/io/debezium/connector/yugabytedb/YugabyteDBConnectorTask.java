@@ -67,19 +67,6 @@ public class YugabyteDBConnectorTask
     @Override
     public ChangeEventSourceCoordinator<YBPartition, YugabyteDBOffsetContext> start(Configuration config) {
         LOGGER.info("Sumukh inside start method of YugabyteDBConnectorTask");
-        String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
-        String tableIncludeList = config.getString(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST);
-        LOGGER.info("Sumukh:==== BEFORE ===inside YugabyteDBConnectorTask streamid = "+ streamId + " table list " + tableIncludeList);
-
-        // For CQL tables streamId will be non null
-        tableIncludeList = (streamId == null || streamId.isEmpty()) ? YugabyteDBConnectorConfig.extractTableListFromPublication(config) : tableIncludeList;
-        // tableIncludeList = YugabyteDBConnectorConfig.extractTableListFromPublication(config);
-        streamId = (streamId == null || streamId.isEmpty()) ? YugabyteDBConnectorConfig.extractStreamIdFromSlot(config) : streamId;
-        LOGGER.info("Sumukh: inside YugabyteDBConnectorTask streamid = "+ streamId + " table list " + tableIncludeList);
-        config = config.edit()
-                        .with(YugabyteDBConnectorConfig.STREAM_ID, streamId)
-                        .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, tableIncludeList)
-                        .build();
         final YugabyteDBConnectorConfig connectorConfig = new YugabyteDBConnectorConfig(config);
         final TopicSelector<TableId> topicSelector = YugabyteDBTopicSelector.create(connectorConfig);
         final Snapshotter snapshotter = connectorConfig.getSnapshotter();

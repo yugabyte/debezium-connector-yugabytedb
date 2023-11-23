@@ -213,8 +213,8 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                 taskProps.put(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString(), serializedNameToType);
                 taskProps.put(YugabyteDBConnectorConfig.OID_TO_TYPE.toString(), serializedOidToType);
             }
-            // taskProps.put(YugabyteDBConnectorConfig.STREAM_ID.toString(), streamIdValue);
-            // taskProps.put(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST.toString(), this.yugabyteDBConnectorConfig.tableIncludeList());
+            taskProps.put(YugabyteDBConnectorConfig.STREAM_ID.toString(), streamIdValue);
+            taskProps.put(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST.toString(), this.yugabyteDBConnectorConfig.tableIncludeList());
             taskProps.put(YugabyteDBConnectorConfig.SEND_BEFORE_IMAGE.toString(), String.valueOf(sendBeforeImage));
             taskProps.put(YugabyteDBConnectorConfig.ENABLE_EXPLICIT_CHECKPOINTING.toString(), String.valueOf(enableExplicitCheckpointing));
             taskConfigs.add(taskProps);
