@@ -58,11 +58,8 @@ public class YugabyteDBTablePoller extends Thread {
     LOGGER.info("Starting thread to monitor the tables");
     try {
       while (shutdownLatch.getCount() > 0) {
-        LOGGER.info("Sumukh: inside run method will ask areThereNewTables?");
         if (areThereNewTables()) {
-          LOGGER.info("Sumukh: inside areThereNewTables calling requestTaskReconfiguration");
           this.connectorContext.requestTaskReconfiguration();
-          LOGGER.info("Sumukh: inside areThereNewTables called requestTaskReconfiguration ===============");
         }
         try {
           LOGGER.debug("Waiting for {} ms to poll again for new tables", pollMs);
@@ -164,7 +161,6 @@ public class YugabyteDBTablePoller extends Thread {
   }
 
   private boolean areThereNewTablesInPublication() {
-    LOGGER.info("Sumukh: inside areThereNewTablesInPublication ");
     // Reset the retry counter.
     short retryCount = 0;
 
@@ -178,9 +174,7 @@ public class YugabyteDBTablePoller extends Thread {
           LOGGER.info("Cached table list in the poller thread is null, initializing it now");// Changes this to Debug
           cachedTableNameSet = tablesInPublication;
         } else {
-          LOGGER.info("Sumukh: inside the else part in areThereNewTablesInPublication");
           if (cachedTableNameSet.size() != tablesInPublication.size()) {
-            LOGGER.info("Sumukh: inside the UNEQUAL SIZES part in areThereNewTablesInPublication");
             Set<String> cachedSet = new HashSet<>(cachedTableNameSet);
             Set<String> responseSet = new HashSet<>(tablesInPublication);
 
@@ -199,19 +193,15 @@ public class YugabyteDBTablePoller extends Thread {
               difference.forEach(table -> LOGGER.debug(table));
             }
 
-            for (String table : difference) {
-              LOGGER.info("Sumukh: Since the table is added to the publication we will reconfigure the tasks");
-              String message = "Found {} new table(s), signalling context reconfiguration";
-              LOGGER.info(message, difference.size());
-              shouldRestart = true;
-              
-            }
             
+            String message = "Found {} new table(s), signalling context reconfiguration";
+            LOGGER.info(message, difference.size());
+            shouldRestart = true;
+              
             // Update the cached table list.
             cachedTableNameSet = tablesInPublication;
           }
         }
-        LOGGER.info("Sumukh: inside areThereNewTablesInPublication and the answer is " + shouldRestart);
         return shouldRestart;
       } catch (Exception e) {
         ++retryCount;
@@ -254,11 +244,7 @@ public class YugabyteDBTablePoller extends Thread {
       String fqlTableName = tableInfo.getNamespace().getName() + "."
                             + tableInfo.getPgschemaName() + "."
                             + tableInfo.getName();
-      LOGGER.info("Sumukh: fqltablename = " + fqlTableName);
       TableId tableId = YugabyteDBSchema.parseWithSchema(fqlTableName, tableInfo.getPgschemaName());
-      LOGGER.info("Sumukh: tableId = " + tableId);
-      LOGGER.info("Sumukh: tablefilter result " +connectorConfig.getTableFilters().dataCollectionFilter().isIncluded(tableId));
-      LOGGER.info("Sumukh: databaseFilter result " + connectorConfig.databaseFilter().isIncluded(tableId));
       if (connectorConfig.getTableFilters().dataCollectionFilter().isIncluded(tableId)
             && connectorConfig.databaseFilter().isIncluded(tableId)) {
         return true;
@@ -277,7 +263,6 @@ public class YugabyteDBTablePoller extends Thread {
           ResultSet rs = statement.executeQuery(getTablesFromPublicationQuery);
           while(rs.next()) {
             String tableName = rs.getString("tablename");
-            LOGGER.info("Sumukh: inside getTablesInPublication, tableName = " + tableName);
             tablesInPublication.add(tableName);
           }
           return tablesInPublication;

@@ -1533,15 +1533,12 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 YugabyteDBConnection.CONNECTION_GENERAL)) {
             int retryCount = 0;
             while (retryCount <= config.getInteger(MAX_RETRIES)) {
-                try {
-                    Connection connection = ybConnection.connection();
+                try (Connection connection = ybConnection.connection()) {
                     final Statement statement = connection.createStatement();
                     String query = "SELECT yb_stream_id FROM pg_replication_slots WHERE slot_name = '"+ config.getString(SLOT_NAME) + "';";
-                    LOGGER.info("Sumukh: query = " + query);
                     final ResultSet rs = statement.executeQuery(query);
                     if (rs.next()) {
                         String streamId = rs.getString("yb_stream_id");
-                        LOGGER.info("Sumukh: streamid = " + streamId);
                         return streamId;
                     } else {
                         LOGGER.error("StreamId not found");
@@ -1572,7 +1569,6 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     }
 
     public static String extractTableListFromPublication(Configuration config) {
-        LOGGER.info("Sumukh: inside extractTableList");
         String publicationName = config.getString(PUBLICATION_NAME);
         String autoCreateMode = config.getString(PUBLICATION_AUTOCREATE_MODE);
         Exception exception = null;
@@ -1581,9 +1577,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         while (retryCount <= config.getInteger(MAX_CONNECTOR_RETRIES)) {
             try (YugabyteDBConnection ybConnection = new YugabyteDBConnection(getJdbcConfig(config), YugabyteDBConnection.CONNECTION_GENERAL)) {
                 if (autoCreateMode.equalsIgnoreCase("disabled")) {
-                    LOGGER.info("Sumukh: inside disabled");
                     if (!checkIfPublicationExists(publicationName, ybConnection)) {
-                        LOGGER.info("Sumukh: throw exception");
                         throw new DebeziumException(
                          "Publication autocreation is disabled and the provided publication does not exist. Create the publication and restart the connector or change the publication.autocreate.mode");
                     } else {
@@ -1592,9 +1586,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 } else if (autoCreateMode.equalsIgnoreCase("all tables")) {
                     String query;
                     if (!checkIfPublicationExists(publicationName, ybConnection)) {
-                        LOGGER.info("Creating a publication with name {}", publicationName);
                         query = "CREATE PUBLICATION " + publicationName + " FOR ALL TABLES;";
-                        LOGGER.info("Querry  ==== " + query);
                         ybConnection.connection();
                         ybConnection.execute(query);
                     } else {
@@ -1610,12 +1602,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     String createQuery = "CREATE PUBLICATION " + config.getString(PUBLICATION_NAME) + " FOR TABLE " + tableList + ";";
                     String alterQuery = "ALTER PUBLICATION " + config.getString(PUBLICATION_NAME) + " SET TABLE " + tableList + ";";
 
-                    Connection connection = ybConnection.connection();
-                    final Statement statement = connection.createStatement();
-                    Boolean createNeeded = !checkIfPublicationExists(publicationName, ybConnection);
-                    LOGGER.info("Sumukh: inside filtered case " + createNeeded);
-                    LOGGER.info("Sumukh create querry " + createQuery);
-                    statement.execute(createNeeded ? createQuery : alterQuery);
+                    try ( Connection connection = ybConnection.connection();
+                           final Statement statement = connection.createStatement()) {
+                        Boolean createNeeded = !checkIfPublicationExists(publicationName, ybConnection);
+                        statement.execute(createNeeded ? createQuery : alterQuery);
+                    } 
                     return tableList;
                 } else {
                     throw new DebeziumException("Invalid Autocreate Mode");
@@ -1672,19 +1663,18 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     }
 
     public static String fetchTableIncludeList(YugabyteDBConnection ybConnection, String publicationName) throws SQLException {
-        Connection connection = ybConnection.connection();
-        final Statement statement = connection.createStatement();
-        String query = "SELECT * FROM pg_publication_tables WHERE pubname = '" + publicationName + "';";
-        LOGGER.info(query);
-        final ResultSet rs = statement.executeQuery(query);
-        String tableList = "";
-        while (rs.next()) {
-            String tableName = rs.getString("tablename");
-            String schemaName = rs.getString("schemaname");
-            tableList += schemaName + "." + tableName + ",";
+        try (Connection connection = ybConnection.connection()) {
+            final Statement statement = connection.createStatement();
+            String query = "SELECT * FROM pg_publication_tables WHERE pubname = '" + publicationName + "';";
+            final ResultSet rs = statement.executeQuery(query);
+            String tableList = "";
+            while (rs.next()) {
+                String tableName = rs.getString("tablename");
+                String schemaName = rs.getString("schemaname");
+                tableList += schemaName + "." + tableName + ",";
+            }
+            return tableList.substring(0, tableList.length() - 1);
         }
-        LOGGER.info("Sumukh: table list = " + tableList);
-        return tableList.substring(0, tableList.length() - 1);
     }
 
     @Override
