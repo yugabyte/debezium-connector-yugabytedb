@@ -66,13 +66,12 @@ public class YugabyteDBConnectorTask
 
     @Override
     public ChangeEventSourceCoordinator<YBPartition, YugabyteDBOffsetContext> start(Configuration config) {
-        LOGGER.info("Sumukh inside start method of YugabyteDBConnectorTask");
         final YugabyteDBConnectorConfig connectorConfig = new YugabyteDBConnectorConfig(config);
         final TopicSelector<TableId> topicSelector = YugabyteDBTopicSelector.create(connectorConfig);
         final Snapshotter snapshotter = connectorConfig.getSnapshotter();
         final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
 
-        LOGGER.info("The config is " + config);
+        LOGGER.debug("The config is " + config);
 
         if (snapshotter == null) {
             throw new ConnectException("Unable to load snapshotter, if using custom snapshot mode," +

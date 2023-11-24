@@ -92,13 +92,13 @@ public class YugabyteDBTablePoller extends Thread {
    * @return true if there is a new table in the stream info
    */
   private boolean areThereNewTablesInStream() {
+    // Reset the retry counter.
     short retryCount = 0;
     while (retryCount <= MAX_RETRY_COUNT) {
       try {
         boolean shouldRestart = false;
         GetDBStreamInfoResponse resp = this.ybClient.getDBStreamInfo(this.connectorConfig.streamId());
 
-        // Reset the retry counter.
         if (cachedTableInfoSet == null) {
           LOGGER.debug("Cached table list in the poller thread is null, initializing it now");
           cachedTableInfoSet = resp.getTableInfoList().stream().collect(Collectors.toSet());
@@ -157,6 +157,7 @@ public class YugabyteDBTablePoller extends Thread {
         return false;
       }
     }
+
     return false;
   }
 
@@ -171,7 +172,7 @@ public class YugabyteDBTablePoller extends Thread {
 
 
         if (cachedTableNameSet == null) {
-          LOGGER.info("Cached table list in the poller thread is null, initializing it now");// Changes this to Debug
+          LOGGER.debug("Cached table list in the poller thread is null, initializing it now");
           cachedTableNameSet = tablesInPublication;
         } else {
           if (cachedTableNameSet.size() != tablesInPublication.size()) {
@@ -202,6 +203,7 @@ public class YugabyteDBTablePoller extends Thread {
             cachedTableNameSet = tablesInPublication;
           }
         }
+
         return shouldRestart;
       } catch (Exception e) {
         ++retryCount;
@@ -217,6 +219,7 @@ public class YugabyteDBTablePoller extends Thread {
         return false;
       }
     }
+
     return false;
   }
 
@@ -236,6 +239,7 @@ public class YugabyteDBTablePoller extends Thread {
    */
   public boolean isTableIncludedForStreaming(String tableUUID) throws Exception {
     YBTable ybTable = this.ybClient.openTableByUUID(tableUUID);
+
     ListTablesResponse resp = this.ybClient.getTablesList(ybTable.getName(),
                                                           true, null);
 
@@ -245,6 +249,7 @@ public class YugabyteDBTablePoller extends Thread {
                             + tableInfo.getPgschemaName() + "."
                             + tableInfo.getName();
       TableId tableId = YugabyteDBSchema.parseWithSchema(fqlTableName, tableInfo.getPgschemaName());
+
       if (connectorConfig.getTableFilters().dataCollectionFilter().isIncluded(tableId)
             && connectorConfig.databaseFilter().isIncluded(tableId)) {
         return true;

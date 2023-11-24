@@ -77,6 +77,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
         String tableIncludeList = config.getString(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST);
         
+        // For CQL tables as well as for the config not using Publication/Replication streamId will be non null
         usePublication = streamId == null || streamId.isEmpty();
 
         tableIncludeList = usePublication ? YugabyteDBConnectorConfig.extractTableListFromPublication(config) : tableIncludeList;
@@ -151,7 +152,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         validateTServerConnection(results, config);
 
         String streamIdValue = this.yugabyteDBConnectorConfig.streamId();
-        LOGGER.info("The streamid in config is" + this.yugabyteDBConnectorConfig.streamId());
+        LOGGER.debug("The streamid in config is" + this.yugabyteDBConnectorConfig.streamId());
         LOGGER.debug("The port in config is "+ this.yugabyteDBConnectorConfig.port());
 
         if (streamIdValue == null) {
@@ -210,7 +211,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             taskConfigs.add(taskProps);
         }
 
-        LOGGER.info("Configuring {} YugabyteDB connector task(s)", taskConfigs.size());
+        LOGGER.debug("Configuring {} YugabyteDB connector task(s)", taskConfigs.size());
 
         return taskConfigs;
     }

@@ -728,6 +728,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withEnum(LogicalDecoder.class, LogicalDecoder.YBOUTPUT)
             .withWidth(Width.MEDIUM)
             .withImportance(Importance.MEDIUM)
+            .withDefault("yboutput")
             .withDescription("The name of the Postgres logical decoding plugin installed on the server. " +
                     "Supported values are '" + LogicalDecoder.YBOUTPUT.getValue()
                     + "'. " +
@@ -741,7 +742,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withImportance(Importance.MEDIUM)
             .withDefault(ReplicationConnection.Builder.DEFAULT_SLOT_NAME)
             .withValidation(YugabyteDBConnectorConfig::validateReplicationSlotName)
-            .withDescription("The name of the Postgres logical decoding slot created for streaming changes from a plugin." +
+            .withDescription("The name of the YSQL logical decoding slot created for streaming changes from a plugin." +
                     "Defaults to 'debezium");
     
     public static final Field DROP_SLOT_ON_STOP = Field.create("slot.drop.on.stop")
@@ -761,7 +762,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withWidth(Width.MEDIUM)
             .withImportance(Importance.MEDIUM)
             .withDefault(ReplicationConnection.Builder.DEFAULT_PUBLICATION_NAME)
-            .withDescription("The name of the Postgres publication used for streaming changes from a plugin." +
+            .withDescription("The name of the YSQL publication used for streaming changes from a plugin." +
                     "Defaults to '" + ReplicationConnection.Builder.DEFAULT_PUBLICATION_NAME + "'");
 
     public static final Field DELETE_STREAM_ON_STOP = Field.create("stream.delete.on.stop")
@@ -1529,12 +1530,13 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     }
 
     public static String extractStreamIdFromSlot(Configuration config) {
+        RuntimeException exception = null;
         try (YugabyteDBConnection ybConnection = new YugabyteDBConnection(getJdbcConfig(config),
                 YugabyteDBConnection.CONNECTION_GENERAL)) {
             int retryCount = 0;
             while (retryCount <= config.getInteger(MAX_RETRIES)) {
-                try (Connection connection = ybConnection.connection()) {
-                    final Statement statement = connection.createStatement();
+                try (Connection connection = ybConnection.connection();
+                      final Statement statement = connection.createStatement()) {
                     String query = "SELECT yb_stream_id FROM pg_replication_slots WHERE slot_name = '"+ config.getString(SLOT_NAME) + "';";
                     final ResultSet rs = statement.executeQuery(query);
                     if (rs.next()) {
@@ -1545,6 +1547,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                         return "";
                     }
                 } catch (SQLException e) {
+                    exception = new RuntimeException(e);
                     retryCount++;
                     if (retryCount > config.getInteger(MAX_RETRIES)) {
                         LOGGER.error("Failed to execute the query on pg_replication_slots. All {} retries failed",
@@ -1554,6 +1557,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     LOGGER.warn(
                             "Error while trying to execute the query on pg_replication_slots. Will retry, attempt {} out of {}",
                             retryCount, config.getInteger(MAX_RETRIES));
+                    e.printStackTrace();
                     
                     try {
                         final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(config.getLong(RETRY_DELAY_MS)), Clock.SYSTEM);
@@ -1564,6 +1568,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     }
                 }
             }
+        }
+        if (exception != null) {
+            throw exception;
         }
         return "";
     }
@@ -1587,8 +1594,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     String query;
                     if (!checkIfPublicationExists(publicationName, ybConnection)) {
                         query = "CREATE PUBLICATION " + publicationName + " FOR ALL TABLES;";
-                        ybConnection.connection();
-                        ybConnection.execute(query);
+                        try (Connection connection = ybConnection.connection()) {
+                            ybConnection.execute(query);
+                        }
                     } else {
                         LOGGER.info("The publication {} already exists", publicationName);
                     }
@@ -1601,10 +1609,10 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
                     String createQuery = "CREATE PUBLICATION " + config.getString(PUBLICATION_NAME) + " FOR TABLE " + tableList + ";";
                     String alterQuery = "ALTER PUBLICATION " + config.getString(PUBLICATION_NAME) + " SET TABLE " + tableList + ";";
-
-                    try ( Connection connection = ybConnection.connection();
-                           final Statement statement = connection.createStatement()) {
-                        Boolean createNeeded = !checkIfPublicationExists(publicationName, ybConnection);
+                    Boolean createNeeded = !checkIfPublicationExists(publicationName, ybConnection);
+                    
+                    try (Connection connection = ybConnection.connection();
+                          final Statement statement = connection.createStatement()) {
                         statement.execute(createNeeded ? createQuery : alterQuery);
                     } 
                     return tableList;
@@ -1620,6 +1628,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 }
                 LOGGER.warn("Error while trying to extract table list from publication. Will retry, attempt {} out of {}",
                             retryCount, config.getInteger(MAX_CONNECTOR_RETRIES));
+                e.printStackTrace();
 
                 try {
                     final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(config.getLong(CONNECTOR_RETRY_DELAY_MS)), Clock.SYSTEM);
@@ -1652,19 +1661,17 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     }
 
     public static boolean checkIfPublicationExists(String publicationName, YugabyteDBConnection ybConnection) throws SQLException {
-        Connection connection = ybConnection.connection();
-        final Statement statement = connection.createStatement();
-        String query = "SELECT * FROM pg_publication_tables WHERE pubname = '"
-                + publicationName + "';";
-        LOGGER.info("Check publication exists query " + query);
-        final ResultSet rs = statement.executeQuery(query);
-        LOGGER.info("Query result returned");
-        return rs.next();
+        try (Connection connection = ybConnection.connection();
+              final Statement statement = connection.createStatement()) {
+            String query = "SELECT * FROM pg_publication_tables WHERE pubname = '" + publicationName + "';";
+            final ResultSet rs = statement.executeQuery(query);
+            return rs.next();
+        }
     }
 
     public static String fetchTableIncludeList(YugabyteDBConnection ybConnection, String publicationName) throws SQLException {
-        try (Connection connection = ybConnection.connection()) {
-            final Statement statement = connection.createStatement();
+        try (Connection connection = ybConnection.connection();
+              final Statement statement = connection.createStatement()) {
             String query = "SELECT * FROM pg_publication_tables WHERE pubname = '" + publicationName + "';";
             final ResultSet rs = statement.executeQuery(query);
             String tableList = "";
