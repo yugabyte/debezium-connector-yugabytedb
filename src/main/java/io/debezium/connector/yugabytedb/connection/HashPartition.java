@@ -297,7 +297,6 @@ public class HashPartition implements Comparable<HashPartition> {
 	 * @return {@link HashPartition}
 	 */
 	public static HashPartition from(CdcService.TabletCheckpointPair tabletCheckpointPair) {
-		LOGGER.info("Creating a hash partition from tablet checkpoint pair");
 		return new HashPartition(tabletCheckpointPair.getTabletLocations().getTableId().toStringUtf8(),
 			tabletCheckpointPair.getTabletLocations().getTabletId().toStringUtf8(),
 			tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
@@ -354,11 +353,6 @@ public class HashPartition implements Comparable<HashPartition> {
 			tempList.add(hp);
 
 			nextStartKey = hp.getPartitionKeyEnd();
-		}
-
-		LOGGER.info("Sorted list");
-		for (HashPartition hp : tempList) {
-			LOGGER.info(hp.toString());
 		}
 
 		Collections.copy(hashPartitions, tempList);

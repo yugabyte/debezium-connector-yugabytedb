@@ -176,7 +176,9 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                 hashRangesSerialized = ObjectUtil.serializeObjectToString(taskTables);
                 LOGGER.debug("The taskTablesSerialized " + hashRangesSerialized);
             } catch (IOException e) {
+                LOGGER.error("Error while serializing task tables");
                 e.printStackTrace();
+                throw new DebeziumException(e);
             }
 
             taskProps.put(YugabyteDBConnectorConfig.CHAR_SET.toString(), charSetName);
@@ -335,14 +337,9 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                         tablets.add(tempPartition.getTabletId());
                         partitions.add(tempPartition);
 
-                        this.hashRanges.add(new YBTablet(tableId, tempPartition.getTabletId(), tempPartition.getPartitionKeyStart(), tempPartition.getPartitionKeyEnd()));
-//                        this.hashRanges.add(
-//                          new ImmutablePair<>(
-//                            new ImmutablePair<>(tableId, tempPartition.getTabletId()),
-//                            new ImmutablePair<>(Arrays.toString(tempPartition.getPartitionKeyStart()),
-//                                                Arrays.toString(tempPartition.getPartitionKeyEnd()))
-//                          )
-//                        );
+                        this.hashRanges.add(
+                          new YBTablet(tableId, tempPartition.getTabletId(),
+                                       tempPartition.getPartitionKeyStart(), tempPartition.getPartitionKeyEnd()));
                     }
 
                     // Validate that we have received the complete range of partitions.
