@@ -2,6 +2,7 @@ package io.debezium.connector.yugabytedb.util;
 
 import io.debezium.connector.yugabytedb.ObjectUtil;
 import io.debezium.connector.yugabytedb.connection.HashPartition;
+import io.debezium.connector.yugabytedb.connection.YBTablet;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -50,8 +51,8 @@ public class YugabyteDBConnectorUtils {
 	 * @param elements a list of pairs where key is tableId and value is tabletId
 	 * @param numGroups the total number of groups we should be dividing the tasks to.
 	 */
-	public static List<List<Pair<Pair<String, String>, Pair<String, String>>>> groupPartitionsSmartly(
-		List<Pair<Pair<String, String>, Pair<String, String>>> elements, int numGroups) {
+	public static List<List<YBTablet>> groupPartitionsSmartly(
+		List<YBTablet> elements, int numGroups) {
 		if (elements.size() == 0) {
 			throw new IllegalStateException("Elements to be grouped must be positive");
 		}
@@ -60,19 +61,12 @@ public class YugabyteDBConnectorUtils {
 			throw new IllegalArgumentException("Number of groups must be positive");
 		}
 
-		List<List<Pair<Pair<String, String>, Pair<String, String>>>> result = new ArrayList<>(numGroups);
+		List<List<YBTablet>> result = new ArrayList<>(numGroups);
 
 		// Filter out groups having the same tabletId as value
 		// The map will have tabletId -> table1,table2,table3 map
-		Map<String, List<Pair<Pair<String, String>, Pair<String, String>>>> groupedData = elements.stream()
-			.collect(Collectors.groupingBy(pair -> pair.getKey().getValue()));
-
-		for (Map.Entry<String, List<Pair<Pair<String, String>, Pair<String, String>>>> entry : groupedData.entrySet()) {
-			System.out.println("Tablet: " + entry.getKey());
-			for (Pair<Pair<String, String>, Pair<String, String>> ele : entry.getValue()) {
-				System.out.println("Table: " + ele.getKey().getKey());
-			}
-		}
+		Map<String, List<YBTablet>> groupedData = elements.stream()
+			.collect(Collectors.groupingBy(YBTablet::getTabletID));
 
 		// If there are same number of tablets in the grouped reverse map then use the older function
 		// to group rather than going to the complicated logic of grouping colocated and non-colocated
@@ -100,7 +94,7 @@ public class YugabyteDBConnectorUtils {
 		// After this, we can simply iterate over the reversed map and just put proper table-tablet
 		// pairs to the task list.
 		for (List<String> tablets : groupedTablets) {
-			List<Pair<Pair<String, String>, Pair<String, String>>> groupList = new ArrayList<>();
+			List<YBTablet> groupList = new ArrayList<>();
 			for (String tablet : tablets) {
 				groupList.addAll(groupedData.get(tablet));
 			}
@@ -122,13 +116,11 @@ public class YugabyteDBConnectorUtils {
 	 */
 	public static void populatePartitionRanges(String serializedString, List<HashPartition> partitionRanges)
 			throws IOException, ClassNotFoundException {
-		List<Pair<Pair<String, String>, Pair<String, String>>> tableToTabletRanges =
-				(List<Pair<Pair<String, String>, Pair<String, String>>>) ObjectUtil.deserializeObjectFromString(serializedString);
+		List<YBTablet> tableToTabletRanges =
+				(List<YBTablet>) ObjectUtil.deserializeObjectFromString(serializedString);
 
-		for (Pair<Pair<String, String>, Pair<String, String>> entry : tableToTabletRanges) {
-			partitionRanges.add(
-				HashPartition.from(
-					entry.getKey().getKey(), entry.getKey().getValue(), entry.getValue().getKey(), entry.getValue().getValue()));
+		for (YBTablet tablet : tableToTabletRanges) {
+			partitionRanges.add(tablet.toHashPartition());
 		}
 	}
 }

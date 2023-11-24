@@ -13,6 +13,7 @@ import java.sql.SQLException;
 import java.util.*;
 
 import io.debezium.connector.yugabytedb.connection.HashPartition;
+import io.debezium.connector.yugabytedb.connection.YBTablet;
 import io.debezium.connector.yugabytedb.util.YugabyteDBConnectorUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
@@ -50,7 +51,8 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
     private Map<String, String> props;
     private Set<String> tableIds;
-    private List<Pair<Pair<String, String>, Pair<String, String>>> hashRanges;
+//    private List<Pair<Pair<String, String>, Pair<String, String>>> hashRanges;
+    private List<YBTablet> hashRanges;
     private YugabyteDBConnectorConfig yugabyteDBConnectorConfig;
 
     private YugabyteDBTablePoller tableMonitorThread;
@@ -158,12 +160,12 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         int numGroups = Math.min(hashRanges.size(), maxTasks);
         LOGGER.info("Total tablets to be grouped: " + hashRanges.size() + " within maximum tasks: " + maxTasks);
 
-        List<List<Pair<Pair<String, String>, Pair<String, String>>>> hashRangesGrouped =
+        List<List<YBTablet>> hashRangesGrouped =
           YugabyteDBConnectorUtils.groupPartitionsSmartly(this.hashRanges, numGroups);
 
         taskConfigs = new ArrayList<>(hashRangesGrouped.size());
 
-        for (List<Pair<Pair<String, String>, Pair<String, String>>> taskTables : hashRangesGrouped) {
+        for (List<YBTablet> taskTables : hashRangesGrouped) {
             Map<String, String> taskProps = new HashMap<>(this.props);
             int taskId = taskConfigs.size();
             taskProps.put(YugabyteDBConnectorConfig.TASK_ID.toString(), String.valueOf(taskId));
@@ -333,13 +335,14 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                         tablets.add(tempPartition.getTabletId());
                         partitions.add(tempPartition);
 
-                        this.hashRanges.add(
-                          new ImmutablePair<>(
-                            new ImmutablePair<>(tableId, tempPartition.getTabletId()),
-                            new ImmutablePair<>(Arrays.toString(tempPartition.getPartitionKeyStart()),
-                                                Arrays.toString(tempPartition.getPartitionKeyEnd()))
-                          )
-                        );
+                        this.hashRanges.add(new YBTablet(tableId, tempPartition.getTabletId(), tempPartition.getPartitionKeyStart(), tempPartition.getPartitionKeyEnd()));
+//                        this.hashRanges.add(
+//                          new ImmutablePair<>(
+//                            new ImmutablePair<>(tableId, tempPartition.getTabletId()),
+//                            new ImmutablePair<>(Arrays.toString(tempPartition.getPartitionKeyStart()),
+//                                                Arrays.toString(tempPartition.getPartitionKeyEnd()))
+//                          )
+//                        );
                     }
 
                     // Validate that we have received the complete range of partitions.

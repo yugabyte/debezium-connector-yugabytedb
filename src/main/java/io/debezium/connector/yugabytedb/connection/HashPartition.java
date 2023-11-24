@@ -288,6 +288,10 @@ public class HashPartition implements Comparable<HashPartition> {
 			Arrays.toString(partitionKeyEnd));
 	}
 
+	public YBTablet toYBTablet() {
+		return new YBTablet(tableId, tabletId, partitionKeyStart, partitionKeyEnd);
+	}
+
 	/**
 	 * @param tabletCheckpointPair a {@link org.yb.cdc.CdcService.TabletCheckpointPair}  from the {@link org.yb.client.GetTabletListToPollForCDCResponse}
 	 * @return {@link HashPartition}
