@@ -77,8 +77,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
         String tableIncludeList = config.getString(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST);
         
-        // For CQL tables as well as for the config not using Publication/Replication streamId will be non null
-        usePublication = streamId == null || streamId.isEmpty();
+        usePublication = YugabyteDBConnectorConfig.shouldUsePublication(config);
 
         tableIncludeList = usePublication ? YugabyteDBConnectorConfig.extractTableListFromPublication(config) : tableIncludeList;
         streamId = usePublication ? YugabyteDBConnectorConfig.extractStreamIdFromSlot(config) : streamId;
@@ -248,9 +247,9 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
         String tableIncludeList = config.getString(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST);
         
-        // For CQL tables streamId will be non null
-        tableIncludeList = (streamId == null || streamId.isEmpty()) ? YugabyteDBConnectorConfig.extractTableListFromPublication(config) : tableIncludeList;
-        streamId = (streamId == null || streamId.isEmpty()) ? YugabyteDBConnectorConfig.extractStreamIdFromSlot(config) : streamId;
+        usePublication = YugabyteDBConnectorConfig.shouldUsePublication(config);
+        tableIncludeList = usePublication ? YugabyteDBConnectorConfig.extractTableListFromPublication(config) : tableIncludeList;
+        streamId = usePublication ? YugabyteDBConnectorConfig.extractStreamIdFromSlot(config) : streamId;
         config = config.edit()
                         .with(YugabyteDBConnectorConfig.STREAM_ID, streamId)
                         .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, tableIncludeList)

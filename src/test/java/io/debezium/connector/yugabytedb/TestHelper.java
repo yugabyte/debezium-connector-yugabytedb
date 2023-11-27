@@ -10,6 +10,7 @@ import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -541,6 +542,19 @@ public final class TestHelper {
 
     public static String getNewDbStreamId(String namespaceName, String tableName) throws Exception {
         return getNewDbStreamId(namespaceName, tableName, false);
+    }
+
+    public static String getStreamIdFromSlot(String slotName) throws Exception {
+        try (YugabyteDBConnection ybConnection = TestHelper.create();
+              Connection connection = ybConnection.connection();
+              Statement statement = connection.createStatement()) {
+            String query = "SELECT yb_stream_id FROM pg_replication_slots WHERE slot_name = '"+ slotName + "';";
+            ResultSet rs = statement.executeQuery(query);
+            if (rs.next()) {
+                return rs.getString("yb_stream_id");
+            }
+        }
+        throw new Exception("Replication slot " + slotName + " not found");
     }
 
     public static JdbcConfiguration.Builder defaultJdbcConfigBuilder() {

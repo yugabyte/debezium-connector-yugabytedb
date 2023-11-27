@@ -92,7 +92,6 @@ public class YugabyteDBTablePoller extends Thread {
    * @return true if there is a new table in the stream info
    */
   private boolean areThereNewTablesInStream() {
-    // Reset the retry counter.
     short retryCount = 0;
     while (retryCount <= MAX_RETRY_COUNT) {
       try {
@@ -162,7 +161,6 @@ public class YugabyteDBTablePoller extends Thread {
   }
 
   private boolean areThereNewTablesInPublication() {
-    // Reset the retry counter.
     short retryCount = 0;
 
     while (retryCount <= MAX_RETRY_COUNT) {
@@ -186,11 +184,11 @@ public class YugabyteDBTablePoller extends Thread {
             difference.removeAll(cachedSet);
 
             if (LOGGER.isDebugEnabled()) {
-              LOGGER.debug("Common tables between the cached table info set and the set received "
-                          + "from GetDBStreamInfoResponse:");
+              LOGGER.debug("Common tables between the cached table names set and the set received "
+                          + "from pg_publication_tables: ");
               intersection.forEach(table -> LOGGER.debug(table));
 
-              LOGGER.debug("New tables as received in the GetDBStreamInfoResponse: ");
+              LOGGER.debug("New tables as received from pg_publication_tables : ");
               difference.forEach(table -> LOGGER.debug(table));
             }
 
@@ -268,7 +266,8 @@ public class YugabyteDBTablePoller extends Thread {
           ResultSet rs = statement.executeQuery(getTablesFromPublicationQuery);
           while(rs.next()) {
             String tableName = rs.getString("tablename");
-            tablesInPublication.add(tableName);
+            String schemaName = rs.getString("schemaname");
+            tablesInPublication.add(schemaName+"."+tableName);
           }
           return tablesInPublication;
     } 

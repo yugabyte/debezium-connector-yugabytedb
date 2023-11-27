@@ -569,6 +569,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final String TASK_CONFIG_PREFIX = "task.";
     protected static final String DEFAULT_QL_TYPE = "ysql";
     protected static final String DEFAULT_PLUGIN_NAME = "yboutput";
+    protected static final boolean DEFAULT_DROP_SLOT_ON_STOP = false;
     protected static final String DEFAULT_PUBLICATION_AUTOCREATE_MODE = "all tables";
 
     protected static final int DEFAULT_PORT = 5_433;
@@ -752,7 +753,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withDisplayName("Drop slot on stop")
             .withType(Type.BOOLEAN)
             .withGroup(Field.createGroupEntry(Field.Group.CONNECTION_ADVANCED_REPLICATION, 3))
-            .withDefault(ReplicationConnection.Builder.DEFAULT_DROP_SLOT_ON_CLOSE)
+            .withDefault(DEFAULT_DROP_SLOT_ON_STOP)
             .withImportance(Importance.MEDIUM)
             .withDescription(
                     "Whether or not to drop the logical replication slot when the connector finishes orderly" +
@@ -1563,14 +1564,8 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                             "Error while trying to execute the query on pg_replication_slots. Will retry, attempt {} out of {}",
                             retryCount, config.getInteger(MAX_RETRIES));
                     e.printStackTrace();
-                    
-                    try {
-                        final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(config.getLong(RETRY_DELAY_MS)), Clock.SYSTEM);
-                        retryMetronome.pause();
-                    } catch (InterruptedException ie) {
-                        LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-                        Thread.currentThread().interrupt();
-                    }
+
+                    pauseBetweenRetries(config.getLong(RETRY_DELAY_MS));
                 }
             }
         }
@@ -1637,16 +1632,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                             retryCount, config.getInteger(MAX_CONNECTOR_RETRIES));
                 e.printStackTrace();
 
-                try {
-                    final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(config.getLong(CONNECTOR_RETRY_DELAY_MS)), Clock.SYSTEM);
-                    retryMetronome.pause();
-                } catch (InterruptedException ie) {
-                    LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-                    Thread.currentThread().interrupt();
-                }
-            } catch (DebeziumException e) {
-                exception = e;
-                throw e;
+                pauseBetweenRetries(config.getLong(CONNECTOR_RETRY_DELAY_MS));
             }
         }
 
@@ -1672,7 +1658,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     public static boolean checkIfPublicationExists(String publicationName, YugabyteDBConnection ybConnection) throws SQLException {
         try (Connection connection = ybConnection.connection();
               final Statement statement = connection.createStatement()) {
-            String query = "SELECT * FROM pg_publication_tables WHERE pubname = '" + publicationName + "';";
+            String query = "SELECT * FROM pg_publication WHERE pubname = '" + publicationName + "';";
             final ResultSet rs = statement.executeQuery(query);
             return rs.next();
         }
@@ -1690,6 +1676,64 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 tableList += schemaName + "." + tableName + ",";
             }
             return tableList.substring(0, tableList.length() - 1);
+        }
+    }
+
+    public static boolean shouldUsePublication(Configuration config) {
+        String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
+        RuntimeException exception = null;
+
+        // For CQL tables as well as for the config not using Publication/Replication streamId will be non null
+        if (streamId == null || streamId.isEmpty()) {
+            return true;
+        }
+
+        int retryCount = 0;
+        while (retryCount <= config.getInteger(YugabyteDBConnectorConfig.MAX_RETRIES)) {
+            try (YugabyteDBConnection ybConnection = new YugabyteDBConnection(getJdbcConfig(config),YugabyteDBConnection.CONNECTION_GENERAL);
+                  Connection connection = ybConnection.connection();
+                  Statement statement = connection.createStatement()) {
+                    String query = "SELECT * FROM pg_replication_slots WHERE yb_stream_id='"+streamId+"';";
+                    ResultSet rs = statement.executeQuery(query);
+                    if (rs.next()) {
+                        String errorFormat = "Stream ID {} is associated with replication slot {}. Please use slot name in the config instead of Stream ID ";
+                        LOGGER.error(errorFormat, streamId, rs.getString("slot_name"));
+                        throw new DebeziumException();
+                    }
+
+                    return false;
+
+            } catch (SQLException e) {
+                    exception = new RuntimeException(e);
+                    retryCount++;
+                    if (retryCount > config.getInteger(MAX_RETRIES)) {
+                        LOGGER.error("Failed to execute the query on pg_replication_slots. All {} retries failed",
+                                config.getInteger(MAX_RETRIES), e);
+                        throw new DebeziumException(e);
+                    }
+                    LOGGER.warn(
+                            "Error while trying to execute the query on pg_replication_slots. Will retry, attempt {} out of {}",
+                            retryCount, config.getInteger(MAX_RETRIES));
+                    e.printStackTrace();
+
+                    pauseBetweenRetries(config.getLong(RETRY_DELAY_MS));
+            }
+        }
+
+        if (exception != null) {
+            throw exception;
+        }
+
+        return false;
+    }
+
+    public static void pauseBetweenRetries(long delay) {
+        try {
+            final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(delay), Clock.SYSTEM);
+            retryMetronome.pause();
+        } catch (InterruptedException ie) {
+            LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
+            Thread.currentThread().interrupt();
         }
     }
 

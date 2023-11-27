@@ -23,6 +23,7 @@ import org.junit.jupiter.api.*;
 import org.yb.client.GetDBStreamInfoResponse;
 import org.yb.client.YBClient;
 
+import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState;
 import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
@@ -148,6 +149,20 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
 
         verifyRecordCount(recordsCount);
 
+    }
+
+    @Test
+    public void oldConfigStreamIDShouldNotBePartOfReplicationSlot() throws Exception {
+        TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, "pub", "t1"));
+        TestHelper.execute(TestHelper.createReplicationSlotStatement);
+        String streamId = TestHelper.getStreamIdFromSlot("test_replication_slot");
+
+        LOGGER.info("Using stream ID =  " + streamId);
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("yugabyte", "public.t1", streamId);
+        Configuration config = configBuilder.build();
+
+        assertThrows(DebeziumException.class, ()->YugabyteDBConnectorConfig.shouldUsePublication(config));
     }
 
     private void insertRecords(long numOfRowsToBeInserted) throws Exception {
