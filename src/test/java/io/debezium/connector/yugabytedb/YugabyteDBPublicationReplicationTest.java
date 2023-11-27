@@ -31,11 +31,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class YugabyteDBPublicationReplicationTest extends YugabytedTestBase {
 
-    public static String createPublicationForTableStatement = "CREATE PUBLICATION %s FOR TABLE %s ;";
-    public static String createPublicationForALLTablesStatement = "CREATE PUBLICATION %s FOR ALL TABLES ;";
-    public static String createReplicationSlotStatement = "SELECT pg_create_logical_replication_slot('test_replication_slot', 'yboutput');";
-    public static String dropReplicationSlotStatement = "SELECT pg_drop_replication_slot('test_replication_slot');";
-    public static String dropPublicationStatement = "DROP PUBLICATION IF EXISTS pub;";
     public static String insertStatementFormatfort2 = "INSERT INTO t2 values (%d);";
     public static String insertStatementFormatfort3 = "INSERT INTO t3 values (%d);";
 
@@ -63,7 +58,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabytedTestBase {
                     return false;
                 }
             });
-        TestHelper.execute(dropPublicationStatement);
+        TestHelper.execute(TestHelper.dropPublicationStatement);
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
     }
 
@@ -74,8 +69,8 @@ public class YugabyteDBPublicationReplicationTest extends YugabytedTestBase {
 
     @Test
     public void testPublicationReplicationStreamingConsumption() throws Exception {
-        TestHelper.execute(String.format(createPublicationForTableStatement, "pub", "t1"));
-        TestHelper.execute(createReplicationSlotStatement);
+        TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, "pub", "t1"));
+        TestHelper.execute(TestHelper.createReplicationSlotStatement);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot"); 
         startEngine(configBuilder);
@@ -96,8 +91,8 @@ public class YugabyteDBPublicationReplicationTest extends YugabytedTestBase {
         final int recordsCount = 1000;
         TestHelper.executeBulk(insertStatement, recordsCount);
 
-        TestHelper.execute(String.format(createPublicationForTableStatement, "pub", "t2"));
-        TestHelper.execute(createReplicationSlotStatement);
+        TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, "pub", "t2"));
+        TestHelper.execute(TestHelper.createReplicationSlotStatement);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot"); 
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
@@ -110,7 +105,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabytedTestBase {
 
     @Test
     public void testAllTablesPublicationAutoCreateMode() throws Exception {
-        TestHelper.execute(createReplicationSlotStatement);
+        TestHelper.execute(TestHelper.createReplicationSlotStatement);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot");
         configBuilder.with(YugabyteDBConnectorConfig.PUBLICATION_AUTOCREATE_MODE, "all tables");
@@ -129,7 +124,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabytedTestBase {
 
     @Test
     public void testFilteredPublicationAutoCreateMode() throws Exception {
-        TestHelper.execute(createReplicationSlotStatement);
+        TestHelper.execute(TestHelper.createReplicationSlotStatement);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot");
         configBuilder.with(YugabyteDBConnectorConfig.PUBLICATION_AUTOCREATE_MODE, "filtered");
@@ -177,7 +172,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabytedTestBase {
         try (YugabyteDBConnection ybConnection = TestHelper.create();
              Connection connection = ybConnection.connection()) {
             final Statement statement = connection.createStatement();
-            final ResultSet rs = statement.executeQuery(dropReplicationSlotStatement);
+            final ResultSet rs = statement.executeQuery(TestHelper.dropReplicationSlotStatement);
             return rs.next();
         } catch (RuntimeException e) {
             throw e;

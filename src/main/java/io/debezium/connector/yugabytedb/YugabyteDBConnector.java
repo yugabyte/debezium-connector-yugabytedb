@@ -134,7 +134,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                     e.printStackTrace();
                 }
 
-                if(usePublication) {
+                if (usePublication) {
                     // Refresh the table include list in case of Alter publication
                     Configuration config = this.yugabyteDBConnectorConfig.getConfig();
                     String tableIncludeList =  YugabyteDBConnectorConfig.extractTableListFromPublication(config);

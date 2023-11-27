@@ -103,7 +103,7 @@ public interface ReplicationConnection extends AutoCloseable {
          */
         String DEFAULT_SLOT_NAME = "debezium";
         String DEFAULT_PUBLICATION_NAME = "dbz_publication";
-        boolean DEFAULT_DROP_SLOT_ON_CLOSE = true;
+        boolean DEFAULT_DROP_SLOT_ON_CLOSE = false;
 
         /**
          * Sets the name for the PG logical replication slot

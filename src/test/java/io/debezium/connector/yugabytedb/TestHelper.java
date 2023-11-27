@@ -108,6 +108,12 @@ public final class TestHelper {
      */
     static final String TYPE_SCALE_PARAMETER_KEY = "__debezium.source.column.scale";
 
+    public static String createPublicationForTableStatement = "CREATE PUBLICATION %s FOR TABLE %s ;";
+    public static String createPublicationForALLTablesStatement = "CREATE PUBLICATION %s FOR ALL TABLES ;";
+    public static String createReplicationSlotStatement = "SELECT pg_create_logical_replication_slot('test_replication_slot', 'yboutput');";
+    public static String dropReplicationSlotStatement = "SELECT pg_drop_replication_slot('test_replication_slot');";
+    public static String dropPublicationStatement = "DROP PUBLICATION IF EXISTS pub;";
+
     private TestHelper() {
     }
 

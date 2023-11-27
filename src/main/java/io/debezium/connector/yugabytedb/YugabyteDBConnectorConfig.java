@@ -378,7 +378,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
             @Override
             public boolean supportsTruncate() {
-                return true;
+                return false;
             }
         },
         DECODERBUFS("decoderbufs") {
@@ -568,10 +568,13 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final String DATABASE_CONFIG_PREFIX = "database.";
     protected static final String TASK_CONFIG_PREFIX = "task.";
     protected static final String DEFAULT_QL_TYPE = "ysql";
+    protected static final String DEFAULT_PLUGIN_NAME = "yboutput";
+    protected static final String DEFAULT_PUBLICATION_AUTOCREATE_MODE = "all tables";
 
     protected static final int DEFAULT_PORT = 5_433;
     protected static final int DEFAULT_SNAPSHOT_FETCH_SIZE = 10_240;
     protected static final int DEFAULT_MAX_RETRIES = 6;
+    protected static final long DEFAULT_RETRY_DELAY_MS = 10000;
     protected static final int DEFAULT_MASTER_PORT = 7100;
     protected static final String DEFAULT_MASTER_ADDRESS = "127.0.0.1:7100";
     protected static final int DEFAULT_MAX_NUM_TABLETS = 300;
@@ -728,7 +731,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withEnum(LogicalDecoder.class, LogicalDecoder.YBOUTPUT)
             .withWidth(Width.MEDIUM)
             .withImportance(Importance.MEDIUM)
-            .withDefault("yboutput")
+            .withDefault(DEFAULT_PLUGIN_NAME)
             .withDescription("The name of the Postgres logical decoding plugin installed on the server. " +
                     "Supported values are '" + LogicalDecoder.YBOUTPUT.getValue()
                     + "'. " +
@@ -749,7 +752,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withDisplayName("Drop slot on stop")
             .withType(Type.BOOLEAN)
             .withGroup(Field.createGroupEntry(Field.Group.CONNECTION_ADVANCED_REPLICATION, 3))
-            .withDefault(false)
+            .withDefault(ReplicationConnection.Builder.DEFAULT_DROP_SLOT_ON_CLOSE)
             .withImportance(Importance.MEDIUM)
             .withDescription(
                     "Whether or not to drop the logical replication slot when the connector finishes orderly" +
@@ -853,8 +856,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withEnum(AutoCreateMode.class, AutoCreateMode.ALL_TABLES)
             .withWidth(Width.MEDIUM)
             .withImportance(Importance.MEDIUM)
+            .withDefault(DEFAULT_PUBLICATION_AUTOCREATE_MODE)
             .withDescription(
-                    "Applies only when streaming changes using pgoutput." +
+                    "Applies only when streaming changes using yboutput." +
                     "Determine how creation of a publication should work, the default is all_tables." +
                     "DISABLED - The connector will not attempt to create a publication at all. The expectation is " +
                     "that the user has created the publication up-front. If the publication isn't found to exist upon " +
@@ -889,7 +893,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withType(Type.LONG)
             .withGroup(Field.createGroupEntry(Field.Group.CONNECTION_ADVANCED_REPLICATION, 5))
             .withImportance(Importance.LOW)
-            .withDefault(Duration.ofSeconds(10).toMillis())
+            .withDefault(DEFAULT_RETRY_DELAY_MS)
             .withValidation(Field::isInteger)
             .withDescription(
                     "Time to wait between retry attempts when the connector fails to connect to a replication slot, given in milliseconds. Defaults to 10 seconds (10,000 ms).");
@@ -1315,6 +1319,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         if (getConfig().hasKey(DROP_SLOT_ON_STOP.name())) {
             return getConfig().getBoolean(DROP_SLOT_ON_STOP);
         }
+
         // Return default value
         return getConfig().getBoolean(DROP_SLOT_ON_STOP);
     }
@@ -1543,7 +1548,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                         String streamId = rs.getString("yb_stream_id");
                         return streamId;
                     } else {
-                        LOGGER.error("StreamId not found");
+                        LOGGER.error("Could not find replication slot with name " + config.getString(SLOT_NAME));
                         return "";
                     }
                 } catch (SQLException e) {
@@ -1569,9 +1574,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 }
             }
         }
+
         if (exception != null) {
             throw exception;
         }
+
         return "";
     }
 
@@ -1642,9 +1649,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 throw e;
             }
         }
-        if(exception != null) {
+
+        if (exception != null) {
             throw new DebeziumException(exception);
         }
+
         return null;
     }
 
