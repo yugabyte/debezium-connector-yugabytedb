@@ -384,7 +384,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         Struct oldKey = tableSchema.keyFromColumnData(oldColumnValues);
         Struct oldValue = tableSchema.valueFromColumnData(oldColumnValues);
 
-        if (skipEmptyMessages() && (oldColumnValues == null || oldColumnValues.length == 0)) {
+        if (skipEmptyMessages() && (oldColumnValues == null || oldColumnValues.length == 0) && shouldSendBeforeImage) {
             LOGGER.warn("no old values found for table '{}' from delete message at '{}'; skipping record", tableSchema, offsetContext.getSourceInfoForTablet(getPartition()));
             return;
         }

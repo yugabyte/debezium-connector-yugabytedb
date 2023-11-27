@@ -55,7 +55,6 @@ import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection.YugabyteDBValueConverterBuilder;
 import io.debezium.connector.yugabytedb.container.CustomContainerWaitStrategy;
 import io.debezium.connector.yugabytedb.container.YugabyteCustomContainer;
-import io.debezium.connector.yugabytedb.HelperBeforeImageModes.BeforeImageMode;
 import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
 
