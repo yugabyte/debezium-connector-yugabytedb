@@ -29,6 +29,12 @@ import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Unit tests to verify that connector works well with Publication and Replication slots.
+ * The minimum service version required for these tests to work is 2.20.2
+ * 
+ * @author Sumukh Phalgaonkar (sumukh.phalgaonkar@yugabyte.com)
+ */
 public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTestBase {
 
     public static String insertStatementFormatfort2 = "INSERT INTO t2 values (%d);";
