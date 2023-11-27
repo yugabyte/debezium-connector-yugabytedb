@@ -29,7 +29,7 @@ import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class YugabyteDBPublicationReplicationTest extends YugabytedTestBase {
+public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTestBase {
 
     public static String insertStatementFormatfort2 = "INSERT INTO t2 values (%d);";
     public static String insertStatementFormatfort3 = "INSERT INTO t3 values (%d);";
