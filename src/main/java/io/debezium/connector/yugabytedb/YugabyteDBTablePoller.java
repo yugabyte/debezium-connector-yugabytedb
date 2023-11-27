@@ -262,7 +262,7 @@ public class YugabyteDBTablePoller extends Thread {
         Connection connection = ybConnection.connection()) {
           Set<String> tablesInPublication = new HashSet<String>();
           Statement statement = connection.createStatement();
-          String getTablesFromPublicationQuery = "SELECT * FROM pg_publication_tables WHERE pubname = '"+this.connectorConfig.publicationName()+"' ;";
+          String getTablesFromPublicationQuery = "SELECT * FROM pg_publication_tables WHERE pubname = '" + this.connectorConfig.publicationName() + "' ;";
           ResultSet rs = statement.executeQuery(getTablesFromPublicationQuery);
           while(rs.next()) {
             String tableName = rs.getString("tablename");

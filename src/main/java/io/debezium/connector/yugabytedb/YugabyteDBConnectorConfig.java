@@ -1696,9 +1696,10 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     String query = "SELECT * FROM pg_replication_slots WHERE yb_stream_id='"+streamId+"';";
                     ResultSet rs = statement.executeQuery(query);
                     if (rs.next()) {
-                        String errorFormat = "Stream ID {} is associated with replication slot {}. Please use slot name in the config instead of Stream ID ";
-                        LOGGER.error(errorFormat, streamId, rs.getString("slot_name"));
-                        throw new DebeziumException();
+                        String errorFormat = "Stream ID %s is associated with replication slot %s. Please use slot name in the config instead of Stream ID.";
+                        String errorMessage = String.format(errorFormat, streamId, rs.getString("slot_name"));
+                        LOGGER.error(errorMessage);
+                        throw new DebeziumException(errorMessage);
                     }
 
                     return false;

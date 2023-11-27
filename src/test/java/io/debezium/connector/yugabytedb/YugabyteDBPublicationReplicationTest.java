@@ -162,7 +162,12 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("yugabyte", "public.t1", streamId);
         Configuration config = configBuilder.build();
 
-        assertThrows(DebeziumException.class, ()->YugabyteDBConnectorConfig.shouldUsePublication(config));
+        DebeziumException exception = assertThrows(DebeziumException.class, ()->YugabyteDBConnectorConfig.shouldUsePublication(config));
+
+        String errorMessage = String.format(
+         "Stream ID %s is associated with replication slot %s. Please use slot name in the config instead of Stream ID.",
+                streamId, "test_replication_slot");
+        assertEquals(errorMessage, exception.getMessage());
     }
 
     private void insertRecords(long numOfRowsToBeInserted) throws Exception {
