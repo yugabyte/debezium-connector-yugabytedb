@@ -17,6 +17,7 @@ import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 
 import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
@@ -43,7 +44,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
 
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        initializeYBContainer();
+        initializeYBContainer("TEST_ysql_yb_enable_replication_commands=true", "TEST_ysql_yb_enable_replication_commands=true");
         TestHelper.dropAllSchemas();
     }
 
@@ -213,6 +214,23 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
         TestHelper.executeBulk(insertStatementFormatfort3, recordsCount);
 
         verifyRecordCount(recordsCount * 2);
+
+    }
+
+    @Test
+    public void testFilteredAutocreateModeWithTableWithoutPrimaryKey() throws Exception {
+        TestHelper.execute("CREATE TABLE test_table (id int, name text);");
+        TestHelper.execute(TestHelper.createReplicationSlotStatement);
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot");
+        configBuilder.with(YugabyteDBConnectorConfig.PUBLICATION_AUTOCREATE_MODE, "filtered");
+        configBuilder.with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, "public.t2, public.test_table");
+
+        Configuration config = configBuilder.build();
+
+        ConnectException e = assertThrows(ConnectException.class, () -> YugabyteDBConnectorConfig.initPublication(config));
+        String errorMessage = "ERROR: table \"test_table\" cannot be replicated";
+        assertTrue(e.getMessage().contains(errorMessage));
 
     }
 

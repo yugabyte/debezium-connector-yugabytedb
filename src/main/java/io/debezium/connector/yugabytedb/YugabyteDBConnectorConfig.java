@@ -576,7 +576,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final String DEFAULT_QL_TYPE = "ysql";
     protected static final String DEFAULT_PLUGIN_NAME = "yboutput";
     protected static final boolean DEFAULT_DROP_SLOT_ON_STOP = false;
-    protected static final String DEFAULT_PUBLICATION_AUTOCREATE_MODE = "all tables";
+    protected static final String DEFAULT_PUBLICATION_AUTOCREATE_MODE = "all_tables";
 
     protected static final int DEFAULT_PORT = 5_433;
     protected static final int DEFAULT_SNAPSHOT_FETCH_SIZE = 10_240;
@@ -1778,8 +1778,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             stmt.execute(createOrUpdatePublicationStmt);
         }
         catch (Exception e) {
-            throw new ConnectException(String.format("Unable to %s filtered publication %s for %s", isUpdate ? "update" : "create", publicationName, tableFilterString),
-                    e);
+            throw new ConnectException(
+                    String.format("Unable to %s filtered publication %s for %s. %s", isUpdate ? "update" : "create",
+                                    publicationName, tableFilterString, e.getMessage()), e);
         }
     }
 
