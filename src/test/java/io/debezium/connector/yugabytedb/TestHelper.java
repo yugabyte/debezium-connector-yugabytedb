@@ -85,6 +85,7 @@ public final class TestHelper {
     private static int CONTAINER_YCQL_PORT = 9042;
     private static String CONTAINER_MASTER_PORT = "7100";
     private static String MASTER_ADDRESS = "127.0.0.1:7100";
+    private static String PLUGIN_NAME = "yboutput";
     private static String DEFAULT_DATABASE_NAME = "yugabyte";
     private static String DEFAULT_CASSANDRA_USER = "cassandra";
 
@@ -385,7 +386,7 @@ public final class TestHelper {
                 .with(YugabyteDBConnectorConfig.PORT, CONTAINER_YSQL_PORT)
                 .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.NEVER.getValue())
                 .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, MASTER_ADDRESS)
-                .with(YugabyteDBConnectorConfig.PLUGIN_NAME , "yboutput")
+                .with(YugabyteDBConnectorConfig.PLUGIN_NAME , PLUGIN_NAME)
                 .with(YugabyteDBConnectorConfig.PUBLICATION_NAME, publicationName)
                 .with(YugabyteDBConnectorConfig.PUBLICATION_AUTOCREATE_MODE , "disabled")
                 .with(YugabyteDBConnectorConfig.SLOT_NAME , slotName);

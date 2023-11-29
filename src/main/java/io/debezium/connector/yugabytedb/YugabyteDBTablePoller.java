@@ -267,7 +267,7 @@ public class YugabyteDBTablePoller extends Thread {
           while(rs.next()) {
             String tableName = rs.getString("tablename");
             String schemaName = rs.getString("schemaname");
-            tablesInPublication.add(schemaName+"."+tableName);
+            tablesInPublication.add(schemaName + "." + tableName);
           }
           return tablesInPublication;
     } 

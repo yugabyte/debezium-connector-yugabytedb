@@ -79,8 +79,12 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         
         usePublication = YugabyteDBConnectorConfig.shouldUsePublication(config);
 
-        tableIncludeList = usePublication ? YugabyteDBConnectorConfig.extractTableListFromPublication(config) : tableIncludeList;
-        streamId = usePublication ? YugabyteDBConnectorConfig.extractStreamIdFromSlot(config) : streamId;
+        if (usePublication) {
+            YugabyteDBConnectorConfig.initPublication(config);
+            tableIncludeList = YugabyteDBConnectorConfig.extractTableListFromPublication(config);
+            YugabyteDBConnectorConfig.initReplicationSlot(config);
+            streamId =YugabyteDBConnectorConfig.extractStreamIdFromSlot(config);
+        }
 
         config = config.edit()
                         .with(YugabyteDBConnectorConfig.STREAM_ID, streamId)
@@ -248,8 +252,14 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         String tableIncludeList = config.getString(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST);
         
         usePublication = YugabyteDBConnectorConfig.shouldUsePublication(config);
-        tableIncludeList = usePublication ? YugabyteDBConnectorConfig.extractTableListFromPublication(config) : tableIncludeList;
-        streamId = usePublication ? YugabyteDBConnectorConfig.extractStreamIdFromSlot(config) : streamId;
+
+        if (usePublication) {
+            YugabyteDBConnectorConfig.initPublication(config);
+            tableIncludeList = YugabyteDBConnectorConfig.extractTableListFromPublication(config);
+            YugabyteDBConnectorConfig.initReplicationSlot(config);
+            streamId = YugabyteDBConnectorConfig.extractStreamIdFromSlot(config);
+        }
+
         config = config.edit()
                         .with(YugabyteDBConnectorConfig.STREAM_ID, streamId)
                         .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, tableIncludeList)

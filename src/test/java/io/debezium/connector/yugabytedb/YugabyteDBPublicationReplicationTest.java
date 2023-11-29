@@ -85,6 +85,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
 
         awaitUntilConnectorIsReady();
 
+        //Introducing sleep to ensure that we insert the records after bootstrap is completed.
         Thread.sleep(30000);
 
         insertRecords(recordsCount);
@@ -115,12 +116,13 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
         TestHelper.execute(TestHelper.createReplicationSlotStatement);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot");
-        configBuilder.with(YugabyteDBConnectorConfig.PUBLICATION_AUTOCREATE_MODE, "all tables");
+        configBuilder.with(YugabyteDBConnectorConfig.PUBLICATION_AUTOCREATE_MODE, "all_tables");
         startEngine(configBuilder);
         final int recordsCount = 10;
 
         awaitUntilConnectorIsReady();
 
+        // Introducing sleep to ensure that we insert the records after bootstrap is completed.
         Thread.sleep(30000);
 
         TestHelper.executeBulk(insertStatementFormatfort2, recordsCount);
@@ -142,6 +144,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
 
         awaitUntilConnectorIsReady();
 
+        // Introducing sleep to ensure that we insert the records after bootstrap is completed.
         Thread.sleep(30000);
 
         TestHelper.executeBulk(insertStatementFormatfort2, recordsCount);
@@ -168,6 +171,49 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
          "Stream ID %s is associated with replication slot %s. Please use slot name in the config instead of Stream ID.",
                 streamId, "test_replication_slot");
         assertEquals(errorMessage, exception.getMessage());
+    }
+
+    @Test
+    public void testReplicationSlotAutoCreation() throws Exception {
+        TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, "pub", "t1"));
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot"); 
+        startEngine(configBuilder);
+        final long recordsCount = 10;
+
+        awaitUntilConnectorIsReady();
+
+        // Introducing sleep to ensure that we insert the records after bootstrap is completed.
+        Thread.sleep(30000);
+
+        insertRecords(recordsCount);
+
+        verifyPrimaryKeyOnly(recordsCount);
+
+    }
+
+    @Test
+    public void testAlterPublicationInsideFilteredAutocreateMode() throws Exception {
+        TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, "pub", "t1"));
+        TestHelper.execute(TestHelper.createReplicationSlotStatement);
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot");
+        configBuilder.with(YugabyteDBConnectorConfig.PUBLICATION_AUTOCREATE_MODE, "filtered");
+        configBuilder.with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, "public.t2, public.t3");
+
+        startEngine(configBuilder);
+        final int recordsCount = 10;
+
+        awaitUntilConnectorIsReady();
+
+        // Introducing sleep to ensure that we insert the records after bootstrap is completed.
+        Thread.sleep(30000);
+
+        TestHelper.executeBulk(insertStatementFormatfort2, recordsCount);
+        TestHelper.executeBulk(insertStatementFormatfort3, recordsCount);
+
+        verifyRecordCount(recordsCount * 2);
+
     }
 
     private void insertRecords(long numOfRowsToBeInserted) throws Exception {
