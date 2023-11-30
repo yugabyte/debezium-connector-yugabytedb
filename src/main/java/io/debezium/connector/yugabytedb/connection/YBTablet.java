@@ -2,6 +2,7 @@ package io.debezium.connector.yugabytedb.connection;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Objects;
 
 /**
  * Helper class to represent a tablet on the service. Also, the objects of this class will be
@@ -57,5 +58,10 @@ public class YBTablet implements Serializable {
 
 		return this.getTableId().equals(that.getTableId())
 				&& this.getTabletId().equals(that.getTabletId());
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(tableId, tabletId);
 	}
 }
