@@ -171,7 +171,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
         String errorMessage = String.format(
          "Stream ID %s is associated with replication slot %s. Please use slot name in the config instead of Stream ID.",
                 streamId, "test_replication_slot");
-        assertEquals(errorMessage, exception.getMessage());
+        assertTrue(exception.getMessage().contains(errorMessage));
     }
 
     @Test

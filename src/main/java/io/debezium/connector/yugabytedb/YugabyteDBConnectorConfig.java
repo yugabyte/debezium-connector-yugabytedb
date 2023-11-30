@@ -29,6 +29,10 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.common.config.ConfigValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.CDCStreamInfo;
+import org.yb.client.GetDBStreamInfoResponse;
+import org.yb.client.ListCDCStreamsResponse;
+import org.yb.client.YBClient;
 
 import io.debezium.DebeziumException;
 import io.debezium.config.ConfigDefinition;
@@ -1642,48 +1646,36 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
     public static boolean shouldUsePublication(Configuration config) {
         String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
-        RuntimeException exception = null;
 
         // For CQL tables as well as for the config not using Publication/Replication streamId will be non null
         if (streamId == null || streamId.isEmpty()) {
             return true;
         }
 
-        int retryCount = 0;
-        while (retryCount <= config.getInteger(YugabyteDBConnectorConfig.MAX_RETRIES)) {
-            try (YugabyteDBConnection ybConnection = new YugabyteDBConnection(getJdbcConfig(config),YugabyteDBConnection.CONNECTION_GENERAL);
-                  Connection connection = ybConnection.connection();
-                  Statement statement = connection.createStatement()) {
-                    String query = "SELECT * FROM pg_replication_slots WHERE yb_stream_id='" + streamId + "';";
-                    ResultSet rs = statement.executeQuery(query);
-                    if (rs.next()) {
+        try (YBClient ybClient = YBClientUtils.getYbClient(config)) {
+            GetDBStreamInfoResponse getDBStreamInfoResponse = ybClient.getDBStreamInfo(streamId);
+            // Note that we need to pass one table ID to the ListCDCStreamsRequest RPC call.
+            Objects.requireNonNull(getDBStreamInfoResponse.getTableInfoList().get(0));
+            ListCDCStreamsResponse resp;
+            resp = ybClient.listCDCStreams(
+                            getDBStreamInfoResponse.getTableInfoList().get(0).getTableId().toStringUtf8(),
+                            getDBStreamInfoResponse.getNamespaceId(), null);
+            for (CDCStreamInfo stream : resp.getStreams()) {
+                if (stream.getStreamId().equals(streamId)) {
+                    String slotName = stream.getCdcsdkYsqlReplicationSlotName();
+                    if (slotName == null || slotName.isEmpty()) {
+                        return false;
+                    } else {
                         String errorFormat = "Stream ID %s is associated with replication slot %s. Please use slot name in the config instead of Stream ID.";
-                        String errorMessage = String.format(errorFormat, streamId, rs.getString("slot_name"));
+                        String errorMessage = String.format(errorFormat, streamId, slotName);
                         LOGGER.error(errorMessage);
                         throw new DebeziumException(errorMessage);
                     }
-
-                    return false;
-
-            } catch (SQLException e) {
-                    exception = new RuntimeException(e);
-                    retryCount++;
-                    if (retryCount > config.getInteger(MAX_RETRIES)) {
-                        LOGGER.error("Failed to execute the query on pg_replication_slots. All {} retries failed",
-                                config.getInteger(MAX_RETRIES), e);
-                        throw new DebeziumException(e);
-                    }
-                    LOGGER.warn(
-                            "Error while trying to execute the query on pg_replication_slots. Will retry, attempt {} out of {}",
-                            retryCount, config.getInteger(MAX_RETRIES));
-                    e.printStackTrace();
-
-                    pauseBetweenRetries(config.getLong(RETRY_DELAY_MS));
+                }
             }
-        }
-
-        if (exception != null) {
-            throw exception;
+        } catch (Exception e) {
+            LOGGER.error("Exception while making RPC calls to server");
+            throw new DebeziumException(e);
         }
 
         return false;
