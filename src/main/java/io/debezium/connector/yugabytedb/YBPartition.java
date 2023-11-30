@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.Set;
 
 import io.debezium.connector.yugabytedb.connection.YBTablet;
-import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -129,7 +128,7 @@ public class YBPartition implements Partition {
 
             Set<YBPartition> partitions = new HashSet<>();
             for (YBTablet tabletPair : tabletPairList) {
-                partitions.add(new YBPartition(tabletPair.getTableID(), tabletPair.getTabletID()));
+                partitions.add(new YBPartition(tabletPair.getTableId(), tabletPair.getTabletId()));
             }
             LOGGER.debug("The partition being returned is " + partitions);
             return partitions;

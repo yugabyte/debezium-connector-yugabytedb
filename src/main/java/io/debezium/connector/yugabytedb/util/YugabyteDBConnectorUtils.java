@@ -3,7 +3,6 @@ package io.debezium.connector.yugabytedb.util;
 import io.debezium.connector.yugabytedb.ObjectUtil;
 import io.debezium.connector.yugabytedb.connection.HashPartition;
 import io.debezium.connector.yugabytedb.connection.YBTablet;
-import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.IOException;
@@ -66,7 +65,7 @@ public class YugabyteDBConnectorUtils {
 		// Filter out groups having the same tabletId as value
 		// The map will have tabletId -> table1,table2,table3 map
 		Map<String, List<YBTablet>> groupedData = elements.stream()
-			.collect(Collectors.groupingBy(YBTablet::getTabletID));
+			.collect(Collectors.groupingBy(YBTablet::getTabletId));
 
 		// If there are same number of tablets in the grouped reverse map then use the older function
 		// to group rather than going to the complicated logic of grouping colocated and non-colocated
