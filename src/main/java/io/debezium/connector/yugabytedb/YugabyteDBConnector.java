@@ -83,7 +83,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
             YugabyteDBConnectorConfig.initPublication(config);
             tableIncludeList = YugabyteDBConnectorConfig.extractTableListFromPublication(config);
             YugabyteDBConnectorConfig.initReplicationSlot(config);
-            streamId =YugabyteDBConnectorConfig.extractStreamIdFromSlot(config);
+            streamId = YugabyteDBConnectorConfig.extractStreamIdFromSlot(config);
         }
 
         config = config.edit()

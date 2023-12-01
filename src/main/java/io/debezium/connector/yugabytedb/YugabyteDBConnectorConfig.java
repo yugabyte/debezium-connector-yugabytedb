@@ -1654,12 +1654,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
         try (YBClient ybClient = YBClientUtils.getYbClient(config)) {
             GetDBStreamInfoResponse getDBStreamInfoResponse = ybClient.getDBStreamInfo(streamId);
-            // Note that we need to pass one table ID to the ListCDCStreamsRequest RPC call.
-            Objects.requireNonNull(getDBStreamInfoResponse.getTableInfoList().get(0));
-            ListCDCStreamsResponse resp;
-            resp = ybClient.listCDCStreams(
-                            getDBStreamInfoResponse.getTableInfoList().get(0).getTableId().toStringUtf8(),
-                            getDBStreamInfoResponse.getNamespaceId(), null);
+            ListCDCStreamsResponse resp = ybClient.listCDCStreams(null, getDBStreamInfoResponse.getNamespaceId(), null);
             for (CDCStreamInfo stream : resp.getStreams()) {
                 if (stream.getStreamId().equals(streamId)) {
                     String slotName = stream.getCdcsdkYsqlReplicationSlotName();
@@ -1673,10 +1668,6 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     }
                 }
             }
-        } catch (NullPointerException e) {
-            String errorMessage = "The Stream ID  {} does not contain any tables";
-            LOGGER.error(errorMessage, streamId);
-            throw new DebeziumException(e); 
         } catch (Exception e) {
             LOGGER.error("Exception while making RPC calls to server");
             throw new DebeziumException(e);
@@ -1818,13 +1809,13 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         RelationalTableFilters tableFilter = new RelationalTableFilters(config, new SystemTablesPredicate(), x -> x.schema() + "." + x.table());
 
         for (TableId tableId : allTableIds) {
-            if (tableFilter.dataCollectionFilter().isIncluded(tableId)) {
-                LOGGER.trace("Adding table {} to the list of captured tables", tableId);
-                capturedTables.add(tableId);
-            }
-            else {
+            if (!tableFilter.dataCollectionFilter().isIncluded(tableId)) {
                 LOGGER.trace("Ignoring table {} as it's not included in the filter configuration", tableId);
+                continue;
             }
+            
+            LOGGER.trace("Adding table {} to the list of captured tables", tableId);
+            capturedTables.add(tableId);
         }
 
         return capturedTables
@@ -1835,9 +1826,10 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
     protected static void initReplicationSlot(Configuration config) {
         boolean createNeeded = !checkIfReplicationSlotExists(config);
-        if (createNeeded) {
-            createReplicationSlot(config);
+        if (!createNeeded) {
+            return;
         }
+        createReplicationSlot(config);
     }
 
     private static void createReplicationSlot(Configuration config) {
@@ -1882,7 +1874,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                         throw new DebeziumException(e);
                     }
                     exception = new RuntimeException(e);
-                    LOGGER.warn("Error while querrying pg_replication_slots. Will retry, attempt {} out of {}", retryCount, maxAttempts);
+                    LOGGER.warn("Error while querying pg_replication_slots. Will retry, attempt {} out of {}", retryCount, maxAttempts);
                     pauseBetweenRetries(config.getLong(RETRY_DELAY_MS));
             }
         }
