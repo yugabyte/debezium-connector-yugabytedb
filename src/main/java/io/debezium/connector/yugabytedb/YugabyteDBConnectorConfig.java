@@ -1673,6 +1673,10 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     }
                 }
             }
+        } catch (NullPointerException e) {
+            String errorMessage = "The Stream ID  {} does not contain any tables";
+            LOGGER.error(errorMessage, streamId);
+            throw new DebeziumException(e); 
         } catch (Exception e) {
             LOGGER.error("Exception while making RPC calls to server");
             throw new DebeziumException(e);
@@ -1681,75 +1685,85 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return false;
     }
 
-    // This method is borrowed from Debezium Postgers connector. We have moved this
-    // method from ReplicationConnection class to config class because we need to
-    // extract the stream ID and table include list from replication slot and
-    // publication respectively before initializing YugabyteDBConnectorConfig instance
+    /**
+     * This method is borrowed from Debezium Postgres connector. We have moved this
+     * method from ReplicationConnection class to config class because we need to
+     * extract the stream ID and table include list from replication slot and
+     * publication respectively before initializing YugabyteDBConnectorConfig instance
+     * @param config Configuration object containg details about Publication, Autocreate modes and Plugin name
+     */
     protected static void initPublication(Configuration config) {
         String publicationName = config.getString(PUBLICATION_NAME);
         String plugin = config.getString(PLUGIN_NAME);
+        int maxAttempts = config.getInteger(MAX_RETRIES);
+        int retryCount = 0;
         YugabyteDBConnectorConfig.AutoCreateMode publicationAutocreateMode = YugabyteDBConnectorConfig.AutoCreateMode
                 .parse(config.getString(PUBLICATION_AUTOCREATE_MODE));
         if (YugabyteDBConnectorConfig.LogicalDecoder.YBOUTPUT.equals(YugabyteDBConnectorConfig.LogicalDecoder.parse(plugin))) {
             LOGGER.info("Initializing YbOutput logical decoder publication");
-            try {
-                // Unless the autocommit is disabled the SELECT publication query will stay running
-                YugabyteDBConnection ybConnection = new YugabyteDBConnection(getJdbcConfig(config),YugabyteDBConnection.CONNECTION_GENERAL);
-                Connection conn = ybConnection.connection();
-                conn.setAutoCommit(false);
+            while (retryCount <= maxAttempts) {
+                try {
+                    YugabyteDBConnection ybConnection = new YugabyteDBConnection(getJdbcConfig(config),YugabyteDBConnection.CONNECTION_GENERAL);
+                    Connection conn = ybConnection.connection();
+                    conn.setAutoCommit(false);
 
-                String selectPublication = String.format("SELECT puballtables FROM pg_publication WHERE pubname = '%s'", publicationName);
-                try (Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(selectPublication)) {
-                    if (!rs.next()) {
-                        // Close eagerly as the transaction might stay running
-                        LOGGER.info("Creating new publication '{}' for plugin '{}'", publicationName, plugin);
-                        switch (publicationAutocreateMode) {
-                            case DISABLED:
-                                throw new ConnectException("Publication autocreation is disabled, please create one and restart the connector.");
-                            case ALL_TABLES:
-                                String createPublicationStmt = String.format("CREATE PUBLICATION %s FOR ALL TABLES;", publicationName);
-                                LOGGER.info("Creating Publication with statement '{}'", createPublicationStmt);
-                                // Publication doesn't exist, create it.
-                                stmt.execute(createPublicationStmt);
-                                break;
-                            case FILTERED:
-                                createOrUpdatePublicationModeFilterted(stmt, false, config);
-                                break;
+                    String selectPublication = String.format("SELECT puballtables FROM pg_publication WHERE pubname = '%s'", publicationName);
+                    try (Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(selectPublication)) {
+                        if (!rs.next()) {
+                            LOGGER.info("Creating new publication '{}' for plugin '{}'", publicationName, plugin);
+                            switch (publicationAutocreateMode) {
+                                case DISABLED:
+                                    throw new ConnectException("Publication autocreation is disabled, please create one and restart the connector.");
+                                case ALL_TABLES:
+                                    String createPublicationStmt = String.format("CREATE PUBLICATION %s FOR ALL TABLES;", publicationName);
+                                    LOGGER.info("Creating Publication with statement '{}'", createPublicationStmt);
+                                    // Publication doesn't exist, create it.
+                                    stmt.execute(createPublicationStmt);
+                                    break;
+                                case FILTERED:
+                                    createOrUpdatePublicationModeFilterted(stmt, false, config);
+                                    break;
+                            }
+                        } else {
+                            switch (publicationAutocreateMode) {
+                                case FILTERED:
+                                    // Checking that publication can be altered
+                                    Boolean allTables = rs.getBoolean(1);
+                                    if (allTables) {
+                                        throw new DebeziumException(String.format(
+                                                "A logical publication for all tables named '%s' for plugin '%s' " +
+                                                        "is already active on the server and can not be altered. " +
+                                                        "If you need to exclude some tables or include only specific subset, " +
+                                                        "please recreate the publication with necessary configuration " +
+                                                        "or let plugin recreate it by dropping existing publication. " +
+                                                        "Otherwise please change the 'publication.autocreate.mode' property to 'all_tables'.",
+                                                publicationName, plugin));
+                                    } else {
+                                        createOrUpdatePublicationModeFilterted(stmt, true, config);
+                                    }
+                                    break;
+                                default:
+                                    LOGGER.trace(
+                                            "A logical publication named '{}' for plugin '{}' is already active on the server " +
+                                                    "and will be used by the plugin",
+                                            publicationName, plugin);
+
+                            }
                         }
                     }
-                    else {
-                        switch (publicationAutocreateMode) {
-                            case FILTERED:
-                                // Checking that publication can be altered
-                                Boolean allTables = rs.getBoolean(1);
-                                if (allTables) {
-                                    throw new DebeziumException(String.format(
-                                            "A logical publication for all tables named '%s' for plugin '%s' " +
-                                                    "is already active on the server and can not be altered. " +
-                                                    "If you need to exclude some tables or include only specific subset, " +
-                                                    "please recreate the publication with necessary configuration " +
-                                                    "or let plugin recreate it by dropping existing publication. " +
-                                                    "Otherwise please change the 'publication.autocreate.mode' property to 'all_tables'.",
-                                            publicationName, plugin));
-                                }
-                                else {
-                                    createOrUpdatePublicationModeFilterted(stmt, true, config);
-                                }
-                                break;
-                            default:
-                                LOGGER.trace(
-                                        "A logical publication named '{}' for plugin '{}' is already active on the server " +
-                                                "and will be used by the plugin",
-                                        publicationName, plugin);
+                    conn.commit();
+                    conn.setAutoCommit(true);
+                    return;
+                } catch (SQLException e) {
+                    retryCount++;
 
-                        }
+                    if (retryCount > maxAttempts) {
+                        throw new JdbcConnectionException(e);
                     }
+
+                    LOGGER.warn("Error while initializing publication. Will retry, attempt {} out of {}", retryCount, maxAttempts);
+                    pauseBetweenRetries(config.getLong(RETRY_DELAY_MS));
                 }
-                conn.commit();
-                conn.setAutoCommit(true);
-            }
-            catch (SQLException e) {
-                throw new JdbcConnectionException(e);
             }
         }
     }
@@ -1758,21 +1772,41 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         String publicationName = config.getString(PUBLICATION_NAME);
         String tableFilterString = null;
         String createOrUpdatePublicationStmt;
-        try {
-            Set<TableId> tablesToCapture = determineCapturedTables(config);
-            tableFilterString = tablesToCapture.stream().map(TableId::toDoubleQuotedString).collect(Collectors.joining(", "));
-            if (tableFilterString.isEmpty()) {
-                throw new DebeziumException(String.format("No table filters found for filtered publication %s", publicationName));
+        int maxAttempts = config.getInteger(MAX_RETRIES);
+        int retryCount = 0;
+        while (retryCount <= maxAttempts) {
+            try {
+                Set<TableId> tablesToCapture = determineCapturedTables(config);
+                tableFilterString = tablesToCapture.stream().map(TableId::toDoubleQuotedString).collect(Collectors.joining(", "));
+                if (tableFilterString.isEmpty()) {
+                    throw new DebeziumException(String.format("No table filters found for filtered publication %s", publicationName));
+                }
+
+                if (isUpdate) {
+                    createOrUpdatePublicationStmt = String.format("ALTER PUBLICATION %s SET TABLE %s;", publicationName, tableFilterString);
+                    LOGGER.info("Updating Publication with statement '{}'", createOrUpdatePublicationStmt);
+                } else {
+                    createOrUpdatePublicationStmt = String.format("CREATE PUBLICATION %s FOR TABLE %s;", publicationName, tableFilterString);
+                    LOGGER.info("Creating Publication with statement '{}'", createOrUpdatePublicationStmt);
+                }
+
+                stmt.execute(createOrUpdatePublicationStmt);
+                break;
+            } catch (Exception e) {
+                retryCount++;
+
+                if (retryCount > maxAttempts) {
+                    throw new ConnectException(
+                        String.format("Unable to %s filtered publication %s for %s. %s", isUpdate ? "update" : "create",
+                                        publicationName, tableFilterString, e.getMessage()), e);
+                }
+
+                LOGGER.warn(
+                        String.format("Error while trying to %s filtered publication. Will retry, attempt %d out of %d",
+                                isUpdate ? "update" : "create", retryCount, maxAttempts));
+                    
+                pauseBetweenRetries(config.getLong(RETRY_DELAY_MS));
             }
-            createOrUpdatePublicationStmt = isUpdate ? String.format("ALTER PUBLICATION %s SET TABLE %s;", publicationName, tableFilterString)
-                    : String.format("CREATE PUBLICATION %s FOR TABLE %s;", publicationName, tableFilterString);
-            LOGGER.info(isUpdate ? "Updating Publication with statement '{}'" : "Creating Publication with statement '{}'", createOrUpdatePublicationStmt);
-            stmt.execute(createOrUpdatePublicationStmt);
-        }
-        catch (Exception e) {
-            throw new ConnectException(
-                    String.format("Unable to %s filtered publication %s for %s. %s", isUpdate ? "update" : "create",
-                                    publicationName, tableFilterString, e.getMessage()), e);
         }
     }
 

@@ -178,7 +178,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
     public void testReplicationSlotAutoCreation() throws Exception {
         TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, "pub", "t1"));
 
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot"); 
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot");
         startEngine(configBuilder);
         final long recordsCount = 10;
 
@@ -229,7 +229,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
         Configuration config = configBuilder.build();
 
         ConnectException e = assertThrows(ConnectException.class, () -> YugabyteDBConnectorConfig.initPublication(config));
-        String errorMessage = "ERROR: table \"test_table\" cannot be replicated";
+        String errorMessage = "Unable to create filtered publication pub";
         assertTrue(e.getMessage().contains(errorMessage));
 
     }
