@@ -11,57 +11,57 @@ import java.util.Objects;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class YBTablet implements Serializable {
-	private final String tableId;
-	private final String tabletId;
-	private final byte[] partitionKeyStart;
-	private final byte[] partitionKeyEnd;
+  private final String tableId;
+  private final String tabletId;
+  private final byte[] partitionKeyStart;
+  private final byte[] partitionKeyEnd;
 
-	public YBTablet(String tableId, String tabletId, byte[] partitionKeyStart, byte[] partitionKeyEnd) {
-		this.tableId = tableId;
-		this.tabletId = tabletId;
-		this.partitionKeyStart = partitionKeyStart;
-		this.partitionKeyEnd = partitionKeyEnd;
-	}
+  public YBTablet(String tableId, String tabletId, byte[] partitionKeyStart, byte[] partitionKeyEnd) {
+    this.tableId = tableId;
+    this.tabletId = tabletId;
+    this.partitionKeyStart = partitionKeyStart;
+    this.partitionKeyEnd = partitionKeyEnd;
+  }
 
-	public String getTableId() {
-		return tableId;
-	}
+  public String getTableId() {
+    return tableId;
+  }
 
-	public String getTabletId() {
-		return tabletId;
-	}
+  public String getTabletId() {
+    return tabletId;
+  }
 
-	public byte[] getPartitionKeyStart() {
-		return partitionKeyStart;
-	}
+  public byte[] getPartitionKeyStart() {
+    return partitionKeyStart;
+  }
 
-	public byte[] getPartitionKeyEnd() {
-		return partitionKeyEnd;
-	}
+  public byte[] getPartitionKeyEnd() {
+    return partitionKeyEnd;
+  }
 
-	public HashPartition toHashPartition() {
-		return new HashPartition(tableId, tabletId, partitionKeyStart, partitionKeyEnd,
-														 new ArrayList<>());
-	}
+  public HashPartition toHashPartition() {
+    return new HashPartition(tableId, tabletId, partitionKeyStart, partitionKeyEnd,
+                             new ArrayList<>());
+  }
 
-	@Override
-	public boolean equals(Object obj) {
-		if (this == obj) {
-			return true;
-		}
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
+    }
 
-		if (obj == null || getClass() != obj.getClass()) {
-			return false;
-		}
+    if (obj == null || getClass() != obj.getClass()) {
+      return false;
+    }
 
-		YBTablet that = (YBTablet) obj;
+    YBTablet that = (YBTablet) obj;
 
-		return this.getTableId().equals(that.getTableId())
-				&& this.getTabletId().equals(that.getTabletId());
-	}
+    return this.getTableId().equals(that.getTableId())
+        && this.getTabletId().equals(that.getTabletId());
+  }
 
-	@Override
-	public int hashCode() {
-		return Objects.hash(tableId, tabletId);
-	}
+  @Override
+  public int hashCode() {
+    return Objects.hash(tableId, tabletId);
+  }
 }
