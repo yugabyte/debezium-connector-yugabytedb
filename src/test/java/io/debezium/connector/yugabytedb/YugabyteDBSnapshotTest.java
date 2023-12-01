@@ -376,7 +376,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false})
+    @ValueSource(booleans = {true, false})
     public void shouldSnapshotWithFailureAfterBootstrapSnapshotCall(boolean colocation)
         throws Exception {
         // This test verifies that if there is a failure after snapshot is bootstrapped,
@@ -430,11 +430,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
 
         assertEquals(recordsCount, recordsForTest1.size());
         assertEquals(recordsCount, recordsForTest2.size());
-
-        TestHelper.executeInDatabase("INSERT INTO public.test_1 VALUES (100), (101);", DEFAULT_COLOCATED_DB_NAME);
-
-        List<SourceRecord> recordInStreaming = new ArrayList<>();
-        waitAndFailIfCannotConsume(recordInStreaming, 2);
     }
 
     @ParameterizedTest

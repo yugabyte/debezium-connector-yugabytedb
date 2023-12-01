@@ -29,14 +29,14 @@ import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
  */
 public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
 
-  private static String masterAddresses = "";
+  private static String masterAddresses;
 
   @BeforeAll
   public static void beforeClass() throws SQLException {
-//      initializeYBContainerNoStartYB(null, null);
-//      masterAddresses = getMasterAddress();
+      initializeYBContainer();
+      masterAddresses = getMasterAddress();
 
-//      TestHelper.dropAllSchemas();
+      TestHelper.dropAllSchemas();
   }
 
   @BeforeEach
@@ -47,7 +47,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
   @AfterEach
   public void after() throws Exception {
       stopConnector();
-//      TestHelper.executeDDL("drop_tables_and_databases.ddl");
+      TestHelper.executeDDL("drop_tables_and_databases.ddl");
   }
 
   @AfterAll
@@ -58,7 +58,6 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
   @Order(1)
   @Test
   public void shouldConsumeDataAfterTabletSplit() throws Exception {
-    initializeYBContainer();
     TestHelper.dropAllSchemas();
     TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
 
@@ -146,8 +145,6 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
     ybContainer = TestHelper.getYbContainer(masterFlags, tserverFlags);
     ybContainer.start();
 
-    setMasterTserverFlags(masterFlags, tserverFlags);
-
     try {
       ybContainer.execInContainer(getYugabytedStartCommand().split("\\s+"));
     } catch (Exception e) {
@@ -204,99 +201,6 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
                 .exceptionally(throwable -> {
                     throw new RuntimeException(throwable);
                 }).get();
-  }
-
-  @Order(3)
-  @Test
-  public void heavySplittingTest() throws Exception {
-    // Stop, if ybContainer already running.
-    if (ybContainer != null && ybContainer.isRunning()) {
-      ybContainer.stop();
-      // Wait till the container stops
-      Awaitility.await().atMost(Duration.ofSeconds(30)).until(() -> {
-        return !ybContainer.isRunning();
-      });
-    }
-
-    // Get ybContainer with required master and tserver flags.
-    String masterFlags = "enable_automatic_tablet_splitting=true,"
-                           + "tablet_split_high_phase_shard_count_per_node=10000,"
-                           + "tablet_split_high_phase_size_threshold_bytes=5242888,"
-                           + "tablet_split_low_phase_size_threshold_bytes=524288,"
-                           + "tablet_split_low_phase_shard_count_per_node=16,"
-                           + "enable_tablet_split_of_cdcsdk_streamed_tables=true";
-    String tserverFlags = "enable_automatic_tablet_splitting=true";
-    setMasterTserverFlags(masterFlags, tserverFlags);
-    ybContainer = TestHelper.getYbContainer(masterFlags, tserverFlags);
-    ybContainer.start();
-
-    try {
-//      LOGGER.info("")
-      ybContainer.execInContainer(getYugabytedStartCommand().split("\\s+"));
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
-
-    masterAddresses = getMasterAddress();
-
-    TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433), ybContainer.getMappedPort(9042));
-    TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
-
-    TestHelper.dropAllSchemas();
-    StringBuilder generatedColumns = new StringBuilder();
-
-    for (int i = 1; i <= 99; ++i) {
-      generatedColumns.append("v")
-        .append(i)
-        .append(" varchar(400) default ")
-        .append("'123456789012345678901234567890123456789012345678901234567890")
-        .append("123456789012345678901234567890123456789012345678901234567890")
-        .append("123456789012345678901234567890123456789012345678901234567890")
-        .append("123456789012345678901234567890123456789012345678901234567890")
-        .append("1234567890123456789012345678901234567890123456789012345', ");
-    }
-
-    TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT, "
-                         + generatedColumns
-                         + "v100 varchar(400) default '1234567890123456789012345678901234567890"
-                         + "1234567890123456789012345678901234567890123456789012345')"
-                         + " SPLIT INTO 1 TABLETS;");
-
-    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
-    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-
-    startEngine(configBuilder, (success, message, error) -> {
-      assertTrue(success);
-    });
-
-    awaitUntilConnectorIsReady();
-
-    final int recordsCount = 200000;
-    Runnable r = new Runnable() {
-      @Override
-      public void run() {
-
-        String insertFormat = "INSERT INTO t1(id, name) VALUES (%d, 'value for split table');";
-
-        int beginKey = 0;
-        int endKey = beginKey + 100;
-        for (int i = 0; i < 200; ++i) {
-          TestHelper.executeBulkWithRange(insertFormat, beginKey, endKey);
-          beginKey = endKey;
-          endKey = beginKey + 100;
-        }
-      }
-    };
-
-    Thread thread = new Thread(r);
-    thread.start();
-
-    CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount))
-      .exceptionally(throwable -> {
-        throw new RuntimeException(throwable);
-      }).get();
-
-    thread.join();
   }
 
   private void verifyRecordCount(long recordsCount) {

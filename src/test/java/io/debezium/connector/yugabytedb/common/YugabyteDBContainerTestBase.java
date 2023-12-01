@@ -53,61 +53,12 @@ public class YugabyteDBContainerTestBase extends TestBaseClass {
         TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
     }
 
-    protected static void initializeYBContainerNoStartYB(String masterFlags, String tserverFlags) {
-        ybContainer = TestHelper.getYbContainer(masterFlags, tserverFlags);
-        ybContainer.start();
-
-        // Set the GFLAG: "cdc_state_checkpoint_update_interval_ms" to 0 in all tests, forcing every
-        // instance of explicit_checkpoint to be added to the 'cdc_state' table in the service.
-//        String finalTserverFlags = " --tserver_flags=" +
-//                                     ((tserverFlags == null || tserverFlags.isEmpty())
-//                                        ? "cdc_state_checkpoint_update_interval_ms=0"
-//                                        : tserverFlags + ",cdc_state_checkpoint_update_interval_ms=0");
-//
-//        if (masterFlags == null || masterFlags.isEmpty()) {
-//            masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0";
-//        } else {
-//            masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0," + masterFlags;
-//        }
-//
-//        logger.info("tserver flags: {}", finalTserverFlags);
-//        logger.info("master flags: {}", masterFlags);
-//
-//        yugabytedStartCommand = "/home/yugabyte/bin/yugabyted start --listen=0.0.0.0 "
-//                                  + masterFlags + finalTserverFlags + " --daemon=true";
-//        logger.info("Container startup command: {}", yugabytedStartCommand);
-
-        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433), ybContainer.getMappedPort(9042));
-        TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
-    }
-
-    protected static void setMasterTserverFlags(String masterFlags, String tserverFlags) {
-        String finalTserverFlags = " --tserver_flags=" +
-                                     ((tserverFlags == null || tserverFlags.isEmpty())
-                                        ? "cdc_state_checkpoint_update_interval_ms=0"
-                                        : tserverFlags + ",cdc_state_checkpoint_update_interval_ms=0");
-
-        if (masterFlags == null || masterFlags.isEmpty()) {
-            masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0";
-        } else {
-            masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0," + masterFlags;
-        }
-
-        logger.info("tserver flags: {}", finalTserverFlags);
-        logger.info("master flags: {}", masterFlags);
-
-        yugabytedStartCommand = "/home/yugabyte/bin/yugabyted start --listen=0.0.0.0 "
-                                  + masterFlags + finalTserverFlags + " --daemon=true";
-    }
-
     protected static void initializeYBContainer() {
         initializeYBContainer(null, null);
     }
 
     protected static void shutdownYBContainer() {
-        if (ybContainer != null && ybContainer.isRunning()) {
-            ybContainer.stop();
-        }
+        ybContainer.stop();
     }
 
     protected static String getMasterAddress() {

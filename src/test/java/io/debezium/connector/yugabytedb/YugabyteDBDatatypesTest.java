@@ -288,10 +288,10 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         List<SourceRecord> records = new ArrayList<>();
         waitAndFailIfCannotConsume(records, recordsCount);
 
-//        CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
-//                .exceptionally(throwable -> {
-//                    throw new RuntimeException(throwable);
-//                }).get();
+        CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
+                .exceptionally(throwable -> {
+                    throw new RuntimeException(throwable);
+                }).get();
     }
 
     @Test
