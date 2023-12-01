@@ -2,8 +2,6 @@ package io.debezium.connector.yugabytedb.util;
 
 import io.debezium.connector.yugabytedb.ObjectUtil;
 import io.debezium.connector.yugabytedb.connection.HashPartition;
-import io.debezium.connector.yugabytedb.connection.YBTablet;
-import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.IOException;
 import java.util.*;
@@ -50,8 +48,8 @@ public class YugabyteDBConnectorUtils {
 	 * @param elements a list of pairs where key is tableId and value is tabletId
 	 * @param numGroups the total number of groups we should be dividing the tasks to.
 	 */
-	public static List<List<YBTablet>> groupPartitionsSmartly(
-		List<YBTablet> elements, int numGroups) {
+	public static List<List<HashPartition>> groupPartitionsSmartly(
+		List<HashPartition> elements, int numGroups) {
 		if (elements.size() == 0) {
 			throw new IllegalStateException("Elements to be grouped must be positive");
 		}
@@ -60,12 +58,12 @@ public class YugabyteDBConnectorUtils {
 			throw new IllegalArgumentException("Number of groups must be positive");
 		}
 
-		List<List<YBTablet>> result = new ArrayList<>(numGroups);
+		List<List<HashPartition>> result = new ArrayList<>(numGroups);
 
 		// Filter out groups having the same tabletId as value
 		// The map will have tabletId -> table1,table2,table3 map
-		Map<String, List<YBTablet>> groupedData = elements.stream()
-			.collect(Collectors.groupingBy(YBTablet::getTabletId));
+		Map<String, List<HashPartition>> groupedData = elements.stream()
+			.collect(Collectors.groupingBy(HashPartition::getTabletId));
 
 		// If there are same number of tablets in the grouped reverse map then use the older function
 		// to group rather than going to the complicated logic of grouping colocated and non-colocated
@@ -93,7 +91,7 @@ public class YugabyteDBConnectorUtils {
 		// After this, we can simply iterate over the reversed map and just put proper table-tablet
 		// pairs to the task list.
 		for (List<String> tablets : groupedTablets) {
-			List<YBTablet> groupList = new ArrayList<>();
+			List<HashPartition> groupList = new ArrayList<>();
 			for (String tablet : tablets) {
 				groupList.addAll(groupedData.get(tablet));
 			}
@@ -105,21 +103,13 @@ public class YugabyteDBConnectorUtils {
 	}
 
 	/**
-	 * Populate the partition ranges with the {@link HashPartition} objects. Internally, the serialized
-	 * string is deserialized to a list object with each element being a {@link Pair} where the key is
-	 * a {@link Pair} of <tableId, tabletId> and value is another {@link Pair} of <partitionKeyStart, partitionKeyEnd>
+	 * Deserialize the string to get the list of {@link HashPartition} objects.
 	 * @param serializedString
-	 * @param partitionRanges a {@link List} of {@link HashPartition}
 	 * @throws IOException if unable to deserialize the string
 	 * @throws ClassNotFoundException if unable to deserialize the string
 	 */
-	public static void populatePartitionRanges(String serializedString, List<HashPartition> partitionRanges)
+	public static List<HashPartition> populatePartitionRanges(String serializedString)
 			throws IOException, ClassNotFoundException {
-		List<YBTablet> tableToTabletRanges =
-				(List<YBTablet>) ObjectUtil.deserializeObjectFromString(serializedString);
-
-		for (YBTablet tablet : tableToTabletRanges) {
-			partitionRanges.add(tablet.toHashPartition());
-		}
+		return (List<HashPartition>) ObjectUtil.deserializeObjectFromString(serializedString);
 	}
 }

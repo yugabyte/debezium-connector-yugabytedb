@@ -3,7 +3,6 @@ package io.debezium.connector.yugabytedb;
 import io.debezium.DebeziumException;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.connector.yugabytedb.connection.*;
-import io.debezium.connector.yugabytedb.connection.ReplicationMessage.Operation;
 import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoReplicationMessage;
 import io.debezium.connector.yugabytedb.consistent.Merger;
 import io.debezium.connector.yugabytedb.consistent.Message;
@@ -20,7 +19,6 @@ import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.client.*;
 
-import java.io.IOException;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
@@ -69,7 +67,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
                 GetTabletListToPollForCDCResponse resp =
                         YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
-                getTabletPairListFromRange(resp, tabletPairList);
+                populateTableToTabletPairsForTask(resp, tabletPairList);
                 tabletListResponse.put(tId, resp);
             }
 

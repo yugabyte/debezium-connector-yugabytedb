@@ -6,12 +6,11 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.yb.client.Bytes;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -85,7 +84,7 @@ public class HashPartitionTest {
 	}
 
 	@Test
-	public void verifySortingMethod() {
+	public void verifySorting() {
 		List<HashPartition> partitionsToBeSorted = new ArrayList<>();
 
 		// Using the same tabletId in all of them will not affect anything as we are not validating
@@ -103,13 +102,14 @@ public class HashPartitionTest {
 
 		List<HashPartition> sortedPartitions = List.of(a, b, c, d);
 
-		HashPartition.sort(partitionsToBeSorted);
+		Collections.sort(partitionsToBeSorted);
 
 		assertEquals(sortedPartitions, partitionsToBeSorted);
 	}
 
-	@Test
-	public void throwAssertionErrorIfEndBoundaryPartitionIsMissing() {
+	@ParameterizedTest
+	@ValueSource(booleans = {true, false})
+	public void throwAssertionErrorIfAnyPartitionIsMissing(boolean skipEndPartition) {
 		List<HashPartition> partitions = new ArrayList<>();
 
 		// Using the same tabletId in all of them will not affect anything as we are not validating
@@ -117,41 +117,20 @@ public class HashPartitionTest {
 		HashPartition a = HashPartition.from(tableId1, tabletId1, start, one);
 		HashPartition b = HashPartition.from(tableId1, tabletId1, one, two);
 		HashPartition c = HashPartition.from(tableId1, tabletId1, two, three);
-
-		// Add to the list and skip the end boundary partition.
-		partitions.add(c);
-		partitions.add(a);
-		partitions.add(b);
-
-
-		assertThrows(AssertionError.class, () -> HashPartition.validateCompleteRanges(partitions));
-	}
-
-	@Test
-	public void throwDebeziumExceptionIfAnyMiddlePartitionIsMissing() {
-		List<HashPartition> partitions = new ArrayList<>();
-
-		// Using the same tabletId in all of them will not affect anything as we are not validating
-		// the tabletIds.
-		HashPartition a = HashPartition.from(tableId1, tabletId1, start, one);
-		HashPartition c = HashPartition.from(tableId1, tabletId1, two, three);
 		HashPartition d = HashPartition.from(tableId1, tabletId1, three, end);
 
-		// Add to the list and skip one partition in the middle of the ranges.
+		// Skip end partition and keep the rest of them present OR skip one of the middle partitions
+		// depending on the parameter.
 		partitions.add(c);
 		partitions.add(a);
-		partitions.add(d);
 
-		Exception exception = null;
-		try {
-			HashPartition.validateCompleteRanges(partitions);
-		} catch (Exception de) {
-			exception = de;
+		if (skipEndPartition) {
+			partitions.add(b);
+		} else {
+			partitions.add(d);
 		}
 
-		assertNotNull(exception);
-		assertTrue(exception instanceof DebeziumException);
-		assertTrue(exception.getMessage().contains("not found in the list of partitions while validating"));
+		assertThrows(AssertionError.class, () -> HashPartition.validateCompleteRanges(partitions));
 	}
 
 	private static Stream<Arguments> parameterSourceForChildRanges() {

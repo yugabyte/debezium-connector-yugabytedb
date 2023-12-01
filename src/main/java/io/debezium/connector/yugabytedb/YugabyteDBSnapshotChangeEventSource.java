@@ -150,8 +150,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             LOGGER.info("Setting offsetContext/previousOffset for snapshot...");
             previousOffset = YugabyteDBOffsetContext.initialContextForSnapshot(this.connectorConfig, connection, clock, partitions);
 
-            YugabyteDBConnectorUtils.populatePartitionRanges(
-              connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST), partitionRanges);
+            this.partitionRanges = YugabyteDBConnectorUtils.populatePartitionRanges(
+              connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST));
 
             return doExecute(context, partition, previousOffset, ctx, snapshottingTask);
         }
@@ -407,8 +407,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       LOGGER.info("Starting the snapshot process now");
       
       // Get the list of tablets
-      List<Pair<String, String>> tableToTabletIds = new ArrayList<>();
-      populateTabletPairList(tableToTabletIds);
+      List<Pair<String, String>> tableToTabletIds = HashPartition.getTableToTabletPairs(partitionRanges);
 
       Set<String> tableUUIDs = tableToTabletIds.stream()
                                   .map(pair -> pair.getLeft())

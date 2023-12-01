@@ -7,16 +7,13 @@
 package io.debezium.connector.yugabytedb;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import io.debezium.connector.yugabytedb.connection.HashPartition;
-import io.debezium.connector.yugabytedb.connection.YBTablet;
 import io.debezium.connector.yugabytedb.util.YugabyteDBConnectorUtils;
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigValue;
 import org.apache.kafka.connect.connector.Task;
@@ -51,8 +48,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
     private Map<String, String> props;
     private Set<String> tableIds;
-//    private List<Pair<Pair<String, String>, Pair<String, String>>> hashRanges;
-    private List<YBTablet> hashRanges;
+    private List<HashPartition> hashRanges;
     private YugabyteDBConnectorConfig yugabyteDBConnectorConfig;
 
     private YugabyteDBTablePoller tableMonitorThread;
@@ -160,12 +156,12 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         int numGroups = Math.min(hashRanges.size(), maxTasks);
         LOGGER.info("Total tablets to be grouped: " + hashRanges.size() + " within maximum tasks: " + maxTasks);
 
-        List<List<YBTablet>> hashRangesGrouped =
+        List<List<HashPartition>> hashRangesGrouped =
           YugabyteDBConnectorUtils.groupPartitionsSmartly(this.hashRanges, numGroups);
 
         taskConfigs = new ArrayList<>(hashRangesGrouped.size());
 
-        for (List<YBTablet> taskTables : hashRangesGrouped) {
+        for (List<HashPartition> taskTables : hashRangesGrouped) {
             Map<String, String> taskProps = new HashMap<>(this.props);
             int taskId = taskConfigs.size();
             taskProps.put(YugabyteDBConnectorConfig.TASK_ID.toString(), String.valueOf(taskId));
@@ -328,24 +324,20 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                     YBTable table = ybClient.openTableByUUID(tableId);
                     GetTabletListToPollForCDCResponse resp = YBClientUtils.getTabletListToPollForCDCWithRetry(table,
                             tableId, yugabyteDBConnectorConfig);
-                    Set<String> tablets = new HashSet<>();
                     List<HashPartition> partitions = new ArrayList<>();
                     LOGGER.info("TabletCheckpointPair list size for table {}: {}", tableId, resp.getTabletCheckpointPairListSize());
                     for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
                         HashPartition tempPartition = HashPartition.from(pair);
 
-                        tablets.add(tempPartition.getTabletId());
                         partitions.add(tempPartition);
-
-                        this.hashRanges.add(
-                          new YBTablet(tableId, tempPartition.getTabletId(),
-                                       tempPartition.getPartitionKeyStart(), tempPartition.getPartitionKeyEnd()));
+                        this.hashRanges.add(tempPartition);
                     }
 
                     // Validate that we have received the complete range of partitions.
                     HashPartition.validateCompleteRanges(partitions);
 
-                    LOGGER.info("Received tablet list for table {} ({}): {}", table.getTableId(), table.getName(), tablets);
+                    LOGGER.info("Received tablet list for table {} ({}): {}", table.getTableId(), table.getName(),
+                                partitions.stream().map(HashPartition::getTabletId).collect(Collectors.toSet()));
                 }
             } catch (Exception e) {
                 final String errorMessage = "Error while fetching all the tablets";

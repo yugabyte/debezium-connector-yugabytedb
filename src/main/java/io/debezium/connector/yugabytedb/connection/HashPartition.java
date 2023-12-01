@@ -2,10 +2,14 @@ package io.debezium.connector.yugabytedb.connection;
 
 import com.google.common.base.Objects;
 import io.debezium.DebeziumException;
+import io.debezium.connector.yugabytedb.YBPartition;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.yb.cdc.CdcService;
 import org.yb.client.Bytes;
 import org.yb.client.GetTabletListToPollForCDCResponse;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -15,13 +19,10 @@ import java.util.List;
  * Partition class to store a representation of a tablet with its ranges. Most of the logic for
  * this class has been taken from
  * <a href="https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-client/src/main/java/org/yb/client/Bytes.java">Bytes.java</a><br><br>
- * <p>
- * Part of the logic to compare the two partitions has been borrowed from
- * <a href="https://github.com/yugabyte/yugabyte-db/blob/master/src/yb/util/slice.h#L311">slice.h</a>
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class HashPartition implements Comparable<HashPartition> {
+public class HashPartition implements Comparable<HashPartition>, Serializable {
   // BOUNDARY_KEY is the byte array used to represent the start of the first partition
   // as well as the end of the last partition. BOUNDARY_KEY_STR is the string representation of the
   // same empty byte array.
@@ -93,6 +94,13 @@ public class HashPartition implements Comparable<HashPartition> {
   }
 
   /**
+   * @return true if this partition is the only partition for a given table
+   */
+  public boolean isOnlyPartition() {
+    return isStartPartition() && isEndPartition();
+  }
+
+  /**
    * Equality only holds for partitions from the same table. Partition equality only takes into
    * account the partition keys, since there is a 1 to 1 correspondence between partition keys and
    * the hash buckets and range keys.
@@ -113,8 +121,8 @@ public class HashPartition implements Comparable<HashPartition> {
       return false;
     }
 
-    return Arrays.equals(partitionKeyStart, partition.partitionKeyStart)
-             && Arrays.equals(partitionKeyEnd, partition.partitionKeyEnd);
+    return compareKey(partitionKeyStart, partition.partitionKeyStart) == 0
+             && compareKey(partitionKeyEnd, partition.partitionKeyEnd) == 0;
   }
 
   /**
@@ -143,8 +151,18 @@ public class HashPartition implements Comparable<HashPartition> {
   }
 
   /**
-   * Compare two partitions
-   *
+   * Verify whether the given key is contained within the bounds of this partition. The logic has
+   * been borrowed from <a href="https://github.com/yugabyte/yugabyte-db/blob/master/src/yb/util/slice.h#L311">slice.h</a>
+   * @param key the key to verify
+   * @return true, if the key is within the bounds, false otherwise
+   */
+  public boolean containsKey(byte[] key) {
+    return (this.isStartPartition() || (compareKey(key, this.partitionKeyStart) >= 0))
+             && (this.isEndPartition() || (compareKey(key, this.partitionKeyEnd) < 0));
+  }
+
+  /**
+   * Verify if this partition contains other one.
    * @param other {@link HashPartition} to compare with
    * @return true if other partition is contained in current, false otherwise
    */
@@ -153,14 +171,15 @@ public class HashPartition implements Comparable<HashPartition> {
       return false;
     }
 
-    /* We know that this partition can contain another for sure in case of following:
-       1. If both the partitions have the same start and end key then technically it means they
+    /* It is certain that this partition can contain another for sure in case of following:
+       1. If both the partitions are equal.
+       2. If both the partitions have the same start and end key then technically it means they
           represent the same tablet.
-       2. If this partition is the single partition then also it will contain the other partition,
+       3. If this partition is the single partition then also it will contain the other partition,
           no matter what other partition's boundaries are.
      */
-    if ((Arrays.equals(partitionKeyStart, other.partitionKeyStart)
-           && Arrays.equals(partitionKeyEnd, other.partitionKeyEnd))
+    if (this.equals(other)
+          || (compareKey(partitionKeyStart, other.partitionKeyStart) == 0 && compareKey(partitionKeyEnd, other.partitionKeyEnd) == 0)
           || (this.isStartPartition() && this.isEndPartition())) {
       return true;
     }
@@ -173,20 +192,15 @@ public class HashPartition implements Comparable<HashPartition> {
     // Note that other partition's start key doesn't matter as it can be anything and still be after
     // the start key of this partition.
     if (this.isStartPartition()) {
-      return !other.isEndPartition()
-               && (compareKey(this.partitionKeyEnd, other.partitionKeyEnd) > 0);
+      return !other.isEndPartition() && containsKey(other.getPartitionKeyEnd());
     }
 
     // Similar logic as being used for start partition, values are reversed.
     if (this.isEndPartition()) {
-      return !other.isStartPartition()
-               && (compareKey(this.partitionKeyStart, other.partitionKeyStart) <= 0);
+      return !other.isStartPartition() && containsKey(other.getPartitionKeyStart());
     }
 
-    return (compareKey(this.partitionKeyStart, other.partitionKeyStart) < 0)
-             && (compareKey(this.partitionKeyStart, other.partitionKeyEnd) < 0)
-             && (compareKey(this.partitionKeyEnd, other.partitionKeyStart) > 0)
-             && (compareKey(this.partitionKeyEnd, other.partitionKeyEnd) > 0);
+    return containsKey(other.getPartitionKeyStart()) && containsKey(other.getPartitionKeyEnd());
   }
 
   /**
@@ -198,20 +212,8 @@ public class HashPartition implements Comparable<HashPartition> {
       return false;
     }
 
-    boolean isStartConflicting = false;
-    boolean isEndConflicting = false;
-
-    if (this.partitionKeyStart.length != 0) {
-      isStartConflicting = (compareKey(this.partitionKeyStart, other.partitionKeyStart) > 0)
-                             && (compareKey(this.partitionKeyStart, other.partitionKeyEnd) <= 0);
-    }
-
-    if (this.partitionKeyEnd.length != 0) {
-      isEndConflicting = (compareKey(this.partitionKeyEnd, other.partitionKeyEnd) <= 0)
-                           && (compareKey(this.partitionKeyEnd, other.partitionKeyStart) > 0);
-    }
-
-    return isStartConflicting || isEndConflicting;
+    return !containsPartition(other)
+             && (!containsKey(other.getPartitionKeyStart()) || !containsKey(other.getPartitionKeyEnd()));
   }
 
   private static int compareKey(byte[] keyOne, byte[] keyTwo) {
@@ -241,8 +243,8 @@ public class HashPartition implements Comparable<HashPartition> {
       Arrays.toString(partitionKeyEnd));
   }
 
-  public YBTablet toYBTablet() {
-    return new YBTablet(tableId, tabletId, partitionKeyStart, partitionKeyEnd);
+  public YBPartition toYBPartition() {
+    return new YBPartition(tableId, tabletId);
   }
 
   /**
@@ -277,12 +279,26 @@ public class HashPartition implements Comparable<HashPartition> {
   }
 
   /**
+   * @param partitions a list of {@link HashPartition}
+   * @return a list of pairs where each pair represents a {@code <tableId, tabletId>}
+   */
+  public static List<Pair<String, String>> getTableToTabletPairs(List<HashPartition> partitions) {
+    List<Pair<String, String>> result = new ArrayList<>();
+
+    for (HashPartition hp : partitions) {
+      result.add(new ImmutablePair<>(hp.getTableId(), hp.getTabletId()));
+    }
+
+    return result;
+  }
+
+  /**
    * Validate that the partitions we have make up the full exhaustive range of keys.
    *
    * @param hashPartitions a list of all the HashPartitions
    */
   public static void validateCompleteRanges(List<HashPartition> hashPartitions) {
-    sort(hashPartitions);
+    Collections.sort(hashPartitions);
 
     // We will start by the lower boundary key.
     byte[] nextKey = BOUNDARY_KEY;
@@ -297,11 +313,12 @@ public class HashPartition implements Comparable<HashPartition> {
   }
 
   /**
-   * Sort the given list of {@link HashPartition} so that they complete the chain.
+   * Sort the given list of {@link HashPartition} so that they complete the chain. Method meant for
+   * testing purposes only, use {@code Collections.sort(hashPartitions)} to perform sorting.
    *
    * @param hashPartitions a list of {@link HashPartition}
    */
-  public static void sort(List<HashPartition> hashPartitions) {
+  public static void sortChain(List<HashPartition> hashPartitions) {
     List<HashPartition> tempList = new ArrayList<>();
 
     byte[] nextStartKey = new byte[0];

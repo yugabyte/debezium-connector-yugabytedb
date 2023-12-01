@@ -137,7 +137,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
         try {
             // Populate partition ranges.
-            YugabyteDBConnectorUtils.populatePartitionRanges(connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST), partitionRanges);
+            this.partitionRanges = YugabyteDBConnectorUtils.populatePartitionRanges(connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST));
             getChanges2(context, partition, offsetContext, hasStartLsnStoredInContext);
         } catch (Throwable e) {
             Objects.requireNonNull(e);
@@ -281,14 +281,27 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
-    protected void getTabletPairListFromRange(GetTabletListToPollForCDCResponse r, List<Pair<String, String>> res) {
+    /**
+     * Use the {@link GetTabletListToPollForCDCResponse} and the populated {@code partitionRanges}
+     * to verify if the tablets in the response should be a part of this task. The logic only
+     * adds the tablets in the response which are contained in the parent partition ranges. Note
+     * that this method also assumes that the object {@code partitionRanges} is already populated.
+     *
+     * @param response of type {@link GetTabletListToPollForCDCResponse}
+     * @param tabletPairList a list of {@link Pair} to be populated where each pair is {@code <tableId, tabletId>}
+     */
+    protected void populateTableToTabletPairsForTask(GetTabletListToPollForCDCResponse response, List<Pair<String, String>> tabletPairList) {
+        // Verify that the partitionRanges are already populated.
+        Objects.requireNonNull(partitionRanges);
+        assert !partitionRanges.isEmpty();
+
         // Iterate over the stored partitions and add valid tablets for streaming.
-        for (TabletCheckpointPair pair : r.getTabletCheckpointPairList()) {
+        for (TabletCheckpointPair pair : response.getTabletCheckpointPairList()) {
             HashPartition hp = HashPartition.from(pair);
 
             for (HashPartition parent : partitionRanges) {
                 if (parent.containsPartition(hp)) {
-                    res.add(new ImmutablePair<>(hp.getTableId(), hp.getTabletId()));
+                    tabletPairList.add(new ImmutablePair<>(hp.getTableId(), hp.getTabletId()));
                 }
             }
         }
@@ -324,7 +337,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                 // TODO: One optimisation where we initialise the offset context here itself
                 //  without storing the GetTabletListToPollForCDCResponse
-                getTabletPairListFromRange(resp, tabletPairList);
+                populateTableToTabletPairsForTask(resp, tabletPairList);
                 LOGGER.info("Table: {} with number of tablets {}", tId, resp.getTabletCheckpointPairListSize());
                 tabletListResponse.put(tId, resp);
             }
