@@ -40,8 +40,7 @@ public class YBTablet implements Serializable {
   }
 
   public HashPartition toHashPartition() {
-    return new HashPartition(tableId, tabletId, partitionKeyStart, partitionKeyEnd,
-                             new ArrayList<>());
+    return new HashPartition(tableId, tabletId, partitionKeyStart, partitionKeyEnd);
   }
 
   @Override

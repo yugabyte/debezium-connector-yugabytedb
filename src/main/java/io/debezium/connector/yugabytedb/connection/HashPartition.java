@@ -2,10 +2,7 @@ package io.debezium.connector.yugabytedb.connection;
 
 import com.google.common.base.Objects;
 import io.debezium.DebeziumException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
-import org.yb.client.AsyncYBClient;
 import org.yb.client.Bytes;
 import org.yb.client.GetTabletListToPollForCDCResponse;
 
@@ -25,35 +22,28 @@ import java.util.List;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class HashPartition implements Comparable<HashPartition> {
+  // BOUNDARY_KEY is the byte array used to represent the start of the first partition
+  // as well as the end of the last partition. BOUNDARY_KEY_STR is the string representation of the
+  // same empty byte array.
+  public static final byte[] BOUNDARY_KEY = new byte[0];
+  public static final String BOUNDARY_KEY_STR = "[]";
+
   private final String tableId;
   private final String tabletId;
-  private static final Logger LOGGER = LoggerFactory.getLogger(HashPartition.class);
   private final byte[] partitionKeyStart;
   private final byte[] partitionKeyEnd;
-  private final byte[] rangeKeyStart;
-  private final byte[] rangeKeyEnd;
-  private final List<Integer> hashBuckets;
-
-  /**
-   * Size of an encoded hash bucket component in a partition key.
-   */
-  private static final int ENCODED_BUCKET_SIZE = 4;
 
   /**
    * Creates a new partition with the provided start and end keys, and hash buckets.
    *
    * @param partitionKeyStart the start partition key
    * @param partitionKeyEnd   the end partition key
-   * @param hashBuckets       the partition hash buckets
    */
-  public HashPartition(String tableId, String tabletId, byte[] partitionKeyStart, byte[] partitionKeyEnd,
-                       List<Integer> hashBuckets) {
+  public HashPartition(String tableId, String tabletId, byte[] partitionKeyStart,
+                       byte[] partitionKeyEnd) {
     this.tableId = tableId;
     this.partitionKeyStart = partitionKeyStart;
     this.partitionKeyEnd = partitionKeyEnd;
-    this.hashBuckets = hashBuckets;
-    this.rangeKeyStart = rangeKey(partitionKeyStart, hashBuckets.size());
-    this.rangeKeyEnd = rangeKey(partitionKeyEnd, hashBuckets.size());
     this.tabletId = tabletId;
   }
 
@@ -89,44 +79,17 @@ public class HashPartition implements Comparable<HashPartition> {
   }
 
   /**
-   * Gets the start range key.
-   *
-   * @return the start range key
-   */
-  public byte[] getRangeKeyStart() {
-    return rangeKeyStart;
-  }
-
-  /**
-   * Gets the end range key.
-   *
-   * @return the end range key
-   */
-  public byte[] getRangeKeyEnd() {
-    return rangeKeyEnd;
-  }
-
-  /**
-   * Gets the partition hash buckets.
-   *
-   * @return the partition hash buckets
-   */
-  public List<Integer> getHashBuckets() {
-    return hashBuckets;
-  }
-
-  /**
    * @return true if the partition is the absolute end partition
    */
   public boolean isEndPartition() {
-    return partitionKeyEnd.length == 0;
+    return compareKey(partitionKeyEnd, BOUNDARY_KEY) == 0;
   }
 
   /**
    * @return true if the partition is the absolute beginning partition
    */
   public boolean isStartPartition() {
-    return partitionKeyStart.length == 0;
+    return compareKey(partitionKeyStart, BOUNDARY_KEY) == 0;
   }
 
   /**
@@ -176,7 +139,7 @@ public class HashPartition implements Comparable<HashPartition> {
    */
   @Override
   public int compareTo(HashPartition other) {
-    return Bytes.memcmp(this.partitionKeyStart, other.partitionKeyStart);
+    return compareKey(this.partitionKeyStart, other.partitionKeyStart);
   }
 
   /**
@@ -251,11 +214,9 @@ public class HashPartition implements Comparable<HashPartition> {
     return isStartConflicting || isEndConflicting;
   }
 
-  private int compareKey(byte[] keyOne, byte[] keyTwo) {
+  private static int compareKey(byte[] keyOne, byte[] keyTwo) {
     int sizeOne = keyOne.length;
     int sizeTwo = keyTwo.length;
-
-    final int minLength = Math.min(sizeOne, sizeTwo);
 
     int r = Bytes.memcmp(keyOne, keyTwo);
     if (r == 0) {
@@ -269,23 +230,6 @@ public class HashPartition implements Comparable<HashPartition> {
     }
 
     return r;
-  }
-
-  /**
-   * Returns the range key portion of a partition key given the number of buckets in the partition
-   * schema.
-   *
-   * @param partitionKey   the partition key containing the range key
-   * @param numHashBuckets the number of hash bucket components of the table
-   * @return the range key
-   */
-  private static byte[] rangeKey(byte[] partitionKey, int numHashBuckets) {
-    int bucketsLen = numHashBuckets * ENCODED_BUCKET_SIZE;
-    if (partitionKey.length > bucketsLen) {
-      return Arrays.copyOfRange(partitionKey, bucketsLen, partitionKey.length);
-    } else {
-      return AsyncYBClient.EMPTY_ARRAY;
-    }
   }
 
   // We can also use Bytes.pretty to get a shorter string
@@ -309,12 +253,11 @@ public class HashPartition implements Comparable<HashPartition> {
     return new HashPartition(tabletCheckpointPair.getTabletLocations().getTableId().toStringUtf8(),
       tabletCheckpointPair.getTabletLocations().getTabletId().toStringUtf8(),
       tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
-      tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray(),
-      tabletCheckpointPair.getTabletLocations().getPartition().getHashBucketsList());
+      tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray());
   }
 
   public static HashPartition from(String tableId, String tabletId, String partitionKeyStartStr, String partitionKeyEndStr) {
-    return new HashPartition(tableId, tabletId, getByteArray(partitionKeyStartStr), getByteArray(partitionKeyEndStr), new ArrayList<>());
+    return new HashPartition(tableId, tabletId, getByteArray(partitionKeyStartStr), getByteArray(partitionKeyEndStr));
   }
 
   /**
@@ -341,12 +284,16 @@ public class HashPartition implements Comparable<HashPartition> {
   public static void validateCompleteRanges(List<HashPartition> hashPartitions) {
     sort(hashPartitions);
 
-    byte[] nextKey = new byte[0];
+    // We will start by the lower boundary key.
+    byte[] nextKey = BOUNDARY_KEY;
     for (HashPartition hashPartition : hashPartitions) {
-      assert Arrays.equals(nextKey, hashPartition.getPartitionKeyStart());
+      assert compareKey(nextKey, hashPartition.getPartitionKeyStart()) == 0;
 
       nextKey = hashPartition.getPartitionKeyEnd();
     }
+
+    // Verify that the end key of the last partition is the upper boundary key.
+    assert compareKey(nextKey, BOUNDARY_KEY) == 0;
   }
 
   /**
@@ -370,23 +317,39 @@ public class HashPartition implements Comparable<HashPartition> {
     Collections.copy(hashPartitions, tempList);
   }
 
+  /**
+   * Find the {@link HashPartition} with the provided start key in the list of partitions.
+   * @param hashPartitions a {@link List} of {@link HashPartition}
+   * @param startKey the partition start key to find
+   * @return a {@link HashPartition} whose partition start key matches the startKey
+   */
   private static HashPartition findPartitionByStartKey(List<HashPartition> hashPartitions, byte[] startKey) {
     for (HashPartition hp : hashPartitions) {
-      if (Arrays.equals(hp.getPartitionKeyStart(), startKey)) {
+      if (compareKey(hp.getPartitionKeyStart(), startKey) == 0) {
         return hp;
       }
     }
 
     throw new DebeziumException("Given start key " + Arrays.toString(startKey)
-                                  + " not found in the list of partitions");
+                                  + " not found in the list of partitions while validating");
   }
 
-  private static byte[] getByteArray(String str) {
-    // Length 2 also means it is an empty byte array as it would just contain "[]"
-    if (str.isEmpty() || str.length() == 2) {
+  /**
+   * Get the byte array from its equivalent string representation. Note that this is not being used
+   * in the code anywhere but is particularly useful in writing unit tests.
+   * @param str string representation of the byte array
+   * @return the byte array object from its string representation
+   */
+  public static byte[] getByteArray(String str) {
+    if (str.isEmpty()) {
+      throw new IllegalArgumentException("Invalid representation of a byte array");
+    }
+
+    if (str.equals(BOUNDARY_KEY_STR)) {
       return new byte[0];
     }
 
+    // Separate all the elements to further form a byte array using them.
     String[] elements = str.substring(1, str.length() - 1).trim().split(", ");
 
     byte[] byteValues = new byte[elements.length];
