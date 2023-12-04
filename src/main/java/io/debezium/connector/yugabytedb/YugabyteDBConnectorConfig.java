@@ -6,21 +6,35 @@
 
 package io.debezium.connector.yugabytedb;
 
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.ConfigDef.Importance;
 import org.apache.kafka.common.config.ConfigDef.Type;
 import org.apache.kafka.common.config.ConfigDef.Width;
+import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.common.config.ConfigValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.CDCStreamInfo;
+import org.yb.client.GetDBStreamInfoResponse;
+import org.yb.client.ListCDCStreamsResponse;
+import org.yb.client.YBClient;
 
+import io.debezium.DebeziumException;
 import io.debezium.config.ConfigDefinition;
 import io.debezium.config.Configuration;
 import io.debezium.config.EnumeratedValue;
@@ -29,6 +43,7 @@ import io.debezium.connector.AbstractSourceInfo;
 import io.debezium.connector.SourceInfoStructMaker;
 import io.debezium.connector.yugabytedb.connection.MessageDecoder;
 import io.debezium.connector.yugabytedb.connection.MessageDecoderContext;
+import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoMessageDecoder;
 import io.debezium.connector.yugabytedb.snapshot.AlwaysSnapshotter;
@@ -41,10 +56,14 @@ import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.jdbc.JdbcConnection;
 import io.debezium.jdbc.JdbcValueConverters;
 import io.debezium.jdbc.JdbcConnection.ConnectionFactory;
+import io.debezium.jdbc.JdbcConnectionException;
 import io.debezium.relational.ColumnFilterMode;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
+import io.debezium.relational.RelationalTableFilters;
 import io.debezium.relational.TableId;
 import io.debezium.relational.Tables.TableFilter;
+import io.debezium.util.Clock;
+import io.debezium.util.Metronome;
 import io.debezium.util.Strings;
 
 /**
@@ -356,6 +375,22 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     }
 
     public enum LogicalDecoder implements EnumeratedValue {
+        YBOUTPUT("yboutput") {
+            @Override
+            public MessageDecoder messageDecoder(MessageDecoderContext config) {
+                return new YbProtoMessageDecoder();
+            }
+
+            @Override
+            public String getPostgresPluginName() {
+                return getValue();
+            }
+
+            @Override
+            public boolean supportsTruncate() {
+                return false;
+            }
+        },
         DECODERBUFS("decoderbufs") {
             @Override
             public MessageDecoder messageDecoder(MessageDecoderContext config) {
@@ -543,10 +578,14 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final String DATABASE_CONFIG_PREFIX = "database.";
     protected static final String TASK_CONFIG_PREFIX = "task.";
     protected static final String DEFAULT_QL_TYPE = "ysql";
+    protected static final String DEFAULT_PLUGIN_NAME = "yboutput";
+    protected static final boolean DEFAULT_DROP_SLOT_ON_STOP = false;
+    protected static final String DEFAULT_PUBLICATION_AUTOCREATE_MODE = "all_tables";
 
     protected static final int DEFAULT_PORT = 5_433;
     protected static final int DEFAULT_SNAPSHOT_FETCH_SIZE = 10_240;
     protected static final int DEFAULT_MAX_RETRIES = 6;
+    protected static final long DEFAULT_RETRY_DELAY_MS = 10000;
     protected static final int DEFAULT_MASTER_PORT = 7100;
     protected static final String DEFAULT_MASTER_ADDRESS = "127.0.0.1:7100";
     protected static final int DEFAULT_MAX_NUM_TABLETS = 300;
@@ -700,13 +739,45 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     public static final Field PLUGIN_NAME = Field.create("plugin.name")
             .withDisplayName("Plugin")
             .withGroup(Field.createGroupEntry(Field.Group.CONNECTION_ADVANCED_REPLICATION, 0))
-            .withEnum(LogicalDecoder.class, LogicalDecoder.DECODERBUFS)
+            .withEnum(LogicalDecoder.class, LogicalDecoder.YBOUTPUT)
             .withWidth(Width.MEDIUM)
             .withImportance(Importance.MEDIUM)
+            .withDefault(DEFAULT_PLUGIN_NAME)
             .withDescription("The name of the Postgres logical decoding plugin installed on the server. " +
-                    "Supported values are '" + LogicalDecoder.DECODERBUFS.getValue()
+                    "Supported values are '" + LogicalDecoder.YBOUTPUT.getValue()
                     + "'. " +
-                    "Defaults to '" + LogicalDecoder.DECODERBUFS.getValue() + "'.");
+                    "Defaults to '" + LogicalDecoder.YBOUTPUT.getValue() + "'.");
+
+    public static final Field SLOT_NAME = Field.create("slot.name")
+            .withDisplayName("Slot")
+            .withType(Type.STRING)
+            .withGroup(Field.createGroupEntry(Field.Group.CONNECTION_ADVANCED_REPLICATION, 1))
+            .withWidth(Width.MEDIUM)
+            .withImportance(Importance.MEDIUM)
+            .withDefault(ReplicationConnection.Builder.DEFAULT_SLOT_NAME)
+            .withValidation(YugabyteDBConnectorConfig::validateReplicationSlotName)
+            .withDescription("The name of the YSQL logical decoding slot created for streaming changes from a plugin." +
+                    "Defaults to 'debezium");
+    
+    public static final Field DROP_SLOT_ON_STOP = Field.create("slot.drop.on.stop")
+            .withDisplayName("Drop slot on stop")
+            .withType(Type.BOOLEAN)
+            .withGroup(Field.createGroupEntry(Field.Group.CONNECTION_ADVANCED_REPLICATION, 3))
+            .withDefault(DEFAULT_DROP_SLOT_ON_STOP)
+            .withImportance(Importance.MEDIUM)
+            .withDescription(
+                    "Whether or not to drop the logical replication slot when the connector finishes orderly" +
+                            "By default the replication is kept so that on restart progress can resume from the last recorded location");
+
+    public static final Field PUBLICATION_NAME = Field.create("publication.name")
+            .withDisplayName("Publication")
+            .withType(Type.STRING)
+            .withGroup(Field.createGroupEntry(Field.Group.CONNECTION_ADVANCED_REPLICATION, 8))
+            .withWidth(Width.MEDIUM)
+            .withImportance(Importance.MEDIUM)
+            .withDefault(ReplicationConnection.Builder.DEFAULT_PUBLICATION_NAME)
+            .withDescription("The name of the YSQL publication used for streaming changes from a plugin." +
+                    "Defaults to '" + ReplicationConnection.Builder.DEFAULT_PUBLICATION_NAME + "'");
 
     public static final Field DELETE_STREAM_ON_STOP = Field.create("stream.delete.on.stop")
             .withDisplayName("Delete stream on stop")
@@ -790,24 +861,26 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         }
     }
 
-    public static final Field PUBLICATION_AUTOCREATE_MODE = Field.create("stream.autocreate.mode")
-            .withDisplayName("YB Stream Auto Create Mode")
+    public static final Field PUBLICATION_AUTOCREATE_MODE = Field.create("publication.autocreate.mode")
+            .withDisplayName("Publication Auto Create Mode")
             .withGroup(Field.createGroupEntry(Field.Group.CONNECTION_ADVANCED_REPLICATION, 9))
             .withEnum(AutoCreateMode.class, AutoCreateMode.ALL_TABLES)
             .withWidth(Width.MEDIUM)
             .withImportance(Importance.MEDIUM)
+            .withDefault(DEFAULT_PUBLICATION_AUTOCREATE_MODE)
             .withDescription(
-                    "Creates the Stream " +
-                            "Determine how creation of a publication should work, the default is all_tables." +
-                            "DISABLED - The connector will not attempt to create a publication at all. The expectation is " +
-                            "that the user has created the publication up-front. If the publication isn't found to exist upon " +
-                            "startup, the connector will throw an exception and stop." +
-                            "ALL_TABLES - If no publication exists, the connector will create a new publication for all tables. " +
-                            "Note this requires that the configured user has access. If the publication already exists, it will be used" +
-                            ". i.e CREATE PUBLICATION <publication_name> FOR ALL TABLES;" +
-                            "FILTERED - If no publication exists, the connector will create a new publication for all those tables matching" +
-                            "the current filter configuration (see table/database include/exclude list properties). If the publication already" +
-                            " exists, it will be used. i.e CREATE PUBLICATION <publication_name> FOR TABLE <tbl1, tbl2, etc>");
+                    "Applies only when streaming changes using yboutput." +
+                    "Determine how creation of a publication should work, the default is all_tables." +
+                    "DISABLED - The connector will not attempt to create a publication at all. The expectation is " +
+                    "that the user has created the publication up-front. If the publication isn't found to exist upon " +
+                    "startup, the connector will throw an exception and stop." +
+                    "ALL_TABLES - If no publication exists, the connector will create a new publication for all tables. " +
+                    "Note this requires that the configured user has access. If the publication already exists, it will be used" +
+                    ". i.e CREATE PUBLICATION <publication_name> FOR ALL TABLES;" +
+                    "FILTERED - If no publication exists, the connector will create a new publication for all those tables matching" +
+                    "the current filter configuration (see table/database include/exclude list properties). If the publication already" +
+                    " exists, it will be used. i.e CREATE PUBLICATION <publication_name> FOR TABLE <tbl1, tbl2, etc>");
+
     public static final Field STREAM_PARAMS = Field.create("slot.stream.params")
             .withDisplayName("Optional parameters to pass to the logical decoder when the stream is started.")
             .withType(Type.STRING)
@@ -831,7 +904,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withType(Type.LONG)
             .withGroup(Field.createGroupEntry(Field.Group.CONNECTION_ADVANCED_REPLICATION, 5))
             .withImportance(Importance.LOW)
-            .withDefault(Duration.ofSeconds(10).toMillis())
+            .withDefault(DEFAULT_RETRY_DELAY_MS)
             .withValidation(Field::isInteger)
             .withDescription(
                     "Time to wait between retry attempts when the connector fails to connect to a replication slot, given in milliseconds. Defaults to 10 seconds (10,000 ms).");
@@ -1249,6 +1322,27 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return LogicalDecoder.parse(getConfig().getString(PLUGIN_NAME));
     }
 
+    protected String slotName() {
+        return getConfig().getString(SLOT_NAME);
+    }
+
+    protected boolean dropSlotOnStop() {
+        if (getConfig().hasKey(DROP_SLOT_ON_STOP.name())) {
+            return getConfig().getBoolean(DROP_SLOT_ON_STOP);
+        }
+
+        // Return default value
+        return getConfig().getBoolean(DROP_SLOT_ON_STOP);
+    }
+
+    public String publicationName() {
+        return getConfig().getString(PUBLICATION_NAME);
+    }
+
+    protected AutoCreateMode publicationAutocreateMode() {
+        return AutoCreateMode.parse(getConfig().getString(PUBLICATION_AUTOCREATE_MODE));
+    }
+
     protected String streamParams() {
         return getConfig().getString(STREAM_PARAMS);
     }
@@ -1351,9 +1445,13 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     USER,
                     PASSWORD,
                     DATABASE_NAME,
+                    PLUGIN_NAME,
+                    SLOT_NAME,
+                    PUBLICATION_NAME,
+                    PUBLICATION_AUTOCREATE_MODE,
+                    DROP_SLOT_ON_STOP,
                     MASTER_ADDRESSES,
                     STREAM_ID,
-                    PLUGIN_NAME,
                     STREAM_PARAMS,
                     ON_CONNECT_STATEMENTS,
                     SSL_MODE,
@@ -1395,6 +1493,20 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return CONFIG_DEFINITION.configDef();
     }
 
+    // Source of the validation rules - https://doxygen.postgresql.org/slot_8c.html#afac399f07320b9adfd2c599cf822aaa3
+    private static int validateReplicationSlotName(Configuration config, Field field, Field.ValidationOutput problems) {
+        final String name = config.getString(field);
+        int errors = 0;
+        if (name != null) {
+            if (!name.matches("[a-z0-9_]{1,63}")) {
+                problems.accept(field, name,
+                        "Valid replication slot name must contain only digits, lowercase characters and underscores with length <= 63");
+                ++errors;
+            }
+        }
+        return errors;
+    }
+
     private static int validateTruncateHandlingMode(Configuration config, Field field, Field.ValidationOutput problems) {
         final String value = config.getString(field);
         int errors = 0;
@@ -1431,6 +1543,357 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             return 1;
         }
         return 0;
+    }
+
+    public static String extractStreamIdFromSlot(Configuration config) {
+        RuntimeException exception = null;
+        try (YugabyteDBConnection ybConnection = new YugabyteDBConnection(getJdbcConfig(config),
+                YugabyteDBConnection.CONNECTION_GENERAL)) {
+            int retryCount = 0;
+            while (retryCount <= config.getInteger(MAX_RETRIES)) {
+                try (Connection connection = ybConnection.connection();
+                      final Statement statement = connection.createStatement()) {
+                    String query = "SELECT yb_stream_id FROM pg_replication_slots WHERE slot_name = '"+ config.getString(SLOT_NAME) + "';";
+                    final ResultSet rs = statement.executeQuery(query);
+                    if (rs.next()) {
+                        String streamId = rs.getString("yb_stream_id");
+                        return streamId;
+                    } else {
+                        LOGGER.error("Could not find replication slot with name " + config.getString(SLOT_NAME));
+                        return "";
+                    }
+                } catch (SQLException e) {
+                    exception = new RuntimeException(e);
+                    retryCount++;
+                    if (retryCount > config.getInteger(MAX_RETRIES)) {
+                        LOGGER.error("Failed to execute the query on pg_replication_slots. All {} retries failed",
+                                config.getInteger(MAX_RETRIES), e);
+                        throw new DebeziumException(e);
+                    }
+                    LOGGER.warn(
+                            "Error while trying to execute the query on pg_replication_slots. Will retry, attempt {} out of {}",
+                            retryCount, config.getInteger(MAX_RETRIES));
+                    e.printStackTrace();
+
+                    pauseBetweenRetries(config.getLong(RETRY_DELAY_MS));
+                }
+            }
+        }
+
+        if (exception != null) {
+            throw exception;
+        }
+
+        return "";
+    }
+
+    public static String extractTableListFromPublication(Configuration config) {
+        String publicationName = config.getString(PUBLICATION_NAME);
+        Exception exception = null;
+
+        int retryCount = 0;
+        while (retryCount <= config.getInteger(MAX_CONNECTOR_RETRIES)) {
+            try (YugabyteDBConnection ybConnection = new YugabyteDBConnection(getJdbcConfig(config), YugabyteDBConnection.CONNECTION_GENERAL)) {
+                return fetchTableIncludeList(ybConnection, publicationName);
+            } catch (SQLException e) {
+                retryCount++;
+                exception = e;
+                if (retryCount > config.getInteger(MAX_CONNECTOR_RETRIES)) {
+                    LOGGER.error("Failed to extract table list from publication. All {} retries failed",config.getInteger(MAX_CONNECTOR_RETRIES), e);
+                    throw new DebeziumException(e);
+                }
+                LOGGER.warn("Error while trying to extract table list from publication. Will retry, attempt {} out of {}",
+                            retryCount, config.getInteger(MAX_CONNECTOR_RETRIES));
+                e.printStackTrace();
+
+                pauseBetweenRetries(config.getLong(CONNECTOR_RETRY_DELAY_MS));
+            }
+        }
+
+        if (exception != null) {
+            throw new DebeziumException(exception);
+        }
+
+        return null;
+    }
+
+    public static JdbcConfiguration getJdbcConfig(Configuration config) {
+            return JdbcConfiguration.copy(Configuration.empty())
+                    .with(JdbcConfiguration.DATABASE, config.getString(DATABASE_NAME))
+                    .with(JdbcConfiguration.HOSTNAME, config.getString(HOSTNAME))
+                    .with(JdbcConfiguration.PORT, config.getString(PORT))
+                    .with(JdbcConfiguration.USER, config.getString(USER))
+                    .with(JdbcConfiguration.PASSWORD, config.getString(PASSWORD))
+                    .withDefault(YugabyteDBConnectorConfig.MAX_RETRIES, config.getInteger(MAX_RETRIES))
+                    .with(YugabyteDBConnectorConfig.RETRY_DELAY_MS, config.getLong(RETRY_DELAY_MS))
+                    .build();
+    }
+
+    public static String fetchTableIncludeList(YugabyteDBConnection ybConnection, String publicationName) throws SQLException {
+        try (Connection connection = ybConnection.connection();
+              final Statement statement = connection.createStatement()) {
+            String query = "SELECT * FROM pg_publication_tables WHERE pubname = '" + publicationName + "';";
+            final ResultSet rs = statement.executeQuery(query);
+            String tableList = "";
+            while (rs.next()) {
+                String tableName = rs.getString("tablename");
+                String schemaName = rs.getString("schemaname");
+                tableList += schemaName + "." + tableName + ",";
+            }
+            return tableList.substring(0, tableList.length() - 1);
+        }
+    }
+
+    public static boolean shouldUsePublication(Configuration config) {
+        String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
+
+        // For CQL tables as well as for the config not using Publication/Replication streamId will be non null
+        if (streamId == null || streamId.isEmpty()) {
+            return true;
+        }
+
+        try (YBClient ybClient = YBClientUtils.getYbClient(config)) {
+            GetDBStreamInfoResponse getDBStreamInfoResponse = ybClient.getDBStreamInfo(streamId);
+            ListCDCStreamsResponse resp = ybClient.listCDCStreams(null, getDBStreamInfoResponse.getNamespaceId(), null);
+            for (CDCStreamInfo stream : resp.getStreams()) {
+                if (stream.getStreamId().equals(streamId)) {
+                    String slotName = stream.getCdcsdkYsqlReplicationSlotName();
+                    if (slotName == null || slotName.isEmpty()) {
+                        return false;
+                    } else {
+                        String errorFormat = "Stream ID %s is associated with replication slot %s. Please use slot name in the config instead of Stream ID.";
+                        String errorMessage = String.format(errorFormat, streamId, slotName);
+                        LOGGER.error(errorMessage);
+                        throw new DebeziumException(errorMessage);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("Exception while making RPC calls to server");
+            throw new DebeziumException(e);
+        }
+
+        return false;
+    }
+
+    /**
+     * This method is borrowed from Debezium Postgres connector. We have moved this
+     * method from ReplicationConnection class to config class because we need to
+     * extract the stream ID and table include list from replication slot and
+     * publication respectively before initializing YugabyteDBConnectorConfig instance
+     * @param config Configuration object containg details about Publication, Autocreate modes and Plugin name
+     */
+    protected static void initPublication(Configuration config) {
+        String publicationName = config.getString(PUBLICATION_NAME);
+        String plugin = config.getString(PLUGIN_NAME);
+        int maxAttempts = config.getInteger(MAX_RETRIES);
+        int retryCount = 0;
+        YugabyteDBConnectorConfig.AutoCreateMode publicationAutocreateMode = YugabyteDBConnectorConfig.AutoCreateMode
+                .parse(config.getString(PUBLICATION_AUTOCREATE_MODE));
+        if (YugabyteDBConnectorConfig.LogicalDecoder.YBOUTPUT.equals(YugabyteDBConnectorConfig.LogicalDecoder.parse(plugin))) {
+            LOGGER.info("Initializing YbOutput logical decoder publication");
+            while (retryCount <= maxAttempts) {
+                try {
+                    YugabyteDBConnection ybConnection = new YugabyteDBConnection(getJdbcConfig(config),YugabyteDBConnection.CONNECTION_GENERAL);
+                    Connection conn = ybConnection.connection();
+                    conn.setAutoCommit(false);
+
+                    String selectPublication = String.format("SELECT puballtables FROM pg_publication WHERE pubname = '%s'", publicationName);
+                    try (Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(selectPublication)) {
+                        if (!rs.next()) {
+                            LOGGER.info("Creating new publication '{}' for plugin '{}'", publicationName, plugin);
+                            switch (publicationAutocreateMode) {
+                                case DISABLED:
+                                    throw new ConnectException("Publication autocreation is disabled, please create one and restart the connector.");
+                                case ALL_TABLES:
+                                    String createPublicationStmt = String.format("CREATE PUBLICATION %s FOR ALL TABLES;", publicationName);
+                                    LOGGER.info("Creating Publication with statement '{}'", createPublicationStmt);
+                                    // Publication doesn't exist, create it.
+                                    stmt.execute(createPublicationStmt);
+                                    break;
+                                case FILTERED:
+                                    createOrUpdatePublicationModeFilterted(stmt, false, config);
+                                    break;
+                            }
+                        } else {
+                            switch (publicationAutocreateMode) {
+                                case FILTERED:
+                                    // Checking that publication can be altered
+                                    Boolean allTables = rs.getBoolean(1);
+                                    if (allTables) {
+                                        throw new DebeziumException(String.format(
+                                                "A logical publication for all tables named '%s' for plugin '%s' " +
+                                                        "is already active on the server and can not be altered. " +
+                                                        "If you need to exclude some tables or include only specific subset, " +
+                                                        "please recreate the publication with necessary configuration " +
+                                                        "or let plugin recreate it by dropping existing publication. " +
+                                                        "Otherwise please change the 'publication.autocreate.mode' property to 'all_tables'.",
+                                                publicationName, plugin));
+                                    } else {
+                                        createOrUpdatePublicationModeFilterted(stmt, true, config);
+                                    }
+                                    break;
+                                default:
+                                    LOGGER.trace(
+                                            "A logical publication named '{}' for plugin '{}' is already active on the server " +
+                                                    "and will be used by the plugin",
+                                            publicationName, plugin);
+
+                            }
+                        }
+                    }
+                    conn.commit();
+                    conn.setAutoCommit(true);
+                    return;
+                } catch (SQLException e) {
+                    retryCount++;
+
+                    if (retryCount > maxAttempts) {
+                        throw new JdbcConnectionException(e);
+                    }
+
+                    LOGGER.warn("Error while initializing publication. Will retry, attempt {} out of {}", retryCount, maxAttempts);
+                    pauseBetweenRetries(config.getLong(RETRY_DELAY_MS));
+                }
+            }
+        }
+    }
+
+    private static void createOrUpdatePublicationModeFilterted(Statement stmt, boolean isUpdate, Configuration config) {
+        String publicationName = config.getString(PUBLICATION_NAME);
+        String tableFilterString = null;
+        String createOrUpdatePublicationStmt;
+        int maxAttempts = config.getInteger(MAX_RETRIES);
+        int retryCount = 0;
+        while (retryCount <= maxAttempts) {
+            try {
+                Set<TableId> tablesToCapture = determineCapturedTables(config);
+                tableFilterString = tablesToCapture.stream().map(TableId::toDoubleQuotedString).collect(Collectors.joining(", "));
+                if (tableFilterString.isEmpty()) {
+                    throw new DebeziumException(String.format("No table filters found for filtered publication %s", publicationName));
+                }
+
+                if (isUpdate) {
+                    createOrUpdatePublicationStmt = String.format("ALTER PUBLICATION %s SET TABLE %s;", publicationName, tableFilterString);
+                    LOGGER.info("Updating Publication with statement '{}'", createOrUpdatePublicationStmt);
+                } else {
+                    createOrUpdatePublicationStmt = String.format("CREATE PUBLICATION %s FOR TABLE %s;", publicationName, tableFilterString);
+                    LOGGER.info("Creating Publication with statement '{}'", createOrUpdatePublicationStmt);
+                }
+
+                stmt.execute(createOrUpdatePublicationStmt);
+                break;
+            } catch (Exception e) {
+                retryCount++;
+
+                if (retryCount > maxAttempts) {
+                    throw new ConnectException(
+                        String.format("Unable to %s filtered publication %s for %s. %s", isUpdate ? "update" : "create",
+                                        publicationName, tableFilterString, e.getMessage()), e);
+                }
+
+                LOGGER.warn(
+                        String.format("Error while trying to %s filtered publication. Will retry, attempt %d out of %d",
+                                isUpdate ? "update" : "create", retryCount, maxAttempts));
+                    
+                pauseBetweenRetries(config.getLong(RETRY_DELAY_MS));
+            }
+        }
+    }
+
+    private static Set<TableId> determineCapturedTables(Configuration config) throws Exception {
+        YugabyteDBConnection ybConnection = new YugabyteDBConnection(getJdbcConfig(config),YugabyteDBConnection.CONNECTION_GENERAL);
+        Set<TableId> allTableIds = ybConnection.readTableNames(config.getString(DATABASE_NAME), null, null, null);
+
+        Set<TableId> capturedTables = new HashSet<>();
+        RelationalTableFilters tableFilter = new RelationalTableFilters(config, new SystemTablesPredicate(), x -> x.schema() + "." + x.table());
+
+        for (TableId tableId : allTableIds) {
+            if (!tableFilter.dataCollectionFilter().isIncluded(tableId)) {
+                LOGGER.trace("Ignoring table {} as it's not included in the filter configuration", tableId);
+                continue;
+            }
+            
+            LOGGER.trace("Adding table {} to the list of captured tables", tableId);
+            capturedTables.add(tableId);
+        }
+
+        return capturedTables
+                .stream()
+                .sorted()
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    protected static void initReplicationSlot(Configuration config) {
+        boolean createNeeded = !checkIfReplicationSlotExists(config);
+        if (!createNeeded) {
+            return;
+        }
+        createReplicationSlot(config);
+    }
+
+    private static void createReplicationSlot(Configuration config) {
+        String slotName = config.getString(SLOT_NAME);
+        String plugin = config.getString(PLUGIN_NAME);
+        int maxAttempts = config.getInteger(MAX_RETRIES);
+        int retryCount = 0;
+        while(retryCount <= maxAttempts) {
+            try (YugabyteDBConnection ybConnection = new YugabyteDBConnection(getJdbcConfig(config),YugabyteDBConnection.CONNECTION_GENERAL);
+                Connection connection = ybConnection.connection()) {
+                String query = "SELECT pg_create_logical_replication_slot('" + slotName + "', '" + plugin + "');";
+                ybConnection.execute(query);
+                break;
+            } catch (Exception e) {
+                retryCount++;
+                if (retryCount > maxAttempts) {
+                    LOGGER.error("Failed to create a replication slot with name {}. All {} attempts failed.", slotName, maxAttempts);
+                    throw new DebeziumException(e);
+                }
+
+                LOGGER.warn("Error while creating replication slot {}. Will retry, attempt {} out of {}", slotName, retryCount, maxAttempts);
+                pauseBetweenRetries(config.getLong(RETRY_DELAY_MS));
+            }
+        }
+    }
+
+    private static boolean checkIfReplicationSlotExists(Configuration config) {
+        int maxAttempts = config.getInteger(MAX_RETRIES);
+        int retryCount = 0;
+        RuntimeException exception = null;
+        while(retryCount <= maxAttempts) {
+            try (YugabyteDBConnection ybConnection = new YugabyteDBConnection(getJdbcConfig(config),YugabyteDBConnection.CONNECTION_GENERAL);
+                Connection connection = ybConnection.connection();
+                final Statement statement = connection.createStatement()) {
+                String query = "SELECT * FROM pg_replication_slots WHERE slot_name = '" + config.getString(SLOT_NAME) + "';";
+                final ResultSet rs = statement.executeQuery(query);
+                return rs.next();
+            } catch (Exception e) {
+                    retryCount++;
+                    if (retryCount > maxAttempts) {
+                        LOGGER.error("Failed to query pg_replication_slots. All {} attempts failed.", maxAttempts);
+                        throw new DebeziumException(e);
+                    }
+                    exception = new RuntimeException(e);
+                    LOGGER.warn("Error while querying pg_replication_slots. Will retry, attempt {} out of {}", retryCount, maxAttempts);
+                    pauseBetweenRetries(config.getLong(RETRY_DELAY_MS));
+            }
+        }
+
+        if (exception != null) {
+            throw exception;
+        }
+
+        return false;
+    }
+
+    public static void pauseBetweenRetries(long delay) {
+        try {
+            final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(delay), Clock.SYSTEM);
+            retryMetronome.pause();
+        } catch (InterruptedException ie) {
+            LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Override

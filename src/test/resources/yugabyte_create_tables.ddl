@@ -1,4 +1,6 @@
-CREATE TABLE t1 (id INT PRIMARY KEY, first_name TEXT NOT NULL, last_name VARCHAR(40), hours DOUBLE PRECISION) SPLIT INTO 1 TABLETS;
+CREATE TABLE t1 (id INT PRIMARY KEY, first_name TEXT NOT NULL, last_name VARCHAR(40), hours DOUBLE PRECISION);
+CREATE TABLE IF NOT EXISTS t2 (id int primary key);
+CREATE TABLE IF NOT EXISTS t3 (id int primary key);
 
 CREATE TABLE t1_range (id INT, name TEXT DEFAULT 'range table value', PRIMARY KEY (id ASC)) SPLIT AT VALUES ((20),(30),(40),(50));
 
