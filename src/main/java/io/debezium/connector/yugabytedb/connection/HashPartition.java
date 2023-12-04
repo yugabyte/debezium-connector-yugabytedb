@@ -173,14 +173,10 @@ public class HashPartition implements Comparable<HashPartition>, Serializable {
 
     /* It is certain that this partition can contain another for sure in case of following:
        1. If both the partitions are equal.
-       2. If both the partitions have the same start and end key then technically it means they
-          represent the same tablet.
-       3. If this partition is the single partition then also it will contain the other partition,
+       2. If this partition is the single partition then also it will contain the other partition,
           no matter what other partition's boundaries are.
      */
-    if (this.equals(other)
-          || (compareKey(partitionKeyStart, other.partitionKeyStart) == 0 && compareKey(partitionKeyEnd, other.partitionKeyEnd) == 0)
-          || (this.isStartPartition() && this.isEndPartition())) {
+    if (this.equals(other) || this.isOnlyPartition()) {
       return true;
     }
 
