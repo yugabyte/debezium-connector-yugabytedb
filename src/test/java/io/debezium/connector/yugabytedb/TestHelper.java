@@ -10,6 +10,7 @@ import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -84,6 +85,7 @@ public final class TestHelper {
     private static int CONTAINER_YCQL_PORT = 9042;
     private static String CONTAINER_MASTER_PORT = "7100";
     private static String MASTER_ADDRESS = "127.0.0.1:7100";
+    private static String PLUGIN_NAME = "yboutput";
     private static String DEFAULT_DATABASE_NAME = "yugabyte";
     private static String DEFAULT_CASSANDRA_USER = "cassandra";
 
@@ -106,6 +108,12 @@ public final class TestHelper {
      * Key for schema parameter used to store a source column's type scale.
      */
     static final String TYPE_SCALE_PARAMETER_KEY = "__debezium.source.column.scale";
+
+    public static String createPublicationForTableStatement = "CREATE PUBLICATION %s FOR TABLE %s ;";
+    public static String createPublicationForALLTablesStatement = "CREATE PUBLICATION %s FOR ALL TABLES ;";
+    public static String createReplicationSlotStatement = "SELECT pg_create_logical_replication_slot('test_replication_slot', 'yboutput');";
+    public static String dropReplicationSlotStatement = "SELECT pg_drop_replication_slot('test_replication_slot');";
+    public static String dropPublicationStatement = "DROP PUBLICATION IF EXISTS pub;";
 
     private TestHelper() {
     }
@@ -371,6 +379,19 @@ public final class TestHelper {
     }
 
 
+    public static Configuration.Builder getConfigBuilderWithPublication(String namespaceName, String publicationName, String slotName) throws Exception {
+        return TestHelper.defaultConfig()
+                .with(YugabyteDBConnectorConfig.DATABASE_NAME, namespaceName)
+                .with(YugabyteDBConnectorConfig.HOSTNAME, CONTAINER_YSQL_HOST)
+                .with(YugabyteDBConnectorConfig.PORT, CONTAINER_YSQL_PORT)
+                .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.NEVER.getValue())
+                .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, MASTER_ADDRESS)
+                .with(YugabyteDBConnectorConfig.PLUGIN_NAME , PLUGIN_NAME)
+                .with(YugabyteDBConnectorConfig.PUBLICATION_NAME, publicationName)
+                .with(YugabyteDBConnectorConfig.PUBLICATION_AUTOCREATE_MODE , "disabled")
+                .with(YugabyteDBConnectorConfig.SLOT_NAME , slotName);
+    }
+
     public static Configuration.Builder getConfigBuilder(String namespaceName, String fullTableNameWithSchema, String dbStreamId) throws Exception {
         return TestHelper.defaultConfig()
                 .with(YugabyteDBConnectorConfig.DATABASE_NAME, namespaceName)
@@ -522,6 +543,19 @@ public final class TestHelper {
 
     public static String getNewDbStreamId(String namespaceName, String tableName) throws Exception {
         return getNewDbStreamId(namespaceName, tableName, false);
+    }
+
+    public static String getStreamIdFromSlot(String slotName) throws Exception {
+        try (YugabyteDBConnection ybConnection = TestHelper.create();
+              Connection connection = ybConnection.connection();
+              Statement statement = connection.createStatement()) {
+            String query = "SELECT yb_stream_id FROM pg_replication_slots WHERE slot_name = '"+ slotName + "';";
+            ResultSet rs = statement.executeQuery(query);
+            if (rs.next()) {
+                return rs.getString("yb_stream_id");
+            }
+        }
+        throw new Exception("Replication slot " + slotName + " not found");
     }
 
     public static JdbcConfiguration.Builder defaultJdbcConfigBuilder() {

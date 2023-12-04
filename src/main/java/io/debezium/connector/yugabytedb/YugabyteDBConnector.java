@@ -51,6 +51,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
     private Set<String> tableIds;
     private List<Pair<String, String>> tabletIds;
     private YugabyteDBConnectorConfig yugabyteDBConnectorConfig;
+    private boolean usePublication;
 
     private YugabyteDBTablePoller tableMonitorThread;
 
@@ -72,9 +73,26 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         this.props = props;
         LOGGER.debug("Props " + props);
         Configuration config = Configuration.from(this.props);
+
+        String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
+        String tableIncludeList = config.getString(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST);
+        
+        usePublication = YugabyteDBConnectorConfig.shouldUsePublication(config);
+
+        if (usePublication) {
+            YugabyteDBConnectorConfig.initPublication(config);
+            tableIncludeList = YugabyteDBConnectorConfig.extractTableListFromPublication(config);
+            YugabyteDBConnectorConfig.initReplicationSlot(config);
+            streamId = YugabyteDBConnectorConfig.extractStreamIdFromSlot(config);
+        }
+
+        config = config.edit()
+                        .with(YugabyteDBConnectorConfig.STREAM_ID, streamId)
+                        .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, tableIncludeList)
+                        .build();
         this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
         
-        tableMonitorThread = new YugabyteDBTablePoller(yugabyteDBConnectorConfig, context);
+        tableMonitorThread = new YugabyteDBTablePoller(yugabyteDBConnectorConfig, context, usePublication);
         if (this.yugabyteDBConnectorConfig.autoAddNewTables()) {
             tableMonitorThread.start();
         }
@@ -117,6 +135,16 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                     LOGGER.debug("The serializedOidToType " + serializedOidToType);
                 } catch (IOException e) {
                     e.printStackTrace();
+                }
+
+                if (usePublication) {
+                    // Refresh the table include list in case of Alter publication
+                    Configuration config = this.yugabyteDBConnectorConfig.getConfig();
+                    String tableIncludeList =  YugabyteDBConnectorConfig.extractTableListFromPublication(config);
+                    config  = config.edit()
+                                    .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, tableIncludeList)
+                                    .build();
+                    this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
                 }
             }
         }
@@ -180,6 +208,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                 taskProps.put(YugabyteDBConnectorConfig.OID_TO_TYPE.toString(), serializedOidToType);
             }
             taskProps.put(YugabyteDBConnectorConfig.STREAM_ID.toString(), streamIdValue);
+            taskProps.put(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST.toString(), this.yugabyteDBConnectorConfig.tableIncludeList());
             taskProps.put(YugabyteDBConnectorConfig.SEND_BEFORE_IMAGE.toString(), String.valueOf(sendBeforeImage));
             taskProps.put(YugabyteDBConnectorConfig.ENABLE_EXPLICIT_CHECKPOINTING.toString(), String.valueOf(enableExplicitCheckpointing));
             taskConfigs.add(taskProps);
@@ -218,6 +247,23 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
         if (!databaseValue.errorMessages().isEmpty()) {
             return;
         }
+
+        String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
+        String tableIncludeList = config.getString(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST);
+        
+        usePublication = YugabyteDBConnectorConfig.shouldUsePublication(config);
+
+        if (usePublication) {
+            YugabyteDBConnectorConfig.initPublication(config);
+            tableIncludeList = YugabyteDBConnectorConfig.extractTableListFromPublication(config);
+            YugabyteDBConnectorConfig.initReplicationSlot(config);
+            streamId = YugabyteDBConnectorConfig.extractStreamIdFromSlot(config);
+        }
+
+        config = config.edit()
+                        .with(YugabyteDBConnectorConfig.STREAM_ID, streamId)
+                        .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, tableIncludeList)
+                        .build();
 
         this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
 
