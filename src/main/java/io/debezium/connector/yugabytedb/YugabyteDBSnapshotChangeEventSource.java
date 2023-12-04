@@ -348,7 +348,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                            throws Exception {
       if (hasSnapshotCompletedPreviously(getCheckpointResponse)) {
         LOGGER.info("Skipping snapshot for table {} tablet {} since tablet has streamed some data before",
-                  partition.getTableId(), partition.getTableId());
+                  partition.getTableId(), partition.getTabletId());
         snapshotCompletedTablets.add(partition.getId());
         snapshotCompletedPreviously.add(partition.getId());
 
