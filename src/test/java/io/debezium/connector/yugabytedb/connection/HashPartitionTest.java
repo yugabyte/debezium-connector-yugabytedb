@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 /**
@@ -58,11 +59,12 @@ public class HashPartitionTest {
 	}
 
 	@Test
-	public void verifyPartitionsMadeFromArrayAndStringRepresentationEqual() {
+	public void verifyPartitionsMadeFromArrayAndStringRepresentationHaveEqualKeys() {
 		HashPartition a = HashPartition.from(tableId1, tabletId1, start, one);
 		HashPartition b = new HashPartition(tableId1, tabletId1, new byte[]{}, oneArrayRepresentation);
 
-		assertTrue(a.equals(b));
+		assertEquals(0, HashPartition.compareKey(a.getPartitionKeyStart(), b.getPartitionKeyStart()));
+		assertEquals(0, HashPartition.compareKey(a.getPartitionKeyEnd(), b.getPartitionKeyEnd()));
 	}
 
 	@Test
@@ -133,6 +135,14 @@ public class HashPartitionTest {
 		assertThrows(AssertionError.class, () -> HashPartition.validateCompleteRanges(partitions));
 	}
 
+
+	@ParameterizedTest
+	@MethodSource("parameterSourceForMultiPartitionRanges")
+	public void verifyLogicForContainsPartitionMethod(HashPartition a, HashPartition b,
+																										boolean expectedResult) {
+		assertEquals(expectedResult, a.containsPartition(b));
+	}
+
 	private static Stream<Arguments> parameterSourceForChildRanges() {
 		return Stream.of(
 			Arguments.of(start, one),
@@ -156,5 +166,59 @@ public class HashPartitionTest {
 			Arguments.of(one, end),
 			Arguments.of(two, end)
 		);
+	}
+
+	private static Stream<Arguments> parameterSourceForMultiPartitionRanges() {
+		final HashPartition p_start_1 = getPartition(start, "[42, -86]");
+		final HashPartition p_1_2 = getPartition("[42, -86]", "[85, 85]");
+
+		final HashPartition p_2_3 = getPartition("[85, 85]", "[-128, 0]");
+		final HashPartition p_3_4 = getPartition("[-128, 0]", "[-86, -86]");
+		final HashPartition p_2_4 = getPartition("[85, 85]", "[-86, -86]");
+
+		final HashPartition p_4_5 = getPartition("[-86, -86]", "[-43, 85]");
+		final HashPartition p_5_end = getPartition("[-43, 85]", end);
+
+		return Stream.of(
+			Arguments.of(p_start_1, p_start_1, true),
+			Arguments.of(p_start_1, p_1_2, false),
+			Arguments.of(p_start_1, p_2_3, false),
+			Arguments.of(p_start_1, p_4_5, false),
+			Arguments.of(p_start_1, p_5_end, false),
+			Arguments.of(p_1_2, p_start_1, false),
+			Arguments.of(p_1_2, p_1_2, true),
+			Arguments.of(p_1_2, p_2_3, false),
+			Arguments.of(p_1_2, p_3_4, false),
+			Arguments.of(p_1_2, p_4_5, false),
+			Arguments.of(p_1_2, p_5_end, false),
+			Arguments.of(p_2_4, p_start_1, false),
+			Arguments.of(p_2_4, p_1_2, false),
+			Arguments.of(p_2_4, p_2_3, true),
+			Arguments.of(p_2_4, p_3_4, true),
+			Arguments.of(p_2_4, p_4_5, false),
+			Arguments.of(p_2_4, p_5_end, false),
+			Arguments.of(p_4_5, p_start_1, false),
+			Arguments.of(p_4_5, p_1_2, false),
+			Arguments.of(p_4_5, p_2_3, false),
+			Arguments.of(p_4_5, p_3_4, false),
+			Arguments.of(p_4_5, p_4_5, true),
+			Arguments.of(p_4_5, p_5_end, false),
+			Arguments.of(p_5_end, p_start_1, false),
+			Arguments.of(p_5_end, p_1_2, false),
+			Arguments.of(p_5_end, p_2_3, false),
+			Arguments.of(p_5_end, p_3_4, false),
+			Arguments.of(p_5_end, p_4_5, false),
+			Arguments.of(p_5_end, p_5_end, true)
+		);
+	}
+
+	/**
+	 * Use a dummy tabletId to form partitions.
+	 * @param startKey partition start key
+	 * @param endKey partition end key
+	 * @return a {@link HashPartition} object
+	 */
+	private static HashPartition getPartition(String startKey, String endKey) {
+		return HashPartition.from(tableId1, UUID.randomUUID().toString(), startKey, endKey);
 	}
 }

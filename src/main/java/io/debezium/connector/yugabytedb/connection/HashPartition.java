@@ -137,28 +137,30 @@ public class HashPartition implements Comparable<HashPartition>, Serializable {
   }
 
   /**
-   * Partition comparison is only reasonable when comparing partitions from the same table, and
-   * since YB does not yet allow partition splitting, no two distinct partitions can have the
-   * same start partition key. Accordingly, partitions are compared strictly by the start partition
-   * key.
+   * Partition comparison can be done by comparing their start keys. No two distinct partitions
+   * will have the same partition start key.
    *
    * @param other the other partition of the same table
    * @return the comparison of the partitions
    */
   @Override
   public int compareTo(HashPartition other) {
+    if (!this.getTableId().equals(other.getTableId())) {
+      throw new RuntimeException("Partitions being compared are from different tables");
+    }
+
     return compareKey(this.partitionKeyStart, other.partitionKeyStart);
   }
 
   /**
    * Verify whether the given key is contained within the bounds of this partition. The logic has
-   * been borrowed from <a href="https://github.com/yugabyte/yugabyte-db/blob/master/src/yb/util/slice.h#L311">slice.h</a>
+   * been borrowed from <a href="https://github.com/yugabyte/yugabyte-db/blob/master/src/yb/docdb/key_bounds.h#L40">slice.h</a>
    * @param key the key to verify
    * @return true, if the key is within the bounds, false otherwise
    */
   public boolean containsKey(byte[] key) {
     return (this.isStartPartition() || (compareKey(key, this.partitionKeyStart) >= 0))
-             && (this.isEndPartition() || (compareKey(key, this.partitionKeyEnd) < 0));
+             && (this.isEndPartition() || (compareKey(key, this.partitionKeyEnd) <= 0));
   }
 
   /**
@@ -191,28 +193,10 @@ public class HashPartition implements Comparable<HashPartition>, Serializable {
       return !other.isEndPartition() && containsKey(other.getPartitionKeyEnd());
     }
 
-    // Similar logic as being used for start partition, values are reversed.
-    if (this.isEndPartition()) {
-      return !other.isStartPartition() && containsKey(other.getPartitionKeyStart());
-    }
-
     return containsKey(other.getPartitionKeyStart()) && containsKey(other.getPartitionKeyEnd());
   }
 
-  /**
-   * @param other the {@link HashPartition} to compare with
-   * @return true if the partitions have conflicting boundaries, false otherwise
-   */
-  public boolean isConflictingWith(HashPartition other) {
-    if (!this.tableId.equals(other.tableId)) {
-      return false;
-    }
-
-    return !containsPartition(other)
-             && (!containsKey(other.getPartitionKeyStart()) || !containsKey(other.getPartitionKeyEnd()));
-  }
-
-  private static int compareKey(byte[] keyOne, byte[] keyTwo) {
+  public static int compareKey(byte[] keyOne, byte[] keyTwo) {
     int sizeOne = keyOne.length;
     int sizeTwo = keyTwo.length;
 
