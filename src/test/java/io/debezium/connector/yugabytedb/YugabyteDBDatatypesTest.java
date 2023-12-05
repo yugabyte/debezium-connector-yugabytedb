@@ -2,24 +2,25 @@ package io.debezium.connector.yugabytedb;
 
 import java.sql.SQLException;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
+import io.debezium.connector.yugabytedb.connection.HashPartition;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
-import org.yb.client.GetDBStreamInfoResponse;
-import org.yb.client.YBClient;
+import org.yb.cdc.CdcService;
+import org.yb.client.*;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState;
 import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
+import org.yb.master.MasterClientOuterClass;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -131,7 +132,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        initializeYBContainer();
+        initializeYBContainer("enable_tablet_split_of_cdcsdk_streamed_tables=true", null);
         TestHelper.dropAllSchemas();
     }
 
@@ -183,6 +184,25 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
                 .exceptionally(throwable -> {
                     throw new RuntimeException(throwable);
                 }).get();
+    }
+
+    @Test
+    public void testRangeSplitTables() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1_range");
+        LOGGER.info("Created stream ID: {}", dbStreamId);
+
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1_range", dbStreamId);
+        startEngine(configBuilder);
+        final int recordsCount = 100;
+
+        awaitUntilConnectorIsReady();
+
+        TestHelper.executeBulk("INSERT INTO t1_range values (%d);", recordsCount);
+
+        waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
     }
 
     @Test
@@ -264,6 +284,9 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         awaitUntilConnectorIsReady();
         // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertRecords(recordsCount);
+
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, recordsCount);
 
         CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
                 .exceptionally(throwable -> {

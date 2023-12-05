@@ -10,6 +10,7 @@ import io.debezium.connector.yugabytedb.connection.*;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage.Operation;
 import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoReplicationMessage;
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
+import io.debezium.connector.yugabytedb.util.YugabyteDBConnectorUtils;
 import io.debezium.heartbeat.Heartbeat;
 import io.debezium.pipeline.ErrorHandler;
 import io.debezium.pipeline.source.spi.StreamingChangeEventSource;
@@ -31,7 +32,6 @@ import org.yb.cdc.CdcService.CDCErrorPB.Code;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.client.*;
 
-import java.io.IOException;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
@@ -92,6 +92,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     // This set will contain the list of partition IDs for the tablets which have been split
     // and waiting for the callback from Kafka.
     protected Set<String> splitTabletsWaitingForCallback;
+    protected List<HashPartition> partitionRanges;
 
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
                                                 YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
@@ -115,6 +116,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.tabletToExplicitCheckpoint = new ConcurrentHashMap<>();
         this.splitTabletsWaitingForCallback = new HashSet<>();
         this.filters = new Filters(connectorConfig);
+        this.partitionRanges = new ArrayList<>();
     }
 
     @Override
@@ -134,6 +136,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                 offsetContext = YugabyteDBOffsetContext.initialContext(connectorConfig, connection, clock, partitions);
         }
         try {
+            // Populate partition ranges.
+            this.partitionRanges = YugabyteDBConnectorUtils.populatePartitionRanges(connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST));
             getChanges2(context, partition, offsetContext, hasStartLsnStoredInContext);
         } catch (Throwable e) {
             Objects.requireNonNull(e);
@@ -277,6 +281,31 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
+    /**
+     * Use the {@link GetTabletListToPollForCDCResponse} and the populated {@code partitionRanges}
+     * to verify if the tablets in the response should be a part of this task. The logic only
+     * adds the tablets in the response which are contained in the parent partition ranges. Note
+     * that this method also assumes that the object {@code partitionRanges} is already populated.
+     *
+     * @param response of type {@link GetTabletListToPollForCDCResponse}
+     * @param tabletPairList a list of {@link Pair} to be populated where each pair is {@code <tableId, tabletId>}
+     */
+    protected void populateTableToTabletPairsForTask(GetTabletListToPollForCDCResponse response, List<Pair<String, String>> tabletPairList) {
+        // Verify that the partitionRanges are already populated.
+        Objects.requireNonNull(partitionRanges);
+        assert !partitionRanges.isEmpty();
+
+        // Iterate over the stored partitions and add valid tablets for streaming.
+        for (TabletCheckpointPair pair : response.getTabletCheckpointPairList()) {
+            HashPartition hp = HashPartition.from(pair);
+
+            for (HashPartition parent : partitionRanges) {
+                if (parent.containsPartition(hp)) {
+                    tabletPairList.add(new ImmutablePair<>(hp.getTableId(), hp.getTabletId()));
+                }
+            }
+        }
+    }
 
     protected void getChanges2(ChangeEventSourceContext context,
                              YBPartition partitionn,
@@ -285,17 +314,9 @@ public class YugabyteDBStreamingChangeEventSource implements
             throws Exception {
         LOGGER.info("Processing messages");
         try (YBClient syncClient = YBClientUtils.getYbClient(this.connectorConfig)) {
-            String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
             // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
             // and the value is tablet UUID
-            List<Pair<String, String>> tabletPairList = null;
-            try {
-                tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
-                LOGGER.debug("The tablet list is " + tabletPairList);
-            } catch (IOException | ClassNotFoundException e) {
-                LOGGER.error("Exception while deserializing tablet pair list", e);
-                throw new RuntimeException(e);
-            }
+            List<Pair<String, String>> tabletPairList = new ArrayList<>();
 
             Map<String, YBTable> tableIdToTable = new HashMap<>();
             Map<String, GetTabletListToPollForCDCResponse> tabletListResponse = new HashMap<>();
@@ -303,13 +324,20 @@ public class YugabyteDBStreamingChangeEventSource implements
 
             LOGGER.info("Using DB stream ID: " + streamId);
 
-            Set<String> tIds = tabletPairList.stream().map(pair -> pair.getLeft()).collect(Collectors.toSet());
+            Set<String> tIds = partitionRanges.stream().map(HashPartition::getTableId).collect(Collectors.toSet());
             for (String tId : tIds) {
                 YBTable table = syncClient.openTableByUUID(tId);
                 tableIdToTable.put(tId, table);
 
                 GetTabletListToPollForCDCResponse resp =
                         YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
+
+                // Validate that we receive the complete range of tablets.
+                HashPartition.validateCompleteRanges(HashPartition.from(resp));
+
+                // TODO: One optimisation where we initialise the offset context here itself
+                //  without storing the GetTabletListToPollForCDCResponse
+                populateTableToTabletPairsForTask(resp, tabletPairList);
                 LOGGER.info("Table: {} with number of tablets {}", tId, resp.getTabletCheckpointPairListSize());
                 tabletListResponse.put(tId, resp);
             }
@@ -744,8 +772,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                     }
 
                     // If there are retries left, perform them after the specified delay.
-                    LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
-                            retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e);
+                    LOGGER.warn("Error while trying to get the changes from the server for tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
+                            curTabletId, retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e);
 
                     try {
                         final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
@@ -932,6 +960,26 @@ public class YugabyteDBStreamingChangeEventSource implements
     }
 
     /**
+     * Verify that the passed tablet is present in the original ranges assigned to this task.
+     * This method is generally supposed to be called in the tablet split flow to check whether
+     * the child tablet we have received has a parent partition already.
+     * @param tabletCheckpointPair the {@link TabletCheckpointPair} for the tablet to be verified
+     */
+    private void assertTabletPresentInOriginalRanges(TabletCheckpointPair tabletCheckpointPair) {
+        boolean tabletFound = false;
+
+        HashPartition tabletToVerify = HashPartition.from(tabletCheckpointPair);
+        for (HashPartition parent : partitionRanges) {
+            if (parent.containsPartition(tabletToVerify)) {
+                tabletFound = true;
+                break;
+            }
+        }
+
+        assert tabletFound;
+    }
+
+    /**
      * Add the tablet from the provided tablet checkpoint pair to the list of tablets to poll from
      * if it is not present there
      * @param tabletPairList the list of tablets to poll from - list having Pair<tableId, tabletId>
@@ -945,6 +993,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                        String tableId,
                                        YugabyteDBOffsetContext offsetContext,
                                        Map<String, Boolean> schemaNeeded) {
+        assertTabletPresentInOriginalRanges(pair);
+
         String tabletId = pair.getTabletLocations().getTabletId().toStringUtf8();
         ImmutablePair<String, String> tableTabletPair =
           new ImmutablePair<String, String>(tableId, tabletId);

@@ -6,7 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.commons.lang3.tuple.Pair;
+import io.debezium.connector.yugabytedb.connection.HashPartition;
+import io.debezium.connector.yugabytedb.util.YugabyteDBConnectorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -116,10 +117,10 @@ public class YBPartition implements Partition {
 
         @Override
         public Set<YBPartition> getPartitions() {
-            String tabletList = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
-            List<Pair<String, String>> tabletPairList;
+            String tabletListSerialized = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST);
+            List<HashPartition> tabletPairList;
             try {
-                tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
+                tabletPairList = YugabyteDBConnectorUtils.populatePartitionRanges(tabletListSerialized);
                 LOGGER.debug("The tablet list is " + tabletPairList);
             } catch (IOException | ClassNotFoundException e) {
                 // The task should fail if tablet list cannot be deserialized
@@ -127,8 +128,8 @@ public class YBPartition implements Partition {
             }
 
             Set<YBPartition> partitions = new HashSet<>();
-            for (Pair<String, String> tabletPair : tabletPairList) {
-                partitions.add(new YBPartition(tabletPair.getLeft(), tabletPair.getRight()));
+            for (HashPartition partition : tabletPairList) {
+                partitions.add(partition.toYBPartition());
             }
             LOGGER.debug("The partition being returned is " + partitions);
             return partitions;

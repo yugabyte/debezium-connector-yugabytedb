@@ -139,16 +139,6 @@ public class YugabyteDBConnectorTask
 
         this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector, taskId, sendBeforeImage, enableExplicitCheckpointing);
 
-        String tabletList = config.getString(YugabyteDBConnectorConfig.TABLET_LIST);
-        List<Pair<String, String>> tabletPairList = null;
-        try {
-            tabletPairList = (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
-            LOGGER.info("Task {}: The tablet list is {}", taskId, tabletPairList);
-        } catch (IOException | ClassNotFoundException e) {
-            LOGGER.error("Error while deserializing tablet list", e);
-            throw new RuntimeException(e);
-        }
-
         // Get the tablet ids and load the offsets
         final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets =
             getPreviousOffsetsFromProviderAndLoader(

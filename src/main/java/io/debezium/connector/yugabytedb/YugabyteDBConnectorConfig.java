@@ -640,8 +640,8 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withValidation(Field::isBoolean)
             .withInvisibleRecommender();
 
-    public static final Field TABLET_LIST = Field.create(TASK_CONFIG_PREFIX + "tabletlist")
-            .withDisplayName("YugabyteDB Tablet LIST for a Task")
+    public static final Field HASH_RANGES_LIST = Field.create(TASK_CONFIG_PREFIX + ".hash.ranges.list")
+            .withDisplayName("YugabyteDB tablet list with hash ranges")
             .withType(ConfigDef.Type.STRING)
             .withWidth(ConfigDef.Width.MEDIUM)
             .withDescription("Internal task config: List of TabletIds to be fetched by this task");

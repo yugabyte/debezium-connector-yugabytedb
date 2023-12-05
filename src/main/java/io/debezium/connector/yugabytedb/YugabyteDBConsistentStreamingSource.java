@@ -2,11 +2,7 @@ package io.debezium.connector.yugabytedb;
 
 import io.debezium.DebeziumException;
 import io.debezium.connector.base.ChangeEventQueue;
-import io.debezium.connector.yugabytedb.connection.OpId;
-import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
-import io.debezium.connector.yugabytedb.connection.ReplicationMessage;
-import io.debezium.connector.yugabytedb.connection.ReplicationMessage.Operation;
-import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
+import io.debezium.connector.yugabytedb.connection.*;
 import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoReplicationMessage;
 import io.debezium.connector.yugabytedb.consistent.Merger;
 import io.debezium.connector.yugabytedb.consistent.Message;
@@ -23,7 +19,6 @@ import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.client.*;
 
-import java.io.IOException;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
@@ -53,20 +48,9 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
         LOGGER.info("Processing consistent messages");
 
         try (YBClient syncClient = YBClientUtils.getYbClient(this.connectorConfig)) {
-            String tabletList =
-                    this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.TABLET_LIST);
-
             // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
             // and the value is tablet UUID
-            List<Pair<String, String>> tabletPairList = null;
-            try {
-                tabletPairList =
-                        (List<Pair<String, String>>) ObjectUtil.deserializeObjectFromString(tabletList);
-                LOGGER.debug("The tablet list is " + tabletPairList);
-            } catch (IOException | ClassNotFoundException e) {
-                LOGGER.error("Exception while deserializing tablet pair list", e);
-                throw new RuntimeException(e);
-            }
+            List<Pair<String, String>> tabletPairList = new ArrayList<>();
 
             Map<String, YBTable> tableIdToTable = new HashMap<>();
             Map<String, GetTabletListToPollForCDCResponse> tabletListResponse = new HashMap<>();
@@ -75,7 +59,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
             LOGGER.info("Using DB stream ID: " + streamId);
 
             Set<String> tIds =
-                    tabletPairList.stream().map(pair -> pair.getLeft()).collect(Collectors.toSet());
+                    partitionRanges.stream().map(HashPartition::getTableId).collect(Collectors.toSet());
             for (String tId : tIds) {
                 LOGGER.debug("Table UUID: " + tIds);
                 YBTable table = syncClient.openTableByUUID(tId);
@@ -83,6 +67,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
                 GetTabletListToPollForCDCResponse resp =
                         YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
+                populateTableToTabletPairsForTask(resp, tabletPairList);
                 tabletListResponse.put(tId, resp);
             }
 
