@@ -187,10 +187,18 @@ public class HashPartition implements Comparable<HashPartition>, Serializable {
     // compared is the end partition, we know it cannot be contained in this as this = ["", key)
     // and other = [someOtherKey, "") so it's different, now if that is also false then simply
     // evaluate whether this partition's end key is after the other partition's end key.
+    //
     // Note that other partition's start key doesn't matter as it can be anything and still be after
-    // the start key of this partition.
+    // or equal to the start key of this partition.
     if (this.isStartPartition()) {
+      // this already contains the startKey of the other partition.
       return !other.isEndPartition() && containsKey(other.getPartitionKeyEnd());
+    }
+
+    // Similar logic as being used for start partition, values are reversed.
+    if (this.isEndPartition()) {
+      // this already contains the endKey for the other partition.
+      return !other.isStartPartition() && containsKey(other.getPartitionKeyStart());
     }
 
     return containsKey(other.getPartitionKeyStart()) && containsKey(other.getPartitionKeyEnd());
