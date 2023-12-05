@@ -342,15 +342,15 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
      * Decide if we need to take snapshot or do nothing if snapshot has completed previously
      */
     protected boolean isSnapshotRequired(GetCheckpointResponse getCheckpointResponse,
-                                         YBPartition partition,
+                                         String tableId, String tabletId,
                                          Set<String> snapshotCompletedTablets,
                                          Set<String> snapshotCompletedPreviously) 
                                            throws Exception {
       if (hasSnapshotCompletedPreviously(getCheckpointResponse)) {
         LOGGER.info("Skipping snapshot for table {} tablet {} since tablet has streamed some data before",
-                  partition.getTableId(), partition.getTabletId());
-        snapshotCompletedTablets.add(partition.getId());
-        snapshotCompletedPreviously.add(partition.getId());
+                  tableId, tabletId);
+        snapshotCompletedTablets.add(tabletId);
+        snapshotCompletedPreviously.add(tabletId);
 
         return false;
       } else {
@@ -360,7 +360,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           // A call to set the checkpoint is required first otherwise we will get an error 
           // from the server side saying:
           // INTERNAL_ERROR[code 21]: Stream ID {} is expired for Tablet ID {}
-          makeStreamActive(partition.getTableId(), partition.getTabletId(), false);
+          makeStreamActive(tableId, tabletId, false);
         }
 
         return true;
@@ -410,7 +410,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       }
 
       Map<TableId, String> filteredTableIdToUuid = determineTablesForSnapshot(tableIdToTable);
-      Set<Pair<String, String>> tableToTabletForSnapshot = new HashSet<>();
+      List<Pair<String, String>> tableToTabletForSnapshot = new ArrayList<>();
 
       Map<String, Boolean> schemaNeeded = new HashMap<>();
       Set<String> snapshotCompletedTablets = new HashSet<>();
@@ -431,7 +431,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           // We need to take the snapshot for this table.
           tableToTabletForSnapshot.add(entry);
 
-          if (isSnapshotRequired(resp, p, snapshotCompletedTablets, snapshotCompletedPreviously)) {
+          if (isSnapshotRequired(resp, tableId, tabletId, snapshotCompletedTablets, snapshotCompletedPreviously)) {
             startLsn = getSnapshotStartLsn(resp);
           }
         } else {
