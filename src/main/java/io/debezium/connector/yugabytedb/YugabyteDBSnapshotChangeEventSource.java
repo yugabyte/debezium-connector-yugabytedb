@@ -615,9 +615,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                           resp.getWriteId(), resp.getSnapshotTime());
                 LOGGER.debug("Final OpId for tablet {} is {}", part.getId(), finalOpId);
 
-                // If the response doesn't have any record, it is safe to assume that we should not wait
-                // for the callback to come and that we can proceed further in processing this particular tablet.
-                if (previousOffset.getSourceInfo(part).noRecordSeen()) {
+                // During the snapshot consumption phase (identified by cp i.e. from_op_id > 0),
+                // if the response doesn't have any record, it is safe to assume that we should
+                // not wait for the callback to come and that we can proceed further in processing
+                // this particular tablet.
+                if (cp.getIndex() > 0 && cp.getTerm() > 0 && previousOffset.getSourceInfo(part).noRecordSeen()) {
                   LOGGER.info("Should not wait for callback on tablet {}", part.getId());
                   shouldWaitForCallback.remove(part.getId());
                 }
@@ -662,9 +664,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     LOGGER.info("E: Snapshot completed for tablet {} belonging to table {} ({})",
                       part.getTabletId(), table.getName(), part.getTableId());
                   } else if (isSnapshotCompleteMarker(finalOpId)) {
-                    // Add it to tablets waiting for callback so that the connector doesn't end up
-                    // calling GetChanges for the same again.
-                    if (shouldWaitForCallback.contains(part.getId())) {
+                    // Add it to tablets waiting for callback only during snapshot consumption phase so that the
+                    // connector doesn't end up calling GetChanges for the same again.
+                    if (cp.getIndex() > 0 && cp.getTerm() > 0 && shouldWaitForCallback.contains(part.getId())) {
                       if (!tabletsWaitingForCallback.contains(part.getId())) {
                         LOGGER.info("Adding tablet {} of table {} ({}) to wait-list",
                                     part.getId(), table.getName(), part.getTableId());
