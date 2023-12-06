@@ -135,16 +135,13 @@ public final class SourceInfo extends BaseSourceInfo {
      * Compares the lastRecordCheckpoint with {@code snapshotStartLsn} and {@code streamingStartLsn}.
      * If it is equal then it means that we haven't received any record for the given partition,
      * in case there's any difference, it technically siginifies that some record has updated the
-     * values. Also checks if commitTime is null. This covers cases when connector restarts
-     * after snapshot bootstrap is completed. In such cases, lastRecordCheckpoint for empty tablets
-     * would have been initialized with a non-null value.
+     * values.
      * @return true if the partition hasn't seen any record yet, false otherwise
      */
     public boolean noRecordSeen() {
         return (lastRecordCheckpoint == null)
             || lastRecordCheckpoint.equals(YugabyteDBOffsetContext.snapshotStartLsn())
-            || lastRecordCheckpoint.equals(YugabyteDBOffsetContext.streamingStartLsn())
-            || (commitTime == null);
+            || lastRecordCheckpoint.equals(YugabyteDBOffsetContext.streamingStartLsn());
     }
 
     public String sequence() {
