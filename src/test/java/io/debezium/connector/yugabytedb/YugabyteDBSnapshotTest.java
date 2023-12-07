@@ -378,9 +378,12 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         }
     }
 
+    // This test should not be run with consistent snapshot stream since it verifies
+    // the behaviour on failure after snapshot bootstrap call. For consistent
+    // snapshot streams, the very first getChanges call starts the snapshot consumption
 	@ParameterizedTest
-	@MethodSource("streamTypeProviderForSnapshotWithColocation")
-    public void shouldSnapshotWithFailureAfterBootstrapSnapshotCall(boolean consistentSnapshot, boolean useSnapshot, boolean colocation)
+	@ValueSource(booleans = {true, false})
+    public void shouldSnapshotWithFailureAfterBootstrapSnapshotCall(boolean colocation)
         throws Exception {
         // This test verifies that if there is a failure after snapshot is bootstrapped,
         // then snapshot is taken normally once the connector restarts.
@@ -391,7 +394,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         insertBulkRecords(recordsCount, "public.test_1");
         insertBulkRecords(recordsCount, "public.test_2");
 
-        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1", consistentSnapshot, useSnapshot);
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder(
             DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");

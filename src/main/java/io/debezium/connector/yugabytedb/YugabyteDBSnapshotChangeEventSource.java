@@ -466,11 +466,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       // Helper internal variable to log GetChanges request at regular intervals.
       long lastLoggedTimeForGetChanges = System.currentTimeMillis();
 
-      // This flag is only meant for testing purposes only.
-      if (FAIL_AFTER_BOOTSTRAP_GET_CHANGES) {
-        throw new RuntimeException("[TEST ONLY] Throwing error explicitly after bootstrap snapshot GetChanges call");
-      }
-
       while (context.isRunning() && retryCount <= this.connectorConfig.maxConnectorRetries()) {
         try {
             while (context.isRunning() && (previousOffset.getStreamingStoppingLsn() == null)) {
@@ -701,6 +696,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             // Reset the retry count here indicating that if the flow has reached here then
             // everything succeeded without any exceptions
             retryCount = 0;
+
+            // This flag is only meant for testing purposes only.
+            if (FAIL_AFTER_BOOTSTRAP_GET_CHANGES) {
+              throw new RuntimeException("[TEST ONLY] Throwing error explicitly after bootstrap snapshot GetChanges call");
+            }
           }
         } catch (Exception e) {
           ++retryCount;
