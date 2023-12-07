@@ -417,7 +417,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       }
 
       Map<TableId, String> filteredTableIdToUuid = determineTablesForSnapshot(tableIdToTable);
-      List<Pair<String, String>> tableToTabletForSnapshot = new ArrayList<>();
+      Set<Pair<String, String>> tableToTabletForSnapshot = new HashSet<>();
 
       Map<String, Boolean> schemaNeeded = new HashMap<>();
       Set<String> snapshotCompletedTablets = new HashSet<>();
