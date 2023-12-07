@@ -18,6 +18,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
 import io.debezium.util.Strings;
+
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -25,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        initializeYBContainer();
+        initializeYBContainer("TEST_yb_enable_cdc_consistent_snapshot_streams=true", null);
         TestHelper.dropAllSchemas();
     }
 
@@ -65,13 +67,14 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
         }
     }
 
-    @Test
-    public void verifyAllWorkingDataTypesInSingleTable() throws Exception {
+  @ParameterizedTest
+  @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+    public void verifyAllWorkingDataTypesInSingleTable(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
         Thread.sleep(1000);
 
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types");
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types", consistentSnapshot, useSnapshot);
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.all_types", dbStreamId);
         startEngine(configBuilder);
 

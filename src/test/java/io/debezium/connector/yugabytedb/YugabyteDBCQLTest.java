@@ -13,6 +13,8 @@ import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.net.InetSocketAddress;
@@ -23,6 +25,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Stream;
 
 import static org.junit.Assert.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -33,7 +36,7 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
 
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        initializeYBContainer();
+        initializeYBContainer("TEST_yb_enable_cdc_consistent_snapshot_streams=true", null);
     }
 
     @BeforeEach
@@ -57,15 +60,17 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
         shutdownYBContainer();
     }
 
-    @Test
-    public void testRecordConsumption() throws Exception {
+    @ParameterizedTest
+    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+    public void testRecordConsumption(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
 
         String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
         session.execute(createKeyspace);
 
         session.execute("create table if not exists cdctest.test_cdc(a int primary key, b varchar, c text);");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_cdc", false, false,BeforeImageMode.CHANGE, true);
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_cdc", false, false, BeforeImageMode.CHANGE,
+                true, consistentSnapshot, useSnapshot);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_cdc", dbStreamId);
         startEngine(configBuilder);
@@ -84,8 +89,8 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"initial", "initial_only"})
-    public void testSnapshotConsumption(String snapshotMode) throws Exception {
+    @MethodSource("streamTypeProviderForSnapshot")
+    public void testSnapshotConsumption(boolean consistentSnapshot, boolean useSnapshot, String snapshotMode) throws Exception {
         setCommitCallbackDelay(10000);
 
         String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
@@ -96,7 +101,8 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
         int recordsCount = 500;
         insertRecords(recordsCount, "cdctest", "test_snapshot");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_snapshot", false, true, BeforeImageMode.CHANGE, true);
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_snapshot", false, true, BeforeImageMode.CHANGE,
+                true, consistentSnapshot, useSnapshot);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_snapshot", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, snapshotMode);
@@ -108,14 +114,15 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
         resetCommitCallbackDelay();
     }
 
-    @Test
-    public void testDatatypes() throws Exception {
+    @ParameterizedTest
+    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+    public void testDatatypes(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
         String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
         session.execute(createKeyspace);
 
         session.execute("create table if not exists cdctest.test_datatypes(a int primary key, b varchar, c text, d bigint, e boolean, f float, g date, h double, i smallint, j tinyint, k inet, l uuid, m timeuuid, n time, o timestamp, p decimal, q varint);");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_datatypes", false, false,BeforeImageMode.CHANGE, true);
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_datatypes", false, false,BeforeImageMode.CHANGE, true, consistentSnapshot, useSnapshot);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_datatypes", dbStreamId);
         startEngine(configBuilder);
@@ -130,14 +137,16 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
         verifyRecordCount(recordsCount);
     }
 
-    @Test
-    public void testCounter() throws Exception {
+    @ParameterizedTest
+    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+    public void testCounter(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
         String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
         session.execute(createKeyspace);
 
         session.execute("create table if not exists cdctest.test_counter(id int primary key, b counter);");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_counter", false, false,BeforeImageMode.CHANGE, true);
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_counter", false, false, BeforeImageMode.CHANGE,
+                true, consistentSnapshot, useSnapshot);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_counter", dbStreamId);
         startEngine(configBuilder);
@@ -152,14 +161,15 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
 
     }
 
-    @Test
-    public void testBeforeImageWithCQL() throws Exception {
+    @ParameterizedTest
+    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+    public void testBeforeImageWithCQL(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
         String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
         session.execute(createKeyspace);
 
         session.execute("create table if not exists cdctest.t1(id INT PRIMARY KEY, first_name TEXT, last_name VARCHAR, hours int);");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "t1", true, true, BeforeImageMode.ALL, true);
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "t1", true, true, BeforeImageMode.ALL, true, consistentSnapshot, useSnapshot);
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest", "t1", dbStreamId);
         
         startEngine(configBuilder);
@@ -184,14 +194,16 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
         assertAfterImage(updateRecord, 1, "VKVK", "Kushwaha", 30);
     }
 
-    @Test
-    public void testTransactions() throws Exception {
+    @ParameterizedTest
+    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+    public void testTransactions(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
         String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
         session.execute(createKeyspace);
 
         session.execute("create table if not exists cdctest.test_transaction(a int primary key) WITH transactions = { 'enabled' : true };");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_transaction", false, false,BeforeImageMode.CHANGE, true);
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_transaction", false, false,
+                BeforeImageMode.CHANGE, true, consistentSnapshot, useSnapshot);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_transaction", dbStreamId);
         startEngine(configBuilder);
@@ -204,14 +216,16 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
         verifyRecordCount(recordsCount);
     }
 
-    @Test
-    public void testLargeStrings() throws Exception {
+    @ParameterizedTest
+    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+    public void testLargeStrings(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
         String createKeyspace = "CREATE KEYSPACE IF NOT EXISTS cdctest;";
         session.execute(createKeyspace);
 
         session.execute("create table if not exists cdctest.test_big_string(a varchar primary key);");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_big_string", false, false,BeforeImageMode.CHANGE, true);
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_big_string", false, false,
+                BeforeImageMode.CHANGE, true, consistentSnapshot, useSnapshot);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_big_string", dbStreamId);
         startEngine(configBuilder);
@@ -306,6 +320,12 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
             assertValueField(records.get(i), "after/a/value", input);
         }
     }
-
-
+    
+    static Stream<Arguments> streamTypeProviderForSnapshot(){
+        return Stream.of(
+                Arguments.of(false, false, "initial"), // Older stream 
+                Arguments.of(false, false, "initial_only"), // Older stream 
+                Arguments.of(true, true, "initial"), // USE_SNAPSHOT stream
+                Arguments.of(true, true, "initial_only")); // USE_SNAPSHOT stream
+    }
 }

@@ -13,6 +13,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
@@ -26,7 +28,7 @@ public class YugabyteDBEnumValuesTest extends YugabyteDBContainerTestBase {
     
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        initializeYBContainer();
+        initializeYBContainer("TEST_yb_enable_cdc_consistent_snapshot_streams=true", null);
         TestHelper.dropAllSchemas();
     }
 
@@ -48,9 +50,10 @@ public class YugabyteDBEnumValuesTest extends YugabyteDBContainerTestBase {
         shutdownYBContainer();
     }
 
-    @Test
-    public void testEnumValue() throws Exception {
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_enum");
+    @ParameterizedTest
+    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+    public void testEnumValue(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_enum", consistentSnapshot, useSnapshot);
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_enum", dbStreamId);
         startEngine(configBuilder);
 

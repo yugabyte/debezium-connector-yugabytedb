@@ -8,6 +8,8 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.yb.client.CdcSdkCheckpoint;
 import org.yb.client.GetCheckpointResponse;
 import org.yb.client.YBClient;
@@ -36,7 +38,9 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 	private static final int snapshotBatchSize = 50;
 	@BeforeAll
 	public static void beforeClass() throws SQLException {
-		initializeYBContainer(null, "cdc_snapshot_batch_size=" + snapshotBatchSize);
+		initializeYBContainer(
+			"TEST_yb_enable_cdc_consistent_snapshot_streams=true",
+			"cdc_snapshot_batch_size=" + snapshotBatchSize);
 		TestHelper.dropAllSchemas();
 	}
 
@@ -56,8 +60,9 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 		shutdownYBContainer();
 	}
 
-	@Test
-	public void verifySnapshotIsResumedFromKey() throws Exception {
+	@ParameterizedTest
+	@MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForSnapshot")
+	public void verifySnapshotIsResumedFromKey(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
 		TestHelper.dropAllSchemas();
 		TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
@@ -68,7 +73,7 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 
 		YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = true;
 
-		String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+		String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", consistentSnapshot, useSnapshot);
 		Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 		configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
 		startEngine(configBuilder);

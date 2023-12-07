@@ -10,6 +10,7 @@ import org.junit.jupiter.api.*;
 import java.sql.SQLException;
 import org.apache.kafka.connect.data.Struct;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
@@ -29,7 +30,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 
 	@BeforeAll
 	public static void beforeClass() throws SQLException {
-		initializeYBContainer();
+		initializeYBContainer("TEST_yb_enable_cdc_consistent_snapshot_streams=true", null);
 		TestHelper.dropAllSchemas();
 	}
 
@@ -82,9 +83,10 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 		assertEndTransaction(metadataRecords.get(1), transactionId, 5, begin.getString("partition_id"));
 	}
 
-	@Test
-	public void assertMultipleTransactions() throws Exception {
-		String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1");
+	@ParameterizedTest
+	@MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+	public void assertMultipleTransactions(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+		String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1", consistentSnapshot, useSnapshot);
 		Configuration.Builder configBuilder = getConfigBuilderForMetadata(dbStreamId, "public.t1");
 
 		String transactionTopicName = TestHelper.TEST_SERVER + ".transaction";
@@ -121,14 +123,15 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 		assertEquals(begin1.getString("partition_id"), begin2.getString("partition_id"));
 	}
 
-	@Test
-	public void verifyTransactionalDataAcrossMultipleTablets() throws Exception {
+	@ParameterizedTest
+	@MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+	public void verifyTransactionalDataAcrossMultipleTablets(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
 		// This will lead to 2 tablets of range [lowest, 1000] and (1000, highest]
 		final String createTable =
 			"CREATE TABLE test_table (id INT, PRIMARY KEY(id ASC)) SPLIT AT VALUES ((1000));";
 		TestHelper.execute(createTable);
 
-		String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "test_table");
+		String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "test_table", consistentSnapshot, useSnapshot);
 		Configuration.Builder configBuilder =
 			getConfigBuilderForMetadata(dbStreamId, "public.test_table");
 

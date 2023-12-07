@@ -4,6 +4,8 @@ import java.sql.SQLException;
 import java.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
@@ -23,7 +25,7 @@ public class YugabyteDBPartitionTest extends YugabyteDBContainerTestBase {
 
   @BeforeAll
   public static void beforeClass() throws SQLException {
-      initializeYBContainer();
+      initializeYBContainer("TEST_yb_enable_cdc_consistent_snapshot_streams=true", null);
       TestHelper.dropAllSchemas();
   }
 
@@ -43,12 +45,13 @@ public class YugabyteDBPartitionTest extends YugabyteDBContainerTestBase {
       shutdownYBContainer();
   }
 
-  @Test
-  public void taskShouldNotFail() throws Exception {
+  @ParameterizedTest
+  @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+  public void taskShouldNotFail(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
     TestHelper.dropAllSchemas();
     TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 20 TABLETS;");
 
-    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 
     startEngine(configBuilder, (success, message, error) -> {
