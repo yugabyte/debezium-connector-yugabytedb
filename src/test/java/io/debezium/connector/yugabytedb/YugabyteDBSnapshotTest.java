@@ -59,8 +59,8 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         shutdownYBContainer();
     }
 
-	@ParameterizedTest
-	@MethodSource("streamTypeProviderForSnapshotWithColocation")
+    @ParameterizedTest
+    @MethodSource("streamTypeProviderForSnapshotWithColocation")
     public void testSnapshotRecordConsumption(boolean consistentSnapshot, boolean useSnapshot, boolean colocation) throws Exception {
         setCommitCallbackDelay(10000);
         createTables(colocation);
@@ -84,8 +84,8 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
           }).get();
     }
 
-	@ParameterizedTest
-	@MethodSource("streamTypeProviderForSnapshotWithColocation")
+    @ParameterizedTest
+    @MethodSource("streamTypeProviderForSnapshotWithColocation")
     public void testSnapshotRecordCountInInitialOnlyMode(boolean consistentSnapshot, boolean useSnapshot, boolean colocation) throws Exception {
         setCommitCallbackDelay(10000);
         createTables(colocation);
@@ -106,8 +106,8 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         verifyRecordCount(recordsCount);
     }
 
-	@ParameterizedTest
-	@MethodSource("streamTypeProviderForSnapshotWithColocation")
+    @ParameterizedTest
+    @MethodSource("streamTypeProviderForSnapshotWithColocation")
     public void shouldOnlySnapshotTablesInList(boolean consistentSnapshot, boolean useSnapshot, boolean colocation) throws Exception {
         createTables(colocation);
         int recordCountT1 = 5000;
@@ -144,8 +144,8 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         assertFalse(records.topics().contains("test_server.public.all_types"));
     }
 
-	@ParameterizedTest
-	@MethodSource("streamTypeProviderForSnapshotWithColocation")
+    @ParameterizedTest
+    @MethodSource("streamTypeProviderForSnapshotWithColocation")
     public void snapshotTableThenStreamData(boolean consistentSnapshot, boolean useSnapshot, boolean colocation) throws Exception {
         createTables(colocation);
 
@@ -179,8 +179,8 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     }
 
     // GitHub issue: https://github.com/yugabyte/debezium-connector-yugabytedb/issues/143
-	@ParameterizedTest
-	@MethodSource("streamTypeProviderForSnapshotWithColocation")
+    @ParameterizedTest
+    @MethodSource("streamTypeProviderForSnapshotWithColocation")
     public void snapshotTableWithCompaction(boolean consistentSnapshot, boolean useSnapshot, boolean colocation) throws Exception {
         createTables(colocation);
 
@@ -209,8 +209,8 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         waitAndFailIfCannotConsume(records, recordCount + 10 /* updates */);
     }
 
-	@ParameterizedTest
-	@MethodSource("streamTypeProviderForSnapshotWithColocation")
+    @ParameterizedTest
+    @MethodSource("streamTypeProviderForSnapshotWithColocation")
     public void snapshotForMultipleTables(boolean consistentSnapshot, boolean useSnapshot, boolean colocation) throws Exception {
         // Create colocated tables
         createTables(colocation);
@@ -253,8 +253,8 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         assertEquals(recordsTest3, recordsForTest3.size());
     }
 
-	@ParameterizedTest
-	@MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForSnapshot")
+    @ParameterizedTest
+    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForSnapshot")
     public void snapshotMixOfColocatedNonColocatedTables(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
         // Create tables.
         createTables(true /* enforce creation of the colocated tables only */);
@@ -303,8 +303,8 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         assertEquals(recordCountInNonColocated, recordsForNonColocated.size());
     }
 
-	@ParameterizedTest
-	@MethodSource("streamTypeProviderForSnapshotWithColocation")
+    @ParameterizedTest
+    @MethodSource("streamTypeProviderForSnapshotWithColocation")
     public void snapshotColocatedNonColocatedThenStream(boolean consistentSnapshot, boolean useSnapshot, boolean initialOnly) throws Exception {
         // Create tables.
         createTables(true /* enforce creation of the colocated tables only */);
@@ -381,8 +381,8 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     // This test should not be run with consistent snapshot stream since it verifies
     // the behaviour on failure after snapshot bootstrap call. For consistent
     // snapshot streams, the very first getChanges call starts the snapshot consumption
-	@ParameterizedTest
-	@ValueSource(booleans = {true, false})
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
     public void shouldSnapshotWithFailureAfterBootstrapSnapshotCall(boolean colocation)
         throws Exception {
         // This test verifies that if there is a failure after snapshot is bootstrapped,
@@ -438,8 +438,8 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         assertEquals(recordsCount, recordsForTest2.size());
     }
 
-	@ParameterizedTest
-	@MethodSource("streamTypeProviderForSnapshotWithColocation")
+    @ParameterizedTest
+    @MethodSource("streamTypeProviderForSnapshotWithColocation")
     public void shouldSnapshotWithFailureAfterSettingInitialCheckpoint(boolean consistentSnapshot, boolean useSnapshot, boolean colocation)
         throws Exception {
         // This test verifies that if there is a failure after the call to set the checkpoint,
@@ -495,8 +495,8 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         assertEquals(recordsCount, recordsForTest2.size());
     }
 
-	@ParameterizedTest
-	@MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForSnapshot")
+    @ParameterizedTest
+    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForSnapshot")
     public void shouldNotSnapshotAgainIfSnapshotCompletedOnce(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
         /* This test aims to verify that if snapshot is taken on certain streamID + tabletId
            combination once then we should not be taking it again. To verify the same, we will
@@ -556,8 +556,8 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         }
     }
 
-	@ParameterizedTest
-	@MethodSource("streamTypeProviderForSnapshotWithColocation")
+    @ParameterizedTest
+    @MethodSource("streamTypeProviderForSnapshotWithColocation")
     public void shouldContinueStreamingInNeverAfterSnapshotCompleteInInitialOnly(boolean consistentSnapshot, boolean useSnapshot, boolean colocation)
         throws Exception {
         /* This test aims to verify that if snapshot is taken on certain streamID + tabletId
@@ -637,8 +637,8 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         }
     }
 
-	@ParameterizedTest
-	@MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForSnapshot")
+    @ParameterizedTest
+    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForSnapshot")
     public void snapshotShouldNotBeAffectedByDroppingUnrelatedTables(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
         /* The objective of the test is to verify that when an unrelated table is dropped, it
            should not cause any harm to the existing flow. At the same time, if tablet split

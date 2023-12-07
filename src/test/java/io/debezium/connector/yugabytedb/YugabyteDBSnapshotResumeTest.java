@@ -60,9 +60,9 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 		shutdownYBContainer();
 	}
 
-	@ParameterizedTest
-	@MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForSnapshot")
-	public void verifySnapshotIsResumedFromKey(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+    @ParameterizedTest
+    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForSnapshot")
+    public void verifySnapshotIsResumedFromKey(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
 		TestHelper.dropAllSchemas();
 		TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
