@@ -13,6 +13,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import com.google.protobuf.ByteString;
 import io.debezium.connector.yugabytedb.connection.HashPartition;
 import io.debezium.connector.yugabytedb.util.YugabyteDBConnectorUtils;
 import io.debezium.pipeline.source.AbstractSnapshotChangeEventSource;
@@ -79,6 +80,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     protected List<HashPartition> partitionRanges;
 
     private boolean snapshotComplete = false;
+
+    private final String LAST_SNAPSHOT_RECORD_KEY = "LAST_SNAPSHOT_RECORD";
 
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
                                                YugabyteDBTaskContext taskContext,
@@ -503,7 +506,21 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 CdcSdkCheckpoint explicitCdcSdkCheckpoint = null;
                 if (taskContext.shouldEnableExplicitCheckpointing()) {
-                  explicitCdcSdkCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
+                  CdcSdkCheckpoint checkpoint = tabletToExplicitCheckpoint.get(part.getId());
+
+                  // If the checkpoint in tabletToExplicitCheckpoint map corresponds to the last record's checkpoint
+                  // of last snapshot batch, it means kafka has consumed the last record. So, we should
+                  // not poll on this tablet anymore, instead mark snapshot done for this tablet.
+                  if(IsLastSnapshotRecordOfLastBatch(OpId.from(checkpoint))) {
+                    LOGGER.debug("Already received the last record's modified checkpoint in kafka's callback. " +
+                            "Discontinuing polling on tablet {}", part.getId());
+                    LOGGER.info("Adding {} to the list of snapshot completed tablets", part.getId());
+                    snapshotCompletedTablets.add(part.getId());
+                    markSnapshotDoneOnServer(part, previousOffset);
+                    tabletsWaitingForCallback.removeIf(t -> t.equals(part.getId()));
+                    continue;
+                  }
+                  explicitCdcSdkCheckpoint = checkpoint;
                 }
 
                 OpId cp = previousOffset.snapshotLSN(part);
@@ -532,9 +549,13 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 tabletSafeTime.put(part.getId(), resp.getResp().getSafeHybridTime());
 
+                OpId finalOpId = new OpId(resp.getTerm(), resp.getIndex(), resp.getKey(),
+                        resp.getWriteId(), resp.getSnapshotTime());
+                LOGGER.debug("Final OpId for tablet {} is {}", part.getId(), finalOpId);
+
                 // Process the response
-                for (CdcService.CDCSDKProtoRecordPB record :
-                        resp.getResp().getCdcSdkProtoRecordsList()) {
+                for (int idx = 0; idx < resp.getResp().getCdcSdkProtoRecordsList().size(); idx++) {
+                  CdcService.CDCSDKProtoRecordPB record = resp.getResp().getCdcSdkProtoRecordsList().get(idx);
                   CdcService.RowMessage m = record.getRowMessage();
                   YbProtoReplicationMessage message =
                     new YbProtoReplicationMessage(m, this.yugabyteDbTypeRegistry);
@@ -597,6 +618,14 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                         }
                         Objects.requireNonNull(tId);
                         readRecordsReceived += 1;
+
+                        // if the DML record is the last snapshot record of the last snapshot batch, set all the fields
+                        // of Opid to max values and snapshot key to LAST_SNAPSHOT_RECORD.
+                        if(isSnapshotCompleteMarker(finalOpId) &&
+                                (idx == (resp.getResp().getCdcSdkProtoRecordsList().size() - 1))) {
+                          LOGGER.info("Modifying record checkpoint for last snapshot record of the last snapshot batch");
+                          setIdentificationMarkerForLastSnapshotRecord(lsn);
+                        }
                       }
 
                       // In case of snapshots, we do not want to ignore tableUUID while updating
@@ -621,10 +650,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     throw e;
                   }
                 }
-
-                OpId finalOpId = new OpId(resp.getTerm(), resp.getIndex(), resp.getKey(),
-                                          resp.getWriteId(), resp.getSnapshotTime());
-                LOGGER.debug("Final OpId for tablet {} is {}", part.getId(), finalOpId);
 
                 // During the snapshot consumption phase, if the response doesn't have any record,
                 // it is safe to assume that we should not wait for the callback to come and that we
@@ -769,7 +794,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       }
 
       OpId opId = OpId.from(this.tabletToExplicitCheckpoint.get(partition.getId()));
-      if (isSnapshotCompleteMarker(opId)) {
+      if (IsLastSnapshotRecordOfLastBatch(opId)) {
         LOGGER.info("Adding tablet {} to snapshot completed list", partition.getId());
         snapshotCompletedTablets.add(partition.getId());
         markSnapshotDoneOnServer(partition, offsetContext);
@@ -809,6 +834,28 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       }
     }
 
+  }
+
+  /**
+   * Last snapshot record of the last snapshot batch will have a unique marker that will be used for indentification.
+   * Set all the fields of the record's Checkpoint to max values and set snapshot key to 'LAST_SNAPSHOT_RECORD'
+   * @param recordCheckpoint the record's checkpoint of the last snapshot record
+   */
+  private void setIdentificationMarkerForLastSnapshotRecord(OpId recordCheckpoint) {
+    recordCheckpoint.setTerm(Long.MAX_VALUE);
+    recordCheckpoint.setIndex(Long.MAX_VALUE);
+    recordCheckpoint.setKey(LAST_SNAPSHOT_RECORD_KEY);
+    recordCheckpoint.setWriteId(Integer.MAX_VALUE);
+    recordCheckpoint.setTime(Long.MAX_VALUE);
+  }
+
+  private Boolean IsLastSnapshotRecordOfLastBatch(OpId opid) {
+    String snapshotKey = ByteString.copyFrom(opid.getKey()).toStringUtf8();
+    return (opid.getTerm() == Long.MAX_VALUE) &&
+            (opid.getIndex() == Long.MAX_VALUE) &&
+            (opid.getWrite_id() == Integer.MAX_VALUE) &&
+            (opid.getTime() == Long.MAX_VALUE) &&
+            (snapshotKey.equals(LAST_SNAPSHOT_RECORD_KEY));
   }
 
     /**
