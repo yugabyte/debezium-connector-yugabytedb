@@ -3,6 +3,7 @@ package io.debezium.connector.yugabytedb.connection;
 import java.util.Arrays;
 import java.util.Base64;
 
+import com.google.protobuf.ByteString;
 import org.yb.cdc.CdcService.CDCSDKCheckpointPB;
 
 import com.google.common.base.Objects;
@@ -63,6 +64,26 @@ public class OpId implements Comparable<OpId> {
         }
 
         return Base64.getDecoder().decode(keyString);
+    }
+
+    public void setTerm(long term) {
+        this.term = term;
+    }
+
+    public void setIndex(long index) {
+        this.index = index;
+    }
+
+    public void setWriteId(int writeId) {
+        this.write_id = writeId;
+    }
+
+    public void setKey(String key) {
+        this.key = ByteString.copyFromUtf8(key).toByteArray();
+    }
+
+    public void setTime(long time) {
+        this.time = time;
     }
 
     public static OpId valueOf(String stringId) {

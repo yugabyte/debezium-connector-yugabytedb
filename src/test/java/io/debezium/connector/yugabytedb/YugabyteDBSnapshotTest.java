@@ -730,6 +730,154 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         YugabyteDBStreamingChangeEventSource.TEST_WAIT_BEFORE_GETTING_CHILDREN = false;
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void snapshotTwoColocatedNonEmptyAndNonColocatedEmptyThenStream(boolean colocation) throws Exception {
+        /* The objective of this test is to verify that we are able to consume all snapshot records on a
+            combination of empty & non-empty tables and successfully switch to streaming phase and consume
+            the streaming records for all the tables.
+         */
+
+        // Create tables.
+        createTables(colocation);
+
+        // 2 colocated non-empty tables + 1 colocated empty table + 1 non-colocated empty table
+        final int recordCountForTest1 = 1000;
+        final int recordCountForTest2 = 2000;
+        insertBulkRecords(recordCountForTest1, "public.test_1");
+        insertBulkRecords(recordCountForTest2, "public.test_2");
+
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
+        Configuration.Builder configBuilder =
+                TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2,public.test_3,public.test_no_colocated", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE,
+                YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
+
+        // Enable the failure flag to introduce an explicit failure.
+        YugabyteDBSnapshotChangeEventSource.FAIL_AFTER_BOOTSTRAP_GET_CHANGES = true;
+        startEngine(configBuilder);
+
+        // Since we have specified the failure flag, we should not get any snapshot and
+        // connector would fail after the first GetChanges call to all the tablets. Verify that
+        // we haven't received any record even after waiting for a minute.
+        TestHelper.waitFor(Duration.ofMinutes(1));
+        assertNoRecordsToConsume();
+
+        // Stop the connector.
+        stopConnector();
+
+        // Disable the failure flag so that execution can happen normally.
+        YugabyteDBSnapshotChangeEventSource.FAIL_AFTER_BOOTSTRAP_GET_CHANGES = false;
+        startEngine(configBuilder);
+
+        // Wait until connector is started.
+        awaitUntilConnectorIsReady();
+
+        List<SourceRecord> recordsForTest1 = new ArrayList<>();
+        List<SourceRecord> recordsForTest2 = new ArrayList<>();
+        List<SourceRecord> recordsForTest3 = new ArrayList<>();
+        List<SourceRecord> recordsForNonColocated = new ArrayList<>();
+
+        final int totalStreamingRecords = insertStreamingRecordsInAllTables();
+
+        List<SourceRecord> records = new ArrayList<>();
+
+        waitAndFailIfCannotConsume(records, recordCountForTest1 + recordCountForTest2 + totalStreamingRecords);
+
+        // Iterate over the records and add them to their respective topic
+        for (SourceRecord record : records) {
+            if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_1")) {
+                recordsForTest1.add(record);
+            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_2")) {
+                recordsForTest2.add(record);
+            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_3")) {
+                recordsForTest3.add(record);
+            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_no_colocated")) {
+                recordsForNonColocated.add(record);
+            }
+        }
+
+        assertEquals(recordCountForTest1 + 101, recordsForTest1.size());
+        assertEquals(recordCountForTest2 + 201, recordsForTest2.size());
+        assertEquals(301, recordsForTest3.size());
+        assertEquals(401, recordsForNonColocated.size());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void snapshotTwoColocatedNonEmptyAndNonColocatedNonEmptyThenStream(boolean colocation) throws Exception {
+        /* The objective of this test is to verify that we are able to consume all snapshot records on a
+            combination of empty & non-empty tables and successfully switch to streaming phase and consume
+            the streaming records for all the tables.
+         */
+        // Create tables.
+        createTables(colocation);
+
+        // 2 colocated non-empty tables + 1 colocated empty table + 1 non-colocated non-empty table
+        final int recordCountForTest1 = 1000;
+        final int recordCountForTest2 = 2000;
+        final int recordCountInNonColocated = 2000;
+        insertBulkRecords(recordCountForTest1, "public.test_1");
+        insertBulkRecords(recordCountForTest2, "public.test_2");
+        insertBulkRecords(recordCountInNonColocated, "public.test_no_colocated");
+
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
+        Configuration.Builder configBuilder =
+                TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2,public.test_3,public.test_no_colocated", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE,
+                YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
+
+        // Enable the failure flag to introduce an explicit failure.
+        YugabyteDBSnapshotChangeEventSource.FAIL_AFTER_BOOTSTRAP_GET_CHANGES = true;
+        startEngine(configBuilder);
+
+        // Since we have specified the failure flag, we should not get any snapshot and
+        // connector would fail after the first GetChanges call to all the tablets. Verify that
+        // we haven't received any record even after waiting for a minute.
+        TestHelper.waitFor(Duration.ofMinutes(1));
+        assertNoRecordsToConsume();
+
+        // Stop the connector.
+        stopConnector();
+
+        // Disable the failure flag so that execution can happen normally.
+        YugabyteDBSnapshotChangeEventSource.FAIL_AFTER_BOOTSTRAP_GET_CHANGES = false;
+        startEngine(configBuilder);
+
+        // Wait until connector is started.
+        awaitUntilConnectorIsReady();
+
+        List<SourceRecord> recordsForTest1 = new ArrayList<>();
+        List<SourceRecord> recordsForTest2 = new ArrayList<>();
+        List<SourceRecord> recordsForTest3 = new ArrayList<>();
+        List<SourceRecord> recordsForNonColocated = new ArrayList<>();
+
+        final int totalStreamingRecords = insertStreamingRecordsInAllTables();
+
+        List<SourceRecord> records = new ArrayList<>();
+
+        waitAndFailIfCannotConsume(records, recordCountForTest1 + recordCountForTest2 + recordCountInNonColocated + totalStreamingRecords);
+
+
+        // Iterate over the records and add them to their respective topic
+        for (SourceRecord record : records) {
+            if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_1")) {
+                recordsForTest1.add(record);
+            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_2")) {
+                recordsForTest2.add(record);
+            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_3")) {
+                recordsForTest3.add(record);
+            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_no_colocated")) {
+                recordsForNonColocated.add(record);
+            }
+        }
+
+        assertEquals(recordCountForTest1 + 101, recordsForTest1.size());
+        assertEquals(recordCountForTest2 + 201, recordsForTest2.size());
+        assertEquals(301, recordsForTest3.size());
+        assertEquals(recordCountInNonColocated + 401, recordsForNonColocated.size());
+    }
+
     /**
      * Helper function to create the required tables in the database DEFAULT_COLOCATED_DB_NAME
      */
@@ -777,5 +925,21 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
 
     private void verifyRecordCount(long recordsCount) {
         waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
+    }
+
+    private int insertStreamingRecordsInAllTables() {
+        // Inserting 1001 records to test_1
+        TestHelper.executeInDatabase("INSERT INTO test_1 VALUES (generate_series(1000, 1100));", DEFAULT_COLOCATED_DB_NAME);
+
+        // Inserting 2001 records to test_1
+        TestHelper.executeInDatabase("INSERT INTO test_2 VALUES (generate_series(2000, 2200));", DEFAULT_COLOCATED_DB_NAME);
+
+        // Inserting 3001 records to test_3
+        TestHelper.executeInDatabase("INSERT INTO test_3 VALUES (generate_series(3000, 3300));", DEFAULT_COLOCATED_DB_NAME);
+
+        // Inserting 4001 records to test_no_colocated
+        TestHelper.executeInDatabase("INSERT INTO test_no_colocated VALUES (generate_series(4000, 4400));", DEFAULT_COLOCATED_DB_NAME);
+        final int totalRecordsInserted = 101 + 201 + 301 + 401;
+        return totalRecordsInserted;
     }
 }
