@@ -373,14 +373,21 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                     List<HashPartition> partitions = new ArrayList<>();
                     LOGGER.info("TabletCheckpointPair list size for table {}: {}", tableId, resp.getTabletCheckpointPairListSize());
                     for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
-                        HashPartition tempPartition = HashPartition.from(pair);
+                        HashPartition tempPartition =
+                            new HashPartition(tableId, pair.getTabletLocations().getTabletId().toStringUtf8(),
+                              pair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
+                              pair.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray());
 
                         partitions.add(tempPartition);
                         this.hashRanges.add(tempPartition);
                     }
 
                     // Validate that we have received the complete range of partitions.
-                    HashPartition.validateCompleteRanges(partitions);
+                    // For colocated tables, validating complete ranges does not make sense as
+                    // there will not be a full range.
+                    if (!table.isColocated()) {
+                        HashPartition.validateCompleteRanges(partitions);
+                    }
 
                     LOGGER.info("Received tablet list for table {} ({}): {}", table.getTableId(), table.getName(),
                                 partitions.stream().map(HashPartition::getTabletId).collect(Collectors.toSet()));

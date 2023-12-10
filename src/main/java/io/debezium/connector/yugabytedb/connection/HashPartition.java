@@ -240,6 +240,8 @@ public class HashPartition implements Comparable<HashPartition>, Serializable {
    * @return {@link HashPartition}
    */
   public static HashPartition from(CdcService.TabletCheckpointPair tabletCheckpointPair) {
+    // TODO: The tableId returned in case of colocated tables is not the correct table ID here.
+    //  We only get the parent colocated ID in the response, this behaviour needs to be fixed on service.
     return new HashPartition(tabletCheckpointPair.getTabletLocations().getTableId().toStringUtf8(),
       tabletCheckpointPair.getTabletLocations().getTabletId().toStringUtf8(),
       tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),

@@ -287,17 +287,21 @@ public class YugabyteDBStreamingChangeEventSource implements
      * adds the tablets in the response which are contained in the parent partition ranges. Note
      * that this method also assumes that the object {@code partitionRanges} is already populated.
      *
+     * @param tableId the tableUUID for which the {@link GetTabletListToPollForCDCResponse} is passed
      * @param response of type {@link GetTabletListToPollForCDCResponse}
      * @param tabletPairList a list of {@link Pair} to be populated where each pair is {@code <tableId, tabletId>}
      */
-    protected void populateTableToTabletPairsForTask(GetTabletListToPollForCDCResponse response, List<Pair<String, String>> tabletPairList) {
+    protected void populateTableToTabletPairsForTask(String tableId, GetTabletListToPollForCDCResponse response,
+                                                     List<Pair<String, String>> tabletPairList) {
         // Verify that the partitionRanges are already populated.
         Objects.requireNonNull(partitionRanges);
         assert !partitionRanges.isEmpty();
 
         // Iterate over the stored partitions and add valid tablets for streaming.
         for (TabletCheckpointPair pair : response.getTabletCheckpointPairList()) {
-            HashPartition hp = HashPartition.from(pair);
+            HashPartition hp = new HashPartition(tableId, pair.getTabletLocations().getTabletId().toStringUtf8(),
+              pair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
+              pair.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray());
 
             for (HashPartition parent : partitionRanges) {
                 if (parent.containsPartition(hp)) {
@@ -337,7 +341,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                 // TODO: One optimisation where we initialise the offset context here itself
                 //  without storing the GetTabletListToPollForCDCResponse
-                populateTableToTabletPairsForTask(resp, tabletPairList);
+                populateTableToTabletPairsForTask(tId, resp, tabletPairList);
                 LOGGER.info("Table: {} with number of tablets {}", tId, resp.getTabletCheckpointPairListSize());
                 tabletListResponse.put(tId, resp);
             }

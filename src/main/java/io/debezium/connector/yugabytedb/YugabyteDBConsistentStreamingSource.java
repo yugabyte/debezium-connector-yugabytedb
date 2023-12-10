@@ -67,7 +67,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
                 GetTabletListToPollForCDCResponse resp =
                         YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
-                populateTableToTabletPairsForTask(resp, tabletPairList);
+                populateTableToTabletPairsForTask(tId, resp, tabletPairList);
                 tabletListResponse.put(tId, resp);
             }
 
