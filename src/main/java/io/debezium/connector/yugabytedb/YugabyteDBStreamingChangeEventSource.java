@@ -299,9 +299,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         // Iterate over the stored partitions and add valid tablets for streaming.
         for (TabletCheckpointPair pair : response.getTabletCheckpointPairList()) {
-            HashPartition hp = new HashPartition(tableId, pair.getTabletLocations().getTabletId().toStringUtf8(),
-              pair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
-              pair.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray());
+            HashPartition hp = HashPartition.from(pair, tableId);
 
             for (HashPartition parent : partitionRanges) {
                 if (parent.containsPartition(hp)) {
@@ -336,8 +334,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                 GetTabletListToPollForCDCResponse resp =
                         YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
 
-                // Validate that we receive the complete range of tablets.
-                HashPartition.validateCompleteRanges(HashPartition.from(resp));
+                // Validate that we receive the complete range of tablets in case of non-colocated tables.
+                if (!table.isColocated()) {
+                    HashPartition.validateCompleteRanges(HashPartition.getListFrom(resp, tId));
+                }
 
                 // TODO: One optimisation where we initialise the offset context here itself
                 //  without storing the GetTabletListToPollForCDCResponse
@@ -968,11 +968,12 @@ public class YugabyteDBStreamingChangeEventSource implements
      * This method is generally supposed to be called in the tablet split flow to check whether
      * the child tablet we have received has a parent partition already.
      * @param tabletCheckpointPair the {@link TabletCheckpointPair} for the tablet to be verified
+     * @param tableId the table UUID
      */
-    private void assertTabletPresentInOriginalRanges(TabletCheckpointPair tabletCheckpointPair) {
+    private void assertTabletPresentInOriginalRanges(TabletCheckpointPair tabletCheckpointPair, String tableId) {
         boolean tabletFound = false;
 
-        HashPartition tabletToVerify = HashPartition.from(tabletCheckpointPair);
+        HashPartition tabletToVerify = HashPartition.from(tabletCheckpointPair, tableId);
         for (HashPartition parent : partitionRanges) {
             if (parent.containsPartition(tabletToVerify)) {
                 tabletFound = true;
@@ -997,7 +998,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                        String tableId,
                                        YugabyteDBOffsetContext offsetContext,
                                        Map<String, Boolean> schemaNeeded) {
-        assertTabletPresentInOriginalRanges(pair);
+        assertTabletPresentInOriginalRanges(pair, tableId);
 
         String tabletId = pair.getTabletLocations().getTabletId().toStringUtf8();
         ImmutablePair<String, String> tableTabletPair =

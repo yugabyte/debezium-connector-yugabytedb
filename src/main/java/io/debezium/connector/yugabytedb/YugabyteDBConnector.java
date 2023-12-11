@@ -373,10 +373,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
                     List<HashPartition> partitions = new ArrayList<>();
                     LOGGER.info("TabletCheckpointPair list size for table {}: {}", tableId, resp.getTabletCheckpointPairListSize());
                     for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
-                        HashPartition tempPartition =
-                            new HashPartition(tableId, pair.getTabletLocations().getTabletId().toStringUtf8(),
-                              pair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
-                              pair.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray());
+                        HashPartition tempPartition = HashPartition.from(pair, tableId);
 
                         partitions.add(tempPartition);
                         this.hashRanges.add(tempPartition);
