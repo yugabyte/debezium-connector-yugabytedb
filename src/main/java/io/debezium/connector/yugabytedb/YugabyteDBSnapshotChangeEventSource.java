@@ -511,7 +511,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   // If the checkpoint in tabletToExplicitCheckpoint map corresponds to the last record's checkpoint
                   // of last snapshot batch, it means kafka has consumed the last record. So, we should
                   // not poll on this tablet anymore, instead mark snapshot done for this tablet.
-                  if(IsLastSnapshotRecordOfLastBatch(OpId.from(checkpoint))) {
+                  if(checkpoint != null && IsLastSnapshotRecordOfLastBatch(OpId.from(checkpoint))) {
                     LOGGER.debug("Already received the last record's modified checkpoint in kafka's callback. " +
                             "Discontinuing polling on tablet {}", part.getId());
                     LOGGER.info("Adding {} to the list of snapshot completed tablets", part.getId());
