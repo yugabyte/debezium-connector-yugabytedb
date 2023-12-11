@@ -839,7 +839,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
   /**
    * Last snapshot record of the last snapshot batch will have a unique marker that will be used for indentification.
    * Set all the fields of the record's Checkpoint to max values and set the snapshot key to 'LAST_SNAPSHOT_RECORD'
-   * @param recordCheckpoint the record's checkpoint of the last snapshot record
+   * @return OpId representing the last snapshot record marker
    */
   private OpId getIdentificationMarkerForLastSnapshotRecord() {
     byte[] lastSnapshotRecordKey = ByteString.copyFromUtf8(LAST_SNAPSHOT_RECORD_KEY).toByteArray();
