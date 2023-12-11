@@ -559,7 +559,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                   String pgSchemaName = m.getPgschemaName();
 
-                  final OpId lsn = new OpId(record.getCdcSdkOpId().getTerm(),
+                  OpId lsn = new OpId(record.getCdcSdkOpId().getTerm(),
                                             record.getCdcSdkOpId().getIndex(),
                                             record.getCdcSdkOpId().getWriteIdKey().toByteArray(),
                                             record.getCdcSdkOpId().getWriteId(),
@@ -620,7 +620,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                         if (isSnapshotCompleteMarker(finalOpId) &&
                                 (idx == (resp.getResp().getCdcSdkProtoRecordsList().size() - 1))) {
                           LOGGER.info("Modifying record checkpoint for last snapshot record of the last snapshot batch");
-                          setIdentificationMarkerForLastSnapshotRecord(lsn);
+                          lsn = getIdentificationMarkerForLastSnapshotRecord();
                         }
                       }
 
@@ -832,15 +832,12 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
   /**
    * Last snapshot record of the last snapshot batch will have a unique marker that will be used for indentification.
-   * Set all the fields of the record's Checkpoint to max values and set snapshot key to 'LAST_SNAPSHOT_RECORD'
+   * Set all the fields of the record's Checkpoint to max values and set the snapshot key to 'LAST_SNAPSHOT_RECORD'
    * @param recordCheckpoint the record's checkpoint of the last snapshot record
    */
-  private void setIdentificationMarkerForLastSnapshotRecord(OpId recordCheckpoint) {
-    recordCheckpoint.setTerm(Long.MAX_VALUE);
-    recordCheckpoint.setIndex(Long.MAX_VALUE);
-    recordCheckpoint.setKey(LAST_SNAPSHOT_RECORD_KEY);
-    recordCheckpoint.setWriteId(Integer.MAX_VALUE);
-    recordCheckpoint.setTime(Long.MAX_VALUE);
+  private OpId getIdentificationMarkerForLastSnapshotRecord() {
+    byte[] lastSnapshotRecordKey = ByteString.copyFromUtf8(LAST_SNAPSHOT_RECORD_KEY).toByteArray();
+    return new OpId(Long.MAX_VALUE, Long.MAX_VALUE, lastSnapshotRecordKey, Integer.MAX_VALUE, Long.MAX_VALUE);
   }
 
   private Boolean isLastSnapshotRecordOfLastBatch(OpId opid) {
