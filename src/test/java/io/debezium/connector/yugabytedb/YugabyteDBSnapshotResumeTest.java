@@ -8,6 +8,8 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.yb.client.CdcSdkCheckpoint;
 import org.yb.client.GetCheckpointResponse;
 import org.yb.client.YBClient;
@@ -130,6 +132,74 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 		assertEquals(recordsCount - finalTotalConsumedSoFar, records.size());
 
 		YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = false;
+	}
+
+	@ParameterizedTest
+    @ValueSource(booleans = {true, false})
+	public void VerifyNoDataLossIfConnectorRestartDuringLastBatchConsumption(boolean colocation) throws Exception {
+		/**
+		 * The objective of this test is to verify the connector starts in the snapshot phase and 
+		 * consumes the all the snapshot records before switching to streaming phase in the 
+		 * following scenario: Connector restarts after it has received the last snapshot batch but
+		 * kafka hasnt fully consumed the last batch. 
+		 */
+		TestHelper.dropAllSchemas();
+		TestHelper.executeDDL("yugabyte_create_tables.ddl");
+		createTables(colocation);
+
+		final int recordsCount = 1000;
+
+		insertBulkRecords(recordsCount, "public.test_1");
+
+		YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = true;
+
+		String dbStreamId = TestHelper.getNewDbStreamId("colocated_database", "test_1");
+		Configuration.Builder configBuilder = TestHelper.getConfigBuilder("colocated_database", "public.test_1", dbStreamId);
+		configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
+		startEngineWithPartialConsumptionOfLastBatch(configBuilder, recordsCount);
+		awaitUntilConnectorIsReady();
+
+		// Wait for the connector to complete all the GetChanges call and push all the records to 
+		// the in-memory queue during snapshot phase.
+		TestHelper.waitFor(Duration.ofMinutes(1));
+		// Consume 976 records (1 DDL + 950 + 25 from last batch)
+		int totalConsumedSoFar = consumeByTopic(976).recordsForTopic("test_server.public.test_1").size();
+		assertNoRecordsToConsume();
+
+		// Kill the connector after some seconds and consume whatever data is available.
+		stopConnector();
+	
+		// The last set explicit checkpoint can be obtained from the static variable.
+		CdcSdkCheckpoint lastExplicitCheckpoint =
+			YugabyteDBSnapshotChangeEventSource.LAST_EXPLICIT_CHECKPOINT;
+
+		// The last explicit checkpoint should be the one stored in the state table, verify.
+		YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
+		YBTable ybTable = TestHelper.getYbTable(ybClient, "test_1");
+
+		// Assuming that the table has only 1 tablet, get the first tablet and get its checkpoint.
+		GetCheckpointResponse resp =
+			ybClient.getCheckpoint(ybTable, dbStreamId, ybClient.getTabletUUIDs(ybTable).iterator().next());
+
+		assertEquals(lastExplicitCheckpoint.getTerm(), resp.getTerm());
+		assertEquals(lastExplicitCheckpoint.getIndex(), resp.getIndex());
+		assertTrue(Arrays.equals(lastExplicitCheckpoint.getKey(), resp.getSnapshotKey()));
+		
+		// Restart the connector
+		YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = false;
+		startEngine(configBuilder);
+		awaitUntilConnectorIsReady();
+
+		List<SourceRecord> recordsAfterRestart = new ArrayList<>();
+		// We should receive the last 2 snapshot batch (500 records) again since we will be setting 
+		// from_op_id to the last explicit checkpoint (points to start of 2nd last record) sent to the server 
+		// during the snapshot phase.
+		waitAndFailIfCannotConsume(recordsAfterRestart, 2 * snapshotBatchSize);
+
+		LOGGER.info("Remaining consumed record count: {}", recordsAfterRestart.size());
+		assertNotEquals(totalConsumedSoFar, recordsAfterRestart.size());
+
+		assertEquals(2 * snapshotBatchSize, recordsAfterRestart.size());
 	}
 
 	private int consumeAllAvailableRecordsTill(long minimumRecordsToConsume) {

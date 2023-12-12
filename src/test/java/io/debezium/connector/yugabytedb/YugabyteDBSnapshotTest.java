@@ -926,51 +926,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         YugabyteDBSnapshotChangeEventSource.FAIL_WHEN_MARKING_SNAPSHOT_DONE = false;
     }
 
-    /**
-     * Helper function to create the required tables in the database DEFAULT_COLOCATED_DB_NAME
-     */
-    private void createTables(boolean colocation) {
-        LOGGER.info("Creating tables with colocation: {}", colocation);
-        final String createTest1 = String.format("CREATE TABLE test_1 (id INT PRIMARY KEY," +
-                                                 "name TEXT DEFAULT 'Vaibhav Kushwaha') " +
-                                                  "WITH (COLOCATION = %b);", colocation);
-        final String createTest2 = String.format("CREATE TABLE test_2 (text_key TEXT PRIMARY " +
-                                                 "KEY) WITH (COLOCATION = %b);", colocation);
-        final String createTest3 =
-          String.format("CREATE TABLE test_3 (hours FLOAT PRIMARY KEY, " +
-                        "hours_in_text VARCHAR(40) DEFAULT 'some_default_hour_value') " +
-                        "WITH (COLOCATION = %b);", colocation);
-        final String createTestNoColocated = "CREATE TABLE test_no_colocated (id INT PRIMARY KEY," +
-                                             "name TEXT DEFAULT 'name_for_non_colocated') " +
-                                             "WITH (COLOCATION = false) SPLIT INTO 3 TABLETS;";
-
-        TestHelper.executeInDatabase(createTest1, DEFAULT_COLOCATED_DB_NAME);
-        TestHelper.executeInDatabase(createTest2, DEFAULT_COLOCATED_DB_NAME);
-        TestHelper.executeInDatabase(createTest3, DEFAULT_COLOCATED_DB_NAME);
-        TestHelper.executeInDatabase(createTestNoColocated, DEFAULT_COLOCATED_DB_NAME);
-    }
-
-    /**
-     * Helper function to drop all the tables being created as a part of this test.
-     */
-    private void dropAllTables() {
-        TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_1;", DEFAULT_COLOCATED_DB_NAME);
-        TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_2;", DEFAULT_COLOCATED_DB_NAME);
-        TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_3;", DEFAULT_COLOCATED_DB_NAME);
-        TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_no_colocated;", DEFAULT_COLOCATED_DB_NAME);
-        TestHelper.executeInDatabase("DROP TABLE IF EXISTS all_types;", DEFAULT_COLOCATED_DB_NAME);
-    }
-
-    private void insertBulkRecords(int numRecords, String fullTableName) {
-        String formatInsertString = "INSERT INTO " + fullTableName + " VALUES (%d);";
-        TestHelper.executeBulk(formatInsertString, numRecords, DEFAULT_COLOCATED_DB_NAME);
-    }
-
-    private void insertBulkRecordsInRange(int beginKey, int endKey, String fullTableName) {
-        String formatInsertString = "INSERT INTO " + fullTableName + " VALUES (%d);";
-        TestHelper.executeBulkWithRange(formatInsertString, beginKey, endKey, DEFAULT_COLOCATED_DB_NAME);
-    }
-
     private void verifyRecordCount(long recordsCount) {
         waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
     }

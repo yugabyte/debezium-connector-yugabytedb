@@ -137,6 +137,10 @@ public class TestBaseClass extends AbstractConnectorTest {
     startEngine(configBuilder, (success, message, error) -> {});
   }
 
+  public void startEngineWithPartialConsumptionOfLastBatch(Configuration.Builder configBuilder, int snapshotRecords) {
+    startEngineWithPartialConsumptionOfLastBatch(configBuilder, snapshotRecords, (success, message, error) -> {});
+  }
+
   public void startEngine(Configuration.Builder configBuilder,
                           DebeziumEngine.CompletionCallback callback) {
     configBuilder
@@ -187,6 +191,67 @@ public class TestBaseClass extends AbstractConnectorTest {
                  // invokes commitOffset() in the change event source classes.
                  TestHelper.waitFor(Duration.ofMillis(callbackDelay));
                  committer.markBatchFinished();
+               }).build();
+
+    engineExecutor = Executors.newFixedThreadPool(1);
+    engineExecutor.submit(() -> {
+      LoggingContext.forConnector(getClass().getSimpleName(), "", "engine");
+      engine.run();
+    });
+  }
+
+  public void startEngineWithPartialConsumptionOfLastBatch(Configuration.Builder configBuilder, int snapshotRecords, DebeziumEngine.CompletionCallback callback) {
+    configBuilder
+      .with(EmbeddedEngine.ENGINE_NAME, "test-connector")
+      .with(EmbeddedEngine.OFFSET_STORAGE, MemoryOffsetBackingStore.class.getName())
+      .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
+      .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBConnector.class);
+
+    countDownLatch = new CountDownLatch(1);
+    DebeziumEngine.CompletionCallback wrapperCallback = (success, msg, error) -> {
+      try {
+        if (callback != null) {
+          callback.handle(success, msg, error);
+        }
+      }
+      finally {
+        if (!success) {
+          // we only unblock if there was an error; in all other cases we're unblocking when a task has been started
+          countDownLatch.countDown();
+        }
+      }
+      Testing.debug("Stopped connector");
+    };
+
+    DebeziumEngine.ConnectorCallback connectorCallback = new DebeziumEngine.ConnectorCallback() {
+      @Override
+      public void taskStarted() {
+        // if this is called, it means a task has been started successfully so we can continue
+        countDownLatch.countDown();
+      }
+    };
+
+    engine = (EmbeddedEngine) EmbeddedEngine.create()
+               .using(configBuilder.build())
+               .using(OffsetCommitPolicy.always())
+               .using(wrapperCallback)
+               .using(connectorCallback)
+               .using(this.getClass().getClassLoader())
+               .notifying((records, committer) -> {
+                 for (SourceRecord record: records) {
+                  // Partially consume the last batch
+                  if(linesConsumed.size() > (snapshotRecords - 25)) { 
+                    break;
+                  }
+                  linesConsumed.add(record);  
+                  committer.markProcessed(record);
+                  offsetMapForRecords = record.sourceOffset(); 
+                 }
+
+                 // This method here is responsible for calling the commit() method which later
+                 // invokes commitOffset() in the change event source classes.
+                 TestHelper.waitFor(Duration.ofMillis(callbackDelay));
+                  committer.markBatchFinished();
                }).build();
 
     engineExecutor = Executors.newFixedThreadPool(1);
@@ -312,6 +377,50 @@ public class TestBaseClass extends AbstractConnectorTest {
     waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
   }
 
+  protected void insertBulkRecords(int numRecords, String fullTableName) {
+    String formatInsertString = "INSERT INTO " + fullTableName + " VALUES (%d);";
+    TestHelper.executeBulk(formatInsertString, numRecords, DEFAULT_COLOCATED_DB_NAME);
+  }
+
+  /**
+   * Helper function to create the required tables in the database DEFAULT_COLOCATED_DB_NAME
+   */
+  protected void createTables(boolean colocation) {
+    LOGGER.info("Creating tables with colocation: {}", colocation);
+    final String createTest1 = String.format("CREATE TABLE test_1 (id INT PRIMARY KEY," +
+                                              "name TEXT DEFAULT 'Vaibhav Kushwaha') " +
+                                              "WITH (COLOCATION = %b);", colocation);
+    final String createTest2 = String.format("CREATE TABLE test_2 (text_key TEXT PRIMARY " +
+                                              "KEY) WITH (COLOCATION = %b);", colocation);
+    final String createTest3 =
+      String.format("CREATE TABLE test_3 (hours FLOAT PRIMARY KEY, " +
+                    "hours_in_text VARCHAR(40) DEFAULT 'some_default_hour_value') " +
+                    "WITH (COLOCATION = %b);", colocation);
+    final String createTestNoColocated = "CREATE TABLE test_no_colocated (id INT PRIMARY KEY," +
+                                          "name TEXT DEFAULT 'name_for_non_colocated') " +
+                                          "WITH (COLOCATION = false) SPLIT INTO 3 TABLETS;";
+
+    TestHelper.executeInDatabase(createTest1, DEFAULT_COLOCATED_DB_NAME);
+    TestHelper.executeInDatabase(createTest2, DEFAULT_COLOCATED_DB_NAME);
+    TestHelper.executeInDatabase(createTest3, DEFAULT_COLOCATED_DB_NAME);
+    TestHelper.executeInDatabase(createTestNoColocated, DEFAULT_COLOCATED_DB_NAME);
+  }
+
+  /**
+   * Helper function to drop all the tables being created as a part of this test.
+   */
+  protected void dropAllTables() {
+    TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_1;", DEFAULT_COLOCATED_DB_NAME);
+    TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_2;", DEFAULT_COLOCATED_DB_NAME);
+    TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_3;", DEFAULT_COLOCATED_DB_NAME);
+    TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_no_colocated;", DEFAULT_COLOCATED_DB_NAME);
+    TestHelper.executeInDatabase("DROP TABLE IF EXISTS all_types;", DEFAULT_COLOCATED_DB_NAME);
+  }
+
+  protected void insertBulkRecordsInRange(int beginKey, int endKey, String fullTableName) {
+    String formatInsertString = "INSERT INTO " + fullTableName + " VALUES (%d);";
+    TestHelper.executeBulkWithRange(formatInsertString, beginKey, endKey, DEFAULT_COLOCATED_DB_NAME);
+  }
   protected class SourceRecords {
     private final List<SourceRecord> records = new ArrayList<>();
     private final Map<String, List<SourceRecord>> recordsByTopic = new HashMap<>();
