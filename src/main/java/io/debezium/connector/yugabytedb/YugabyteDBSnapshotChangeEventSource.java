@@ -443,6 +443,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
           if (isSnapshotRequired(resp, p, snapshotCompletedTablets, snapshotCompletedPreviously)) {
             startLsn = getSnapshotStartLsn(resp);
+            // Add only those tablets for which we are planning to take a snapshot.
+            shouldWaitForCallback.add(p.getId());
           }
         } else {
           // At this stage we know that the particular table is not a part of the
@@ -455,7 +457,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
         previousOffset.initSourceInfo(p, this.connectorConfig, startLsn);
         schemaNeeded.put(p.getId(), Boolean.TRUE);
-        shouldWaitForCallback.add(p.getId());
         LOGGER.debug("Previous offset for table {} tablet {} is {}", p.getTableId(),
                      p.getTabletId(), previousOffset.toString());
       }
@@ -712,6 +713,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       LOGGER.info("Adding {} to the list of snapshot completed tablets", part.getId());
                       snapshotCompletedTablets.add(part.getId());
                       markSnapshotDoneOnServer(part, previousOffset);
+                      // Ideally, a tablet shouldnt be present in tabletsWaitingForCallback set if the flow reaches
+                      // this point. This is just a safety mechanism to ensure that snapshotCompletedTablets &
+                      // tabletsWaitingForCallback are always mutually exclusive.
+                      tabletsWaitingForCallback.removeIf(t -> t.equals(part.getId()));
                     }
                   }
                 } else if (!taskContext.shouldEnableExplicitCheckpointing() && isSnapshotCompleteMarker(finalOpId)) {
