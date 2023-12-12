@@ -619,7 +619,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                         // of Opid to max values and snapshot key to LAST_SNAPSHOT_RECORD.
                         if (isSnapshotCompleteMarker(finalOpId) &&
                                 (idx == (resp.getResp().getCdcSdkProtoRecordsList().size() - 1))) {
-                          LOGGER.info("Modifying record checkpoint for last snapshot record of the last snapshot batch");
+                          LOGGER.debug("Modifying record checkpoint for last snapshot record of the last snapshot batch");
                           lsn = getIdentificationMarkerForLastSnapshotRecord();
                         }
                       }
