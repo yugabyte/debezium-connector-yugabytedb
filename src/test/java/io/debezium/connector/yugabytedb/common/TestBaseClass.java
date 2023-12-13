@@ -200,7 +200,11 @@ public class TestBaseClass extends AbstractConnectorTest {
     });
   }
 
-  public void startEngineWithPartialConsumptionOfLastBatch(Configuration.Builder configBuilder, int snapshotRecords, DebeziumEngine.CompletionCallback callback) {
+  public int getNonConsumedRecordCount() {
+    return linesConsumed.size();
+  }
+
+  public void startEngineWithPartialConsumptionOfLastBatch(Configuration.Builder configBuilder, int totalRecordsToConsume, DebeziumEngine.CompletionCallback callback) {
     configBuilder
       .with(EmbeddedEngine.ENGINE_NAME, "test-connector")
       .with(EmbeddedEngine.OFFSET_STORAGE, MemoryOffsetBackingStore.class.getName())
@@ -240,7 +244,7 @@ public class TestBaseClass extends AbstractConnectorTest {
                .notifying((records, committer) -> {
                  for (SourceRecord record: records) {
                   // Partially consume the last batch
-                  if(linesConsumed.size() > (snapshotRecords - 25)) { 
+                  if(linesConsumed.size() >= totalRecordsToConsume) {
                     break;
                   }
                   linesConsumed.add(record);  
