@@ -252,9 +252,36 @@ public class TestBaseClass extends AbstractConnectorTest {
    * Consume the records available and add them to a list for further assertion purposes.
    * @param records list to which we need to add the records we consume, pass a
    * {@code new ArrayList<>()} if you do not need assertions on the consumed values
-   * @param recordsCount total number of records which should be consumed
+   * @param recordsCount Max number of records that can be consumed if available
    * @param milliSecondsToWait duration in milliseconds to wait for while consuming
    */
+  protected void waitAndConsume(List<SourceRecord> records, long recordsCount,
+                                            long milliSecondsToWait) {
+      AtomicLong totalConsumedRecords = new AtomicLong();
+      long seconds = milliSecondsToWait / 1000;
+      try {
+          Awaitility.await()
+              .atMost(Duration.ofSeconds(seconds))
+              .until(() -> {
+                  int consumed = consumeAvailableRecords(record -> {
+                      LOGGER.debug("The record being consumed is " + record);
+                      records.add(record);
+                  });
+                  if (consumed > 0) {
+                      totalConsumedRecords.addAndGet(consumed);
+                      LOGGER.info("Consumed " + totalConsumedRecords + " records");
+                  }
+
+                  return totalConsumedRecords.get() >= recordsCount;
+              });
+      } catch (ConditionTimeoutException exception) {
+        // Dont fail and throw exception
+      }
+      finally { 
+        LOGGER.info("Consumed only {} in {} seconds", totalConsumedRecords.get(), milliSecondsToWait);
+      }
+  }
+
   protected void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
                                             long milliSecondsToWait) {
       AtomicLong totalConsumedRecords = new AtomicLong();
