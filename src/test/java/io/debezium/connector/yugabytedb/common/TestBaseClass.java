@@ -244,7 +244,7 @@ public class TestBaseClass extends AbstractConnectorTest {
                .notifying((records, committer) -> {
                  for (SourceRecord record: records) {
                   // Partially consume the last batch
-                  if(linesConsumed.size() >= totalRecordsToConsume) {
+                  if (linesConsumed.size() >= totalRecordsToConsume) {
                     break;
                   }
                   linesConsumed.add(record);  
