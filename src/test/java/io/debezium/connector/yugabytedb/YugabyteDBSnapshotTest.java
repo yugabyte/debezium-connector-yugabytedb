@@ -42,6 +42,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         TestHelper.dropAllSchemas();
         YugabyteDBSnapshotChangeEventSource.FAIL_AFTER_SETTING_INITIAL_CHECKPOINT = false;
         YugabyteDBSnapshotChangeEventSource.FAIL_AFTER_BOOTSTRAP_GET_CHANGES = false;
+        YugabyteDBSnapshotChangeEventSource.FAIL_WHEN_MARKING_SNAPSHOT_DONE = false;
     }
 
     @AfterEach
@@ -53,6 +54,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         resetCommitCallbackDelay();
         YugabyteDBSnapshotChangeEventSource.FAIL_AFTER_SETTING_INITIAL_CHECKPOINT = false;
         YugabyteDBSnapshotChangeEventSource.FAIL_AFTER_BOOTSTRAP_GET_CHANGES = false;
+        YugabyteDBSnapshotChangeEventSource.FAIL_WHEN_MARKING_SNAPSHOT_DONE = false;
     }
 
     @AfterAll
@@ -880,6 +882,48 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         assertEquals(recordCountForTest2 + 201, recordsForTest2.size());
         assertEquals(301, recordsForTest3.size());
         assertEquals(recordCountInNonColocated + 401, recordsForNonColocated.size());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void verifyConnectorFailsIfMarkSnapshotDoneFails(boolean colocation) throws Exception {
+        createTables(colocation);
+
+        int recordCountT1 = 5000;
+
+        // Insert records in the table test_1
+        insertBulkRecords(recordCountT1, "public.test_1");
+
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial")
+            .with(YugabyteDBConnectorConfig.MAX_CONNECTOR_RETRIES, "1");
+        YugabyteDBSnapshotChangeEventSource.FAIL_WHEN_MARKING_SNAPSHOT_DONE = true;
+        startEngine(configBuilder);
+
+        awaitUntilConnectorIsReady();
+
+        // Dummy wait for some time so that the connector has some time to transition to streaming.
+        TestHelper.waitFor(Duration.ofSeconds(30));
+        String insertStringFormat = "INSERT INTO test_1 VALUES (%s);";
+        TestHelper.executeInDatabase(
+          String.format(insertStringFormat,
+            String.format("generate_series(%d, %d)",
+              recordCountT1, recordCountT1 + 10000)), DEFAULT_COLOCATED_DB_NAME);
+
+        // Total records inserted at this stage would be recordCountT1 + 1001
+        int totalRecords = recordCountT1 + 1001;
+
+        List<SourceRecord> records = new ArrayList<>();
+        // We are intentionally passing expected records as totalRecords but the expected behavior 
+        // with the test flag enabled is that we will only receive snapshot records and no streaming
+        // records.
+        waitAndConsume(records, totalRecords, 300*1000);
+        assertNoRecordsToConsume();
+        // Should have recevied only snapshot records.
+        assertNotEquals(totalRecords, records.size());
+        assertEquals(recordCountT1, records.size());
+        YugabyteDBSnapshotChangeEventSource.FAIL_WHEN_MARKING_SNAPSHOT_DONE = false;
     }
 
     /**
