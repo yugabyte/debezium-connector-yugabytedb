@@ -814,7 +814,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       try {
         LOGGER.info("Marking snapshot completed on service for table {} tablet {}", partition.getTableId(), partition.getTabletId());
         // This flag is only meant for testing purposes only.
-        if(FAIL_WHEN_MARKING_SNAPSHOT_DONE) {
+        if (FAIL_WHEN_MARKING_SNAPSHOT_DONE) {
           throw new RuntimeException(String.format("[TEST ONLY] Throwing Error explicitly while marking snpashot done for tablet: " + partition.getId()));
         }
         GetChangesResponse response =
