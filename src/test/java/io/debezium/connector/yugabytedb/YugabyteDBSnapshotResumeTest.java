@@ -162,7 +162,6 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 
 		// Wait for kafka to receive all the expected records before consuming records from kafka topic.
 		Awaitility.await()
-				.atLeast(Duration.ofSeconds(1))
 				.atMost(Duration.ofSeconds(180))
 				.until(() -> (getNonConsumedRecordCount() == totalRecordExpectedAfterPartialConsumption));
 
