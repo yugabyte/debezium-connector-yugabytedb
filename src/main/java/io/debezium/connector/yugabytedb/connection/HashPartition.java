@@ -239,8 +239,10 @@ public class HashPartition implements Comparable<HashPartition>, Serializable {
    * @param tabletCheckpointPair a {@link org.yb.cdc.CdcService.TabletCheckpointPair}  from the {@link org.yb.client.GetTabletListToPollForCDCResponse}
    * @return {@link HashPartition}
    */
-  public static HashPartition from(CdcService.TabletCheckpointPair tabletCheckpointPair) {
-    return new HashPartition(tabletCheckpointPair.getTabletLocations().getTableId().toStringUtf8(),
+  public static HashPartition from(CdcService.TabletCheckpointPair tabletCheckpointPair, String tableId) {
+    // TODO: The tableId returned in case of colocated tables is not the correct table ID here.
+    //  We only get the parent colocated ID in the response, this behaviour needs to be fixed on service.
+    return new HashPartition(tableId,
       tabletCheckpointPair.getTabletLocations().getTabletId().toStringUtf8(),
       tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyStart().toByteArray(),
       tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyEnd().toByteArray());
@@ -256,11 +258,11 @@ public class HashPartition implements Comparable<HashPartition>, Serializable {
    * @param response of type {@link GetTabletListToPollForCDCResponse}
    * @return a list of {@link HashPartition}
    */
-  public static List<HashPartition> from(GetTabletListToPollForCDCResponse response) {
+  public static List<HashPartition> getListFrom(GetTabletListToPollForCDCResponse response, String tableId) {
     List<HashPartition> result = new ArrayList<>();
 
     for (CdcService.TabletCheckpointPair tcp : response.getTabletCheckpointPairList()) {
-      result.add(from(tcp));
+      result.add(from(tcp, tableId));
     }
 
     return result;

@@ -287,17 +287,19 @@ public class YugabyteDBStreamingChangeEventSource implements
      * adds the tablets in the response which are contained in the parent partition ranges. Note
      * that this method also assumes that the object {@code partitionRanges} is already populated.
      *
+     * @param tableId the tableUUID for which the {@link GetTabletListToPollForCDCResponse} is passed
      * @param response of type {@link GetTabletListToPollForCDCResponse}
      * @param tabletPairList a list of {@link Pair} to be populated where each pair is {@code <tableId, tabletId>}
      */
-    protected void populateTableToTabletPairsForTask(GetTabletListToPollForCDCResponse response, List<Pair<String, String>> tabletPairList) {
+    protected void populateTableToTabletPairsForTask(String tableId, GetTabletListToPollForCDCResponse response,
+                                                     List<Pair<String, String>> tabletPairList) {
         // Verify that the partitionRanges are already populated.
         Objects.requireNonNull(partitionRanges);
         assert !partitionRanges.isEmpty();
 
         // Iterate over the stored partitions and add valid tablets for streaming.
         for (TabletCheckpointPair pair : response.getTabletCheckpointPairList()) {
-            HashPartition hp = HashPartition.from(pair);
+            HashPartition hp = HashPartition.from(pair, tableId);
 
             for (HashPartition parent : partitionRanges) {
                 if (parent.containsPartition(hp)) {
@@ -332,12 +334,14 @@ public class YugabyteDBStreamingChangeEventSource implements
                 GetTabletListToPollForCDCResponse resp =
                         YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
 
-                // Validate that we receive the complete range of tablets.
-                HashPartition.validateCompleteRanges(HashPartition.from(resp));
+                // Validate that we receive the complete range of tablets in case of non-colocated tables.
+                if (!table.isColocated()) {
+                    HashPartition.validateCompleteRanges(HashPartition.getListFrom(resp, tId));
+                }
 
                 // TODO: One optimisation where we initialise the offset context here itself
                 //  without storing the GetTabletListToPollForCDCResponse
-                populateTableToTabletPairsForTask(resp, tabletPairList);
+                populateTableToTabletPairsForTask(tId, resp, tabletPairList);
                 LOGGER.info("Table: {} with number of tablets {}", tId, resp.getTabletCheckpointPairListSize());
                 tabletListResponse.put(tId, resp);
             }
@@ -964,11 +968,12 @@ public class YugabyteDBStreamingChangeEventSource implements
      * This method is generally supposed to be called in the tablet split flow to check whether
      * the child tablet we have received has a parent partition already.
      * @param tabletCheckpointPair the {@link TabletCheckpointPair} for the tablet to be verified
+     * @param tableId the table UUID
      */
-    private void assertTabletPresentInOriginalRanges(TabletCheckpointPair tabletCheckpointPair) {
+    private void assertTabletPresentInOriginalRanges(TabletCheckpointPair tabletCheckpointPair, String tableId) {
         boolean tabletFound = false;
 
-        HashPartition tabletToVerify = HashPartition.from(tabletCheckpointPair);
+        HashPartition tabletToVerify = HashPartition.from(tabletCheckpointPair, tableId);
         for (HashPartition parent : partitionRanges) {
             if (parent.containsPartition(tabletToVerify)) {
                 tabletFound = true;
@@ -993,7 +998,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                        String tableId,
                                        YugabyteDBOffsetContext offsetContext,
                                        Map<String, Boolean> schemaNeeded) {
-        assertTabletPresentInOriginalRanges(pair);
+        assertTabletPresentInOriginalRanges(pair, tableId);
 
         String tabletId = pair.getTabletLocations().getTabletId().toStringUtf8();
         ImmutablePair<String, String> tableTabletPair =
