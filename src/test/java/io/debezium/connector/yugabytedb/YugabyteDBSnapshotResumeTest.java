@@ -132,7 +132,7 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 		YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = false;
 	}
 
-	@ParameterizedTest
+  @ParameterizedTest
   @ValueSource(booleans = {true, false})
   public void verifyNoDataLossIfConnectorRestartDuringLastBatchConsumption (boolean colocation) throws Exception {
     /*
