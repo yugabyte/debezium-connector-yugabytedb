@@ -32,7 +32,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
 
   @BeforeAll
   public static void beforeClass() throws Exception {
-    initializeYBContainer("TEST_yb_enable_cdc_consistent_snapshot_streams=true", null);
+    initializeYBContainer();
     TestHelper.dropAllSchemas();
     TestHelper.executeDDL("yugabyte_create_tables.ddl");
   }

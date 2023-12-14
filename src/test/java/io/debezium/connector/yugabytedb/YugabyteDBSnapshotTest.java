@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @BeforeAll
     public static void beforeClass() throws Exception {
-        initializeYBContainer("TEST_yb_enable_cdc_consistent_snapshot_streams=true", null);
+        initializeYBContainer();
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
     }
@@ -748,11 +748,12 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     // the behaviour on failure after snapshot bootstrap call. For consistent
     // snapshot streams, the very first getChanges call starts the snapshot consumption
     @ParameterizedTest
-    @ValueSource(booleans = {true, false})
-    public void snapshotTwoColocatedNonEmptyAndNonColocatedEmptyThenStream(boolean colocation) throws Exception {
-        /* The objective of this test is to verify that we are able to consume all snapshot records on a
-            combination of empty & non-empty tables and successfully switch to streaming phase and consume
-            the streaming records for all the tables.
+    @MethodSource("argumentProviderForEmptyNonEmptyNonColocatedTables")
+    public void snapshotTwoColocatedAndEmptyNonEmptyNonColocatedThenStream(boolean emptyNonColocated, boolean colocation) throws Exception {
+        /*
+         * The objective of this test is to verify that we are able to consume all
+         * snapshot records on a combination of empty & non-empty tables and 
+         * successfully switch to streaming phase and consume the streaming records for all the tables.
          */
 
         // Create tables.
@@ -761,8 +762,13 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         // 2 colocated non-empty tables + 1 colocated empty table + 1 non-colocated empty table
         final int recordCountForTest1 = 1000;
         final int recordCountForTest2 = 2000;
+        final int recordCountInNonColocated = 2000;
         insertBulkRecords(recordCountForTest1, "public.test_1");
         insertBulkRecords(recordCountForTest2, "public.test_2");
+
+        if (!emptyNonColocated) {
+            insertBulkRecords(recordCountInNonColocated, "public.test_no_colocated");
+        }
 
         String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
         Configuration.Builder configBuilder =
@@ -799,7 +805,11 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
 
         List<SourceRecord> records = new ArrayList<>();
 
-        waitAndFailIfCannotConsume(records, recordCountForTest1 + recordCountForTest2 + totalStreamingRecords);
+        if (emptyNonColocated) {
+            waitAndFailIfCannotConsume(records, recordCountForTest1 + recordCountForTest2 + totalStreamingRecords);
+        } else {
+            waitAndFailIfCannotConsume(records, recordCountForTest1 + recordCountForTest2 + recordCountInNonColocated + totalStreamingRecords);
+        }
 
         // Iterate over the records and add them to their respective topic
         for (SourceRecord record : records) {
@@ -817,15 +827,20 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         assertEquals(recordCountForTest1 + 101, recordsForTest1.size());
         assertEquals(recordCountForTest2 + 201, recordsForTest2.size());
         assertEquals(301, recordsForTest3.size());
-        assertEquals(401, recordsForNonColocated.size());
+        if (emptyNonColocated) {
+            assertEquals(401, recordsForNonColocated.size());
+        } else {
+            assertEquals(recordCountInNonColocated + 401, recordsForNonColocated.size());
+        }
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {true, false})
-    public void snapshotTwoColocatedNonEmptyAndNonColocatedEmptyThenStreamWithConsistentSnapshot(boolean colocation) throws Exception {
-        /* The objective of this test is to verify that we are able to consume all snapshot records on a
-            combination of empty & non-empty tables and successfully switch to streaming phase and consume
-            the streaming records for all the tables.
+    @MethodSource("argumentProviderForEmptyNonEmptyNonColocatedTables")
+    public void snapshotTwoColocatedAndEmptyNonEmptyNonColocatedThenStreamWithConsistentSnapshot(boolean emptyNonColocated, boolean colocation) throws Exception {
+        /*
+         * The objective of this test is to verify that we are able to consume all
+         * snapshot records on a combination of empty & non-empty tables and successfully
+         * switch to streaming phase and consume the streaming records for all the tables.
          */
 
         // Create tables.
@@ -834,8 +849,13 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         // 2 colocated non-empty tables + 1 colocated empty table + 1 non-colocated empty table
         final int recordCountForTest1 = 1000;
         final int recordCountForTest2 = 2000;
+        final int recordCountInNonColocated = 2000;
         insertBulkRecords(recordCountForTest1, "public.test_1");
         insertBulkRecords(recordCountForTest2, "public.test_2");
+        
+        if (!emptyNonColocated) {
+            insertBulkRecords(recordCountInNonColocated, "public.test_no_colocated");
+        }
 
         String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1", true, true);
         Configuration.Builder configBuilder =
@@ -857,8 +877,12 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
 
         List<SourceRecord> records = new ArrayList<>();
 
-        waitAndFailIfCannotConsume(records, recordCountForTest1 + recordCountForTest2 + totalStreamingRecords);
-
+        if (emptyNonColocated) {
+            waitAndFailIfCannotConsume(records, recordCountForTest1 + recordCountForTest2 + totalStreamingRecords);
+        } else {
+            waitAndFailIfCannotConsume(records, recordCountForTest1 + recordCountForTest2 + recordCountInNonColocated + totalStreamingRecords);
+        }
+        
         // Iterate over the records and add them to their respective topic
         for (SourceRecord record : records) {
             if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_1")) {
@@ -875,147 +899,12 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         assertEquals(recordCountForTest1 + 101, recordsForTest1.size());
         assertEquals(recordCountForTest2 + 201, recordsForTest2.size());
         assertEquals(301, recordsForTest3.size());
-        assertEquals(401, recordsForNonColocated.size());
-    }
-
-
-    // This test should not be run with consistent snapshot stream since it verifies
-    // the behaviour on failure after snapshot bootstrap call. For consistent
-    // snapshot streams, the very first getChanges call starts the snapshot consumption
-    @ParameterizedTest
-    @ValueSource(booleans = {true, false})
-    public void snapshotTwoColocatedNonEmptyAndNonColocatedNonEmptyThenStream(boolean colocation) throws Exception {
-        /* The objective of this test is to verify that we are able to consume all snapshot records on a
-            combination of empty & non-empty tables and successfully switch to streaming phase and consume
-            the streaming records for all the tables.
-         */
-        // Create tables.
-        createTables(colocation);
-
-        // 2 colocated non-empty tables + 1 colocated empty table + 1 non-colocated non-empty table
-        final int recordCountForTest1 = 1000;
-        final int recordCountForTest2 = 2000;
-        final int recordCountInNonColocated = 2000;
-        insertBulkRecords(recordCountForTest1, "public.test_1");
-        insertBulkRecords(recordCountForTest2, "public.test_2");
-        insertBulkRecords(recordCountInNonColocated, "public.test_no_colocated");
-
-        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
-        Configuration.Builder configBuilder =
-                TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2,public.test_3,public.test_no_colocated", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE,
-                YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
-
-        // Enable the failure flag to introduce an explicit failure.
-        YugabyteDBSnapshotChangeEventSource.FAIL_AFTER_BOOTSTRAP_GET_CHANGES = true;
-        startEngine(configBuilder);
-
-        // Since we have specified the failure flag, we should not get any snapshot and
-        // connector would fail after the first GetChanges call to all the tablets. Verify that
-        // we haven't received any record even after waiting for a minute.
-        TestHelper.waitFor(Duration.ofMinutes(1));
-        assertNoRecordsToConsume();
-
-        // Stop the connector.
-        stopConnector();
-
-        // Disable the failure flag so that execution can happen normally.
-        YugabyteDBSnapshotChangeEventSource.FAIL_AFTER_BOOTSTRAP_GET_CHANGES = false;
-        startEngine(configBuilder);
-
-        // Wait until connector is started.
-        awaitUntilConnectorIsReady();
-
-        List<SourceRecord> recordsForTest1 = new ArrayList<>();
-        List<SourceRecord> recordsForTest2 = new ArrayList<>();
-        List<SourceRecord> recordsForTest3 = new ArrayList<>();
-        List<SourceRecord> recordsForNonColocated = new ArrayList<>();
-
-        final int totalStreamingRecords = insertStreamingRecordsInAllTables();
-
-        List<SourceRecord> records = new ArrayList<>();
-
-        waitAndFailIfCannotConsume(records, recordCountForTest1 + recordCountForTest2 + recordCountInNonColocated + totalStreamingRecords);
-
-
-        // Iterate over the records and add them to their respective topic
-        for (SourceRecord record : records) {
-            if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_1")) {
-                recordsForTest1.add(record);
-            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_2")) {
-                recordsForTest2.add(record);
-            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_3")) {
-                recordsForTest3.add(record);
-            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_no_colocated")) {
-                recordsForNonColocated.add(record);
-            }
+        if (emptyNonColocated) {
+            assertEquals(401, recordsForNonColocated.size());
+        } else {
+            assertEquals(recordCountInNonColocated + 401, recordsForNonColocated.size());
         }
-
-        assertEquals(recordCountForTest1 + 101, recordsForTest1.size());
-        assertEquals(recordCountForTest2 + 201, recordsForTest2.size());
-        assertEquals(301, recordsForTest3.size());
-        assertEquals(recordCountInNonColocated + 401, recordsForNonColocated.size());
     }
-
-    @ParameterizedTest
-    @ValueSource(booleans = {true, false})
-    public void snapshotTwoColocatedNonEmptyAndNonColocatedNonEmptyThenStreamWithConsistentSnapshot(boolean colocation) throws Exception {
-        /* The objective of this test is to verify that we are able to consume all snapshot records on a
-            combination of empty & non-empty tables and successfully switch to streaming phase and consume
-            the streaming records for all the tables.
-         */
-        // Create tables.
-        createTables(colocation);
-
-        // 2 colocated non-empty tables + 1 colocated empty table + 1 non-colocated non-empty table
-        final int recordCountForTest1 = 1000;
-        final int recordCountForTest2 = 2000;
-        final int recordCountInNonColocated = 2000;
-        insertBulkRecords(recordCountForTest1, "public.test_1");
-        insertBulkRecords(recordCountForTest2, "public.test_2");
-        insertBulkRecords(recordCountInNonColocated, "public.test_no_colocated");
-
-        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1", true, true);
-        Configuration.Builder configBuilder =
-                TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2,public.test_3,public.test_no_colocated", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE,
-                YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
-
-        startEngine(configBuilder);
-        // Wait until connector is started.
-        awaitUntilConnectorIsReady();
-
-        List<SourceRecord> recordsForTest1 = new ArrayList<>();
-        List<SourceRecord> recordsForTest2 = new ArrayList<>();
-        List<SourceRecord> recordsForTest3 = new ArrayList<>();
-        List<SourceRecord> recordsForNonColocated = new ArrayList<>();
-
-        final int totalStreamingRecords = insertStreamingRecordsInAllTables();
-
-        List<SourceRecord> records = new ArrayList<>();
-
-        waitAndFailIfCannotConsume(records, recordCountForTest1 + recordCountForTest2 + recordCountInNonColocated + totalStreamingRecords);
-
-
-        // Iterate over the records and add them to their respective topic
-        for (SourceRecord record : records) {
-            if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_1")) {
-                recordsForTest1.add(record);
-            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_2")) {
-                recordsForTest2.add(record);
-            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_3")) {
-                recordsForTest3.add(record);
-            } else if (record.topic().equals(TestHelper.TEST_SERVER + ".public.test_no_colocated")) {
-                recordsForNonColocated.add(record);
-            }
-        }
-
-        assertEquals(recordCountForTest1 + 101, recordsForTest1.size());
-        assertEquals(recordCountForTest2 + 201, recordsForTest2.size());
-        assertEquals(301, recordsForTest3.size());
-        assertEquals(recordCountInNonColocated + 401, recordsForNonColocated.size());
-    }
-
 
     @ParameterizedTest
     @MethodSource("streamTypeProviderForSnapshotWithColocation")
@@ -1114,6 +1003,14 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
                 Arguments.of(false, false, false), // Older stream without colocation
                 Arguments.of(true, true, true), // USE_SNAPSHOT stream with colocation
                 Arguments.of(true, true, false));  // USE_SNAPSHOT stream without colocation
+    }
+
+    static Stream<Arguments> argumentProviderForEmptyNonEmptyNonColocatedTables() {
+        return Stream.of(
+            Arguments.of(true, true), // Empty Non Colocated table with colocation
+            Arguments.of(true, false), // Empty Non Colocated table without colocation
+            Arguments.of(false, true), // Non-empty Non Colocated table with colocation
+            Arguments.of(false, false)); // Non-empty Non Colocated table without colocation
     }
 
     private int insertStreamingRecordsInAllTables() {

@@ -29,8 +29,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
   @BeforeAll
   public static void beforeClass() throws SQLException {
       String tserverFlags = "cdc_max_stream_intent_records=200";
-      String masterFlags = "TEST_yb_enable_cdc_consistent_snapshot_streams=true";
-      initializeYBContainer(masterFlags, tserverFlags);
+      initializeYBContainer(null, tserverFlags);
       TestHelper.dropAllSchemas();
   }
 

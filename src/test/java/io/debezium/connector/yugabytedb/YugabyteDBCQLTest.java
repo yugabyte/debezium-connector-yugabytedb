@@ -36,7 +36,7 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
 
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        initializeYBContainer("TEST_yb_enable_cdc_consistent_snapshot_streams=true", null);
+        initializeYBContainer();
     }
 
     @BeforeEach

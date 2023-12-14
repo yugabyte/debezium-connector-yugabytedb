@@ -134,9 +134,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        initializeYBContainer(
-                "enable_tablet_split_of_cdcsdk_streamed_tables=true,TEST_yb_enable_cdc_consistent_snapshot_streams=true",
-                null);
+        initializeYBContainer("enable_tablet_split_of_cdcsdk_streamed_tables=true", null);
         TestHelper.dropAllSchemas();
     }
 
