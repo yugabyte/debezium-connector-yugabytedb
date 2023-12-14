@@ -133,76 +133,76 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 	}
 
 	@ParameterizedTest
-	@ValueSource(booleans = {true, false})
-	public void verifyNoDataLossIfConnectorRestartDuringLastBatchConsumption (boolean colocation) throws Exception {
-		/*
-		 * The objective of this test is to verify the connector starts in the snapshot phase and
-		 * consumes the all the snapshot records before switching to streaming phase in the
-		 * following scenario: Connector restarts after it has received the last snapshot batch but
-		 * kafka hasn't fully consumed the last batch.
-		 */
-		TestHelper.dropAllSchemas();
-		TestHelper.executeDDL("yugabyte_create_tables.ddl");
-		createTables(colocation);
+  @ValueSource(booleans = {true, false})
+  public void verifyNoDataLossIfConnectorRestartDuringLastBatchConsumption (boolean colocation) throws Exception {
+    /*
+     * The objective of this test is to verify the connector starts in the snapshot phase and
+     * consumes the all the snapshot records before switching to streaming phase in the
+     * following scenario: Connector restarts after it has received the last snapshot batch but
+     * kafka hasn't fully consumed the last batch.
+     */
+    TestHelper.dropAllSchemas();
+    TestHelper.executeDDL("yugabyte_create_tables.ddl");
+    createTablesInColocatedDB(colocation);
 
-		final int recordsCount = 1000;
-		final int totalRecordExpectedAfterPartialConsumption = recordsCount - snapshotBatchSize / 2;
+    final int recordsCount = 1000;
+    final int totalRecordExpectedAfterPartialConsumption = recordsCount - snapshotBatchSize / 2;
 
-		insertBulkRecords(recordsCount, "public.test_1");
+    insertBulkRecordsInColocatedDB(recordsCount, "public.test_1");
 
-		YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = true;
+    YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = true;
 
-		String dbStreamId = TestHelper.getNewDbStreamId("colocated_database", "test_1");
-		Configuration.Builder configBuilder = TestHelper.getConfigBuilder("colocated_database", "public.test_1", dbStreamId);
-		configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
+    String dbStreamId = TestHelper.getNewDbStreamId("colocated_database", "test_1");
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("colocated_database", "public.test_1", dbStreamId);
+    configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
 
-		// Explicitly avoid sending half of the last batch to kafka
-		startEngineWithPartialConsumptionOfLastBatch(configBuilder, totalRecordExpectedAfterPartialConsumption);
-		awaitUntilConnectorIsReady();
+    // Explicitly avoid sending half of the last batch to kafka
+    startEngineWithPartialConsumptionOfLastBatch(configBuilder, totalRecordExpectedAfterPartialConsumption);
+    awaitUntilConnectorIsReady();
 
-		// Wait for kafka to receive all the expected records before consuming records from kafka topic.
-		Awaitility.await()
-				.atMost(Duration.ofSeconds(180))
-				.until(() -> (getNonConsumedRecordCount() == totalRecordExpectedAfterPartialConsumption));
+    // Wait for kafka to receive all the expected records before consuming records from kafka topic.
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(180))
+        .until(() -> (getNonConsumedRecordCount() == totalRecordExpectedAfterPartialConsumption));
 
-		// Consume 975 records (950 + 25 from last batch)
-		int totalConsumedSoFar = consumeByTopic(totalRecordExpectedAfterPartialConsumption).recordsForTopic("test_server.public.test_1").size();
-		assertNoRecordsToConsume();
+    // Consume 975 records (950 + 25 from last batch)
+    int totalConsumedSoFar = consumeByTopic(totalRecordExpectedAfterPartialConsumption).recordsForTopic("test_server.public.test_1").size();
+    assertNoRecordsToConsume();
 
-		// Kill the connector
-		stopConnector();
-	
-		// The last set explicit checkpoint can be obtained from the static variable.
-		CdcSdkCheckpoint lastExplicitCheckpoint =
-			YugabyteDBSnapshotChangeEventSource.LAST_EXPLICIT_CHECKPOINT;
+    // Kill the connector
+    stopConnector();
 
-		// The last explicit checkpoint should be the one stored in the state table, verify.
-		YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
-		YBTable ybTable = TestHelper.getYbTable(ybClient, "test_1");
+    // The last set explicit checkpoint can be obtained from the static variable.
+    CdcSdkCheckpoint lastExplicitCheckpoint =
+      YugabyteDBSnapshotChangeEventSource.LAST_EXPLICIT_CHECKPOINT;
 
-		// Assuming that the table has only 1 tablet, get the first tablet and get its checkpoint.
-		GetCheckpointResponse resp =
-			ybClient.getCheckpoint(ybTable, dbStreamId, ybClient.getTabletUUIDs(ybTable).iterator().next());
+    // The last explicit checkpoint should be the one stored in the state table, verify.
+    YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
+    YBTable ybTable = TestHelper.getYbTable(ybClient, "test_1");
 
-		assertEquals(lastExplicitCheckpoint.getTerm(), resp.getTerm());
-		assertEquals(lastExplicitCheckpoint.getIndex(), resp.getIndex());
+    // Assuming that the table has only 1 tablet, get the first tablet and get its checkpoint.
+    GetCheckpointResponse resp =
+      ybClient.getCheckpoint(ybTable, dbStreamId, ybClient.getTabletUUIDs(ybTable).iterator().next());
+
+    assertEquals(lastExplicitCheckpoint.getTerm(), resp.getTerm());
+    assertEquals(lastExplicitCheckpoint.getIndex(), resp.getIndex());
     assertArrayEquals(lastExplicitCheckpoint.getKey(), resp.getSnapshotKey());
-		
-		// Restart the connector
-		YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = false;
-		startEngine(configBuilder);
-		awaitUntilConnectorIsReady();
 
-		List<SourceRecord> recordsAfterRestart = new ArrayList<>();
+    // Restart the connector
+    YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = false;
+    startEngine(configBuilder);
+    awaitUntilConnectorIsReady();
 
-		// We should receive the last 2 snapshot batch (500 records) again since we will be setting 
-		// from_op_id to the last explicit checkpoint (that points to start of the 2nd last batch) sent to the server
-		// during the snapshot phase.
-		waitAndFailIfCannotConsume(recordsAfterRestart, 2 * snapshotBatchSize);
-		LOGGER.info("Remaining consumed record count: {}", recordsAfterRestart.size());
-		assertNotEquals(totalConsumedSoFar, recordsAfterRestart.size());
-		assertEquals(2 * snapshotBatchSize, recordsAfterRestart.size());
-	}
+    List<SourceRecord> recordsAfterRestart = new ArrayList<>();
+
+    // We should receive the last 2 snapshot batch (500 records) again since we will be setting
+    // from_op_id to the last explicit checkpoint (that points to start of the 2nd last batch) sent to the server
+    // during the snapshot phase.
+    waitAndFailIfCannotConsume(recordsAfterRestart, 2 * snapshotBatchSize);
+    LOGGER.info("Remaining consumed record count: {}", recordsAfterRestart.size());
+    assertNotEquals(totalConsumedSoFar, recordsAfterRestart.size());
+    assertEquals(2 * snapshotBatchSize, recordsAfterRestart.size());
+  }
 
 	private int consumeAllAvailableRecordsTill(long minimumRecordsToConsume) {
 		AtomicInteger totalConsumedSoFar = new AtomicInteger();

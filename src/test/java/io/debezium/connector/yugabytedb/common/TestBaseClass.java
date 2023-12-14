@@ -381,7 +381,7 @@ public class TestBaseClass extends AbstractConnectorTest {
     waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
   }
 
-  protected void insertBulkRecords(int numRecords, String fullTableName) {
+  protected void insertBulkRecordsInColocatedDB(int numRecords, String fullTableName) {
     String formatInsertString = "INSERT INTO " + fullTableName + " VALUES (%d);";
     TestHelper.executeBulk(formatInsertString, numRecords, DEFAULT_COLOCATED_DB_NAME);
   }
@@ -389,7 +389,7 @@ public class TestBaseClass extends AbstractConnectorTest {
   /**
    * Helper function to create the required tables in the database DEFAULT_COLOCATED_DB_NAME
    */
-  protected void createTables(boolean colocation) {
+  protected void createTablesInColocatedDB(boolean colocation) {
     LOGGER.info("Creating tables with colocation: {}", colocation);
     final String createTest1 = String.format("CREATE TABLE test_1 (id INT PRIMARY KEY," +
                                               "name TEXT DEFAULT 'Vaibhav Kushwaha') " +
@@ -413,7 +413,7 @@ public class TestBaseClass extends AbstractConnectorTest {
   /**
    * Helper function to drop all the tables being created as a part of this test.
    */
-  protected void dropAllTables() {
+  protected void dropAllTablesInColocatedDB() {
     TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_1;", DEFAULT_COLOCATED_DB_NAME);
     TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_2;", DEFAULT_COLOCATED_DB_NAME);
     TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_3;", DEFAULT_COLOCATED_DB_NAME);
@@ -421,10 +421,11 @@ public class TestBaseClass extends AbstractConnectorTest {
     TestHelper.executeInDatabase("DROP TABLE IF EXISTS all_types;", DEFAULT_COLOCATED_DB_NAME);
   }
 
-  protected void insertBulkRecordsInRange(int beginKey, int endKey, String fullTableName) {
+  protected void insertBulkRecordsInRangeInColocatedDB(int beginKey, int endKey, String fullTableName) {
     String formatInsertString = "INSERT INTO " + fullTableName + " VALUES (%d);";
     TestHelper.executeBulkWithRange(formatInsertString, beginKey, endKey, DEFAULT_COLOCATED_DB_NAME);
   }
+
   protected class SourceRecords {
     private final List<SourceRecord> records = new ArrayList<>();
     private final Map<String, List<SourceRecord>> recordsByTopic = new HashMap<>();
