@@ -200,10 +200,20 @@ public class TestBaseClass extends AbstractConnectorTest {
     });
   }
 
+  /**
+   * Returns the available records in the queue linesConsumed
+   * @return the available (non-consumed) records in the queue linesConsumed
+   */
   public int getNonConsumedRecordCount() {
     return linesConsumed.size();
   }
 
+  /**
+   * Start an embeddedEngine but only consume records passed in totalRecordsToConsume.
+   * @param configBuilder configurations for the engine
+   * @param totalRecordsToConsume the total number of records to be added to linesConsumed i.e. the Kafka queue
+   * @param callback completion callback
+   */
   public void startEngineWithPartialConsumptionOfLastBatch(Configuration.Builder configBuilder, int totalRecordsToConsume, DebeziumEngine.CompletionCallback callback) {
     configBuilder
       .with(EmbeddedEngine.ENGINE_NAME, "test-connector")
