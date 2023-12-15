@@ -30,7 +30,7 @@ public class YugabyteDBContainerTestBase extends TestBaseClass {
         if (masterFlags == null || masterFlags.isEmpty()) {
             masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0,TEST_yb_enable_cdc_consistent_snapshot_streams=true";
         } else {
-            masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0," + masterFlags;
+            masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0,TEST_yb_enable_cdc_consistent_snapshot_streams=true," + masterFlags;
         }
 
         logger.info("tserver flags: {}", finalTserverFlags);
