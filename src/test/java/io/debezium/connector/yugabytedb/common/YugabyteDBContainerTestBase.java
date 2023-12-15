@@ -1,7 +1,14 @@
 package io.debezium.connector.yugabytedb.common;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.time.Duration;
 
+import com.github.dockerjava.api.command.InspectContainerResponse;
+import com.github.dockerjava.api.exception.NotFoundException;
+import com.google.common.base.Throwables;
+import org.awaitility.Awaitility;
 import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
 import org.testcontainers.containers.Container.ExecResult;
@@ -58,7 +65,29 @@ public class YugabyteDBContainerTestBase extends TestBaseClass {
     }
 
     protected static void shutdownYBContainer() {
+        String containerId = ybContainer.getContainerId();
+        logger.info("Shutting down container with ID {}", containerId);
+
         ybContainer.stop();
+
+        // Wait until container is fully stopped.
+        Awaitility.await()
+            .atMost(Duration.ofSeconds(20))
+            .pollInterval(Duration.ofSeconds(2))
+            .ignoreNoExceptions()
+            .until(() -> {
+              try {
+                InspectContainerResponse containerInfo = ybContainer.getDockerClient().inspectContainerCmd(containerId).exec();
+                return containerInfo.getState() == null && !Boolean.TRUE.equals(containerInfo.getState().getRunning());
+              } catch (NotFoundException e) {
+                logger.warn("Was going to stop container but it apparently no longer exists: {}", containerId);
+                return true;
+              } catch (Exception e) {
+                logger.warn("Error encountered when checking container for shutdown (ID: {}) - it may not have been stopped, or may already be stopped. Root cause: {}",
+                    containerId, Throwables.getRootCause(e).getMessage());
+                return true;
+              }
+            });
     }
 
     protected static String getMasterAddress() {
