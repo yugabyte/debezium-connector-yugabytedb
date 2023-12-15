@@ -136,14 +136,16 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
     }
 
     // Get ybContainer with required master and tserver flags.
-    String masterFlags = "enable_automatic_tablet_splitting=true,"
-                         + "tablet_split_high_phase_shard_count_per_node=10000,"
-                         + "tablet_split_high_phase_size_threshold_bytes=52428880,"
-                         + "tablet_split_low_phase_size_threshold_bytes=5242888,"
-                         + "tablet_split_low_phase_shard_count_per_node=16";
-    String tserverFlags = "enable_automatic_tablet_splitting=true";
-    ybContainer = TestHelper.getYbContainer(masterFlags, tserverFlags);
+    setMasterFlags("enable_automatic_tablet_splitting=true",
+                   "tablet_split_high_phase_shard_count_per_node=10000",
+                   "tablet_split_high_phase_size_threshold_bytes=52428880",
+                   "tablet_split_low_phase_size_threshold_bytes=5242888",
+                   "tablet_split_low_phase_shard_count_per_node=16");
+    setTserverFlags("enable_automatic_tablet_splitting=true");
+    ybContainer = TestHelper.getYbContainer();
     ybContainer.start();
+
+    LOGGER.info("Container startup command in test: {}", getYugabytedStartCommand());
 
     try {
       ybContainer.execInContainer(getYugabytedStartCommand().split("\\s+"));

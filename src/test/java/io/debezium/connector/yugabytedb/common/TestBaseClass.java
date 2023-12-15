@@ -44,11 +44,17 @@ public class TestBaseClass extends AbstractConnectorTest {
     protected CountDownLatch countDownLatch;
     protected static final String DEFAULT_DB_NAME = "yugabyte";
     protected static final String DEFAULT_COLOCATED_DB_NAME = "colocated_database";
-    protected static String yugabytedStartCommand = "";
     protected Map<String, ?> offsetMapForRecords = new HashMap<>();
     protected ExecutorService engineExecutor;
     protected static BlockingArrayQueue<SourceRecord> linesConsumed;
     protected long callbackDelay = 0;
+    protected static List<String> masterFlags =
+      new ArrayList<>(List.of("rpc_bind_addresses=0.0.0.0", "enable_tablet_split_of_cdcsdk_streamed_tables=true"));
+
+    // Set the GFLAG: "cdc_state_checkpoint_update_interval_ms" to 0 in all tests, forcing every
+    // instance of explicit_checkpoint to be added to the 'cdc_state' table in the service.
+    protected static List<String> tserverFlags = new ArrayList<>(List.of("cdc_state_checkpoint_update_interval_ms=0"));
+    protected static String yugabytedLocation = "/home/yugabyte/bin/yugabyted";
 
     protected void awaitUntilConnectorIsReady() throws Exception {
         Awaitility.await()
@@ -79,6 +85,22 @@ public class TestBaseClass extends AbstractConnectorTest {
     assertNotNull(begin.getString("partition_id"));
 
     return txId;
+  }
+
+  protected static void setMasterFlags(String...flags) {
+    masterFlags.addAll(Arrays.asList(flags));
+  }
+
+  protected static String getMasterFlags() {
+    return String.join(",", masterFlags);
+  }
+
+  protected static void setTserverFlags(String...flags) {
+    tserverFlags.addAll(Arrays.asList(flags));
+  }
+
+  protected static String getTserverFlags() {
+    return String.join(",", tserverFlags);
   }
 
   protected void setCommitCallbackDelay(long milliseconds) {
@@ -126,7 +148,10 @@ public class TestBaseClass extends AbstractConnectorTest {
   }
 
   protected static String getYugabytedStartCommand() {
-        return yugabytedStartCommand;
+    String finalTserverFlags = "--tserver_flags=" + getTserverFlags();
+    String finalMasterFlags = "--master_flags=" + getMasterFlags();
+
+    return String.format("%s start --listen=0.0.0.0 %s %s --daemon=true", yugabytedLocation, finalMasterFlags, finalTserverFlags);
   }
 
   protected long getIntentsCount() throws Exception {

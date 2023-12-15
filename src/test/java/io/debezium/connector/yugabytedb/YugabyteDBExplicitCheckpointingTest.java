@@ -44,7 +44,7 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
 
     @BeforeAll
     public static void beforeAll() throws SQLException {
-        initializeYBContainer(null, "cdc_state_checkpoint_update_interval_ms=0");
+        initializeYBContainer();
         TestHelper.dropAllSchemas();
     }
 

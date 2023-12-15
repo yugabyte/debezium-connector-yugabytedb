@@ -36,7 +36,8 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 	private static final int snapshotBatchSize = 50;
 	@BeforeAll
 	public static void beforeClass() throws SQLException {
-		initializeYBContainer(null, "cdc_snapshot_batch_size=" + snapshotBatchSize);
+		setTserverFlags("cdc_snapshot_batch_size=" + snapshotBatchSize);
+		initializeYBContainer();
 		TestHelper.dropAllSchemas();
 	}
 

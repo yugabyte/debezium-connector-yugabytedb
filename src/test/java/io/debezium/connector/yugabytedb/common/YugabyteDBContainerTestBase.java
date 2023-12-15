@@ -16,29 +16,11 @@ import io.debezium.connector.yugabytedb.TestHelper;
  */
 public class YugabyteDBContainerTestBase extends TestBaseClass {
     private static final Logger logger = LoggerFactory.getLogger(YugabyteDBContainerTestBase.class);
-    protected static void initializeYBContainer(String masterFlags, String tserverFlags) {
-        ybContainer = TestHelper.getYbContainer(masterFlags, tserverFlags);
+    protected static void initializeYBContainer() {
+        ybContainer = TestHelper.getYbContainer();
         ybContainer.start();
 
-        // Set the GFLAG: "cdc_state_checkpoint_update_interval_ms" to 0 in all tests, forcing every
-        // instance of explicit_checkpoint to be added to the 'cdc_state' table in the service.
-        String finalTserverFlags = " --tserver_flags=" +
-                                   ((tserverFlags == null || tserverFlags.isEmpty())
-                                        ? "cdc_state_checkpoint_update_interval_ms=0"
-                                        : tserverFlags + ",cdc_state_checkpoint_update_interval_ms=0");
-
-        if (masterFlags == null || masterFlags.isEmpty()) {
-            masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0";
-        } else {
-            masterFlags = "--master_flags=rpc_bind_addresses=0.0.0.0," + masterFlags;
-        }
-
-        logger.info("tserver flags: {}", finalTserverFlags);
-        logger.info("master flags: {}", masterFlags);
-
-        yugabytedStartCommand = "/home/yugabyte/bin/yugabyted start --listen=0.0.0.0 "
-                                    + masterFlags + finalTserverFlags + " --daemon=true";
-        logger.info("Container startup command: {}", yugabytedStartCommand);
+        logger.info("Container startup command: {}", getYugabytedStartCommand());
 
         try {
             ExecResult result = ybContainer.execInContainer(getYugabytedStartCommand().split("\\s+"));
@@ -51,10 +33,6 @@ public class YugabyteDBContainerTestBase extends TestBaseClass {
 
         TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433), ybContainer.getMappedPort(9042));
         TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
-    }
-
-    protected static void initializeYBContainer() {
-        initializeYBContainer(null, null);
     }
 
     protected static void shutdownYBContainer() {
@@ -70,7 +48,7 @@ public class YugabyteDBContainerTestBase extends TestBaseClass {
         ExecResult result = ybContainer.execInContainer("/home/yugabyte/bin/yb-ts-cli", "--server_address", "0.0.0.0", "count_intents");
 
         // Assuming the result is just a number, so simply convert the string to long and return.
-        return Long.valueOf(result.getStdout().split("\n")[0]);
+        return Long.parseLong(result.getStdout().split("\n")[0]);
     }
 
     protected void stopYugabyteDB() throws Exception {

@@ -33,8 +33,8 @@ import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 public class YugabyteDBConsistencyWithColocatedTest extends YugabyteDBContainerTestBase {
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        initializeYBContainer("enable_automatic_tablet_splitting=false",
-                              "cdc_populate_safepoint_record=true,enable_automatic_tablet_splitting=false");
+        setMasterFlags("enable_automatic_tablet_splitting=false");
+        setTserverFlags("cdc_populate_safepoint_record=true", "enable_automatic_tablet_splitting=false");
         TestHelper.dropAllSchemas();
 
         // Create colocated database for usage.
