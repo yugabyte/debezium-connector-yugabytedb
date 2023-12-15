@@ -92,6 +92,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
         configBuilder.with("transforms.Reroute.key.field.regex", "test_server(.*)");
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
         configBuilder.with("provide.transaction.metadata", true);
+        configBuilder.with("tasks.max", 1);
 
         startEngine(configBuilder);
         awaitUntilConnectorIsReady();
@@ -207,6 +208,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
         configBuilder.with("transforms.Reroute.topic.replacement", "test_server_all_events");
         configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
+        configBuilder.with("tasks.max", 1);
 
         startEngine(configBuilder);
         awaitUntilConnectorIsReady();
@@ -346,6 +348,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
         configBuilder.with("transforms.Reroute.topic.replacement", "test_server_all_events");
         configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
+        configBuilder.with("tasks.max", 1);
 
         startEngine(configBuilder);
         awaitUntilConnectorIsReady();
@@ -419,6 +422,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
         configBuilder.with("transforms.Reroute.topic.replacement", "test_server_all_events");
         configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
+        configBuilder.with("tasks.max", 1);
 
         startEngine(configBuilder);
         awaitUntilConnectorIsReady();
@@ -498,6 +502,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
         configBuilder.with("transforms.Reroute.topic.replacement", "test_server_all_events");
         configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
+        configBuilder.with("tasks.max", 1);
 
         startEngine(configBuilder);
         awaitUntilConnectorIsReady();
@@ -573,6 +578,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
         configBuilder.with("transforms.Reroute.topic.replacement", "test_server_all_events");
         configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
+        configBuilder.with("tasks.max", 1);
 
         startEngine(configBuilder);
         awaitUntilConnectorIsReady();
@@ -649,6 +655,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
         configBuilder.with("transforms.Reroute.topic.replacement", "test_server_all_events");
         configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
+        configBuilder.with("tasks.max", 1);
 
         startEngine(configBuilder);
         awaitUntilConnectorIsReady();
@@ -1008,6 +1015,7 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
         configBuilder.with("transforms.Reroute.topic.replacement", "test_server_all_events");
         configBuilder.with("transforms.Reroute.key.field.regex", "test_server.public.(.*)");
         configBuilder.with("transforms.Reroute.key.field.replacement", "\\$1");
+        configBuilder.with("tasks.max", 1);
 
         return configBuilder;
     }
