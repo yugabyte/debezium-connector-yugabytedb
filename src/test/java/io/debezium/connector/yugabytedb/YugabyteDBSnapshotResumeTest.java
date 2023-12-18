@@ -9,6 +9,7 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.yb.client.CdcSdkCheckpoint;
 import org.yb.client.GetCheckpointResponse;
@@ -56,8 +57,9 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 		shutdownYBContainer();
 	}
 
-	@Test
-	public void verifySnapshotIsResumedFromKey() throws Exception {
+  @ParameterizedTest
+  @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForSnapshot")
+  public void verifySnapshotIsResumedFromKey(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
 		TestHelper.dropAllSchemas();
 		TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
@@ -68,7 +70,7 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 
 		YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = true;
 
-		String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+		String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", consistentSnapshot, useSnapshot);
 		Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 		configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
 		startEngine(configBuilder);
@@ -133,8 +135,8 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 	}
 
   @ParameterizedTest
-  @ValueSource(booleans = {true, false})
-  public void verifyNoDataLossIfConnectorRestartDuringLastBatchConsumption (boolean colocation) throws Exception {
+  @MethodSource("io.debezium.connector.yugabytedb.YugabyteDBSnapshotTest#streamTypeProviderForSnapshotWithColocation")
+  public void verifyNoDataLossIfConnectorRestartDuringLastBatchConsumption (boolean consistentSnapshot, boolean useSnapshot, boolean colocation) throws Exception {
     /*
      * The objective of this test is to verify the connector starts in the snapshot phase and
      * consumes the all the snapshot records before switching to streaming phase in the
@@ -152,7 +154,7 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
 
     YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = true;
 
-    String dbStreamId = TestHelper.getNewDbStreamId("colocated_database", "test_1");
+    String dbStreamId = TestHelper.getNewDbStreamId("colocated_database", "test_1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("colocated_database", "public.test_1", dbStreamId);
     configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
 

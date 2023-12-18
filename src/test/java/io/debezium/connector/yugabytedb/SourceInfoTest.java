@@ -7,6 +7,8 @@ import io.debezium.data.VerifyRecord;
 import io.debezium.relational.TableId;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -25,11 +27,18 @@ public class SourceInfoTest extends YugabyteDBContainerTestBase {
     private final String DUMMY_TABLE_ID = "tableId";
     private final String DUMMY_TABLET_ID = "tabletId";
 
+    @BeforeAll
+    public static void beforeClass() throws Exception {
+        initializeYBContainer();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+    }
+
     @BeforeEach
     public void beforeEach() {
         try {
+            String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
             source = new SourceInfo(new YugabyteDBConnectorConfig(
-                    TestHelper.getConfigBuilder("public." + DUMMY_TABLE_NAME, "dummyStreamId").build()
+                    TestHelper.getConfigBuilder("public." + DUMMY_TABLE_NAME, dbStreamId).build()
             ));
         } catch (Exception e) {
             LOGGER.error("Exception while initializing the configuration builder", e);
@@ -40,6 +49,12 @@ public class SourceInfoTest extends YugabyteDBContainerTestBase {
 
         source.update(partition, OpId.valueOf("1:2:keyStrValue:4:5"), 123L, "txId",
                       new TableId("yugabyte", "public", DUMMY_TABLE_NAME), 123L);
+    }
+
+    @AfterAll
+    public static void afterClass() throws Exception {
+        TestHelper.executeDDL("drop_tables_and_databases.ddl");
+        shutdownYBContainer();
     }
 
     @Test
