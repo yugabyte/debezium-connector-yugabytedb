@@ -1215,11 +1215,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 config,
                 config.getString(RelationalDatabaseConnectorConfig.SERVER_NAME),
                 new SystemTablesPredicate(),
-                YBClientUtils.isYSQLStream(config.getString(YugabyteDBConnectorConfig.STREAM_ID), YBClientUtils.getYbClient(config))? x -> x.schema() + "." + x.table() : x -> x.table(),
+                YBClientUtils.isYSQLStream(config) ? x -> x.schema() + "." + x.table() : x -> x.table(),
                 DEFAULT_SNAPSHOT_FETCH_SIZE,
                 ColumnFilterMode.SCHEMA);
 
-        this.isYSQL = YBClientUtils.isYSQLStream(config.getString(YugabyteDBConnectorConfig.STREAM_ID), YBClientUtils.getYbClient(config));
+        this.isYSQL = YBClientUtils.isYSQLStream(config);
         this.truncateHandlingMode = TruncateHandlingMode.parse(config.getString(YugabyteDBConnectorConfig.TRUNCATE_HANDLING_MODE));
         this.consistencyMode = ConsistencyMode.parse(config.getString(YugabyteDBConnectorConfig.CONSISTENCY_MODE));
         this.logicalDecodingMessageFilter = new LogicalDecodingMessageFilter(config.getString(LOGICAL_DECODING_MESSAGE_PREFIX_INCLUDE_LIST),
