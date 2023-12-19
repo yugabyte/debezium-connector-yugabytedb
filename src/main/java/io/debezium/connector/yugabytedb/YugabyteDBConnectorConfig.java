@@ -1219,7 +1219,14 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 DEFAULT_SNAPSHOT_FETCH_SIZE,
                 ColumnFilterMode.SCHEMA);
 
-        this.isYSQL = YBClientUtils.isYSQLStream(config.getString(YugabyteDBConnectorConfig.STREAM_ID), YBClientUtils.getYbClient(config));
+        // Using a try-with-resources block will ensure that the client object is closed as it is not
+        // needed anywhere else.
+        try (YBClient ybClient = YBClientUtils.getYbClient(config)) {
+            this.isYSQL = YBClientUtils.isYSQLStream(config.getString(YugabyteDBConnectorConfig.STREAM_ID), ybClient);
+        } catch (Exception e) {
+            throw new DebeziumException(e);
+        }
+
         this.truncateHandlingMode = TruncateHandlingMode.parse(config.getString(YugabyteDBConnectorConfig.TRUNCATE_HANDLING_MODE));
         this.consistencyMode = ConsistencyMode.parse(config.getString(YugabyteDBConnectorConfig.CONSISTENCY_MODE));
         this.logicalDecodingMessageFilter = new LogicalDecodingMessageFilter(config.getString(LOGICAL_DECODING_MESSAGE_PREFIX_INCLUDE_LIST),
