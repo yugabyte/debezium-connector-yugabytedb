@@ -362,10 +362,12 @@ public class YBClientUtils {
               .equals(CdcService.CDCCheckpointType.EXPLICIT.name());
   }
 
-  public static Boolean isYSQLStream(String streamId, YBClient ybClient) {
+  public static Boolean isYSQLStream(Configuration configuration) {
     GetDBStreamInfoResponse cdcStreamInfo = null;
     ListNamespacesResponse resp = null;
-    try {
+    final String streamId = configuration.getString(YugabyteDBConnectorConfig.STREAM_ID);
+
+    try (YBClient ybClient = getYbClient(configuration)) {
       cdcStreamInfo = ybClient.getDBStreamInfo(streamId);
       resp = ybClient.getNamespacesList();
     } catch (Exception e) {
