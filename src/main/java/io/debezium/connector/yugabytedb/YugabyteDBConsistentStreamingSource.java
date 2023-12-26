@@ -120,6 +120,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 bootstrapTabletWithRetry(syncClient, tabletPairList, tableIdToTable);
             }
 
+            logCheckpoints(syncClient, tabletPairList, tableIdToTable);
+
             // This log while indicate that the connector has either bootstrapped the tablets or skipped
             // it so that streaming can begin now. This is added to indicate the tests or pipelines
             // waiting for the bootstrapping to finish so that they can start inserting data now.

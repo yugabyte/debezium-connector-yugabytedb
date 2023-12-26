@@ -1149,4 +1149,25 @@ public class YugabyteDBStreamingChangeEventSource implements
         // In ideal scenarios, this should NEVER be returned from this function.
         return null;
     }
+
+    /**
+     * Log the checkpoints after retrieving it from the cdc_state table.
+     * @param ybClient YBClient
+     * @param tabletPairList a list with pairs of <tableId, tabletId>
+     * @param tableIdToTable a map with <tableID, YBTable> mapping
+     * @throws Exception if something goes wrong
+     */
+    protected void logCheckpoints(YBClient ybClient,
+                                  List<Pair<String, String>> tabletPairList,
+                                  Map<String, YBTable> tableIdToTable) throws Exception {
+        for (Pair<String, String> entry : tabletPairList) {
+            final String tableId = entry.getKey();
+            final String tabletId = entry.getValue();
+
+            GetCheckpointResponse resp =
+              ybClient.getCheckpoint(tableIdToTable.get(tableId), connectorConfig.streamId(), tabletId);
+
+            LOGGER.info("Tablet {}: OpId {}.{} with time {}", tabletId, resp.getTerm(), resp.getIndex(), resp.getSnapshotTime());
+        }
+    }
 }
