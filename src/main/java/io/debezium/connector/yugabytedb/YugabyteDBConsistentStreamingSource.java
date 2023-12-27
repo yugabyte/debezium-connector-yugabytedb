@@ -171,6 +171,10 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                             }
 
                             GetChangesResponse response = null;
+                            int ddl = 0;
+                            int dml = 0;
+                            int safepoints = 0;
+                            int transactional = 0;
 
                             if (schemaNeeded.get(tabletId)) {
                                 LOGGER.debug("Requesting schema for tablet: {}", tabletId);
@@ -209,6 +213,23 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                         .getCdcSdkProtoRecordsList()) {
                                     CdcService.RowMessage.Op op = record.getRowMessage().getOp();
 
+                                    switch (op) {
+                                        case DDL:
+                                            ++ddl;
+                                            break;
+                                        case BEGIN:
+                                        case COMMIT:
+                                            ++transactional;
+                                            break;
+                                        case INSERT:
+                                        case UPDATE:
+                                        case DELETE:
+                                            ++dml;
+                                            break;
+                                        case SAFEPOINT:
+                                            ++safepoints;
+                                    }
+
                                     if (record.getRowMessage().getOp() == CdcService.RowMessage.Op.DDL) {
                                         YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(record.getRowMessage(), this.yugabyteDBTypeRegistry);
                                         dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
@@ -231,6 +252,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                     offsetContext.updateWalPosition(part, finalOpid);
                                     offsetContext.updateWalSegmentIndex(part, response.getWalSegmentIndex());
                                     LOGGER.debug("The final opid for tablet {} is {}", part.getTabletId(), finalOpid);
+                                    LOGGER.info("Records for tablet {}: DDL {} DML {} TX {} SF {}", tabletId, ddl, dml, transactional, safepoints);
                                 }
                             }
 
