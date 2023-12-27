@@ -252,8 +252,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                     offsetContext.updateWalPosition(part, finalOpid);
                                     offsetContext.updateWalSegmentIndex(part, response.getWalSegmentIndex());
                                     LOGGER.debug("The final opid for tablet {} is {}", part.getTabletId(), finalOpid);
-                                    LOGGER.info("Records for tablet {}: DDL {} DML {} TX {} SF {}", tabletId, ddl, dml, transactional, safepoints);
                                 }
+                                LOGGER.info("Records for tablet {}: DDL {} DML {} TX {} SF {}", tabletId, ddl, dml, transactional, safepoints);
                             }
 
                             if (!isInPreSnapshotCatchUpStreaming(offsetContext)) {

@@ -121,7 +121,7 @@ public class Merger {
         } else {
             LOGGER.debug("Message is not null in queue - actual message is {}", message);
             if (!(message.commitTime.compareTo(this.streamSafeTime()) <= 0)) {
-                LOGGER.warn("Comparison commit time for message and stream safetime failed for tablet{} (may indicate issues)", message.tablet);
+                LOGGER.warn("Comparison commit time for message and stream safetime failed for tablet {} (may indicate issues)", message.tablet);
                 LOGGER.warn("Stream safetime {} and message commit time {}", this.streamSafeTime(), message.commitTime);
             }
         }
