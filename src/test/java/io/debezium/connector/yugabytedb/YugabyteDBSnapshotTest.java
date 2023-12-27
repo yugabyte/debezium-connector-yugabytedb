@@ -949,9 +949,9 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @Test
     public void snapshotShouldBeCompletedOnParentIfSplitHappenedAfterStreamCreation() throws Exception {
         /*
-        * The objective of the test is to verify that if a split happens before a consistent stream creation,
-        * snapshot takes place on the parent tablet and any DMLs performed after the split are not part of
-        * snapshot records.
+        * The objective of the test is to verify that snapshot takes place on the parent tablet if a split
+        * happens after a consistent stream is created and before connector has been deployed. Additionally,
+        * any DMLs performed after the split are not part of snapshot records.
          */
         TestHelper.dropAllSchemas();
         TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
