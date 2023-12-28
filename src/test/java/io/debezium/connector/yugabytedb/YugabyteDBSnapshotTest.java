@@ -18,6 +18,7 @@ import org.yb.client.YBTable;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Stream;
@@ -943,6 +944,75 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         assertNotEquals(totalRecords, records.size());
         assertEquals(recordCountT1, records.size());
         YugabyteDBSnapshotChangeEventSource.FAIL_WHEN_MARKING_SNAPSHOT_DONE = false;
+    }
+
+    @Test
+    public void snapshotShouldBeCompletedOnParentIfSplitHappenedAfterStreamCreation() throws Exception {
+        /*
+        * The objective of the test is to verify that snapshot takes place on the parent tablet if a split
+        * happens after a consistent stream is created and before connector has been deployed. Additionally,
+        * any DMLs performed after the split are not part of snapshot records.
+        */
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        int recordsCount = 10;
+        String insertFormat = "INSERT INTO t1 VALUES (%d, 'value for split table');";
+        for (int i = 0; i < recordsCount; ++i) {
+            TestHelper.execute(String.format(insertFormat, i));
+        }
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false, true, true, true);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
+
+        YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
+        YBTable table = TestHelper.getYbTable(ybClient, "t1");
+
+        // Verify that there is just a single tablet.
+        Set<String> tablets = ybClient.getTabletUUIDs(table);
+        int tabletCountBeforeSplit = tablets.size();
+        assertEquals(1, tabletCountBeforeSplit);
+
+        // Compact the table to ready it for splitting.
+        ybClient.flushTable(table.getTableId());
+
+        // Wait for 20s for the table to be flushed.
+        TestHelper.waitFor(Duration.ofSeconds(20));
+
+        // Split the tablet. There is just one tablet so it is safe to assume that the iterator will
+        // return just the desired tablet.
+        ybClient.splitTablet(tablets.iterator().next());
+
+        // Wait till there are 2 tablets for the table.
+        TestHelper.waitForTablets(ybClient, table, 2);
+
+        // Insert 5 more rows. Since these records are inserted after the stream is created & split is completed,
+        // they should not be consumed at the time of consumption of snapshot from parent tablet.
+        for (int i = recordsCount; i < recordsCount + 5; ++i) {
+            TestHelper.execute(String.format(insertFormat, i));
+        }
+
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, recordsCount + 5);
+
+        assertEquals(recordsCount + 5, records.size());
+
+        int snapshotRecords = 0;
+        int streamingRecords = 0;
+        for (SourceRecord record : records) {
+            if (TestHelper.getOpValue(record).equals("r")) {
+                snapshotRecords++;
+            } else if (TestHelper.getOpValue(record).equals("c")) {
+                streamingRecords++;
+            }
+        }
+
+        assertEquals(recordsCount, snapshotRecords);
+        assertEquals(5, streamingRecords);
     }
 
     private void verifyRecordCount(long recordsCount) {
