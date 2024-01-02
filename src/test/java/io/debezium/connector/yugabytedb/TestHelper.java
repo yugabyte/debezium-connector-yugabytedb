@@ -92,7 +92,7 @@ public final class TestHelper {
     private static String DEFAULT_DATABASE_NAME = "yugabyte";
     private static String DEFAULT_CASSANDRA_USER = "cassandra";
 
-    public static final YBVersion MIN_YB_VERSION_CONSISTENT_SNAPSHOT = new YBVersion("2.21.0.0");
+    public static final YBVersion MIN_YB_VERSION_CONSISTENT_SNAPSHOT = new YBVersion("2.20.2.0");
 
     /**
      * Key for schema parameter used to store DECIMAL/NUMERIC columns' precision.

@@ -66,6 +66,9 @@ public class YBVersion implements Comparable<YBVersion> {
   public static YBVersion getCurrentYBVersionEnv() {
     String imageName = System.getenv("YB_DOCKER_IMAGE");
 
+    // If no environment variable is specified, it will be assumed that the current YugabyteDB
+    // version is the default version i.e. latest. This needs to be updated every time YugabyteDB's
+    // latest version changes.
     if (imageName.isEmpty()) {
       return new YBVersion(DEFAULT_YB_VERSION);
     }

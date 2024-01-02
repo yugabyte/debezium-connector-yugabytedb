@@ -842,7 +842,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         }
     }
 
-    // TODO: Confirm version from Siddharth
+    @MinimumYBVersion(value = "2.20.2", reason = "Test meant to run with consistent snapshot streams")
     @ParameterizedTest
     @MethodSource("argumentProviderForEmptyNonEmptyNonColocatedTables")
     public void snapshotTwoColocatedAndEmptyNonEmptyNonColocatedThenStreamWithConsistentSnapshot(boolean emptyNonColocated, boolean colocation) throws Exception {
@@ -954,7 +954,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         YugabyteDBSnapshotChangeEventSource.FAIL_WHEN_MARKING_SNAPSHOT_DONE = false;
     }
 
-    // TODO: Confirm version from Siddharth
+    @MinimumYBVersion(value = "2.20.2", reason = "Test meant to be run with consistent snapshot stream")
     @Test
     public void snapshotShouldBeCompletedOnParentIfSplitHappenedAfterStreamCreation() throws Exception {
         /*
