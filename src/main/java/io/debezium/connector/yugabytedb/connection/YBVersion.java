@@ -13,6 +13,7 @@ import java.util.regex.Pattern;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class YBVersion implements Comparable<YBVersion> {
+  public static final String DEFAULT_YB_VERSION = "2.21.0.0";
   public Integer major;
   public Integer minor;
   public Integer patch = 0;
@@ -66,7 +67,7 @@ public class YBVersion implements Comparable<YBVersion> {
     String imageName = System.getenv("YB_DOCKER_IMAGE");
 
     if (imageName.isEmpty()) {
-      return new YBVersion("2.21.0.0");
+      return new YBVersion(DEFAULT_YB_VERSION);
     }
 
     String regexPattern = "yugabyte:(.*?)-b*";
@@ -77,7 +78,7 @@ public class YBVersion implements Comparable<YBVersion> {
       return new YBVersion(matcher.group(1));
     }
 
-    return new YBVersion("2.21.0.0");
+    return new YBVersion(DEFAULT_YB_VERSION);
   }
 
   public static YBVersion getCurrentYBVersion(Connection conn) {
@@ -96,7 +97,7 @@ public class YBVersion implements Comparable<YBVersion> {
         }
       }
 
-      return new YBVersion("2.21.0.0");
+      return new YBVersion(DEFAULT_YB_VERSION);
     } catch (SQLException sqle) {
       throw new RuntimeException("Exception while trying to get current YB version", sqle);
     }
