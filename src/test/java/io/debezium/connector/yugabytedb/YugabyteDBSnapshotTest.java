@@ -1,9 +1,11 @@
 package io.debezium.connector.yugabytedb;
 
 import io.debezium.config.Configuration;
+import io.debezium.connector.yugabytedb.annotations.MinimumYBVersion;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
+import io.debezium.connector.yugabytedb.connection.YBVersion;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -388,6 +390,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     // This test should not be run with consistent snapshot stream since it verifies
     // the behaviour on failure after snapshot bootstrap call. For consistent
     // snapshot streams, the very first getChanges call starts the snapshot consumption
+    @MinimumYBVersion("2.18.4")
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     public void shouldSnapshotWithFailureAfterBootstrapSnapshotCall(boolean colocation)
@@ -445,6 +448,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         assertEquals(recordsCount, recordsForTest2.size());
     }
 
+    @MinimumYBVersion("2.18.4")
     @ParameterizedTest
     @MethodSource("streamTypeProviderForSnapshotWithColocation")
     public void shouldSnapshotWithFailureAfterSettingInitialCheckpoint(boolean consistentSnapshot, boolean useSnapshot, boolean colocation)
@@ -502,6 +506,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         assertEquals(recordsCount, recordsForTest2.size());
     }
 
+    @MinimumYBVersion("2.18.4")
     @ParameterizedTest
     @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForSnapshot")
     public void shouldNotSnapshotAgainIfSnapshotCompletedOnce(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
@@ -563,6 +568,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         }
     }
 
+    @MinimumYBVersion("2.18.4")
     @ParameterizedTest
     @MethodSource("streamTypeProviderForSnapshotWithColocation")
     public void shouldContinueStreamingInNeverAfterSnapshotCompleteInInitialOnly(boolean consistentSnapshot, boolean useSnapshot, boolean colocation)
@@ -644,6 +650,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         }
     }
 
+    @MinimumYBVersion("2.18.4")
     @ParameterizedTest
     @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForSnapshot")
     public void snapshotShouldNotBeAffectedByDroppingUnrelatedTables(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
@@ -835,6 +842,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         }
     }
 
+    // TODO: Confirm version from Siddharth
     @ParameterizedTest
     @MethodSource("argumentProviderForEmptyNonEmptyNonColocatedTables")
     public void snapshotTwoColocatedAndEmptyNonEmptyNonColocatedThenStreamWithConsistentSnapshot(boolean emptyNonColocated, boolean colocation) throws Exception {
@@ -946,6 +954,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         YugabyteDBSnapshotChangeEventSource.FAIL_WHEN_MARKING_SNAPSHOT_DONE = false;
     }
 
+    // TODO: Confirm version from Siddharth
     @Test
     public void snapshotShouldBeCompletedOnParentIfSplitHappenedAfterStreamCreation() throws Exception {
         /*
@@ -1020,11 +1029,14 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     }
 
     static Stream<Arguments> streamTypeProviderForSnapshotWithColocation() {
-        return Stream.of(
-                Arguments.of(false, false, true), // Older stream with colocation
-                Arguments.of(false, false, false), // Older stream without colocation
-                Arguments.of(true, true, true), // USE_SNAPSHOT stream with colocation
-                Arguments.of(true, true, false));  // USE_SNAPSHOT stream without colocation
+        List<Arguments> result = new ArrayList<>(List.of(Arguments.of(false, false, true), Arguments.of(false, false, false))); // Older stream arguments.
+
+        if (YBVersion.getCurrentYBVersionEnv().compareTo(TestHelper.MIN_YB_VERSION_CONSISTENT_SNAPSHOT) >= 0) {
+            result.add(Arguments.of(true, true, true));
+            result.add(Arguments.of(true, true, false));
+        }
+
+        return result.stream();
     }
 
     static Stream<Arguments> argumentProviderForEmptyNonEmptyNonColocatedTables() {

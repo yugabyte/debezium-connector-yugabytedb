@@ -26,6 +26,7 @@ import java.util.stream.Stream;
 
 import javax.sql.DataSource;
 
+import io.debezium.connector.yugabytedb.connection.YBVersion;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -90,6 +91,8 @@ public final class TestHelper {
     private static String PLUGIN_NAME = "yboutput";
     private static String DEFAULT_DATABASE_NAME = "yugabyte";
     private static String DEFAULT_CASSANDRA_USER = "cassandra";
+
+    public static final YBVersion MIN_YB_VERSION_CONSISTENT_SNAPSHOT = new YBVersion("2.23.0.0");
 
     /**
      * Key for schema parameter used to store DECIMAL/NUMERIC columns' precision.
@@ -761,14 +764,30 @@ public final class TestHelper {
     }
 
     public static Stream<Arguments> streamTypeProviderForStreaming() {
-        return Stream.of(
-                Arguments.of(false, false), // Older stream
-                Arguments.of(true, false)); // NO_EXPORT stream
+        List<Arguments> result = new ArrayList<>(List.of(Arguments.of(false, false))); // Old stream
+
+        // If current YB version is less than the required version for feature, then do not pass the
+        // parameter for running the tests against it.
+        if (YBVersion.getCurrentYBVersionEnv().compareTo(MIN_YB_VERSION_CONSISTENT_SNAPSHOT) >= 0) {
+            result.add(Arguments.of(true, false)); // NO_EXPORT stream.
+        } else {
+            LOGGER.info("Skipping to run the test as minimum YB version required is {}", MIN_YB_VERSION_CONSISTENT_SNAPSHOT);
+        }
+
+        return result.stream();
     }
 
     public static Stream<Arguments> streamTypeProviderForSnapshot() {
-        return Stream.of(
-                Arguments.of(false, false), // Older stream
-                Arguments.of(true, true));  // USE_SNAPSHOT stream
+        List<Arguments> result = new ArrayList<>(List.of(Arguments.of(false, false))); // Old stream
+
+        // If current YB version is less than the required version for feature, then do not pass the
+        // parameter for running the tests against it.
+        if (YBVersion.getCurrentYBVersionEnv().compareTo(MIN_YB_VERSION_CONSISTENT_SNAPSHOT) >= 0) {
+            result.add(Arguments.of(true, true)); // USE_SNAPSHOT stream.
+        } else {
+            LOGGER.info("Skipping consistent snapshot arguments as minimum YB version required is {}", MIN_YB_VERSION_CONSISTENT_SNAPSHOT);
+        }
+
+        return result.stream();
     }
 }

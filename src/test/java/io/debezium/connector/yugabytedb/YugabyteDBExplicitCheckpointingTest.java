@@ -1,6 +1,7 @@
 package io.debezium.connector.yugabytedb;
 
 import io.debezium.config.Configuration;
+import io.debezium.connector.yugabytedb.annotations.MinimumYBVersion;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
@@ -38,6 +39,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
+@MinimumYBVersion("2.18.2")
 public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTestBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBExplicitCheckpointingTest.class);
 

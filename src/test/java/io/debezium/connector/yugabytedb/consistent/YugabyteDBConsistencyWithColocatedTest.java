@@ -13,6 +13,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
 
+import io.debezium.connector.yugabytedb.annotations.MinimumYBVersion;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -30,6 +31,7 @@ import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 
+@MinimumYBVersion("2.18.2")
 public class YugabyteDBConsistencyWithColocatedTest extends YugabyteDBContainerTestBase {
     @BeforeAll
     public static void beforeClass() throws SQLException {

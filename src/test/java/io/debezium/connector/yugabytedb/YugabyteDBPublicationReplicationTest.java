@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
+import io.debezium.connector.yugabytedb.annotations.MinimumYBVersion;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
@@ -37,6 +38,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * 
  * @author Sumukh Phalgaonkar (sumukh.phalgaonkar@yugabyte.com)
  */
+@MinimumYBVersion(value = "2.21", reason = "Feature was introduced in the given version only")
 public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTestBase {
 
     public static String insertStatementFormatfort2 = "INSERT INTO t2 values (%d);";
