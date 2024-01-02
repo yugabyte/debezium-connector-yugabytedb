@@ -66,7 +66,7 @@ public class YBVersion implements Comparable<YBVersion> {
     String imageName = System.getenv("YB_DOCKER_IMAGE");
 
     if (imageName.isEmpty()) {
-      return new YBVersion("2.18.2.0");
+      return new YBVersion("2.21.0.0");
     }
 
     String regexPattern = "yugabyte:(.*?)-b*";
@@ -77,7 +77,7 @@ public class YBVersion implements Comparable<YBVersion> {
       return new YBVersion(matcher.group(1));
     }
 
-    return new YBVersion("2.18.2.0");
+    return new YBVersion("2.21.0.0");
   }
 
   public static YBVersion getCurrentYBVersion(Connection conn) {
@@ -96,7 +96,7 @@ public class YBVersion implements Comparable<YBVersion> {
         }
       }
 
-      return new YBVersion("2.18.2.0");
+      return new YBVersion("2.21.0.0");
     } catch (SQLException sqle) {
       throw new RuntimeException("Exception while trying to get current YB version", sqle);
     }
