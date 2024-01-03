@@ -201,7 +201,6 @@ public class YugabyteDBCompleteTypesTest extends YugabytedTestBase {
 
         // Get the only record from the list.
         SourceRecord record_0 = records.get(0);
-//        SourceRecord record_1 = records.get(1);
 
         DecimalHandlingMode decimalHandlingMode =
           DecimalHandlingMode.parse(decimalMode);

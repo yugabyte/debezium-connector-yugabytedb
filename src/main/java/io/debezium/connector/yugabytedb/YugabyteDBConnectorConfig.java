@@ -789,17 +789,6 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     "Whether or not to delete the logical replication stream when the connector finishes orderly" +
                             "By default the replication is kept so that on restart progress can resume from the last recorded location");
 
-    // Changing the default decimal.handling.mode to double
-//    @Override
-//    public JdbcValueConverters.DecimalMode getDecimalMode() {
-//        if (super.getDecimalMode() == JdbcValueConverters.DecimalMode.PRECISE) {
-//            LOGGER.info("decimal.handling.mode PRECISE is not supported, defaulting to double");
-//            return JdbcValueConverters.DecimalMode.DOUBLE;
-//        }
-//
-//        return super.getDecimalMode();
-//    }
-
     public enum AutoCreateMode implements EnumeratedValue {
         /**
          * No Publication will be created, it's expected the user
