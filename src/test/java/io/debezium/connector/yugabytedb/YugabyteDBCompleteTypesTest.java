@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import io.debezium.jdbc.TemporalPrecisionMode;
+import io.debezium.relational.RelationalDatabaseConnectorConfig.DecimalHandlingMode;
 import io.debezium.util.HexConverter;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
@@ -24,7 +25,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBCompleteTypesTest extends YugabytedTestBase {
     @BeforeAll
     public static void beforeClass() throws SQLException {
         initializeYBContainer();
@@ -166,6 +167,50 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
         } else if (precisionMode == TemporalPrecisionMode.CONNECT) {
             // Note that in 'connect' mode, we have a loss of precision.
             assertValueField(record, "after/ts/value", 1637841600123L);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"precise", "double", "string"})
+    public void shouldWorkWithAllDecimalTypes(String decimalMode) throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        Thread.sleep(1000);
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "numeric_type");
+        Configuration.Builder configBuilder =
+          TestHelper.getConfigBuilder("public.numeric_type", dbStreamId);
+        configBuilder.with("decimal.handling.mode", decimalMode);
+        startEngine(configBuilder);
+
+        awaitUntilConnectorIsReady();
+
+        final long recordsCount = 1;
+
+        // This insert statement will insert a row containing all types
+        TestHelper.execute("INSERT INTO numeric_type VALUES (1, 987654321.12345678);");
+
+        List<SourceRecord> records = new ArrayList<>();
+
+        CompletableFuture.runAsync(() -> consumeRecords(records, recordsCount))
+          .exceptionally(throwable -> {
+              throw new RuntimeException(throwable);
+          }).get();
+
+        assertEquals(1, records.size());
+
+        // Get the only record from the list.
+        SourceRecord record_0 = records.get(0);
+//        SourceRecord record_1 = records.get(1);
+
+        DecimalHandlingMode decimalHandlingMode =
+          DecimalHandlingMode.parse(decimalMode);
+        if (decimalHandlingMode == DecimalHandlingMode.PRECISE) {
+            assertValueField(record_0, "after/col_val/value", 987654321.12345678);
+        } else if (decimalHandlingMode == DecimalHandlingMode.DOUBLE) {
+            assertValueField(record_0, "after/col_val/value", 9.876543211234568E8);
+        } else if (decimalHandlingMode == DecimalHandlingMode.STRING) {
+            assertValueField(record_0, "after/col_val/value", "987654321.12345678");
         }
     }
 }
