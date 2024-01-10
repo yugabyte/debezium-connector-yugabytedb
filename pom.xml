@@ -44,7 +44,7 @@
         <!-- Dependency Versions -->
         <version.postgresql.driver>42.5.1</version.postgresql.driver>
         <version.com.google.protobuf>3.21.7</version.com.google.protobuf>
-        <version.kafka>3.3.1</version.kafka>
+        <version.kafka>3.6.1</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
         <version.ybclient>0.8.75-20231215.051722-1</version.ybclient>
@@ -602,7 +602,6 @@
                             <build>
                                 <contextDir>${project.basedir}</contextDir>
                                 <tags>
-                                    <tag>latest</tag>
                                     <tag>${project.version}</tag>
                                 </tags>
                             </build>
