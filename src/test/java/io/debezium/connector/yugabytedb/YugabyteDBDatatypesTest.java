@@ -4,25 +4,20 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
-import io.debezium.connector.yugabytedb.connection.HashPartition;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.yb.cdc.CdcService;
 import org.yb.client.*;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState;
 import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
-import org.yb.master.MasterClientOuterClass;
 
 import static org.junit.jupiter.api.Assertions.*;
 
