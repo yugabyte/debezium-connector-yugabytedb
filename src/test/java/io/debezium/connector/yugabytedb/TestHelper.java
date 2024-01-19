@@ -22,6 +22,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import javax.sql.DataSource;
 
@@ -29,6 +30,7 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
+import org.junit.jupiter.params.provider.Arguments;
 import org.postgresql.jdbc.PgConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -504,7 +506,8 @@ public final class TestHelper {
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
-                                          boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode, boolean withCQL)
+                                          boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode, boolean withCQL,
+                                          boolean consistentSnapshot, boolean useSnapshot)
             throws Exception {
         YBClient syncClient = getYbClient(MASTER_ADDRESS);
 
@@ -518,7 +521,8 @@ public final class TestHelper {
         try {
             dbStreamId = syncClient.createCDCStream(placeholderTable, namespaceName,
                                                     "PROTO", explicitCheckpointing ? "EXPLICIT" : "IMPLICIT",
-                                                    withBeforeImage ? mode.toString() : BeforeImageMode.CHANGE.toString(), withCQL).getStreamId();
+                                                    withBeforeImage ? mode.toString() : BeforeImageMode.CHANGE.toString(), withCQL,
+                                                    consistentSnapshot, useSnapshot).getStreamId();
         } finally {
             syncClient.close();
         }
@@ -527,22 +531,27 @@ public final class TestHelper {
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
-                                          boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode) throws Exception {
-        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing, mode, false);
+                                          boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode,
+                                          boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing, mode, false, consistentSnapshot, useSnapshot);
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
-                                          boolean withBeforeImage, boolean explicitCheckpointing) throws Exception {
-        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing, BeforeImageMode.CHANGE);
+                                          boolean withBeforeImage, boolean explicitCheckpointing,
+                                          boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing, BeforeImageMode.CHANGE, consistentSnapshot, useSnapshot);
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
                                           boolean withBeforeImage) throws Exception {
-        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, true /* explicit */);
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, true /* explicit */, false, false);
     }
 
+    public static String getNewDbStreamId(String namespaceName, String tableName, boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+        return getNewDbStreamId(namespaceName, tableName, false, true, consistentSnapshot, useSnapshot);
+    }
     public static String getNewDbStreamId(String namespaceName, String tableName) throws Exception {
-        return getNewDbStreamId(namespaceName, tableName, false);
+        return getNewDbStreamId(namespaceName, tableName, false, false);
     }
 
     public static String getStreamIdFromSlot(String slotName) throws Exception {
@@ -749,5 +758,17 @@ public final class TestHelper {
                 config.hStoreHandlingMode(),
                 config.binaryHandlingMode(),
                 config.intervalHandlingMode());
+    }
+
+    public static Stream<Arguments> streamTypeProviderForStreaming() {
+        return Stream.of(
+                Arguments.of(false, false), // Older stream
+                Arguments.of(true, false)); // NO_EXPORT stream
+    }
+
+    public static Stream<Arguments> streamTypeProviderForSnapshot() {
+        return Stream.of(
+                Arguments.of(false, false), // Older stream
+                Arguments.of(true, true));  // USE_SNAPSHOT stream
     }
 }

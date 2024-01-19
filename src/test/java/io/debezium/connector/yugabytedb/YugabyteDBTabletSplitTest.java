@@ -14,6 +14,8 @@ import java.util.stream.Collectors;
 import org.apache.kafka.connect.data.Struct;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.yb.client.GetTabletListToPollForCDCResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
@@ -56,12 +58,13 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
   }
 
   @Order(1)
-  @Test
-  public void shouldConsumeDataAfterTabletSplit() throws Exception {
+  @ParameterizedTest
+  @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+  public void shouldConsumeDataAfterTabletSplit(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
     TestHelper.dropAllSchemas();
     TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
 
-    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 
     startEngine(configBuilder, (success, message, error) -> {
@@ -124,8 +127,9 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
   }
 
   @Order(2)
-  @Test
-  public void reproduceSplitWhileTransactionIsNotFinishedWithAutomaticSplitting() throws Exception {
+  @ParameterizedTest
+  @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+  public void reproduceSplitWhileTransactionIsNotFinishedWithAutomaticSplitting(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
     // Stop, if ybContainer already running.
     if (ybContainer.isRunning()) {
       ybContainer.stop();
@@ -173,7 +177,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
                        + "1234567890123456789012345678901234567890123456789012345')"
                        + " SPLIT INTO 1 TABLETS;");
 
-    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 
     startEngine(configBuilder, (success, message, error) -> {

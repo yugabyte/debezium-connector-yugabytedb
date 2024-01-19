@@ -5,14 +5,14 @@
     <groupId>io.debezium</groupId>
     <artifactId>debezium-connector-yugabytedb</artifactId>
     <name>YugabyteDB Source Connector</name>
-    <version>1.9.5.y.218-SNAPSHOT</version>
+    <version>1.9.5.y.220-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <scm>
         <connection>scm:git:git@github.com:yugabyte/debezium-connector-yugabytedb.git</connection>
         <developerConnection>scm:git:git@github.com:yugabyte/debezium-connector-yugabytedb.git</developerConnection>
         <url>https://github.com/yugabyte/debezium-connector-yugabytedb</url>
-        <tag>v1.9.5.y.33</tag>
+        <tag>v1.9.5.y.220.SNAPSHOT.1</tag>
     </scm>
 
 
@@ -44,10 +44,10 @@
         <!-- Dependency Versions -->
         <version.postgresql.driver>42.5.1</version.postgresql.driver>
         <version.com.google.protobuf>3.21.7</version.com.google.protobuf>
-        <version.kafka>3.3.1</version.kafka>
+        <version.kafka>3.6.1</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
-        <version.ybclient>0.8.73-20231201.070308-1</version.ybclient>
+        <version.ybclient>0.8.75-20231215.051722-1</version.ybclient>
         <version.gson>2.8.9</version.gson>
 
         <!--
@@ -602,7 +602,6 @@
                             <build>
                                 <contextDir>${project.basedir}</contextDir>
                                 <tags>
-                                    <tag>latest</tag>
                                     <tag>${project.version}</tag>
                                 </tags>
                             </build>
