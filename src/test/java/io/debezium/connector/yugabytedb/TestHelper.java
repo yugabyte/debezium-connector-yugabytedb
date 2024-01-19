@@ -80,6 +80,8 @@ public final class TestHelper {
     // If this variable is changed, do not forget to change the name in postgres_create_tables.ddl
     private static final String SECONDARY_DATABASE = "secondary_database";
 
+    public static final String CONTAINER_HOSTNAME = "yugabyte-0";
+
     // Set the localhost value as the defaults for now
     private static String CONTAINER_YSQL_HOST = "127.0.0.1";
     private static String CONTAINER_YCQL_HOST = "127.0.0.1";
@@ -453,7 +455,7 @@ public final class TestHelper {
         container.withUsername("yugabyte");
         container.withDatabaseName("yugabyte");
         container.withExposedPorts(7100, 9100, 5433, 9042);
-        container.withCreateContainerCmdModifier(cmd -> cmd.withHostName("127.0.0.1").getHostConfig().withPortBindings(new ArrayList<PortBinding>() {
+        container.withCreateContainerCmdModifier(cmd -> cmd.withHostName(CONTAINER_HOSTNAME).getHostConfig().withPortBindings(new ArrayList<PortBinding>() {
             {
                 add(new PortBinding(Ports.Binding.bindPort(7100), new ExposedPort(7100)));
                 add(new PortBinding(Ports.Binding.bindPort(9100), new ExposedPort(9100)));
