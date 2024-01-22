@@ -22,6 +22,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import javax.sql.DataSource;
 
@@ -29,12 +30,12 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
+import org.junit.jupiter.params.provider.Arguments;
 import org.postgresql.jdbc.PgConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.JdbcDatabaseContainer;
 import org.testcontainers.containers.YugabyteYSQLContainer;
-import org.testcontainers.containers.wait.strategy.WaitStrategy;
 import org.testcontainers.utility.DockerImageName;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.ListTablesResponse;
@@ -77,6 +78,8 @@ public final class TestHelper {
 
     // If this variable is changed, do not forget to change the name in postgres_create_tables.ddl
     private static final String SECONDARY_DATABASE = "secondary_database";
+
+    public static final String CONTAINER_HOSTNAME = "yugabyte-0";
 
     // Set the localhost value as the defaults for now
     private static String CONTAINER_YSQL_HOST = "127.0.0.1";
@@ -449,7 +452,7 @@ public final class TestHelper {
         container.withUsername("yugabyte");
         container.withDatabaseName("yugabyte");
         container.withExposedPorts(7100, 9100, 5433, 9042);
-        container.withCreateContainerCmdModifier(cmd -> cmd.withHostName("127.0.0.1").getHostConfig().withPortBindings(new ArrayList<PortBinding>() {
+        container.withCreateContainerCmdModifier(cmd -> cmd.withHostName(CONTAINER_HOSTNAME).getHostConfig().withPortBindings(new ArrayList<PortBinding>() {
             {
                 add(new PortBinding(Ports.Binding.bindPort(7100), new ExposedPort(7100)));
                 add(new PortBinding(Ports.Binding.bindPort(9100), new ExposedPort(9100)));
@@ -498,7 +501,8 @@ public final class TestHelper {
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
-                                          boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode, boolean withCQL)
+                                          boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode, boolean withCQL,
+                                          boolean consistentSnapshot, boolean useSnapshot)
             throws Exception {
         YBClient syncClient = getYbClient(MASTER_ADDRESS);
 
@@ -512,7 +516,8 @@ public final class TestHelper {
         try {
             dbStreamId = syncClient.createCDCStream(placeholderTable, namespaceName,
                                                     "PROTO", explicitCheckpointing ? "EXPLICIT" : "IMPLICIT",
-                                                    withBeforeImage ? mode.toString() : BeforeImageMode.CHANGE.toString(), withCQL).getStreamId();
+                                                    withBeforeImage ? mode.toString() : BeforeImageMode.CHANGE.toString(), withCQL,
+                                                    consistentSnapshot, useSnapshot).getStreamId();
         } finally {
             syncClient.close();
         }
@@ -521,22 +526,27 @@ public final class TestHelper {
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
-                                          boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode) throws Exception {
-        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing, mode, false);
+                                          boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode,
+                                          boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing, mode, false, consistentSnapshot, useSnapshot);
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
-                                          boolean withBeforeImage, boolean explicitCheckpointing) throws Exception {
-        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing, BeforeImageMode.CHANGE);
+                                          boolean withBeforeImage, boolean explicitCheckpointing,
+                                          boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, explicitCheckpointing, BeforeImageMode.CHANGE, consistentSnapshot, useSnapshot);
     }
 
     public static String getNewDbStreamId(String namespaceName, String tableName,
                                           boolean withBeforeImage) throws Exception {
-        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, true /* explicit */);
+        return getNewDbStreamId(namespaceName, tableName, withBeforeImage, true /* explicit */, false, false);
     }
 
+    public static String getNewDbStreamId(String namespaceName, String tableName, boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+        return getNewDbStreamId(namespaceName, tableName, false, true, consistentSnapshot, useSnapshot);
+    }
     public static String getNewDbStreamId(String namespaceName, String tableName) throws Exception {
-        return getNewDbStreamId(namespaceName, tableName, false);
+        return getNewDbStreamId(namespaceName, tableName, false, false);
     }
 
     public static String getStreamIdFromSlot(String slotName) throws Exception {
@@ -743,5 +753,17 @@ public final class TestHelper {
                 config.hStoreHandlingMode(),
                 config.binaryHandlingMode(),
                 config.intervalHandlingMode());
+    }
+
+    public static Stream<Arguments> streamTypeProviderForStreaming() {
+        return Stream.of(
+                Arguments.of(false, false), // Older stream
+                Arguments.of(true, false)); // NO_EXPORT stream
+    }
+
+    public static Stream<Arguments> streamTypeProviderForSnapshot() {
+        return Stream.of(
+                Arguments.of(false, false), // Older stream
+                Arguments.of(true, true));  // USE_SNAPSHOT stream
     }
 }

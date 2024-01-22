@@ -789,17 +789,6 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     "Whether or not to delete the logical replication stream when the connector finishes orderly" +
                             "By default the replication is kept so that on restart progress can resume from the last recorded location");
 
-    // Changing the default decimal.handling.mode to double
-    @Override
-    public JdbcValueConverters.DecimalMode getDecimalMode() {
-        if (super.getDecimalMode() == JdbcValueConverters.DecimalMode.PRECISE) {
-            LOGGER.debug("decimal.handling.mode PRECISE is not supported, defaulting to double");
-            return JdbcValueConverters.DecimalMode.DOUBLE;
-        }
-
-        return super.getDecimalMode();
-    }
-
     public enum AutoCreateMode implements EnumeratedValue {
         /**
          * No Publication will be created, it's expected the user
@@ -1215,11 +1204,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 config,
                 config.getString(RelationalDatabaseConnectorConfig.SERVER_NAME),
                 new SystemTablesPredicate(),
-                YBClientUtils.isYSQLStream(config.getString(YugabyteDBConnectorConfig.STREAM_ID), YBClientUtils.getYbClient(config))? x -> x.schema() + "." + x.table() : x -> x.table(),
+                YBClientUtils.isYSQLStream(config) ? x -> x.schema() + "." + x.table() : x -> x.table(),
                 DEFAULT_SNAPSHOT_FETCH_SIZE,
                 ColumnFilterMode.SCHEMA);
 
-        this.isYSQL = YBClientUtils.isYSQLStream(config.getString(YugabyteDBConnectorConfig.STREAM_ID), YBClientUtils.getYbClient(config));
+        this.isYSQL = YBClientUtils.isYSQLStream(config);
         this.truncateHandlingMode = TruncateHandlingMode.parse(config.getString(YugabyteDBConnectorConfig.TRUNCATE_HANDLING_MODE));
         this.consistencyMode = ConsistencyMode.parse(config.getString(YugabyteDBConnectorConfig.CONSISTENCY_MODE));
         this.logicalDecodingMessageFilter = new LogicalDecodingMessageFilter(config.getString(LOGICAL_DECODING_MESSAGE_PREFIX_INCLUDE_LIST),

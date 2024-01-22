@@ -1,5 +1,6 @@
 package io.debezium.connector.yugabytedb;
 
+import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -7,6 +8,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import io.debezium.jdbc.TemporalPrecisionMode;
+import io.debezium.relational.RelationalDatabaseConnectorConfig.DecimalHandlingMode;
 import io.debezium.util.HexConverter;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
@@ -18,11 +20,13 @@ import org.junit.jupiter.params.ParameterizedTest;
 import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
 import io.debezium.util.Strings;
+
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBCompleteTypesTest extends YugabytedTestBase {
     @BeforeAll
     public static void beforeClass() throws SQLException {
         initializeYBContainer();
@@ -65,13 +69,14 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
         }
     }
 
-    @Test
-    public void verifyAllWorkingDataTypesInSingleTable() throws Exception {
+    @ParameterizedTest
+    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+    public void verifyAllWorkingDataTypesInSingleTable(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
         Thread.sleep(1000);
 
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types");
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types", consistentSnapshot, useSnapshot);
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.all_types", dbStreamId);
         startEngine(configBuilder);
 
@@ -163,6 +168,95 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
         } else if (precisionMode == TemporalPrecisionMode.CONNECT) {
             // Note that in 'connect' mode, we have a loss of precision.
             assertValueField(record, "after/ts/value", 1637841600123L);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"precise", "double", "string"})
+    public void shouldWorkWithAllDecimalTypes(String decimalMode) throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        Thread.sleep(1000);
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "numeric_type");
+        Configuration.Builder configBuilder =
+          TestHelper.getConfigBuilder("public.numeric_type", dbStreamId);
+        configBuilder.with("decimal.handling.mode", decimalMode);
+        startEngine(configBuilder);
+
+        awaitUntilConnectorIsReady();
+
+        final long recordsCount = 1;
+        
+        TestHelper.execute("INSERT INTO numeric_type VALUES (1, 987654321.12345678);");
+
+        List<SourceRecord> records = new ArrayList<>();
+
+        CompletableFuture.runAsync(() -> consumeRecords(records, recordsCount))
+          .exceptionally(throwable -> {
+              throw new RuntimeException(throwable);
+          }).get();
+
+        assertEquals(1, records.size());
+
+        // Get the only record from the list.
+        SourceRecord record_0 = records.get(0);
+
+        DecimalHandlingMode decimalHandlingMode =
+          DecimalHandlingMode.parse(decimalMode);
+        if (decimalHandlingMode == DecimalHandlingMode.PRECISE) {
+            assertValueField(record_0, "after/col_val/value", 987654321.12345678);
+        } else if (decimalHandlingMode == DecimalHandlingMode.DOUBLE) {
+            assertValueField(record_0, "after/col_val/value", 9.876543211234568E8);
+        } else if (decimalHandlingMode == DecimalHandlingMode.STRING) {
+            assertValueField(record_0, "after/col_val/value", "987654321.12345678");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"precise", "double", "string"})
+    public void shouldHaveLossOfPrecisionWithDecimalModeWithLargeValue(String decimalMode) throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        Thread.sleep(1000);
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "numeric_type");
+        Configuration.Builder configBuilder =
+          TestHelper.getConfigBuilder("public.numeric_type", dbStreamId);
+        configBuilder.with("decimal.handling.mode", decimalMode);
+        startEngine(configBuilder);
+
+        awaitUntilConnectorIsReady();
+
+        final long recordsCount = 1;
+
+        // Insert a value having a large value.
+        BigDecimal val = new BigDecimal("100000000000000000000000000000000000000000000000000000000000000000000000000000.123456789123456789");
+        TestHelper.execute("INSERT INTO numeric_type (id, col_val_2) VALUES (1, " + val + ");");
+
+        List<SourceRecord> records = new ArrayList<>();
+
+        CompletableFuture.runAsync(() -> consumeRecords(records, recordsCount))
+          .exceptionally(throwable -> {
+              throw new RuntimeException(throwable);
+          }).get();
+
+        assertEquals(1, records.size());
+
+        // Get the only record from the list.
+        SourceRecord record_0 = records.get(0);
+        LOGGER.info("schema: {}", record_0.valueSchema().toString());
+        LOGGER.info(record_0.value().toString());
+
+        DecimalHandlingMode decimalHandlingMode =
+          DecimalHandlingMode.parse(decimalMode);
+        if (decimalHandlingMode == DecimalHandlingMode.PRECISE) {
+            assertValueField(record_0, "after/col_val_2/value", 100000000000000000000000000000000000000000000000000000000000000000000000000000.123456789123456789);
+        } else if (decimalHandlingMode == DecimalHandlingMode.DOUBLE) {
+            // This is a loss of precision as compared to the originally inserted value.
+            assertValueField(record_0, "after/col_val_2/value", 1.0E77);
+        } else if (decimalHandlingMode == DecimalHandlingMode.STRING) {
+            assertValueField(record_0, "after/col_val_2/value", "100000000000000000000000000000000000000000000000000000000000000000000000000000.123456789123456789");
         }
     }
 }

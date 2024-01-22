@@ -1,7 +1,13 @@
 package io.debezium.connector.yugabytedb.common;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.time.Duration;
 
+import com.github.dockerjava.api.command.InspectContainerResponse;
+import com.github.dockerjava.api.exception.NotFoundException;
+import com.google.common.base.Throwables;
+import org.awaitility.Awaitility;
 import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
 import org.testcontainers.containers.Container.ExecResult;
@@ -16,27 +22,78 @@ import io.debezium.connector.yugabytedb.TestHelper;
  */
 public class YugabyteDBContainerTestBase extends TestBaseClass {
     private static final Logger logger = LoggerFactory.getLogger(YugabyteDBContainerTestBase.class);
+    private static final String CONTAINER_IP_FORMAT_STRING = "docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' %s";
+
     protected static void initializeYBContainer() {
         ybContainer = TestHelper.getYbContainer();
         ybContainer.start();
 
-        logger.info("Container startup command: {}", getYugabytedStartCommand());
+        containerIpAddress = getContainerIp(ybContainer.getContainerId());
+        logger.info("YugabyteDB container IP: {}", containerIpAddress);
 
         try {
             ExecResult result = ybContainer.execInContainer(getYugabytedStartCommand().split("\\s+"));
 
             logger.info("Started yugabyted inside container: {}", result.getStdout());
+            logger.info("Error output (if any): {}", result.getStderr());
         } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException(e);
         }
 
-        TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433), ybContainer.getMappedPort(9042));
-        TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+        TestHelper.setContainerHostPort(containerIpAddress, ybContainer.getMappedPort(5433), ybContainer.getMappedPort(9042));
+        TestHelper.setMasterAddress(containerIpAddress + ":" + ybContainer.getMappedPort(7100));
+    }
+
+    /**
+     * @param containerId the container ID
+     * @return a string representation of the IP address of the passed container ID
+     */
+    protected static String getContainerIp(String containerId) {
+        try {
+            Process process =
+              Runtime.getRuntime().exec(String.format(CONTAINER_IP_FORMAT_STRING, containerId));
+            int exitCode = process.waitFor();
+
+            if (exitCode != 0) {
+                throw new Exception("Command exited with exit code " + exitCode);
+            }
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+
+            // Assuming we have just one line of the container IP.
+            String line = reader.readLine();
+            return line.substring(1, line.length() - 1);
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
+        }
     }
 
     protected static void shutdownYBContainer() {
+        String containerId = ybContainer.getContainerId();
+        logger.info("Shutting down container with ID {}", containerId);
+
         ybContainer.stop();
+
+        // Wait until container is fully stopped.
+        Awaitility.await()
+            .atMost(Duration.ofSeconds(20))
+            .pollInterval(Duration.ofSeconds(2))
+            .ignoreNoExceptions()
+            .until(() -> {
+              try {
+                InspectContainerResponse containerInfo = ybContainer.getDockerClient().inspectContainerCmd(containerId).exec();
+                return containerInfo.getState() == null && !Boolean.TRUE.equals(containerInfo.getState().getRunning());
+              } catch (NotFoundException e) {
+                logger.warn("Was going to stop container but it apparently no longer exists: {}", containerId);
+                return true;
+              } catch (Exception e) {
+                logger.warn("Error encountered when checking container for shutdown (ID: {}) - it may not have been stopped, or may already be stopped. Root cause: {}",
+                    containerId, Throwables.getRootCause(e).getMessage());
+                return true;
+              }
+            });
     }
 
     protected static String getMasterAddress() {
@@ -45,7 +102,7 @@ public class YugabyteDBContainerTestBase extends TestBaseClass {
 
     @Override
     protected long getIntentsCount() throws Exception {
-        ExecResult result = ybContainer.execInContainer("/home/yugabyte/bin/yb-ts-cli", "--server_address", "0.0.0.0", "count_intents");
+        ExecResult result = ybContainer.execInContainer("/home/yugabyte/bin/yb-ts-cli", "--server_address", containerIpAddress, "count_intents");
 
         // Assuming the result is just a number, so simply convert the string to long and return.
         return Long.parseLong(result.getStdout().split("\n")[0]);

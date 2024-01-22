@@ -9,6 +9,8 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import io.debezium.config.Configuration;
 
@@ -47,8 +49,9 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
       shutdownYBContainer();
   }
 
-  @Test
-  public void shouldHandleSchemaChangesGracefully() throws Exception {
+  @ParameterizedTest
+  @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+  public void shouldHandleSchemaChangesGracefully(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
     /**
      * 1. Create 2 tablets with range sharding
      * 2. Start the CDC pipeline and insert data - make sure one of the tablet gets way more data
@@ -61,7 +64,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
     TestHelper.dropAllSchemas();
     TestHelper.execute("CREATE TABLE t1 (id INT, name TEXT, PRIMARY KEY(id ASC)) SPLIT AT VALUES ((30000));");
 
-    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
     configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 10_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
@@ -88,8 +91,9 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
       }).get();
   }
 
-  @Test
-  public void shouldHandleDropColumnWithSingleTablet() throws Exception {
+  @ParameterizedTest
+  @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+  public void shouldHandleDropColumnWithSingleTablet(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
     /**
      * 1. Create a table having 10 columns (+1 for primary key)
      * 2. Start the CDC pipeline and keep inserting data
@@ -110,7 +114,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
     
     TestHelper.execute(createTableStatement);
 
-    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
     configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 5_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
@@ -135,8 +139,9 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
       }).get();
   }
 
-  @Test
-  public void shouldHandleSchemaChangesForHighTabletCount() throws Exception {
+  @ParameterizedTest
+  @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+  public void shouldHandleSchemaChangesForHighTabletCount(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
     /**
      * 1. Create a table having 40 columns (+1 for primary key) with 40 tablets
      * 2. Start the CDC pipeline and keep inserting data
@@ -157,7 +162,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
     
     TestHelper.execute(createTableStatement);
 
-    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
     configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 5_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
@@ -183,8 +188,9 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
       }).get();
   }
 
-  @Test
-  public void shouldWorkWithColumnRenaming() throws Exception {
+  @ParameterizedTest
+  @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+  public void shouldWorkWithColumnRenaming(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
     /**
      * 1. Create tablets with range sharding
      * 2. Start the CDC pipeline and insert data
@@ -196,7 +202,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
     TestHelper.dropAllSchemas();
     TestHelper.execute("CREATE TABLE t1 (id INT, name TEXT, PRIMARY KEY(id ASC)) SPLIT AT VALUES ((30000));");
 
-    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
     configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 10_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);

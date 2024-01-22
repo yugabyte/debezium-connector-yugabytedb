@@ -1,4 +1,4 @@
-CREATE TABLE t1 (id INT PRIMARY KEY, first_name TEXT NOT NULL, last_name VARCHAR(40), hours DOUBLE PRECISION);
+CREATE TABLE t1 (id INT PRIMARY KEY, first_name TEXT NOT NULL, last_name VARCHAR(40), hours DOUBLE PRECISION) SPLIT INTO 1 TABLETS;
 CREATE TABLE IF NOT EXISTS t2 (id int primary key);
 CREATE TABLE IF NOT EXISTS t3 (id int primary key);
 
@@ -8,6 +8,8 @@ CREATE TABLE all_types (id serial PRIMARY KEY, bigintcol bigint, bitcol bit(5), 
 cidrval cidr, dt date, dp double precision, inetval inet, intervalval interval, jsonval json, jsonbval jsonb, mc macaddr, mc8 macaddr8, mn money, nm numeric, rl real,
 si smallint, i4r int4range, i8r int8range, nr numrange, tsr tsrange, tstzr tstzrange, dr daterange, txt text, tm time, tmtz timetz, ts timestamp, tstz timestamptz,
 uuidval uuid) WITH (COLOCATION = false);
+
+CREATE TABLE numeric_type (id INT PRIMARY KEY, col_val NUMERIC(17, 8), col_val_2 numeric(102, 23));
 
 DROP DATABASE IF EXISTS secondary_database;
 CREATE DATABASE secondary_database;
