@@ -59,7 +59,11 @@ public class TestBaseClass extends AbstractConnectorTest {
 
     // Set the GFLAG: "cdc_state_checkpoint_update_interval_ms" to 0 in all tests, forcing every
     // instance of explicit_checkpoint to be added to the 'cdc_state' table in the service.
-    protected static List<String> tserverFlags = new ArrayList<>(List.of("cdc_state_checkpoint_update_interval_ms=0"));
+    protected static List<String> tserverFlags =
+      new ArrayList<>(
+        List.of(
+          "cdc_state_checkpoint_update_interval_ms=0"
+        ));
     protected static String yugabytedLocation = "/home/yugabyte/bin/yugabyted";
 
     protected void awaitUntilConnectorIsReady() throws Exception {

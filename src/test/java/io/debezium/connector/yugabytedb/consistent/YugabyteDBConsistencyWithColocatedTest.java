@@ -35,6 +35,8 @@ public class YugabyteDBConsistencyWithColocatedTest extends YugabyteDBContainerT
     public static void beforeClass() throws SQLException {
         setMasterFlags("enable_automatic_tablet_splitting=false");
         setTserverFlags("cdc_populate_safepoint_record=true", "enable_automatic_tablet_splitting=false");
+        initializeYBContainer();
+
         TestHelper.dropAllSchemas();
 
         // Create colocated database for usage.

@@ -129,6 +129,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 		// This will lead to 2 tablets of range [lowest, 1000] and (1000, highest]
 		final String createTable =
 			"CREATE TABLE test_table (id INT, PRIMARY KEY(id ASC)) SPLIT AT VALUES ((1000));";
+		TestHelper.execute("DROP TABLE IF EXISTS test_table;");
 		TestHelper.execute(createTable);
 
 		String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "test_table", consistentSnapshot, useSnapshot);

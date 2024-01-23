@@ -32,6 +32,7 @@ public class YugabyteDBContainerTestBase extends TestBaseClass {
         logger.info("YugabyteDB container IP: {}", containerIpAddress);
 
         try {
+            logger.info("yugabyted start command: {}", getYugabytedStartCommand());
             ExecResult result = ybContainer.execInContainer(getYugabytedStartCommand().split("\\s+"));
 
             logger.info("Started yugabyted inside container: {}", result.getStdout());

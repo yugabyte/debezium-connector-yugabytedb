@@ -668,10 +668,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         TestHelper.execute("CREATE TABLE t2 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
         TestHelper.execute("CREATE TABLE t3 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false, false, consistentSnapshot, useSnapshot);
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
-
         YugabyteDBStreamingChangeEventSource.TEST_WAIT_BEFORE_GETTING_CHILDREN = true;
 
         int recordsCount = 50;
@@ -679,6 +675,10 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         for (int i = 0; i < recordsCount; ++i) {
             TestHelper.execute(String.format(insertFormat, i));
         }
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false, false, consistentSnapshot, useSnapshot);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
 
         startEngine(configBuilder);
         awaitUntilConnectorIsReady();
@@ -853,7 +853,10 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         final int recordCountInNonColocated = 2000;
         insertBulkRecordsInColocatedDB(recordCountForTest1, "public.test_1");
         insertBulkRecordsInColocatedDB(recordCountForTest2, "public.test_2");
-        insertBulkRecordsInColocatedDB(recordCountInNonColocated, "public.test_no_colocated");
+
+        if (!emptyNonColocated) {
+            insertBulkRecordsInColocatedDB(recordCountInNonColocated, "public.test_no_colocated");
+        }
 
         String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1", true, true);
         Configuration.Builder configBuilder =
