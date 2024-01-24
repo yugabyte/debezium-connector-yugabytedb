@@ -34,7 +34,7 @@ pipeline {
                 }
                 script{
                     sh './.github/scripts/install_prerequisites.sh'
-                    env.BUILD_NUMBER = sh(script: "curl -sk http://release.dev.yugabyte.com/releases/latest?version=${YB_VERSION}", returnStdout: true).trim()
+                    env.BUILD_NUMBER = sh(script: "curl -Lsk https://release.dev.yugabyte.com/releases/latest?version=${YB_VERSION}", returnStdout: true).trim()
                     env.YB_DOCKER_IMAGE="quay.io/yugabyte/yugabyte-itest:${YB_VERSION}-b${BUILD_NUMBER}"
                 }
             }
