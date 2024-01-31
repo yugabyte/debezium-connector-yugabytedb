@@ -18,12 +18,12 @@ import javax.management.MBeanServer;
 import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 
+import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import org.apache.kafka.common.utils.Sanitizer;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.debezium.config.CommonConnectorConfig;
 import io.debezium.connector.common.CdcSourceTaskContext;
 import io.debezium.util.Clock;
 import io.debezium.util.Collect;
@@ -38,8 +38,9 @@ public class YugabyteDBMetrics {
   private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBMetrics.class);
 
   // Total 1 minute attempting to retry metrics registration in case of errors
-  private static final int REGISTRATION_RETRIES = 12;
-  private static final Duration REGISTRATION_RETRY_DELAY = Duration.ofSeconds(5);
+  private int registrationRetries = YugabyteDBConnectorConfig.DEFAULT_MBEAN_REGISTRATION_RETRIES;
+  private Duration registrationRetryDelay =
+    Duration.ofMillis(YugabyteDBConnectorConfig.DEFAULT_MBEAN_REGISTRATION_RETRY_DELAY_MS);
 
   private final ObjectName name;
   private volatile boolean registered = false;
@@ -52,10 +53,14 @@ public class YugabyteDBMetrics {
     this.name = metricName(taskContext.getConnectorType(), tags);
   }
 
-  protected YugabyteDBMetrics(CommonConnectorConfig connectorConfig, String contextName,
+  protected YugabyteDBMetrics(YugabyteDBConnectorConfig connectorConfig, String contextName,
                               boolean multiPartitionMode) {
     String connectorType = connectorConfig.getContextName();
     String connectorName = connectorConfig.getLogicalName();
+
+    registrationRetries = connectorConfig.mbeanRegistrationRetries();
+    registrationRetryDelay = Duration.ofMillis(connectorConfig.mbeanRegistrationRetryDelayMs());
+
     if (multiPartitionMode) {
       this.name = metricName(connectorType, Collect.linkMapOf(
               "server", connectorName,
@@ -69,18 +74,21 @@ public class YugabyteDBMetrics {
   /**
    * Constructor to initialize the metric related settings while picking up the task Id from the
    * taskContext
-   * @param taskContext the CdcSourceTaskContext to pick the task Id from
+   * @param taskId
    * @param connectorConfig the connector configuration
    * @param contextName name of the context
    * @param multiPartitionMode whether the connector is supposed to work with multi partition per
    * task mode
    */
   protected YugabyteDBMetrics(String taskId,
-                              CommonConnectorConfig connectorConfig,
+                              YugabyteDBConnectorConfig connectorConfig,
                               String contextName,
                               boolean multiPartitionMode) {
     String connectorType = connectorConfig.getContextName();
     String connectorName = connectorConfig.getLogicalName();
+
+    registrationRetries = connectorConfig.mbeanRegistrationRetries();
+    registrationRetryDelay = Duration.ofMillis(connectorConfig.mbeanRegistrationRetryDelayMs());
     
     if (multiPartitionMode) {
       LOGGER.info("Configuring a metric with connector type {} server {}, task ID {} and context {}",
@@ -108,16 +116,16 @@ public class YugabyteDBMetrics {
       // During connector restarts it is possible that Kafka Connect does not manage
       // the lifecycle perfectly. In that case it is possible the old metric MBean is still present.
       // There will be multiple attempts executed to register new MBean.
-      for (int attempt = 1; attempt <= REGISTRATION_RETRIES; attempt++) {
+      for (int attempt = 1; attempt <= registrationRetries; attempt++) {
         try {
           mBeanServer.registerMBean(this, name);
           break;
         } catch (InstanceAlreadyExistsException e) {
-          if (attempt < REGISTRATION_RETRIES) {
+          if (attempt < registrationRetries) {
             LOGGER.warn(
               "Unable to register metrics as an old set with the same name exists, retrying in {} (attempt {} out of {})",
-              REGISTRATION_RETRY_DELAY, attempt, REGISTRATION_RETRIES);
-              final Metronome metronome = Metronome.sleeper(REGISTRATION_RETRY_DELAY, Clock.system());
+              registrationRetryDelay, attempt, registrationRetries);
+              final Metronome metronome = Metronome.sleeper(registrationRetryDelay, Clock.system());
               metronome.pause();
           }
           else {
