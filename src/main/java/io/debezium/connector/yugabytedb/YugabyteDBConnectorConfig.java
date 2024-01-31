@@ -11,7 +11,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -51,10 +50,8 @@ import io.debezium.connector.yugabytedb.snapshot.InitialOnlySnapshotter;
 import io.debezium.connector.yugabytedb.snapshot.InitialSnapshotter;
 import io.debezium.connector.yugabytedb.snapshot.NeverSnapshotter;
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
-import io.debezium.heartbeat.DatabaseHeartbeatImpl;
 import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.jdbc.JdbcConnection;
-import io.debezium.jdbc.JdbcValueConverters;
 import io.debezium.jdbc.JdbcConnection.ConnectionFactory;
 import io.debezium.jdbc.JdbcConnectionException;
 import io.debezium.relational.ColumnFilterMode;
@@ -600,6 +597,8 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final boolean DEFAULT_LIMIT_ONE_POLL_PER_ITERATION = false;
     protected static final long DEFAULT_NEW_TABLE_POLL_INTERVAL_MS = 5 * 60 * 1000L;
     protected static final long DEFAULT_LOG_GET_CHANGES_INTERVAL_MS = 5 * 60 * 1000L;
+    public static final int DEFAULT_MBEAN_REGISTRATION_RETRIES = 12;
+    public static final long DEFAULT_MBEAN_REGISTRATION_RETRY_DELAY_MS = 5_000;
 
     @Override
     public JdbcConfiguration getJdbcConfig() {
@@ -711,6 +710,18 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withImportance(Importance.LOW)
             .withDefault(DEFAULT_CONNECTOR_RETRY_DELAY_MS)
             .withDescription("The amount of time after which the connector will attempt to retry to get the changes from the server.");
+
+    public static final Field MBEAN_REGISTRATION_RETRIES = Field.create("mbean.registration.retries")
+            .withDisplayName("Number of attempts for registering the metrics MBean")
+            .withType(Type.INT)
+            .withImportance(Importance.LOW)
+            .withDefault(DEFAULT_MBEAN_REGISTRATION_RETRIES);
+
+    public static final Field MBEAN_REGISTRATION_RETRY_DELAY_MS = Field.create("mbean.registration.retry.delay.ms")
+            .withDisplayName("Retry interval between successive attempts to register metrics MBean")
+            .withType(Type.LONG)
+            .withImportance(Importance.LOW)
+            .withDefault(DEFAULT_MBEAN_REGISTRATION_RETRY_DELAY_MS);
 
     public static final Field IGNORE_EXCEPTIONS = Field.create("ignore.exceptions")
             .withDisplayName("Flag to ignore exceptions which do not cause an issue while execution")
@@ -1407,6 +1418,14 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return this.isYSQL;
     }
 
+    public int mbeanRegistrationRetries() {
+        return getConfig().getInteger(MBEAN_REGISTRATION_RETRIES);
+    }
+
+    public long mbeanRegistrationRetryDelayMs() {
+        return getConfig().getLong(MBEAN_REGISTRATION_RETRY_DELAY_MS);
+    }
+
     /*
      * protected Duration xminFetchInterval() {
      * return Duration.ofMillis(getConfig().getLong(PostgresConnectorConfig.XMIN_FETCH_INTERVAL));
@@ -1457,7 +1476,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     AUTO_ADD_NEW_TABLES,
                     NEW_TABLE_POLL_INTERVAL_MS,
                     LOG_GET_CHANGES,
-                    LOG_GET_CHANGES_INTERVAL_MS)
+                    LOG_GET_CHANGES_INTERVAL_MS,
+              MBEAN_REGISTRATION_RETRIES,
+                    MBEAN_REGISTRATION_RETRY_DELAY_MS)
             .events(
                     INCLUDE_UNKNOWN_DATATYPES)
             .connector(
