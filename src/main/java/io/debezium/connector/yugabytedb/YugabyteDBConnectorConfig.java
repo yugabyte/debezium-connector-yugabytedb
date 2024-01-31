@@ -594,11 +594,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final long DEFAULT_CDC_POLL_INTERVAL_MS = 500;
     protected static final int DEFAULT_MAX_CONNECTOR_RETRIES = 5;
     protected static final long DEFAULT_CONNECTOR_RETRY_DELAY_MS = 60000;
-    protected static final long DEFAULT_MBEAN_REGISTRATION_RETRIES = 12;
-    protected static final long DEFAULT_MBEAN_REGISTRATION_RETRY_DELAY_MS = 5_000;
     protected static final boolean DEFAULT_LIMIT_ONE_POLL_PER_ITERATION = false;
     protected static final long DEFAULT_NEW_TABLE_POLL_INTERVAL_MS = 5 * 60 * 1000L;
     protected static final long DEFAULT_LOG_GET_CHANGES_INTERVAL_MS = 5 * 60 * 1000L;
+    public static final int DEFAULT_MBEAN_REGISTRATION_RETRIES = 12;
+    public static final long DEFAULT_MBEAN_REGISTRATION_RETRY_DELAY_MS = 5_000;
 
     @Override
     public JdbcConfiguration getJdbcConfig() {

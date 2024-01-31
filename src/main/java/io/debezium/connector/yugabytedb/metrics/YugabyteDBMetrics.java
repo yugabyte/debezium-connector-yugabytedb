@@ -38,8 +38,9 @@ public class YugabyteDBMetrics {
   private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBMetrics.class);
 
   // Total 1 minute attempting to retry metrics registration in case of errors
-  private int registrationRetries = 12;
-  private Duration registrationRetryDelay = Duration.ofSeconds(5);
+  private int registrationRetries = YugabyteDBConnectorConfig.DEFAULT_MBEAN_REGISTRATION_RETRIES;
+  private Duration registrationRetryDelay =
+    Duration.ofMillis(YugabyteDBConnectorConfig.DEFAULT_MBEAN_REGISTRATION_RETRY_DELAY_MS);
 
   private final ObjectName name;
   private volatile boolean registered = false;
