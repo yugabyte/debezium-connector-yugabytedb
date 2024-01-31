@@ -154,6 +154,11 @@ public class YugabyteDBStreamingChangeEventSource implements
         LOGGER.info("Bootstrapping the tablet {}", tabletId);
         syncClient.bootstrapTablet(table, connectorConfig.streamId(), tabletId, 0, 0, true, true);
         markNoSnapshotNeeded(syncClient, table, tabletId);
+
+        GetCheckpointResponse getCheckpointResponse =
+          YBClientUtils.getCheckpointWithRetry(connectorConfig, syncClient, table, tabletId);
+        Objects.requireNonNull(getCheckpointResponse);
+        LOGGER.info("Checkpoint after bootstrapping tablet {}: {}.{}", tabletId, getCheckpointResponse.getTerm(), getCheckpointResponse.getIndex());
     }
 
     protected void bootstrapTabletWithRetry(YBClient syncClient, List<Pair<String,String>> tabletPairList,

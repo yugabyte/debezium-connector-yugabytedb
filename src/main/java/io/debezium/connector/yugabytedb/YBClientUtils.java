@@ -15,17 +15,9 @@ import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes;
 import org.yb.CommonTypes.YQLDatabase;
 import org.yb.cdc.CdcService;
-import org.yb.client.AsyncYBClient;
-import org.yb.client.CDCStreamInfo;
+import org.yb.client.*;
 import org.yb.cdc.CdcService.CDCRecordType;
 import org.yb.cdc.CdcService.TabletCheckpointPair;
-import org.yb.client.GetDBStreamInfoResponse;
-import org.yb.client.GetTabletListToPollForCDCResponse;
-import org.yb.client.ListCDCStreamsResponse;
-import org.yb.client.ListNamespacesResponse;
-import org.yb.client.ListTablesResponse;
-import org.yb.client.YBClient;
-import org.yb.client.YBTable;
 import org.yb.master.MasterDdlOuterClass;
 
 import io.debezium.DebeziumException;
@@ -446,5 +438,53 @@ public class YBClientUtils {
      }
      
      return resp;
+  }
+
+  /**
+   * Get the checkpoint for given {@link YBTable} and tabletID
+   * @param connectorConfig connector configuration object
+   * @param ybClient the {@link YBClient} instance
+   * @param ybTable the {@link YBTable} object
+   * @param tabletId UUID of the tablet
+   * @throws Exception if the RPC hits any error
+   */
+  public static GetCheckpointResponse getCheckpointWithRetry(YugabyteDBConnectorConfig connectorConfig,
+                                                             YBClient ybClient, YBTable ybTable,
+                                                             String tabletId) throws Exception {
+    short retryCount = 0;
+    while (retryCount <= connectorConfig.maxConnectorRetries()) {
+      try {
+        return ybClient.getCheckpoint(ybTable, connectorConfig.streamId(), tabletId);
+      } catch (Exception e) {
+        ++retryCount;
+
+        if (retryCount > connectorConfig.maxConnectorRetries()) {
+          LOGGER.error("Too many errors while trying to get checkpoint for tablet {}, "
+                         + "all {} retries failed.", tabletId, connectorConfig.maxConnectorRetries());
+
+          throw e;
+        }
+
+        LOGGER.warn("Error while trying to get the checkpoint for tablet {}; will attempt "
+                      + "retry {} of {} after {} milli-seconds. Exception message: {}",
+          tabletId, retryCount,
+          connectorConfig.maxConnectorRetries(),
+          connectorConfig.connectorRetryDelayMs(), e.getMessage());
+        LOGGER.debug("Stacktrace: ", e);
+
+        try {
+          final Metronome retryMetronome =
+            Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+          retryMetronome.pause();
+        } catch (InterruptedException ie) {
+          LOGGER.warn("Connector retry sleep interrupted by exception:", ie);
+          Thread.currentThread().interrupt();
+        }
+      }
+    }
+
+    // In ideal scenarios, this code will never be hit.
+    LOGGER.warn("Returning null as checkpoint (should never happen, check code)");
+    return null;
   }
 }
