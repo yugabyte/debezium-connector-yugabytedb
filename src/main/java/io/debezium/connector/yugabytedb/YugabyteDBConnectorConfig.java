@@ -711,7 +711,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withDefault(DEFAULT_CONNECTOR_RETRY_DELAY_MS)
             .withDescription("The amount of time after which the connector will attempt to retry to get the changes from the server.");
 
-    public static final Field MBEAN_REGISTRATION_RETRIES = Field.create("mbean.registration.attempts")
+    public static final Field MBEAN_REGISTRATION_RETRIES = Field.create("mbean.registration.retries")
             .withDisplayName("Number of attempts for registering the metrics MBean")
             .withType(Type.INT)
             .withImportance(Importance.LOW)
