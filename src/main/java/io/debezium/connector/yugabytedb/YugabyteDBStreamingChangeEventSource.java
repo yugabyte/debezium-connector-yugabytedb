@@ -712,6 +712,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         }
                                         // If you need to print the received record, change debug level to info
                                         LOGGER.debug("Received DML record {}", record);
+                                        dumpMessageIfDelete(record, tabletId);
 
                                         offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                 String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
@@ -793,6 +794,15 @@ public class YugabyteDBStreamingChangeEventSource implements
                     }
                 }
             }
+        }
+    }
+
+    private void dumpMessageIfDelete(CdcService.CDCSDKProtoRecordPB record, String tabletID) {
+        if (record.getRowMessage().getOp() == Op.DELETE) {
+            LOGGER.info("VKVK PK {} tablet {} and txnId {}",
+              record.getRowMessage().getNewTuple(0).getDatumString(),
+              tabletID, record.getRowMessage().hasTransactionId() ?
+                          record.getRowMessage().getTransactionId().toStringUtf8() : "<>");
         }
     }
 
