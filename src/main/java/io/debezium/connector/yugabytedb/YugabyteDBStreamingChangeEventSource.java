@@ -800,7 +800,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     private void dumpMessageIfDelete(CdcService.CDCSDKProtoRecordPB record, String tabletID) {
         if (record.getRowMessage().getOp() == Op.DELETE) {
             LOGGER.info("VKVK PK {} tablet {} and txnId {}",
-              record.getRowMessage().getNewTuple(0).getDatumString(),
+              record.getRowMessage().getOldTuple(0).getDatumString(),
               tabletID, record.getRowMessage().hasTransactionId() ?
                           record.getRowMessage().getTransactionId().toStringUtf8() : "<>");
         }
