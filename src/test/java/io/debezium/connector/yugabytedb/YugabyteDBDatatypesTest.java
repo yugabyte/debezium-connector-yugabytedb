@@ -130,7 +130,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        initializeYBContainer("enable_tablet_split_of_cdcsdk_streamed_tables=true", "cdc_max_stream_intent_records=100");
+        initializeYBContainer("enable_tablet_split_of_cdcsdk_streamed_tables=true", null);
         TestHelper.dropAllSchemas();
     }
 
@@ -232,7 +232,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         GetDBStreamInfoResponse response = ybClient.getDBStreamInfo(dbStreamId);
         assertNotNull(response.getNamespaceId());
-        
+
         final int recordsCount = 1;
         insertRecords(recordsCount);
         CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))

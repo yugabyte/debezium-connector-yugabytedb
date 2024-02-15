@@ -528,6 +528,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                 tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
 
+                                // Test only.
                                 if (TRACK_EXPLICIT_CHECKPOINTS) {
                                     TEST_explicitCheckpoints.put(tabletId, explicitCheckpoint);
                                 }
