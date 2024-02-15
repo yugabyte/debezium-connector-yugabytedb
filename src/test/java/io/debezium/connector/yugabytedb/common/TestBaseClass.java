@@ -384,7 +384,7 @@ public class TestBaseClass extends AbstractConnectorTest {
           fail("Failed to consume " + recordsCount + " in " + seconds + " seconds, consumed only " + totalConsumedRecords.get(), exception);
       }
 
-//      assertEquals(recordsCount, totalConsumedRecords.get());
+      assertEquals(recordsCount, totalConsumedRecords.get());
   }
 
   protected void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
