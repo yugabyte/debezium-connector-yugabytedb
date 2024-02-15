@@ -447,8 +447,12 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         YugabyteDBStreamingChangeEventSource.UPDATE_EXPLICIT_CHECKPOINT = false;
 
         final int recordsToBeInserted = 600;
-        TestHelper.execute(String.format("INSERT INTO t1 VALUES (generate_series(0, %d), 'Vaibhav', 'Kushwaha');", 299));
-        TestHelper.execute(String.format("INSERT INTO t1 VALUES (generate_series(%d, %d), 'Vaibhav', 'Kushwaha');", 300, recordsToBeInserted - 1));
+        TestHelper.execute(
+          String.format("INSERT INTO t1 VALUES (generate_series(0, %d), 'Vaibhav', 'Kushwaha');",
+            299));
+        TestHelper.execute(
+          String.format("INSERT INTO t1 VALUES (generate_series(%d, %d), 'Vaibhav', 'Kushwaha');",
+            300, recordsToBeInserted - 1));
 
         // Consume all the records.
         List<SourceRecord> recordsBeforeRestart = new ArrayList<>();
