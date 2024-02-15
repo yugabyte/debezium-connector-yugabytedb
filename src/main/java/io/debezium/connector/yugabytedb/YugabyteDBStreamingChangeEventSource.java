@@ -48,6 +48,9 @@ public class YugabyteDBStreamingChangeEventSource implements
         StreamingChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
     // Test only flags, DO NOT modify in the source code.
     public static boolean TEST_WAIT_BEFORE_GETTING_CHILDREN = false;
+    public static boolean TRACK_EXPLICIT_CHECKPOINTS = false;
+    public static boolean UPDATE_EXPLICIT_CHECKPOINT = true;
+    public static Map<String, CdcSdkCheckpoint> TEST_explicitCheckpoints;
 
     protected static final String KEEP_ALIVE_THREAD_NAME = "keep-alive";
 
@@ -117,6 +120,10 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.splitTabletsWaitingForCallback = new HashSet<>();
         this.filters = new Filters(connectorConfig);
         this.partitionRanges = new ArrayList<>();
+
+        if (TRACK_EXPLICIT_CHECKPOINTS) {
+            TEST_explicitCheckpoints = new ConcurrentHashMap<>();
+        }
     }
 
     @Override
@@ -490,11 +497,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                             if (LOGGER.isDebugEnabled()
                                   || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
                                 if (explicitCheckpoint != null) {
-                                    LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpointing: {} from_op_id: {}.{}",
-                                      table.getName(), part.getId(), explicitCheckpoint.toString(), cp.getTerm(), cp.getIndex());
+                                    LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpointing: {} from_op_id: {}",
+                                      table.getName(), part.getId(), explicitCheckpoint.toString(), cp);
                                 } else {
-                                    LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpoint is null and from_op_id: {}.{}",
-                                      table.getName(), part.getId(), cp.getTerm(), cp.getIndex());
+                                    LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpoint is null and from_op_id: {}",
+                                      table.getName(), part.getId(), cp);
                                 }
 
                                 lastLoggedTimeForGetChanges = System.currentTimeMillis();
@@ -520,6 +527,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part));
 
                                 tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
+
+                                if (TRACK_EXPLICIT_CHECKPOINTS) {
+                                    TEST_explicitCheckpoints.put(tabletId, explicitCheckpoint);
+                                }
                             } catch (CDCErrorException cdcException) {
                                 // Check if exception indicates a tablet split.
                                 LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
@@ -712,7 +723,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         }
                                         // If you need to print the received record, change debug level to info
                                         LOGGER.debug("Received DML record {}", record);
-                                        dumpMessageIfDelete(record, tabletId);
 
                                         offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                 String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
@@ -794,15 +804,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                     }
                 }
             }
-        }
-    }
-
-    private void dumpMessageIfDelete(CdcService.CDCSDKProtoRecordPB record, String tabletID) {
-        if (record.getRowMessage().getOp() == Op.DELETE) {
-            LOGGER.info("VKVK PK {} tablet {} and txnId {}",
-              record.getRowMessage().getOldTuple(0).getDatumString(),
-              tabletID, record.getRowMessage().hasTransactionId() ?
-                          record.getRowMessage().getTransactionId().toStringUtf8() : "<>");
         }
     }
 
@@ -903,6 +904,12 @@ public class YugabyteDBStreamingChangeEventSource implements
     @Override
     public void commitOffset(Map<String, ?> offset) {
         if (!taskContext.shouldEnableExplicitCheckpointing()) {
+            return;
+        }
+
+        // Test only.
+        if (!UPDATE_EXPLICIT_CHECKPOINT) {
+            LOGGER.info("[Test Only] Not updating explicit checkpoint");
             return;
         }
 

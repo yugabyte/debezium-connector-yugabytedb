@@ -10,6 +10,7 @@ import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -129,7 +130,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        initializeYBContainer("enable_tablet_split_of_cdcsdk_streamed_tables=true", null);
+        initializeYBContainer("enable_tablet_split_of_cdcsdk_streamed_tables=true", "cdc_max_stream_intent_records=100");
         TestHelper.dropAllSchemas();
     }
 
@@ -231,7 +232,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         GetDBStreamInfoResponse response = ybClient.getDBStreamInfo(dbStreamId);
         assertNotNull(response.getNamespaceId());
-        
+
         final int recordsCount = 1;
         insertRecords(recordsCount);
         CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
@@ -402,5 +403,90 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
             assertValueField(records.get(i), "after/id/value", i);
             assertValueField(records.get(i), "after/hours/value", null);
         }
+    }
+
+    @ParameterizedTest
+    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+    public void shouldResumeLargeTransactions(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+        /*
+         * The goal behind this test is to make sure that when explicit checkpoints are not being
+         * updated, the safe time should also not be moving forward since it will cause data loss
+         * by filtering the records.
+         *
+         * 1. Start connector
+         * 2. Stop updating the explicit checkpoint
+         * 3. Execute transactions - since the checkpoints are not being updated, nothing will go
+         *    to the cdc_state table
+         * 4. Restart the connector - once the connector restarts, it should consume all the events
+         *    from the starting without any data loss
+         */
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        YugabyteDBStreamingChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = true;
+
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1", consistentSnapshot, useSnapshot);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        YBClient ybClient = TestHelper.getYbClient(TestHelper.getMasterAddress());
+        YBTable ybTable = TestHelper.getYbTable(ybClient, "t1");
+        assertNotNull(ybTable);
+
+        Set<String> tablets = ybClient.getTabletUUIDs(ybTable);
+
+        String tabletId = tablets.iterator().next();
+        assertNotNull(tabletId);
+        assertEquals(1, tablets.size());
+
+        // This check will verify that we are getting some explicit checkpoint values, once that is confirmed, stop updating the explicit checkpoints.
+        Awaitility.await()
+          .atMost(Duration.ofMinutes(1))
+          .until(() -> YugabyteDBStreamingChangeEventSource.TEST_explicitCheckpoints.get(tabletId) != null);
+        YugabyteDBStreamingChangeEventSource.UPDATE_EXPLICIT_CHECKPOINT = false;
+
+        final int recordsToBeInserted = 600;
+        TestHelper.execute(String.format("INSERT INTO t1 VALUES (generate_series(0, %d), 'Vaibhav', 'Kushwaha');", 299));
+        TestHelper.execute(String.format("INSERT INTO t1 VALUES (generate_series(%d, %d), 'Vaibhav', 'Kushwaha');", 300, recordsToBeInserted - 1));
+
+        // Consume all the records.
+        List<SourceRecord> recordsBeforeRestart = new ArrayList<>();
+        Set<Integer> primaryKeysBeforeRestart = new HashSet<>();
+        waitAndConsume(recordsBeforeRestart, recordsToBeInserted, 2 * 60 * 1000);
+
+        // Now that we have some value for explicit checkpoint, we can stop connector.
+        stopConnector();
+
+        for (SourceRecord record : recordsBeforeRestart) {
+            Struct value = (Struct) record.value();
+            primaryKeysBeforeRestart.add(value.getStruct("after").getStruct("id").getInt32("value"));
+        }
+
+        // Assert that we have consumed all the records.
+        assertEquals(recordsToBeInserted, primaryKeysBeforeRestart.size());
+
+        // Since we have stopped updating the checkpoints, enable it again and consume the records,
+        // We should get all the records again. Note that enabling the checkpointing will have no
+        // impact on the test result here, it could have been kept disabled as well.
+        YugabyteDBStreamingChangeEventSource.UPDATE_EXPLICIT_CHECKPOINT = true;
+
+        // Consume records.
+        List<SourceRecord> recordsAfterRestart = new ArrayList<>();
+        Set<Integer> primaryKeysAfterRestart = new HashSet<>();
+
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        waitAndConsume(recordsAfterRestart, recordsToBeInserted, 2 * 60 * 1000);
+
+        for (SourceRecord record : recordsAfterRestart) {
+            Struct value = (Struct) record.value();
+            primaryKeysAfterRestart.add(value.getStruct("after").getStruct("id").getInt32("value"));
+        }
+
+        assertEquals(recordsToBeInserted, primaryKeysAfterRestart.size());
+
+        YugabyteDBStreamingChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = false;
     }
 }
