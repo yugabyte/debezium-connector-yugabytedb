@@ -6,6 +6,7 @@ import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.HelperBeforeImageModes.BeforeImageMode;
+import io.debezium.connector.yugabytedb.annotations.MinimumYBVersion;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import org.apache.kafka.connect.source.SourceRecord;
@@ -31,6 +32,12 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 
+/**
+ * Tests to verify the streaming of changes from YCQL tables.
+ *
+ * @author Sumukh Phalgaonkar (sumukh.phalgaonkar@yugabyte.com)
+ */
+@MinimumYBVersion(value = "2.20", reason = "Feature was introduced in the given version only")
 public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
     CqlSession session;
 
