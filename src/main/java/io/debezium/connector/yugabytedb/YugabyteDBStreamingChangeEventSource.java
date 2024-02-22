@@ -36,6 +36,7 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.DataChangeEvent;
@@ -50,7 +51,10 @@ public class YugabyteDBStreamingChangeEventSource implements
     public static boolean TEST_WAIT_BEFORE_GETTING_CHILDREN = false;
     public static boolean TRACK_EXPLICIT_CHECKPOINTS = false;
     public static boolean UPDATE_EXPLICIT_CHECKPOINT = true;
+    public static boolean TEST_CONTROL_GET_CHANGES = false;
+    public static boolean TEST_PAUSE_GET_CHANGES_CALLS = false;
     public static Map<String, CdcSdkCheckpoint> TEST_explicitCheckpoints;
+    public static CountDownLatch TEST_countDownLatch;
 
     protected static final String KEEP_ALIVE_THREAD_NAME = "keep-alive";
 
@@ -123,6 +127,10 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         if (TRACK_EXPLICIT_CHECKPOINTS) {
             TEST_explicitCheckpoints = new ConcurrentHashMap<>();
+        }
+
+        if (TEST_CONTROL_GET_CHANGES) {
+            TEST_countDownLatch = new CountDownLatch(5);
         }
     }
 
@@ -491,10 +499,16 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 }
                             }
 
+                            // If enabled, this will cause the connector to skip GetChanges calls for all the tablets.
+                            if (TEST_PAUSE_GET_CHANGES_CALLS) {
+                                LOGGER.info("[Test only] Skipping over the GetChanges call for tablet {}", tabletId);
+                                continue;
+                            }
+
                             YBTable table = tableIdToTable.get(entry.getKey());
 
                             CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                            if (LOGGER.isDebugEnabled()
+                            if (true || LOGGER.isDebugEnabled()
                                   || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
                                 if (explicitCheckpoint != null) {
                                     LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpointing: {} from_op_id: {}",
@@ -773,9 +787,14 @@ public class YugabyteDBStreamingChangeEventSource implements
                             // we will resume from an older point than necessary.
                             if (taskContext.shouldEnableExplicitCheckpointing()) {
                                 OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
-                                if (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint)) {
-                                    tabletToExplicitCheckpoint.put(part.getId(), finalOpid.toCdcSdkCheckpoint());
+                                if (lastRecordCheckpoint != null) {
+                                    LOGGER.info("Last record checkpoint is {}", lastRecordCheckpoint.toSerString());
                                 }
+
+//                                if (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint)) {
+//                                    LOGGER.info("Advancing explicit checkpoint to {} for tablet {}", finalOpid.toCdcSdkCheckpoint(), part.getId());
+//                                    tabletToExplicitCheckpoint.put(part.getId(), finalOpid.toCdcSdkCheckpoint());
+//                                }
                             }
 
                             LOGGER.debug("The final opid for tablet {} is {}", part.getId(), finalOpid);
