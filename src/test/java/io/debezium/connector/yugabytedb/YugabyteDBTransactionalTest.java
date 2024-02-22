@@ -5,6 +5,8 @@ import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.jupiter.api.*;
+import org.yb.CommonTypes;
+import org.yb.client.CreateSnapshotScheduleResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 
@@ -194,5 +196,55 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
     }
 
     LOGGER.info("PK size is {}", pk.size());
+  }
+
+  @Test
+  public void shouldNotBeAffectedByMultipleNoOps() throws Exception {
+    TestHelper.dropAllSchemas();
+    TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+    String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1");
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+
+    // Start connector.
+    startEngine(configBuilder);
+    awaitUntilConnectorIsReady();
+
+    // Insert records.
+    TestHelper.execute("INSERT INTO t1 VALUES (generate_series(0, 4999), 'Vaibhav', 'Kushwaha');");
+
+    // Wait for some records to get checkpointed.
+    TestHelper.waitFor(Duration.ofSeconds(10));
+
+    LOGGER.info("Creating snapshot schedule on database: {}", DEFAULT_DB_NAME);
+    YBClient ybClient = TestHelper.getYbClient(TestHelper.getMasterAddress());
+    CreateSnapshotScheduleResponse resp =
+      ybClient.createSnapshotSchedule(CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL, DEFAULT_DB_NAME, 15 * 60, 2 /* interval */);
+
+    // Stop updating explicit checkpoint for sometime.
+    LOGGER.info("Stopping update of explicit checkpoint for 16 seconds");
+    YugabyteDBStreamingChangeEventSource.UPDATE_EXPLICIT_CHECKPOINT = false;
+    TestHelper.waitFor(Duration.ofSeconds(16));
+    YugabyteDBStreamingChangeEventSource.UPDATE_EXPLICIT_CHECKPOINT = true;
+
+    // Restart the connector.
+    stopConnector();
+    startEngine(configBuilder);
+    awaitUntilConnectorIsReady();
+
+    // Insert a few more records.
+    TestHelper.execute("INSERT INTO t1 VALUES (generate_series(5000, 5499), 'Vaibhav', 'Kushwaha');");
+
+    // Consume all the records.
+    List<SourceRecord> records = new ArrayList<>();
+    waitAndConsume(records, 5500, 5 * 60 * 1000);
+
+    Set<Integer> pk = new HashSet<>();
+    for (SourceRecord record : records) {
+      Struct value = (Struct) record.value();
+      pk.add(value.getStruct("after").getStruct("id").getInt32("value"));
+    }
+
+    assertEquals(5000, pk.size());
   }
 }
