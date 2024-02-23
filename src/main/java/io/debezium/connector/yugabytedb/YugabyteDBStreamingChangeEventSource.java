@@ -49,12 +49,10 @@ public class YugabyteDBStreamingChangeEventSource implements
         StreamingChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
     // Test only flags, DO NOT modify in the source code.
     public static boolean TEST_WAIT_BEFORE_GETTING_CHILDREN = false;
-    public static boolean TRACK_EXPLICIT_CHECKPOINTS = false;
-    public static boolean UPDATE_EXPLICIT_CHECKPOINT = true;
-    public static boolean TEST_CONTROL_GET_CHANGES = false;
+    public static boolean TEST_TRACK_EXPLICIT_CHECKPOINTS = false;
+    public static boolean TEST_UPDATE_EXPLICIT_CHECKPOINT = true;
     public static boolean TEST_PAUSE_GET_CHANGES_CALLS = false;
     public static Map<String, CdcSdkCheckpoint> TEST_explicitCheckpoints;
-    public static CountDownLatch TEST_countDownLatch;
 
     protected static final String KEEP_ALIVE_THREAD_NAME = "keep-alive";
 
@@ -125,12 +123,8 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.filters = new Filters(connectorConfig);
         this.partitionRanges = new ArrayList<>();
 
-        if (TRACK_EXPLICIT_CHECKPOINTS) {
+        if (TEST_TRACK_EXPLICIT_CHECKPOINTS) {
             TEST_explicitCheckpoints = new ConcurrentHashMap<>();
-        }
-
-        if (TEST_CONTROL_GET_CHANGES) {
-            TEST_countDownLatch = new CountDownLatch(5);
         }
     }
 
@@ -543,7 +537,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
 
                                 // Test only.
-                                if (TRACK_EXPLICIT_CHECKPOINTS) {
+                                if (TEST_TRACK_EXPLICIT_CHECKPOINTS) {
                                     TEST_explicitCheckpoints.put(tabletId, explicitCheckpoint);
                                 }
                             } catch (CDCErrorException cdcException) {
@@ -781,22 +775,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                             offsetContext.updateWalPosition(part, finalOpid);
                             offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
 
-                            // In cases where there is no transactions on the server, the response checkpoint can still move ahead and we should
-                            // also move the explicit checkpoint forward, given that it was already greater than the lsn of the last seen valid record.
-                            // Otherwise the explicit checkpoint can get stuck at older values, and upon connector restart
-                            // we will resume from an older point than necessary.
-                            if (taskContext.shouldEnableExplicitCheckpointing()) {
-                                OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
-                                if (lastRecordCheckpoint != null) {
-                                    LOGGER.info("Last record checkpoint is {}", lastRecordCheckpoint.toSerString());
-                                }
-
-//                                if (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint)) {
-//                                    LOGGER.info("Advancing explicit checkpoint to {} for tablet {}", finalOpid.toCdcSdkCheckpoint(), part.getId());
-//                                    tabletToExplicitCheckpoint.put(part.getId(), finalOpid.toCdcSdkCheckpoint());
-//                                }
-                            }
-
                             LOGGER.debug("The final opid for tablet {} is {}", part.getId(), finalOpid);
                         }
                         // Reset the retry count, because if flow reached at this point, it means that the connection
@@ -928,7 +906,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
 
         // Test only.
-        if (!UPDATE_EXPLICIT_CHECKPOINT) {
+        if (!TEST_UPDATE_EXPLICIT_CHECKPOINT) {
             LOGGER.info("[Test Only] Not updating explicit checkpoint");
             return;
         }
