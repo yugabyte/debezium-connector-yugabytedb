@@ -775,6 +775,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                             offsetContext.updateWalPosition(part, finalOpid);
                             offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
 
+                            // In cases where there is no transactions on the server, the response checkpoint can still move ahead and we should
+                            // also move the explicit checkpoint forward, given that it was already greater than the lsn of the last seen valid record.
+                            // Otherwise the explicit checkpoint can get stuck at older values, and upon connector restart
+                            // we will resume from an older point than necessary.
                             if (taskContext.shouldEnableExplicitCheckpointing()) {
                                 OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
                                 if (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint)) {
