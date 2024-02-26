@@ -351,9 +351,32 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       }
     }
 
-    protected void populateTabletPairList(List<Pair<String, String>> res) {
-      for (HashPartition hp : partitionRanges) {
-        res.add(new ImmutablePair<>(hp.getTableId(), hp.getTabletId()));
+    /**
+     * Use the {@link GetTabletListToPollForCDCResponse} and the populated {@code partitionRanges}
+     * to verify if the tablets in the response should be a part of this task. The logic only
+     * adds the tablets in the response which are contained in the parent partition ranges. Note
+     * that this method also assumes that the object {@code partitionRanges} is already populated.
+     *
+     * @param tableId the tableUUID for which the {@link GetTabletListToPollForCDCResponse} is passed
+     * @param response of type {@link GetTabletListToPollForCDCResponse}
+     * @param res a list of {@link Pair} to be populated where each pair is {@code <tableId, tabletId>}
+     */
+    protected void populateTabletPairList(String tableId,
+                                          GetTabletListToPollForCDCResponse response,
+                                          List<Pair<String, String>> res) {
+      // Verify that the partitionRanges are already populated.
+      Objects.requireNonNull(partitionRanges);
+      assert !partitionRanges.isEmpty();
+
+      // Iterate over the stored partitions and add valid tablets for streaming.
+      for (CdcService.TabletCheckpointPair pair : response.getTabletCheckpointPairList()) {
+        HashPartition hp = HashPartition.from(pair, tableId);
+
+        for (HashPartition parent : partitionRanges) {
+          if (parent.containsPartition(hp)) {
+            res.add(new ImmutablePair<>(hp.getTableId(), hp.getTabletId()));
+          }
+        }
       }
     }
 
@@ -364,13 +387,16 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       LOGGER.info("Starting the snapshot process now");
       
       // Get the list of tablets
-      List<Pair<String, String>> tableToTabletIds = HashPartition.getTableToTabletPairs(partitionRanges);
+      List<Pair<String, String>> tableToTabletIds = new ArrayList<>();
 
-      Set<String> tableUUIDs = tableToTabletIds.stream()
-                                  .map(pair -> pair.getLeft())
-                                  .collect(Collectors.toSet());
+      Set<String> tableUUIDs = partitionRanges.stream().map(HashPartition::getTableId).collect(Collectors.toSet());
       for (String tableUUID : tableUUIDs) {
-        tableIdToTable.put(tableUUID, this.syncClient.openTableByUUID(tableUUID));
+        YBTable ybTable = syncClient.openTableByUUID(tableUUID);
+        tableIdToTable.put(tableUUID, ybTable);
+
+        GetTabletListToPollForCDCResponse resp =
+            YBClientUtils.getTabletListToPollForCDCWithRetry(ybTable, tableUUID, connectorConfig);
+        populateTabletPairList(tableUUID, resp, tableToTabletIds);
       }
 
       Map<TableId, String> filteredTableIdToUuid = determineTablesForSnapshot(tableIdToTable);
