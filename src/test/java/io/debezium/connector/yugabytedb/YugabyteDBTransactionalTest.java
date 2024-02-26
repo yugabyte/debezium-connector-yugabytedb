@@ -314,4 +314,130 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
     assertEquals(parentExplicitCheckpoint.getIndex(), childCheckpoint2.getIndex());
     assertEquals(parentExplicitCheckpoint.getTime(), childCheckpoint2.getSnapshotTime());
   }
+
+  @Test
+  public void shouldNotFailWithLowRetentionPeriod() throws Exception {
+    // Note: set cdc_intent_retention_ms and cdc_wal_retention_time_secs to 1 minute
+    TestHelper.dropAllSchemas();
+    TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+    String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1");
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+
+    // Do not retry as it will only increase the duration of the test run and end up giving a false
+    // success result.
+    configBuilder.with(YugabyteDBConnectorConfig.MAX_CONNECTOR_RETRIES, 0);
+
+    // Start connector.
+    startEngine(configBuilder);
+    awaitUntilConnectorIsReady();
+
+    // Execute a transaction.
+    TestHelper.execute("INSERT INTO t1 VALUES (generate_series(1,5), 'Vaibhav', 'Kushwaha');");
+
+    LOGGER.info("Creating snapshot schedule on database: {} with a retention of 15 minutes", DEFAULT_DB_NAME);
+    YBClient ybClient = TestHelper.getYbClient(TestHelper.getMasterAddress());
+    CreateSnapshotScheduleResponse snapshotScheduleResponse =
+      ybClient.createSnapshotSchedule(CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL, DEFAULT_DB_NAME, 15 * 60, 1 /* interval */);
+
+    // Wait for a minute.
+    TestHelper.waitFor(Duration.ofMinutes(1));
+
+    // Restart the connector.
+    stopConnector();
+    TestHelper.waitFor(Duration.ofSeconds(5));
+    startEngine(configBuilder);
+    awaitUntilConnectorIsReady();
+
+    waitAndFailIfCannotConsume(new ArrayList<>(), 5);
+
+    // Keep asserting that the connector is still running.
+    for (int i = 0; i < 10; ++i) {
+      assertConnectorIsRunning();
+    }
+
+    // Delete the snapshot schedule at the end of the test.
+    ybClient.deleteSnapshotSchedule(snapshotScheduleResponse.getSnapshotScheduleUUID());
+  }
+
+  @Test
+  public void multiShardTransactionFollowedWithNoOps() throws Exception {
+    // Note: set cdc_intent_retention_ms and cdc_wal_retention_time_secs to 1 minute
+    TestHelper.dropAllSchemas();
+    TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+    String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1");
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+
+    // Start connector.
+    startEngine(configBuilder);
+    awaitUntilConnectorIsReady();
+
+    // Execute a transaction.
+    TestHelper.execute("INSERT INTO t1 VALUES (generate_series(1,500), 'Vaibhav', 'Kushwaha');");
+
+    LOGGER.info("Creating snapshot schedule on database: {} with a retention of 15 minutes", DEFAULT_DB_NAME);
+    YBClient ybClient = TestHelper.getYbClient(TestHelper.getMasterAddress());
+    CreateSnapshotScheduleResponse snapshotScheduleResponse =
+      ybClient.createSnapshotSchedule(CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL, DEFAULT_DB_NAME, 15 * 60, 2 /* interval */);
+
+    // Wait for a minute and then restart the connector.
+    TestHelper.waitFor(Duration.ofMinutes(1));
+    stopConnector();
+    TestHelper.waitFor(Duration.ofSeconds(5));
+    startEngine(configBuilder);
+    awaitUntilConnectorIsReady();
+
+    // Everything should be normal, keep asserting that the connector is still running.
+    for (int i = 0; i < 10; ++i) {
+      assertConnectorIsRunning();
+    }
+
+    waitAndFailIfCannotConsume(new ArrayList<>(), 500);
+
+    // Delete the snapshot schedule at the end of the test.
+    ybClient.deleteSnapshotSchedule(snapshotScheduleResponse.getSnapshotScheduleUUID());
+  }
+
+  @Test
+  public void singleShardTransactionFollowedWithNoOps() throws Exception {
+    // Note: set cdc_intent_retention_ms and cdc_wal_retention_time_secs to 1 minute
+    TestHelper.dropAllSchemas();
+    TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+    String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1");
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+
+    // Start connector.
+    startEngine(configBuilder);
+    awaitUntilConnectorIsReady();
+
+    // Execute multiple single shard transactions.
+    for (int i = 0; i < 100; ++i) {
+      TestHelper.execute(String.format("INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha');", i));
+    }
+
+
+    LOGGER.info("Creating snapshot schedule on database: {} with a retention of 15 minutes", DEFAULT_DB_NAME);
+    YBClient ybClient = TestHelper.getYbClient(TestHelper.getMasterAddress());
+    CreateSnapshotScheduleResponse snapshotScheduleResponse =
+      ybClient.createSnapshotSchedule(CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL, DEFAULT_DB_NAME, 15 * 60, 2 /* interval */);
+
+    // Wait for a minute and then restart the connector.
+    TestHelper.waitFor(Duration.ofMinutes(1));
+    stopConnector();
+    TestHelper.waitFor(Duration.ofSeconds(5));
+    startEngine(configBuilder);
+    awaitUntilConnectorIsReady();
+
+    // Everything should be normal, keep asserting that the connector is still running.
+    for (int i = 0; i < 10; ++i) {
+      assertConnectorIsRunning();
+    }
+
+    waitAndFailIfCannotConsume(new ArrayList<>(), 100);
+
+    // Delete the snapshot schedule at the end of the test.
+    ybClient.deleteSnapshotSchedule(snapshotScheduleResponse.getSnapshotScheduleUUID());
+  }
 }

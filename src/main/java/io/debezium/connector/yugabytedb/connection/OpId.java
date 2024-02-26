@@ -163,8 +163,17 @@ public class OpId implements Comparable<OpId> {
      * the corresponding values in {@link CdcSdkCheckpoint}
      */
     public boolean isLesserThanOrEqualTo(CdcSdkCheckpoint checkpoint) {
-        return (checkpoint != null && this.term <= checkpoint.getTerm()
-                && this.index <= checkpoint.getIndex() && this.time <= checkpoint.getTime());
+        if (checkpoint == null) {
+            return false;
+        }
+
+        if (this.term < checkpoint.getTerm() || this.index < checkpoint.getIndex() || this.time < checkpoint.getTime()) {
+            return true;
+        } else if (this.term == checkpoint.getTerm() && this.index == checkpoint.getIndex() && this.time == checkpoint.getTime()) {
+            return Arrays.equals(this.key, checkpoint.getKey()) && this.write_id == checkpoint.getWriteId();
+        }
+
+        return false;
     }
 
     /**

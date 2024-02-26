@@ -775,6 +775,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                             offsetContext.updateWalPosition(part, finalOpid);
                             offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
 
+                            if (taskContext.shouldEnableExplicitCheckpointing()) {
+                                OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
+                                if (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint)) {
+                                    tabletToExplicitCheckpoint.put(part.getId(), finalOpid.toCdcSdkCheckpoint());
+                                }
+                            }
+
                             LOGGER.debug("The final opid for tablet {} is {}", part.getId(), finalOpid);
                         }
                         // Reset the retry count, because if flow reached at this point, it means that the connection
