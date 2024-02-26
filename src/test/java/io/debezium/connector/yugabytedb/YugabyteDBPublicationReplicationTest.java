@@ -44,7 +44,9 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
 
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        initializeYBContainer("TEST_ysql_yb_enable_replication_commands=true", "TEST_ysql_yb_enable_replication_commands=true");
+        setMasterFlags("ysql_yb_enable_replication_commands=true");
+        setTserverFlags("ysql_yb_enable_replication_commands=true");
+        initializeYBContainer( );
         TestHelper.dropAllSchemas();
     }
 

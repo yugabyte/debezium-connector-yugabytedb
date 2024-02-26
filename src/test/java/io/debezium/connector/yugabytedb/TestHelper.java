@@ -433,11 +433,9 @@ public final class TestHelper {
 
     /**
      * Return a TestContainer for YugabyteDB with the given master and tserver flags
-     * @param masterFlags comma separated value of master flags in form flag1=val1,flag2=val2
-     * @param tserverFlags comma separated value of tserver flags in form flag1=val2,flag2=val2
      * @return a {@link YugabyteYSQLContainer}
      */
-    public static YugabyteCustomContainer getYbContainer(String masterFlags, String tserverFlags) {
+    public static YugabyteCustomContainer getYbContainer() {
         String dockerImageName = System.getenv("YB_DOCKER_IMAGE");
         
         if (dockerImageName == null || dockerImageName.isEmpty()) {
@@ -467,10 +465,6 @@ public final class TestHelper {
         container.withCommand(commandArray);
         container.waitingFor(new CustomContainerWaitStrategy());
         return container;
-    }
-
-    public static YugabyteYSQLContainer getYbContainer() {
-        return getYbContainer(null, null);
     }
 
     public static YBClient getYbClient(String masterAddresses) throws Exception {
