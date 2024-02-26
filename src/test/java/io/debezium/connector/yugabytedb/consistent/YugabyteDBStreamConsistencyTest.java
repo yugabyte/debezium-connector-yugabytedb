@@ -44,8 +44,9 @@ public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase
     
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        initializeYBContainer("enable_automatic_tablet_splitting=false",
-                              "cdc_populate_safepoint_record=true,enable_automatic_tablet_splitting=false");
+        setMasterFlags("enable_automatic_tablet_splitting=false");
+        setTserverFlags("cdc_populate_safepoint_record=true", "enable_automatic_tablet_splitting=false");
+        initializeYBContainer();
         TestHelper.dropAllSchemas();
     }
 
