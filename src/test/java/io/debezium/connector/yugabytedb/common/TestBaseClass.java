@@ -109,20 +109,6 @@ public class TestBaseClass extends AbstractConnectorTest {
     tserverFlags.addAll(Arrays.asList(flags));
   }
 
-  protected static void resetTserverFlags(String...flags) {
-      List<String> flagsToBeRemoved = new ArrayList<>();
-
-      for (String flag : tserverFlags) {
-        for (String gFlag : flags) {
-          if (flag.contains(gFlag)) {
-            flagsToBeRemoved.add(flag);
-          }
-        }
-      }
-
-      tserverFlags.removeAll(flagsToBeRemoved);
-  }
-
   protected static String getTserverFlags() {
     return String.join(",", tserverFlags);
   }

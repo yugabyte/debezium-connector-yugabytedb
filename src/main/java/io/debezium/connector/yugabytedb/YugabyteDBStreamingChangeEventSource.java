@@ -52,6 +52,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     public static boolean TEST_TRACK_EXPLICIT_CHECKPOINTS = false;
     public static boolean TEST_UPDATE_EXPLICIT_CHECKPOINT = true;
     public static boolean TEST_PAUSE_GET_CHANGES_CALLS = false;
+    public static boolean TEST_STOP_ADVANCING_CHECKPOINTS = false;
     public static Map<String, CdcSdkCheckpoint> TEST_explicitCheckpoints;
 
     protected static final String KEEP_ALIVE_THREAD_NAME = "keep-alive";
@@ -502,7 +503,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             YBTable table = tableIdToTable.get(entry.getKey());
 
                             CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                            if (LOGGER.isDebugEnabled()
+                            if (true || LOGGER.isDebugEnabled()
                                   || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
                                 if (explicitCheckpoint != null) {
                                     LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpointing: {} from_op_id: {}",
@@ -779,7 +780,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             // also move the explicit checkpoint forward, given that it was already greater than the lsn of the last seen valid record.
                             // Otherwise the explicit checkpoint can get stuck at older values, and upon connector restart
                             // we will resume from an older point than necessary.
-                            if (taskContext.shouldEnableExplicitCheckpointing()) {
+                            if (taskContext.shouldEnableExplicitCheckpointing() && !TEST_STOP_ADVANCING_CHECKPOINTS) {
                                 OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
                                 if (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint)) {
                                     tabletToExplicitCheckpoint.put(part.getId(), finalOpid.toCdcSdkCheckpoint());

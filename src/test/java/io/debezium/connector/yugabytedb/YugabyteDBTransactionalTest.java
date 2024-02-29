@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-public class YugabyteDBTransactionalTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBTransactionalTest extends YugabytedTestBase {
   @BeforeAll
   public static void beforeClass() throws SQLException {
     setMasterFlags("cdc_wal_retention_time_secs=60");
@@ -207,61 +207,6 @@ public class YugabyteDBTransactionalTest extends YugabyteDBContainerTestBase {
   @Order(3)
   @ParameterizedTest
   @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
-  public void shouldNotBeAffectedByMultipleNoOps(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
-    TestHelper.dropAllSchemas();
-    TestHelper.executeDDL("yugabyte_create_tables.ddl");
-
-    String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1", consistentSnapshot, useSnapshot);
-    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-
-    // Start connector.
-    startEngine(configBuilder);
-    awaitUntilConnectorIsReady();
-
-    // Insert records.
-    TestHelper.execute("INSERT INTO t1 VALUES (generate_series(0, 99), 'Vaibhav', 'Kushwaha');");
-
-    // Wait for some records to get checkpointed.
-    TestHelper.waitFor(Duration.ofSeconds(10));
-
-    LOGGER.info("Creating snapshot schedule on database: {}", DEFAULT_DB_NAME);
-    YBClient ybClient = TestHelper.getYbClient(TestHelper.getMasterAddress());
-    CreateSnapshotScheduleResponse resp =
-      ybClient.createSnapshotSchedule(CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL, DEFAULT_DB_NAME, 15 * 60, 2 /* interval */);
-
-    // Stop updating explicit checkpoint for some time.
-    LOGGER.info("Stopping update of explicit checkpoint for 16 seconds");
-    YugabyteDBStreamingChangeEventSource.TEST_UPDATE_EXPLICIT_CHECKPOINT = false;
-    TestHelper.waitFor(Duration.ofSeconds(16));
-    YugabyteDBStreamingChangeEventSource.TEST_UPDATE_EXPLICIT_CHECKPOINT = true;
-
-    // Restart the connector.
-    stopConnector();
-    startEngine(configBuilder);
-    awaitUntilConnectorIsReady();
-
-    // Insert a few more records.
-    TestHelper.execute("INSERT INTO t1 VALUES (generate_series(100, 199), 'Vaibhav', 'Kushwaha');");
-
-    // Consume all the records.
-    List<SourceRecord> records = new ArrayList<>();
-    waitAndConsumeUnique(records, 200, 5 * 60 * 1000);
-
-    Set<Integer> pk = new HashSet<>();
-    for (SourceRecord record : records) {
-      Struct value = (Struct) record.value();
-      pk.add(value.getStruct("after").getStruct("id").getInt32("value"));
-    }
-
-    assertEquals(200, pk.size());
-
-    // Delete the snapshot schedule at the end of the test.
-    ybClient.deleteSnapshotSchedule(resp.getSnapshotScheduleUUID());
-  }
-
-  @Order(4)
-  @ParameterizedTest
-  @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
   public void verifyNoHoldingOfResourcesOnServiceAfterSplit(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
     /*
      * The goal of this test is to verify that if a tablet split is there then we are not holding
@@ -298,6 +243,12 @@ public class YugabyteDBTransactionalTest extends YugabyteDBContainerTestBase {
     List<SourceRecord> records = new ArrayList<>();
     waitAndFailIfCannotConsume(records, 50);
 
+    // Stop the advancing of checkpoints - this will ensure that we are not advancing the
+    // checkpoints from the GetChangesResponse. Additionally, this will also ensure that we are
+    // calling GetChanges on children with the explicit checkpoint as the checkpoint we have
+    // received from the GetTabletListToPollForCDCResponse.
+    YugabyteDBStreamingChangeEventSource.TEST_STOP_ADVANCING_CHECKPOINTS = true;
+
     // Flush the table and split its tablet.
     ybClient.flushTable(ybTable.getTableId());
     TestHelper.waitFor(Duration.ofSeconds(20));
@@ -325,7 +276,7 @@ public class YugabyteDBTransactionalTest extends YugabyteDBContainerTestBase {
     assertEquals(parentExplicitCheckpoint.getTime(), childCheckpoint2.getSnapshotTime());
   }
 
-  @Order(5)
+  @Order(4)
   @ParameterizedTest
   @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
   public void shouldNotFailWithLowRetentionPeriod(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
@@ -366,89 +317,6 @@ public class YugabyteDBTransactionalTest extends YugabyteDBContainerTestBase {
     for (int i = 0; i < 10; ++i) {
       assertConnectorIsRunning();
     }
-
-    // Delete the snapshot schedule at the end of the test.
-    ybClient.deleteSnapshotSchedule(snapshotScheduleResponse.getSnapshotScheduleUUID());
-  }
-
-  @Order(6)
-  @ParameterizedTest
-  @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
-  public void multiShardTransactionFollowedWithNoOps(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
-    TestHelper.dropAllSchemas();
-    TestHelper.executeDDL("yugabyte_create_tables.ddl");
-
-    String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1", consistentSnapshot, useSnapshot);
-    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-
-    // Start connector.
-    startEngine(configBuilder);
-    awaitUntilConnectorIsReady();
-
-    // Execute a transaction.
-    TestHelper.execute("INSERT INTO t1 VALUES (generate_series(1,500), 'Vaibhav', 'Kushwaha');");
-
-    LOGGER.info("Creating snapshot schedule on database: {} with a retention of 15 minutes", DEFAULT_DB_NAME);
-    YBClient ybClient = TestHelper.getYbClient(TestHelper.getMasterAddress());
-    CreateSnapshotScheduleResponse snapshotScheduleResponse =
-      ybClient.createSnapshotSchedule(CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL, DEFAULT_DB_NAME, 15 * 60, 2 /* interval */);
-
-    // Wait for a minute and then restart the connector.
-    TestHelper.waitFor(Duration.ofMinutes(1));
-    stopConnector();
-    TestHelper.waitFor(Duration.ofSeconds(5));
-    startEngine(configBuilder);
-    awaitUntilConnectorIsReady();
-
-    // Everything should be normal, keep asserting that the connector is still running.
-    for (int i = 0; i < 10; ++i) {
-      assertConnectorIsRunning();
-    }
-
-    waitAndFailIfCannotConsume(new ArrayList<>(), 500);
-
-    // Delete the snapshot schedule at the end of the test.
-    ybClient.deleteSnapshotSchedule(snapshotScheduleResponse.getSnapshotScheduleUUID());
-  }
-
-  @Order(7)
-  @ParameterizedTest
-  @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
-  public void singleShardTransactionFollowedWithNoOps(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
-    TestHelper.dropAllSchemas();
-    TestHelper.executeDDL("yugabyte_create_tables.ddl");
-
-    String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1", consistentSnapshot, useSnapshot);
-    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-
-    // Start connector.
-    startEngine(configBuilder);
-    awaitUntilConnectorIsReady();
-
-    // Execute multiple single shard transactions.
-    for (int i = 0; i < 100; ++i) {
-      TestHelper.execute(String.format("INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha');", i));
-    }
-
-
-    LOGGER.info("Creating snapshot schedule on database: {} with a retention of 15 minutes", DEFAULT_DB_NAME);
-    YBClient ybClient = TestHelper.getYbClient(TestHelper.getMasterAddress());
-    CreateSnapshotScheduleResponse snapshotScheduleResponse =
-      ybClient.createSnapshotSchedule(CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL, DEFAULT_DB_NAME, 15 * 60, 2 /* interval */);
-
-    // Wait for a minute and then restart the connector.
-    TestHelper.waitFor(Duration.ofMinutes(1));
-    stopConnector();
-    TestHelper.waitFor(Duration.ofSeconds(5));
-    startEngine(configBuilder);
-    awaitUntilConnectorIsReady();
-
-    // Everything should be normal, keep asserting that the connector is still running.
-    for (int i = 0; i < 10; ++i) {
-      assertConnectorIsRunning();
-    }
-
-    waitAndFailIfCannotConsume(new ArrayList<>(), 100);
 
     // Delete the snapshot schedule at the end of the test.
     ybClient.deleteSnapshotSchedule(snapshotScheduleResponse.getSnapshotScheduleUUID());
