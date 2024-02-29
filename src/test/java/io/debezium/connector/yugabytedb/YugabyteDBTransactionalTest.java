@@ -1,6 +1,7 @@
 package io.debezium.connector.yugabytedb;
 
 import io.debezium.config.Configuration;
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
@@ -26,11 +27,14 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBTransactionalTest extends YugabytedTestBase {
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+public class YugabyteDBTransactionalTest extends YugabyteDBContainerTestBase {
   @BeforeAll
   public static void beforeClass() throws SQLException {
-    initializeYBContainer("enable_tablet_split_of_cdcsdk_streamed_tables=true", "cdc_max_stream_intent_records=10");
-    TestHelper.dropAllSchemas();
+    setMasterFlags("cdc_wal_retention_time_secs=60");
+    setTserverFlags("cdc_max_stream_intent_records=10",
+                    "cdc_intent_retention_ms=60000");
+    initializeYBContainer();
   }
 
   @BeforeEach
@@ -49,6 +53,7 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
     shutdownYBContainer();
   }
 
+  @Order(1)
   @ParameterizedTest
   @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
   public void shouldResumeLargeTransactions(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
@@ -138,6 +143,7 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
     YugabyteDBStreamingChangeEventSource.TEST_TRACK_EXPLICIT_CHECKPOINTS = false;
   }
 
+  @Order(2)
   @ParameterizedTest
   @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
   public void shouldBeNoDataLossWithExplicitCheckpointAdvancing(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
@@ -198,6 +204,7 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
     YugabyteDBStreamingChangeEventSource.TEST_TRACK_EXPLICIT_CHECKPOINTS = false;
   }
 
+  @Order(3)
   @ParameterizedTest
   @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
   public void shouldNotBeAffectedByMultipleNoOps(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
@@ -238,7 +245,7 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
 
     // Consume all the records.
     List<SourceRecord> records = new ArrayList<>();
-    waitAndConsume(records, 200, 5 * 60 * 1000);
+    waitAndConsumeUnique(records, 200, 5 * 60 * 1000);
 
     Set<Integer> pk = new HashSet<>();
     for (SourceRecord record : records) {
@@ -247,8 +254,12 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
     }
 
     assertEquals(200, pk.size());
+
+    // Delete the snapshot schedule at the end of the test.
+    ybClient.deleteSnapshotSchedule(resp.getSnapshotScheduleUUID());
   }
 
+  @Order(4)
   @ParameterizedTest
   @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
   public void verifyNoHoldingOfResourcesOnServiceAfterSplit(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
@@ -262,7 +273,6 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
      * verified by reading the GetCheckpointResponse on the children and verifying that the OpId
      * and snapshot_time is equal to the explicit checkpoint for the parent.
      */
-
     TestHelper.dropAllSchemas();
     TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
@@ -315,13 +325,14 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
     assertEquals(parentExplicitCheckpoint.getTime(), childCheckpoint2.getSnapshotTime());
   }
 
-  @Test
-  public void shouldNotFailWithLowRetentionPeriod() throws Exception {
-    // Note: set cdc_intent_retention_ms and cdc_wal_retention_time_secs to 1 minute
+  @Order(5)
+  @ParameterizedTest
+  @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+  public void shouldNotFailWithLowRetentionPeriod(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
     TestHelper.dropAllSchemas();
     TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
-    String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1");
+    String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 
     // Do not retry as it will only increase the duration of the test run and end up giving a false
@@ -360,13 +371,14 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
     ybClient.deleteSnapshotSchedule(snapshotScheduleResponse.getSnapshotScheduleUUID());
   }
 
-  @Test
-  public void multiShardTransactionFollowedWithNoOps() throws Exception {
-    // Note: set cdc_intent_retention_ms and cdc_wal_retention_time_secs to 1 minute
+  @Order(6)
+  @ParameterizedTest
+  @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+  public void multiShardTransactionFollowedWithNoOps(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
     TestHelper.dropAllSchemas();
     TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
-    String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1");
+    String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 
     // Start connector.
@@ -399,13 +411,14 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
     ybClient.deleteSnapshotSchedule(snapshotScheduleResponse.getSnapshotScheduleUUID());
   }
 
-  @Test
-  public void singleShardTransactionFollowedWithNoOps() throws Exception {
-    // Note: set cdc_intent_retention_ms and cdc_wal_retention_time_secs to 1 minute
+  @Order(7)
+  @ParameterizedTest
+  @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+  public void singleShardTransactionFollowedWithNoOps(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
     TestHelper.dropAllSchemas();
     TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
-    String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1");
+    String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
 
     // Start connector.

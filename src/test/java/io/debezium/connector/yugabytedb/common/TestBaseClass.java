@@ -109,6 +109,20 @@ public class TestBaseClass extends AbstractConnectorTest {
     tserverFlags.addAll(Arrays.asList(flags));
   }
 
+  protected static void resetTserverFlags(String...flags) {
+      List<String> flagsToBeRemoved = new ArrayList<>();
+
+      for (String flag : tserverFlags) {
+        for (String gFlag : flags) {
+          if (flag.contains(gFlag)) {
+            flagsToBeRemoved.add(flag);
+          }
+        }
+      }
+
+      tserverFlags.removeAll(flagsToBeRemoved);
+  }
+
   protected static String getTserverFlags() {
     return String.join(",", tserverFlags);
   }
@@ -395,6 +409,47 @@ public class TestBaseClass extends AbstractConnectorTest {
         // Don't fail and throw exception.
         throw exception;
       }
+  }
+
+  /**
+   * Consume the records available and add only the unique records to the list. Note that this
+   * method expects the primary key name to be {@code id} of type {@link Integer}
+   * @param records list to which we need to add the records we consume, pass a
+   * {@code new ArrayList<>()} if you do not need assertions on the consumed values
+   * @param recordsCount Max number of records that can be consumed if available
+   * @param milliSecondsToWait duration in milliseconds to wait for while consuming
+   */
+  protected void waitAndConsumeUnique(List<SourceRecord> records, long recordsCount,
+                                      long milliSecondsToWait) {
+    AtomicLong totalConsumedRecords = new AtomicLong();
+    long seconds = milliSecondsToWait / 1000;
+    Set<Integer> primaryKeys = new HashSet<>();
+    try {
+      Awaitility.await()
+        .atMost(Duration.ofSeconds(seconds))
+        .until(() -> {
+          int consumed = consumeAvailableRecords(record -> {
+            LOGGER.debug("The record being consumed is " + record);
+            Struct value = (Struct) record.value();
+            int pkValue = value.getStruct("after").getStruct("id").getInt32("value");
+            if (!primaryKeys.contains(pkValue)) {
+              records.add(record);
+              primaryKeys.add(pkValue);
+            }
+          });
+          if (consumed > 0) {
+            totalConsumedRecords.addAndGet(consumed);
+            LOGGER.info("Consumed " + totalConsumedRecords + " records");
+          }
+
+          return primaryKeys.size() >= recordsCount;
+        });
+    } catch (ConditionTimeoutException exception) {
+      LOGGER.error("Consumed only {} in {} milli-seconds", totalConsumedRecords.get(), milliSecondsToWait);
+
+      // Don't fail and throw exception.
+      throw exception;
+    }
   }
 
   protected void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount,
