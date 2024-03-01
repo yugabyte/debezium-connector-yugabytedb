@@ -595,6 +595,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final int DEFAULT_MAX_CONNECTOR_RETRIES = 5;
     protected static final long DEFAULT_CONNECTOR_RETRY_DELAY_MS = 60000;
     protected static final boolean DEFAULT_LIMIT_ONE_POLL_PER_ITERATION = false;
+    protected static final boolean DEFAULT_LOG_GET_CHANGES = false;
     protected static final long DEFAULT_NEW_TABLE_POLL_INTERVAL_MS = 5 * 60 * 1000L;
     protected static final long DEFAULT_LOG_GET_CHANGES_INTERVAL_MS = 5 * 60 * 1000L;
     public static final int DEFAULT_MBEAN_REGISTRATION_RETRIES = 12;
@@ -1016,7 +1017,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withDisplayName("Whether to log GetChanges requests")
             .withImportance(Importance.LOW)
             .withType(Type.BOOLEAN)
-            .withDefault(false)
+            .withDefault(DEFAULT_LOG_GET_CHANGES)
             .withValidation(Field::isBoolean)
             .withDescription("Whether the connector should log GetChanges requests it is making to the service");
 
