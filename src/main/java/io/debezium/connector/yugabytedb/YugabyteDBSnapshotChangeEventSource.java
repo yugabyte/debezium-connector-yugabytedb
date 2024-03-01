@@ -507,10 +507,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 OpId cp = previousOffset.snapshotLSN(part);
 
-                if (LOGGER.isDebugEnabled()
+                if (connectorConfig.logGetChanges() || LOGGER.isDebugEnabled()
                     || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
-                  LOGGER.info("Requesting changes for tablet {} from OpId {} for table {} with explicit checkpoint {}",
-                              tabletId, cp, table.getName(), explicitCdcSdkCheckpoint);
+                  LOGGER.info("Requesting changes for table {} tablet {}, explicit_checkpoint: {} from_op_id: {}",
+                    table.getName(), part.getId(), explicitCdcSdkCheckpoint, cp.toSerString());
                   lastLoggedTimeForGetChanges = System.currentTimeMillis();
                 }
 

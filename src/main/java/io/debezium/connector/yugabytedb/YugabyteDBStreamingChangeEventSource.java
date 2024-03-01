@@ -487,15 +487,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                             YBTable table = tableIdToTable.get(entry.getKey());
 
                             CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                            if (LOGGER.isDebugEnabled()
+                            if (connectorConfig.logGetChanges() || LOGGER.isDebugEnabled()
                                   || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
-                                if (explicitCheckpoint != null) {
-                                    LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpointing: {} from_op_id: {}.{}",
-                                      table.getName(), part.getId(), explicitCheckpoint.toString(), cp.getTerm(), cp.getIndex());
-                                } else {
-                                    LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpoint is null and from_op_id: {}.{}",
-                                      table.getName(), part.getId(), cp.getTerm(), cp.getIndex());
-                                }
+                                LOGGER.info("Requesting changes for table {} tablet {}, explicit_checkpoint: {} from_op_id: {}",
+                                  table.getName(), part.getId(), explicitCheckpoint, cp.toSerString());
 
                                 lastLoggedTimeForGetChanges = System.currentTimeMillis();
                             }

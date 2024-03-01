@@ -1013,12 +1013,12 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withDescription("Interval at which the poller thread should poll to check if there are any new tables added to the stream");
 
     public static final Field LOG_GET_CHANGES = Field.create("log.get.changes")
-            .withDisplayName("Whether to log GetChanges request at intervals")
+            .withDisplayName("Whether to log GetChanges requests")
             .withImportance(Importance.LOW)
             .withType(Type.BOOLEAN)
             .withDefault(true)
             .withValidation(Field::isBoolean)
-            .withDescription("Whether we want the connector to log at regular intervals that it is calling GetChanges RPC on the server side");
+            .withDescription("Whether the connector should log GetChanges requests it is making to the service");
 
     public static final Field LOG_GET_CHANGES_INTERVAL_MS = Field.create("log.get.changes.interval.ms")
             .withDisplayName("Interval to log GetChanges request in milliseconds")
