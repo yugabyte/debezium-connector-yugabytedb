@@ -509,7 +509,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 if (connectorConfig.logGetChanges() || LOGGER.isDebugEnabled()
                     || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
-                  LOGGER.info("Requesting changes for table {} tablet {}, explicit_checkpoint: {} from_op_id: {}",
+                  LOGGER.info("Requesting snapshot for table {} tablet {}, explicit_checkpoint: {} from_op_id: {}",
                     table.getName(), part.getId(), explicitCdcSdkCheckpoint, cp.toSerString());
                   lastLoggedTimeForGetChanges = System.currentTimeMillis();
                 }

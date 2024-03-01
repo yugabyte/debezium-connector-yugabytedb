@@ -1016,7 +1016,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withDisplayName("Whether to log GetChanges requests")
             .withImportance(Importance.LOW)
             .withType(Type.BOOLEAN)
-            .withDefault(true)
+            .withDefault(false)
             .withValidation(Field::isBoolean)
             .withDescription("Whether the connector should log GetChanges requests it is making to the service");
 
