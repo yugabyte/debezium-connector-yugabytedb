@@ -3,6 +3,8 @@ package io.debezium.connector.yugabytedb.connection;
 import java.util.Arrays;
 import java.util.Base64;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService.CDCSDKCheckpointPB;
 
 import com.google.common.base.Objects;
@@ -10,6 +12,7 @@ import org.yb.client.CdcSdkCheckpoint;
 import org.yb.client.GetCheckpointResponse;
 
 public class OpId implements Comparable<OpId> {
+    private static final Logger LOGGER = LoggerFactory.getLogger(OpId.class);
 
     private long term;
     private long index;
@@ -167,12 +170,15 @@ public class OpId implements Comparable<OpId> {
             return false;
         }
 
+        LOGGER.debug("this: {} checkpoint: {}", this.toSerString(), checkpoint);
         if (this.term < checkpoint.getTerm() || this.index < checkpoint.getIndex() || this.time < checkpoint.getTime()) {
             return true;
         } else if (this.term == checkpoint.getTerm() && this.index == checkpoint.getIndex() && this.time == checkpoint.getTime()) {
-            return Arrays.equals(this.key, checkpoint.getKey()) && this.write_id == checkpoint.getWriteId();
+            LOGGER.debug("Evaluating equality for a large transaction case");
+            return this.write_id <= checkpoint.getWriteId();
         }
 
+        LOGGER.debug("Current OpId is greater than the passed checkpoint");
         return false;
     }
 

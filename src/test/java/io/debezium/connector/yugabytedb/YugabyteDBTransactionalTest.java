@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-public class YugabyteDBTransactionalTest extends YugabytedTestBase {
+public class YugabyteDBTransactionalTest extends YugabyteDBContainerTestBase {
   @BeforeAll
   public static void beforeClass() throws SQLException {
     setMasterFlags("cdc_wal_retention_time_secs=60");
