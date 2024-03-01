@@ -10,7 +10,6 @@ import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
