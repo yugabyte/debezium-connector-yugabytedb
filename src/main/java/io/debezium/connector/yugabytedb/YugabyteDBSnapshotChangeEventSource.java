@@ -511,13 +511,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
             OpId cp = previousOffset.snapshotLSN(part);
 
-            if (LOGGER.isDebugEnabled()
-                || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
-              LOGGER.info("Requesting changes for tablet {} from OpId {} for table {} with explicit checkpoint {}",
-                          tabletId, cp, table.getName(), explicitCdcSdkCheckpoint);
-              lastLoggedTimeForGetChanges = System.currentTimeMillis();
-            }
-
             if (!context.isRunning()) {
               LOGGER.info("Connector has been stopped");
               break;
@@ -528,6 +521,13 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             try {
               if (retryCount.get(part.getId()) == 0
                     || (System.currentTimeMillis() - lastGetChangesAttemptMs.get(part.getId())) >= connectorConfig.connectorRetryDelayMs()) {
+                if (LOGGER.isDebugEnabled()
+                      || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
+                  LOGGER.info("Requesting changes for tablet {} from OpId {} for table {} with explicit checkpoint {}",
+                    tabletId, cp, table.getName(), explicitCdcSdkCheckpoint);
+                  lastLoggedTimeForGetChanges = System.currentTimeMillis();
+                }
+
                 resp = this.syncClient.getChangesCDCSDK(table,
                   connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                   cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),

@@ -505,18 +505,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                     YBTable table = tableIdToTable.get(entry.getKey());
 
                     CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
-                    if (LOGGER.isDebugEnabled()
-                          || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
-                        if (explicitCheckpoint != null) {
-                            LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpointing: {} from_op_id: {}",
-                              table.getName(), part.getId(), explicitCheckpoint.toString(), cp);
-                        } else {
-                            LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpoint is null and from_op_id: {}",
-                              table.getName(), part.getId(), cp);
-                        }
-
-                        lastLoggedTimeForGetChanges = System.currentTimeMillis();
-                    }
 
                     // Check again if the thread has been interrupted.
                     if (!context.isRunning()) {
@@ -534,6 +522,20 @@ public class YugabyteDBStreamingChangeEventSource implements
                         try {
                             if (retryCount.get(part.getId()) == 0
                                   || (System.currentTimeMillis() - lastGetChangesAttemptMs.get(part.getId())) >= connectorConfig.connectorRetryDelayMs()) {
+
+                                // Log all the GetChanges.
+                                if (true) {
+                                    if (explicitCheckpoint != null) {
+                                        LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpointing: {} from_op_id: {}",
+                                          table.getName(), part.getId(), explicitCheckpoint.toString(), cp);
+                                    } else {
+                                        LOGGER.info("Requesting changes for table {} tablet {}, explicit checkpoint is null and from_op_id: {}",
+                                          table.getName(), part.getId(), cp);
+                                    }
+
+                                    lastLoggedTimeForGetChanges = System.currentTimeMillis();
+                                }
+
                                 response = syncClient.getChangesCDCSDK(
                                   table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                                   cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
