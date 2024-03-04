@@ -76,6 +76,11 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
             // Initialize the offsetContext and other supporting flags
             Map<String, Boolean> schemaNeeded = new HashMap<>();
             Map<String, Long> tabletSafeTime = new HashMap<>();
+
+            // Helper structures to keep track of tablets needing retries.
+            Map<String, Integer> retryCount = new HashMap<>();
+            Map<String, Long> lastGetChangesAttemptMs = new HashMap<>();
+
             for (Pair<String, String> entry : tabletPairList) {
                 // entry.getValue() will give the tabletId
                 OpId opId = YBClientUtils.getOpIdFromGetTabletListResponse(
@@ -92,6 +97,9 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 YBPartition partition = new YBPartition(entry.getKey(), entry.getValue(), false);
                 offsetContext.initSourceInfo(partition, this.connectorConfig, opId);
                 schemaNeeded.put(partition.getId(), Boolean.TRUE);
+
+                retryCount.put(partition.getId(), 0);
+                lastGetChangesAttemptMs.put(partition.getId(), System.currentTimeMillis());
             }
 
             Merger merger = new Merger(tabletPairList.stream().map(Pair::getRight).collect(Collectors.toList()));
@@ -125,64 +133,72 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
             // waiting for the bootstrapping to finish so that they can start inserting data now.
             LOGGER.info("Beginning to poll the changes from the server");
 
-            short retryCount = 0;
-
             // Helper internal variable to log GetChanges request at regular intervals.
             long lastLoggedTimeForGetChanges = System.currentTimeMillis();
 
             String curTabletId = "";
-            while (context.isRunning() && retryCount <= connectorConfig.maxConnectorRetries()) {
+            while (context.isRunning()) {
                 try {
-                    while (context.isRunning() && (offsetContext.getStreamingStoppingLsn() == null ||
-                            (lastCompletelyProcessedLsn.compareTo(offsetContext.getStreamingStoppingLsn()) < 0))) {
-                        // Pause for the specified duration before asking for a new set of changes from the server
-                        LOGGER.debug("Pausing for {} milliseconds before polling further", connectorConfig.cdcPollIntervalms());
-                        final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
-                        pollIntervalMetronome.pause();
+                    // Pause for the specified duration before asking for a new set of changes from the server
+                    LOGGER.debug("Pausing for {} milliseconds before polling further", connectorConfig.cdcPollIntervalms());
+                    final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
+                    pollIntervalMetronome.pause();
 
-                        if (this.connectorConfig.cdcLimitPollPerIteration()
-                                && queue.remainingCapacity() < queue.totalCapacity()) {
-                            LOGGER.debug("Queue has {} items. Skipping", queue.totalCapacity() - queue.remainingCapacity());
-                            continue;
+                    if (this.connectorConfig.cdcLimitPollPerIteration()
+                            && queue.remainingCapacity() < queue.totalCapacity()) {
+                        LOGGER.debug("Queue has {} items. Skipping", queue.totalCapacity() - queue.remainingCapacity());
+                        continue;
+                    }
+
+                    for (Pair<String, String> entry : tabletPairList) {
+                        final String tabletId = entry.getValue();
+                        curTabletId = entry.getValue();
+                        YBPartition part = new YBPartition(entry.getKey(), tabletId, false);
+
+                        OpId cp = offsetContext.lsn(part);
+
+                        YBTable table = tableIdToTable.get(entry.getKey());
+
+                        if (LOGGER.isDebugEnabled()
+                                || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
+                            LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
+                                    tabletId, cp, table.getName());
+                            lastLoggedTimeForGetChanges = System.currentTimeMillis();
                         }
 
-                        for (Pair<String, String> entry : tabletPairList) {
-                            final String tabletId = entry.getValue();
-                            curTabletId = entry.getValue();
-                            YBPartition part = new YBPartition(entry.getKey(), tabletId, false);
+                        // Check again if the thread has been interrupted.
+                        if (!context.isRunning()) {
+                            LOGGER.info("Connector has been stopped");
+                            break;
+                        }
 
-                            OpId cp = offsetContext.lsn(part);
+                        GetChangesResponse response = null;
 
-                            YBTable table = tableIdToTable.get(entry.getKey());
+                        if (schemaNeeded.get(tabletId)) {
+                            LOGGER.debug("Requesting schema for tablet: {}", tabletId);
+                        }
 
-                            if (LOGGER.isDebugEnabled()
-                                    || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
-                                LOGGER.info("Requesting changes for tablet {} from OpId {} for table {}",
-                                        tabletId, cp, table.getName());
-                                lastLoggedTimeForGetChanges = System.currentTimeMillis();
-                            }
-
-                            // Check again if the thread has been interrupted.
-                            if (!context.isRunning()) {
-                                LOGGER.info("Connector has been stopped");
-                                break;
-                            }
-
-                            GetChangesResponse response = null;
-
-                            if (schemaNeeded.get(tabletId)) {
-                                LOGGER.debug("Requesting schema for tablet: {}", tabletId);
-                            }
-
-                            if (merger.isSlotEmpty(tabletId)) {
+                        if (merger.isSlotEmpty(tabletId)) {
+                            try {
                                 try {
-                                    response = syncClient.getChangesCDCSDK(
-                                            table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
-                                            cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
-                                            taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
-                                            tabletSafeTime.getOrDefault(part.getId(), -1L), offsetContext.getWalSegmentIndex(part));
+                                    if (retryCount.get(part.getId()) == 0
+                                          || (System.currentTimeMillis() - lastGetChangesAttemptMs.get(part.getId())) >= connectorConfig.connectorRetryDelayMs()) {
+                                        response = syncClient.getChangesCDCSDK(
+                                          table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
+                                          cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
+                                          taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
+                                          tabletSafeTime.getOrDefault(part.getId(), -1L), offsetContext.getWalSegmentIndex(part));
 
-                                    tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
+                                        tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
+                                    } else {
+                                        // Skip over this tablet.
+                                        LOGGER.debug("Skipping GetChanges for partition {} since retry delay isn't elapsed yet", part.getId());
+                                        continue;
+                                    }
+
+                                    // Reset the retry count, because if flow reached at this point, it means
+                                    // that we have received a successful response from service.
+                                    retryCount.put(part.getId(), 0);
                                 } catch (CDCErrorException cdcException) {
                                     // Check if exception indicates a tablet split.
                                     if (cdcException.getCDCError().getCode() == CdcService.CDCErrorPB.Code.TABLET_SPLIT) {
@@ -199,92 +215,84 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                         throw cdcException;
                                     }
                                 }
+                            } catch (Exception ex) {
+                                retryCount.merge(part.getId(), 1, Integer::sum);
+                                lastGetChangesAttemptMs.put(part.getId(), System.currentTimeMillis());
 
-                                LOGGER.debug("Processing {} records from getChanges call",
-                                        response.getResp().getCdcSdkProtoRecordsList().size());
-                                for (CdcService.CDCSDKProtoRecordPB record : response
-                                        .getResp()
-                                        .getCdcSdkProtoRecordsList()) {
-                                    CdcService.RowMessage.Op op = record.getRowMessage().getOp();
-
-                                    if (record.getRowMessage().getOp() == CdcService.RowMessage.Op.DDL) {
-                                        YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(record.getRowMessage(), this.yugabyteDBTypeRegistry);
-                                        dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
-                                                beginCountForTablet, tabletId, part,
-                                                response.getSnapshotTime(), record, record.getRowMessage(), ybMessage);
-                                    } else {
-                                        merger.addMessage(new Message.Builder()
-                                                .setRecord(record)
-                                                .setTableId(part.getTableId())
-                                                .setTabletId(part.getTabletId())
-                                                .setSnapshotTime(response.getSnapshotTime())
-                                                .build());
-                                    }
-                                    OpId finalOpid = new OpId(
-                                            response.getTerm(),
-                                            response.getIndex(),
-                                            response.getKey(),
-                                            response.getWriteId(),
-                                            response.getResp().getSafeHybridTime());
-                                    offsetContext.updateWalPosition(part, finalOpid);
-                                    offsetContext.updateWalSegmentIndex(part, response.getWalSegmentIndex());
-                                    LOGGER.debug("The final opid for tablet {} is {}", part.getTabletId(), finalOpid);
+                                if (retryCount.get(part.getId()) > connectorConfig.maxConnectorRetries()) {
+                                    // If the retry limit is exceeded, log an error with a description and throw the exception.
+                                    LOGGER.error("Too many errors while trying to get the changes from server for tablet: {}. All {} retries failed.", curTabletId, connectorConfig.maxConnectorRetries());
+                                    throw ex;
                                 }
+
+                                // If there are retries left, perform them after the specified delay.
+                                LOGGER.warn("Error while trying to get the changes from the server for tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
+                                  curTabletId, retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), ex);
+
+                                // Continue the execution on other tablets.
+                                continue;
                             }
 
-                            if (!isInPreSnapshotCatchUpStreaming(offsetContext)) {
-                                // During catch up streaming, the streaming phase needs to hold a transaction open so that
-                                // the phase can stream event up to a specific lsn and the snapshot that occurs after the catch up
-                                // streaming will not lose the current view of data. Since we need to hold the transaction open
-                                // for the snapshot, this block must not commit during catch up streaming.
-                                // CDCSDK Find out why this fails : connection.commit();
+                            LOGGER.debug("Processing {} records from getChanges call",
+                                    response.getResp().getCdcSdkProtoRecordsList().size());
+                            for (CdcService.CDCSDKProtoRecordPB record : response
+                                    .getResp()
+                                    .getCdcSdkProtoRecordsList()) {
+                                CdcService.RowMessage.Op op = record.getRowMessage().getOp();
+
+                                if (record.getRowMessage().getOp() == CdcService.RowMessage.Op.DDL) {
+                                    YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(record.getRowMessage(), this.yugabyteDBTypeRegistry);
+                                    dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
+                                            beginCountForTablet, tabletId, part,
+                                            response.getSnapshotTime(), record, record.getRowMessage(), ybMessage);
+                                } else {
+                                    merger.addMessage(new Message.Builder()
+                                            .setRecord(record)
+                                            .setTableId(part.getTableId())
+                                            .setTabletId(part.getTabletId())
+                                            .setSnapshotTime(response.getSnapshotTime())
+                                            .build());
+                                }
+                                OpId finalOpid = new OpId(
+                                        response.getTerm(),
+                                        response.getIndex(),
+                                        response.getKey(),
+                                        response.getWriteId(),
+                                        response.getResp().getSafeHybridTime());
+                                offsetContext.updateWalPosition(part, finalOpid);
+                                offsetContext.updateWalSegmentIndex(part, response.getWalSegmentIndex());
+                                LOGGER.debug("The final opid for tablet {} is {}", part.getTabletId(), finalOpid);
                             }
                         }
 
-                        Optional<Message> pollMessage = merger.poll();
-                        while (pollMessage.isPresent()) {
-                            LOGGER.debug("Merger has records");
-                            Message message = pollMessage.get();
-                            CdcService.RowMessage m = message.record.getRowMessage();
-                            YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(
-                                    m, this.yugabyteDBTypeRegistry);
-                            dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
-                                    beginCountForTablet, message.tablet, new YBPartition(message.tableId, message.tablet, false),
-                                    message.snapShotTime.longValue(), message.record, m, ybMessage);
-
-                            pollMessage = merger.poll();
+                        if (!isInPreSnapshotCatchUpStreaming(offsetContext)) {
+                            // During catch up streaming, the streaming phase needs to hold a transaction open so that
+                            // the phase can stream event up to a specific lsn and the snapshot that occurs after the catch up
+                            // streaming will not lose the current view of data. Since we need to hold the transaction open
+                            // for the snapshot, this block must not commit during catch up streaming.
+                            // CDCSDK Find out why this fails : connection.commit();
                         }
+                    }
 
-                        // Reset the retry count, because if flow reached at this point, it means that the connection
-                        // has succeeded
-                        retryCount = 0;
+                    Optional<Message> pollMessage = merger.poll();
+                    while (pollMessage.isPresent()) {
+                        LOGGER.debug("Merger has records");
+                        Message message = pollMessage.get();
+                        CdcService.RowMessage m = message.record.getRowMessage();
+                        YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(
+                                m, this.yugabyteDBTypeRegistry);
+                        dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
+                                beginCountForTablet, message.tablet, new YBPartition(message.tableId, message.tablet, false),
+                                message.snapShotTime.longValue(), message.record, m, ybMessage);
+
+                        pollMessage = merger.poll();
                     }
                 } catch (AssertionError ae) {
-                    LOGGER.error("Assertion error received: {}", ae);
+                    LOGGER.error("Assertion error received: ", ae);
                     merger.dumpState();
 
                     // The connector should ideally be stopped if this kind of state is reached.
                     throw new DebeziumException(ae);
-                } catch (Exception e) {
-                    ++retryCount;
-                    // If the retry limit is exceeded, log an error with a description and throw the exception.
-                    if (retryCount > connectorConfig.maxConnectorRetries()) {
-                        LOGGER.error("Too many errors while trying to get the changes from server for tablet: {}. All {} retries failed.", curTabletId, connectorConfig.maxConnectorRetries());
-                        throw e;
-                    }
-
-                    // If there are retries left, perform them after the specified delay.
-                    LOGGER.warn("Error while trying to get the changes from the server; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
-                            retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e);
-                    LOGGER.warn("Stacktrace", e);
-
-                    try {
-                        final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-                        retryMetronome.pause();
-                    } catch (InterruptedException ie) {
-                        LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-                        Thread.currentThread().interrupt();
-                    }
                 }
             }
         }
