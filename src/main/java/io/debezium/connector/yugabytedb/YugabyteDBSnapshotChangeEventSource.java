@@ -554,7 +554,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
               }
 
               // If there are retries left, perform them after the specified delay.
-              LOGGER.warn("Error while trying to get the changes from the server for tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
+              LOGGER.warn("Error while trying to get the snapshot from the server for tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
                 tabletId, retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), ex);
 
               // Continue the execution on other tablets.
