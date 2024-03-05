@@ -608,7 +608,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                         // If there are retries left, perform them after the specified delay.
                         LOGGER.warn("Error while trying to get the changes from the server for tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
-                          curTabletId, retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), ex);
+                          curTabletId, retryCount.get(part.getId()), connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), ex);
 
                         // Continue the execution on other tablets.
                         continue;

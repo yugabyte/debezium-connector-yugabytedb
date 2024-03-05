@@ -542,6 +542,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 if (FAIL_AFTER_BOOTSTRAP_GET_CHANGES) {
                   throw new RuntimeException("[TEST ONLY] Throwing error explicitly after bootstrap snapshot GetChanges call");
                 }
+              }  else {
+                // Skip over this tablet.
+                LOGGER.debug("Skipping GetChanges for partition {} since retry delay isn't elapsed yet", part.getId());
+                continue;
               }
             } catch (Exception ex) {
               retryCount.merge(part.getId(), 1, Integer::sum);
@@ -555,7 +559,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
               // If there are retries left, perform them after the specified delay.
               LOGGER.warn("Error while trying to get the snapshot from the server for tablet {}; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
-                tabletId, retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), ex);
+                tabletId, retryCount.get(part.getId()), connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), ex);
 
               // Continue the execution on other tablets.
               continue;
