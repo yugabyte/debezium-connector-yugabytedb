@@ -36,6 +36,7 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.DataChangeEvent;
@@ -48,6 +49,11 @@ public class YugabyteDBStreamingChangeEventSource implements
         StreamingChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
     // Test only flags, DO NOT modify in the source code.
     public static boolean TEST_WAIT_BEFORE_GETTING_CHILDREN = false;
+    public static boolean TEST_TRACK_EXPLICIT_CHECKPOINTS = false;
+    public static boolean TEST_UPDATE_EXPLICIT_CHECKPOINT = true;
+    public static boolean TEST_PAUSE_GET_CHANGES_CALLS = false;
+    public static boolean TEST_STOP_ADVANCING_CHECKPOINTS = false;
+    public static Map<String, CdcSdkCheckpoint> TEST_explicitCheckpoints;
 
     protected static final String KEEP_ALIVE_THREAD_NAME = "keep-alive";
 
@@ -117,6 +123,10 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.splitTabletsWaitingForCallback = new HashSet<>();
         this.filters = new Filters(connectorConfig);
         this.partitionRanges = new ArrayList<>();
+
+        if (TEST_TRACK_EXPLICIT_CHECKPOINTS) {
+            TEST_explicitCheckpoints = new ConcurrentHashMap<>();
+        }
     }
 
     @Override
@@ -484,6 +494,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 }
                             }
 
+                            // If enabled, this will cause the connector to skip GetChanges calls for all the tablets.
+                            if (TEST_PAUSE_GET_CHANGES_CALLS) {
+                                LOGGER.info("[Test only] Skipping over the GetChanges call for tablet {}", tabletId);
+                                continue;
+                            }
+
                             YBTable table = tableIdToTable.get(entry.getKey());
 
                             CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
@@ -515,6 +531,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part));
 
                                 tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
+
+                                // Test only.
+                                if (TEST_TRACK_EXPLICIT_CHECKPOINTS) {
+                                    TEST_explicitCheckpoints.put(tabletId, explicitCheckpoint);
+                                }
                             } catch (CDCErrorException cdcException) {
                                 // Check if exception indicates a tablet split.
                                 LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
@@ -754,7 +775,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             // also move the explicit checkpoint forward, given that it was already greater than the lsn of the last seen valid record.
                             // Otherwise the explicit checkpoint can get stuck at older values, and upon connector restart
                             // we will resume from an older point than necessary.
-                            if (taskContext.shouldEnableExplicitCheckpointing()) {
+                            if (taskContext.shouldEnableExplicitCheckpointing() && !TEST_STOP_ADVANCING_CHECKPOINTS) {
                                 OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
                                 if (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint)) {
                                     tabletToExplicitCheckpoint.put(part.getId(), finalOpid.toCdcSdkCheckpoint());
@@ -888,6 +909,12 @@ public class YugabyteDBStreamingChangeEventSource implements
     @Override
     public void commitOffset(Map<String, ?> offset) {
         if (!taskContext.shouldEnableExplicitCheckpointing()) {
+            return;
+        }
+
+        // Test only.
+        if (!TEST_UPDATE_EXPLICIT_CHECKPOINT) {
+            LOGGER.info("[Test Only] Not updating explicit checkpoint");
             return;
         }
 

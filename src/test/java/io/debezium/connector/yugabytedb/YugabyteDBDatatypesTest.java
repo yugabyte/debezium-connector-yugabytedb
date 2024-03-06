@@ -231,7 +231,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         GetDBStreamInfoResponse response = ybClient.getDBStreamInfo(dbStreamId);
         assertNotNull(response.getNamespaceId());
-        
+
         final int recordsCount = 1;
         insertRecords(recordsCount);
         CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
