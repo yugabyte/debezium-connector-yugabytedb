@@ -57,7 +57,7 @@ public class OpId implements Comparable<OpId> {
             return "null";
         }
 
-        return Base64.getEncoder().encodeToString(key);
+        return Arrays.toString(key);
     }
 
     private static byte[] parseKey(String keyString) {
