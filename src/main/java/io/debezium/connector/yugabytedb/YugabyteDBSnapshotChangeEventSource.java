@@ -56,6 +56,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     public static boolean FAIL_WHEN_MARKING_SNAPSHOT_DONE;
     public static boolean TRACK_EXPLICIT_CHECKPOINTS = false;
     public static CdcSdkCheckpoint LAST_EXPLICIT_CHECKPOINT;
+    public static boolean TEST_STOP_UPDATING_EXPLICIT_CHECKPOINTS = false;
 
     private final YugabyteDBConnectorConfig connectorConfig;
     private final YugabyteDBSchema schema;
@@ -81,7 +82,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     protected List<HashPartition> partitionRanges;
 
     private boolean snapshotComplete = false;
-
+    private Map<String, Long> lastGetChangesTime;
     private final String LAST_SNAPSHOT_RECORD_KEY = "LAST_SNAPSHOT_RECORD";
 
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
@@ -119,6 +120,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.shouldWaitForCallback = new HashSet<>();
         this.tabletsWaitingForCallback = new HashSet<>();
         this.partitionRanges = new ArrayList<>();
+        this.lastGetChangesTime = new HashMap<>();
     }
 
     @Override
@@ -480,7 +482,16 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   if (!snapshotCompletedTablets.contains(part.getId()) && taskContext.shouldEnableExplicitCheckpointing()) {
                     doSnapshotCompletionCheck(part, snapshotCompletedTablets, tabletsWaitingForCallback, previousOffset);
                   }
-                  continue;
+
+                  if (!snapshotCompletedTablets.contains(part.getId()) && shouldPollAndPublishIfNeeded(part)) {
+                    // Update the from_op_id position so that GetChanges is called from this position, and we get the
+                    // last batch again.
+                    OpId temp = OpId.snapshotCheckpoint(tabletToExplicitCheckpoint.get(part.getId()));
+                    LOGGER.warn("Setting back from_op_id to {} in order to publish last batch again", temp);
+                    previousOffset.updateWalPosition(part, temp);
+                  } else {
+                    continue;
+                  }
                 }
 
                 // Stores the READ records received in a single GetChanges call
@@ -524,6 +535,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
                     explicitCdcSdkCheckpoint,
                     tabletSafeTime.getOrDefault(part.getId(), -1L));
+                lastGetChangesTime.put(part.getId(), System.currentTimeMillis());
 
                 if (TRACK_EXPLICIT_CHECKPOINTS) {
                   LAST_EXPLICIT_CHECKPOINT = explicitCdcSdkCheckpoint;
@@ -605,7 +617,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                         // of Opid to max values and snapshot key to LAST_SNAPSHOT_RECORD.
                         if (isSnapshotCompleteMarker(finalOpId) &&
                                 (idx == (resp.getResp().getCdcSdkProtoRecordsList().size() - 1))) {
-                          LOGGER.debug("Modifying record checkpoint for last snapshot record of the last snapshot batch");
+                          LOGGER.info("Modifying record checkpoint for last snapshot record of the last snapshot batch");
                           lsn = getIdentificationMarkerForLastSnapshotRecord();
                         }
                       }
@@ -969,6 +981,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       // 1. Snapshot hasn't been initiated (so snapshot incomplete) -> indicated by invalid OpId 
       // 2. Snapshot is complete and tablet is in streaming mode -> OpId is valid
       return OpId.isValid(getCheckpointResponse.getTerm(), getCheckpointResponse.getIndex());
+    }
+
+    protected boolean shouldPollAndPublishIfNeeded(YBPartition partition) {
+      // Todo Vaibhav: Make this 5 minutes interval configurable
+      return (System.currentTimeMillis() - lastGetChangesTime.get(partition.getId()) >= 1000 * 60 * 3);
     }
 
     protected Set<TableId> getAllTableIds(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx)
