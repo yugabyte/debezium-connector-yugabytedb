@@ -3,7 +3,6 @@ package io.debezium.connector.yugabytedb.connection;
 import java.util.Arrays;
 import java.util.Base64;
 
-import io.debezium.connector.yugabytedb.YugabyteDBOffsetContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService.CDCSDKCheckpointPB;
@@ -156,11 +155,14 @@ public class OpId implements Comparable<OpId> {
                         -1 /* write_id */ , response.getSnapshotTime());
     }
 
+    /**
+     *
+     * @param checkpoint
+     * @return an {@link OpId} which should be used as from_op_id while calling GetChanges for
+     * snapshot
+     */
     public static OpId snapshotCheckpoint(CdcSdkCheckpoint checkpoint) {
-        if (checkpoint == null) {
-            return YugabyteDBOffsetContext.snapshotStartLsn();
-        }
-
+        java.util.Objects.requireNonNull(checkpoint);
         return new OpId(checkpoint.getTerm(), checkpoint.getIndex(), checkpoint.getKey(),
                         -1 /* to indicate snapshot */, checkpoint.getTime());
     }

@@ -56,7 +56,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     public static boolean FAIL_WHEN_MARKING_SNAPSHOT_DONE;
     public static boolean TRACK_EXPLICIT_CHECKPOINTS = false;
     public static CdcSdkCheckpoint LAST_EXPLICIT_CHECKPOINT;
-    public static boolean TEST_STOP_UPDATING_EXPLICIT_CHECKPOINTS = false;
 
     private final YugabyteDBConnectorConfig connectorConfig;
     private final YugabyteDBSchema schema;
@@ -83,6 +82,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
     private boolean snapshotComplete = false;
     private Map<String, Long> lastGetChangesTime;
+    private Map<String, YbProtoReplicationMessage> lastSnapshotRecord;
     private final String LAST_SNAPSHOT_RECORD_KEY = "LAST_SNAPSHOT_RECORD";
 
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
@@ -121,6 +121,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.tabletsWaitingForCallback = new HashSet<>();
         this.partitionRanges = new ArrayList<>();
         this.lastGetChangesTime = new HashMap<>();
+        this.lastSnapshotRecord = new HashMap<>();
     }
 
     @Override
@@ -439,6 +440,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         }
 
         previousOffset.initSourceInfo(p, this.connectorConfig, startLsn);
+        tabletToExplicitCheckpoint.put(p.getId(), startLsn.toCdcSdkCheckpoint());
         schemaNeeded.put(p.getId(), Boolean.TRUE);
         LOGGER.debug("Previous offset for table {} tablet {} is {}", p.getTableId(),
                      p.getTabletId(), previousOffset.toString());
@@ -476,22 +478,22 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 }
 
                 // Skip the tablet if snapshot has already been taken for this tablet
-                if (snapshotCompletedTablets.contains(part.getId())
-                      || tabletsWaitingForCallback.contains(part.getId())) {
-                  // Before continuing, check if the tablets waiting for callback have been updated in case of explicit checkpointing.
-                  if (!snapshotCompletedTablets.contains(part.getId()) && taskContext.shouldEnableExplicitCheckpointing()) {
-                    doSnapshotCompletionCheck(part, snapshotCompletedTablets, tabletsWaitingForCallback, previousOffset);
+                if (snapshotCompletedTablets.contains(part.getId())) {
+                  LOGGER.debug("Skipping partition {} from GetChanges since it has completed snapshot", part.getId());
+                  continue;
+                }
+
+                // If the tablets are waiting for callback for the last snapshot record, check if
+                if (tabletsWaitingForCallback.contains(part.getId()) && taskContext.shouldEnableExplicitCheckpointing()) {
+                  doSnapshotCompletionCheck(part, snapshotCompletedTablets, tabletsWaitingForCallback, previousOffset);
+
+                  // If the timeout has exceeded from the last GetChanges call and we haven't received
+                  // any callback on the last snapshot record yet, publish last snapshot record again.
+                  if (!snapshotCompletedTablets.contains(part.getId()) && isCallbackTimeoutExceeded(part)) {
+                    publishLastSnapshotRecord(part, previousOffset);
                   }
 
-                  if (!snapshotCompletedTablets.contains(part.getId()) && isCallbackTimeoutExceeded(part)) {
-                    // Update the from_op_id position so that GetChanges is called from this position, and we get the
-                    // last batch again.
-                    OpId temp = OpId.snapshotCheckpoint(tabletToExplicitCheckpoint.get(part.getId()));
-                    LOGGER.warn("Setting back from_op_id to {} in order to publish last batch again", temp);
-                    previousOffset.updateWalPosition(part, temp);
-                  } else {
-                    continue;
-                  }
+                  continue;
                 }
 
                 // Stores the READ records received in a single GetChanges call
@@ -619,6 +621,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                 (idx == (resp.getResp().getCdcSdkProtoRecordsList().size() - 1))) {
                           LOGGER.info("Modifying record checkpoint for last snapshot record of the last snapshot batch");
                           lsn = getIdentificationMarkerForLastSnapshotRecord();
+                          lastSnapshotRecord.put(part.getId(), message);
                         }
                       }
 
@@ -983,16 +986,44 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       return OpId.isValid(getCheckpointResponse.getTerm(), getCheckpointResponse.getIndex());
     }
 
-  /**
-   * Note that this is only application for partitions who have sent their last record of the last
-   * snapshot batch and are waiting for callbacks.
-   * @param partition
-   * @return true if the given partition has exceeded the timeout duration since the last GetChanges
-   * call, false otherwise
-   */
-  protected boolean isCallbackTimeoutExceeded(YBPartition partition) {
+    /**
+     * Note that this is only application for partitions who have sent their last record of the last
+     * snapshot batch and are waiting for callbacks.
+     * @param partition
+     * @return true if the given partition has exceeded the timeout duration since the last GetChanges
+     * call, false otherwise
+     */
+    protected boolean isCallbackTimeoutExceeded(YBPartition partition) {
       return (System.currentTimeMillis() - lastGetChangesTime.get(partition.getId())
                 >= connectorConfig.lastCallbackTimeoutMs());
+    }
+
+  /**
+   * Publish the last snapshot record using the stored value.
+   * @param partition a {@link YBPartition} object denoting the tablet for which last snapshot
+   *                  record needs to be published
+   * @param offsetContext {@link YugabyteDBOffsetContext} object storing offset map
+   * @throws NullPointerException if no last snapshot record is cached or if a {@link TableId}
+   * cannot be formed using the stored message
+   * @throws InterruptedException when the flow is interrupted while dispatching the message
+   */
+  protected void publishLastSnapshotRecord(YBPartition partition, YugabyteDBOffsetContext offsetContext)
+      throws NullPointerException, InterruptedException {
+      YbProtoReplicationMessage message = lastSnapshotRecord.get(partition.getId());
+      Objects.requireNonNull(message);
+
+      TableId tId = connectorConfig.isYSQLDbType()
+                      ? YugabyteDBSchema.parseWithSchema(message.getTable(), message.getPgSchemaName())
+                        : YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
+      Objects.requireNonNull(tId);
+
+
+      dispatcher.dispatchDataChangeEvent(partition, tId,
+        new YugabyteDBChangeRecordEmitter(partition, offsetContext, clock,
+          this.connectorConfig, schema,
+          connection, tId, message,
+          connectorConfig.isYSQLDbType() ? message.getPgSchemaName() : tId.catalog(), partition.getTabletId(),
+          taskContext.isBeforeImageEnabled()));
     }
 
     protected Set<TableId> getAllTableIds(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx)

@@ -106,6 +106,10 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
         return !(rawMessage.getNewTypeinfoList() == null || rawMessage.getNewTypeinfoList().isEmpty());
     }
 
+    public String getPgSchemaName() {
+        return rawMessage.getPgschemaName();
+    }
+
     private List<ReplicationMessage.Column> transform(List<Common.DatumMessagePB> messageList,
                                                       List<CdcService.TypeInfo> typeInfoList) {
         return IntStream.range(0, messageList.size())
