@@ -35,7 +35,6 @@ import static org.junit.jupiter.api.Assertions.*;
 public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @BeforeAll
     public static void beforeClass() throws Exception {
-        setTserverFlags("cdc_snapshot_batch_size=50");
         initializeYBContainer();
         TestHelper.dropAllSchemas();
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
@@ -90,10 +89,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
           .exceptionally(throwable -> {
               throw new RuntimeException(throwable);
           }).get();
-
-        int minutesToWait = 10;
-        LOGGER.info("Waiting for {} minutes to observe logs", minutesToWait);
-        TestHelper.waitFor(Duration.ofMinutes(10));
     }
 
     @ParameterizedTest
