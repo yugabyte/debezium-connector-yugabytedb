@@ -103,7 +103,6 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         createTablesInColocatedDB(colocation);
         final int recordsCount = 4000;
         insertBulkRecordsInColocatedDB(recordsCount, "public.test_1");
-        YugabyteDBSnapshotChangeEventSource.TEST_STOP_UPDATING_EXPLICIT_CHECKPOINTS = true;
 
         LOGGER.info("Creating DB stream ID");
         String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1", consistentSnapshot, useSnapshot);
@@ -1030,10 +1029,10 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
 
     static Stream<Arguments> streamTypeProviderForSnapshotWithColocation() {
         return Stream.of(
-//                Arguments.of(false, false, true), // Older stream with colocation
-                Arguments.of(false, false, false)); // Older stream without colocation
-//                Arguments.of(true, true, true), // USE_SNAPSHOT stream with colocation
-//                Arguments.of(true, true, false));  // USE_SNAPSHOT stream without colocation
+                Arguments.of(false, false, true), // Older stream with colocation
+                Arguments.of(false, false, false), // Older stream without colocation
+                Arguments.of(true, true, true), // USE_SNAPSHOT stream with colocation
+                Arguments.of(true, true, false));  // USE_SNAPSHOT stream without colocation
     }
 
     static Stream<Arguments> argumentProviderForEmptyNonEmptyNonColocatedTables() {
