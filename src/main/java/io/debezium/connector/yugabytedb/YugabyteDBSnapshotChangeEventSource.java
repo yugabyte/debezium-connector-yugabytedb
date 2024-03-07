@@ -483,7 +483,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     doSnapshotCompletionCheck(part, snapshotCompletedTablets, tabletsWaitingForCallback, previousOffset);
                   }
 
-                  if (!snapshotCompletedTablets.contains(part.getId()) && shouldPollAndPublishIfNeeded(part)) {
+                  if (!snapshotCompletedTablets.contains(part.getId()) && isCallbackTimeoutExceeded(part)) {
                     // Update the from_op_id position so that GetChanges is called from this position, and we get the
                     // last batch again.
                     OpId temp = OpId.snapshotCheckpoint(tabletToExplicitCheckpoint.get(part.getId()));
@@ -983,9 +983,16 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       return OpId.isValid(getCheckpointResponse.getTerm(), getCheckpointResponse.getIndex());
     }
 
-    protected boolean shouldPollAndPublishIfNeeded(YBPartition partition) {
-      // Todo Vaibhav: Make this 5 minutes interval configurable
-      return (System.currentTimeMillis() - lastGetChangesTime.get(partition.getId()) >= 1000 * 60 * 3);
+  /**
+   * Note that this is only application for partitions who have sent their last record of the last
+   * snapshot batch and are waiting for callbacks.
+   * @param partition
+   * @return true if the given partition has exceeded the timeout duration since the last GetChanges
+   * call, false otherwise
+   */
+  protected boolean isCallbackTimeoutExceeded(YBPartition partition) {
+      return (System.currentTimeMillis() - lastGetChangesTime.get(partition.getId())
+                >= connectorConfig.lastCallbackTimeoutMs());
     }
 
     protected Set<TableId> getAllTableIds(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx)
