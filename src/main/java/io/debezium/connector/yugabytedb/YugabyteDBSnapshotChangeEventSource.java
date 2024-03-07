@@ -491,7 +491,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                   // If the timeout has exceeded from the last GetChanges call and we haven't received
                   // any callback on the last snapshot record yet, publish last snapshot record again.
-                  if (!snapshotCompletedTablets.contains(part.getId()) && isCallbackTimeoutExceeded(part)) {
+                  if (!snapshotCompletedTablets.contains(part.getId()) && hasCallbackTimeoutExceeded(part)) {
                     LOGGER.info("Publishing last snapshot record for partition {} again", part.getId());
                     publishLastSnapshotRecord(part, previousOffset);
                   }
@@ -996,7 +996,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
      * @return true if the given partition has exceeded the timeout duration since the last GetChanges
      * call, false otherwise
      */
-    protected boolean isCallbackTimeoutExceeded(YBPartition partition) {
+    protected boolean hasCallbackTimeoutExceeded(YBPartition partition) {
       return (System.currentTimeMillis() - lastGetChangesTime.get(partition.getId())
                 >= connectorConfig.lastCallbackTimeoutMs());
     }
