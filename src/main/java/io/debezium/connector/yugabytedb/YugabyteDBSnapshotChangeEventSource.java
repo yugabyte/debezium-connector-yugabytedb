@@ -483,13 +483,16 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   continue;
                 }
 
-                // If the tablets are waiting for callback for the last snapshot record, check if
+                // If the tablets are waiting for callback for the last snapshot record, check whether the snapshot has
+                // completed, if not then check if the last GetChanges call has elapsed a delay indicating that we
+                // should publish the last snapshot record again.
                 if (tabletsWaitingForCallback.contains(part.getId()) && taskContext.shouldEnableExplicitCheckpointing()) {
                   doSnapshotCompletionCheck(part, snapshotCompletedTablets, tabletsWaitingForCallback, previousOffset);
 
                   // If the timeout has exceeded from the last GetChanges call and we haven't received
                   // any callback on the last snapshot record yet, publish last snapshot record again.
                   if (!snapshotCompletedTablets.contains(part.getId()) && isCallbackTimeoutExceeded(part)) {
+                    LOGGER.info("Publishing last snapshot record for partition {} again", part.getId());
                     publishLastSnapshotRecord(part, previousOffset);
                   }
 
