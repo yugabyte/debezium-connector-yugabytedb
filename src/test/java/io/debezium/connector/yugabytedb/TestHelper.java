@@ -404,7 +404,8 @@ public final class TestHelper {
                 .with(YugabyteDBConnectorConfig.DELETE_STREAM_ON_STOP, Boolean.TRUE)
                 .with(YugabyteDBConnectorConfig.MASTER_ADDRESSES, MASTER_ADDRESS)
                 .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, fullTableNameWithSchema)
-                .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId);
+                .with(YugabyteDBConnectorConfig.STREAM_ID, dbStreamId)
+                .with(YugabyteDBConnectorConfig.LOG_GET_CHANGES, true);
     }
 
     public static Configuration.Builder getConfigBuilderForCQL(String keyspaceName, String fullTableNameWithSchema, String dbStreamId) throws Exception {
