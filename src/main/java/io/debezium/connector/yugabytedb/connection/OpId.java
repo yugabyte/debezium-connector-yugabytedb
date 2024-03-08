@@ -155,6 +155,18 @@ public class OpId implements Comparable<OpId> {
                         -1 /* write_id */ , response.getSnapshotTime());
     }
 
+    /**
+     *
+     * @param checkpoint
+     * @return an {@link OpId} which should be used as from_op_id while calling GetChanges for
+     * snapshot
+     */
+    public static OpId snapshotCheckpoint(CdcSdkCheckpoint checkpoint) {
+        java.util.Objects.requireNonNull(checkpoint);
+        return new OpId(checkpoint.getTerm(), checkpoint.getIndex(), checkpoint.getKey(),
+                        -1 /* to indicate snapshot */, checkpoint.getTime());
+    }
+
     public CdcSdkCheckpoint toCdcSdkCheckpoint() {
         return new CdcSdkCheckpoint(this.term, this.index, this.key, this.write_id, this.time);
     }

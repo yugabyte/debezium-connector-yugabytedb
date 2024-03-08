@@ -600,6 +600,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final long DEFAULT_LOG_GET_CHANGES_INTERVAL_MS = 5 * 60 * 1000L;
     public static final int DEFAULT_MBEAN_REGISTRATION_RETRIES = 12;
     public static final long DEFAULT_MBEAN_REGISTRATION_RETRY_DELAY_MS = 5_000;
+    public static final long DEFAULT_LAST_CALLBACK_TIMEOUT_MS = 3 * 60 * 1000;
 
     @Override
     public JdbcConfiguration getJdbcConfig() {
@@ -1077,6 +1078,14 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     "'key' Consistency grouping is at primary key level, " +
                     "'global' Consistency grouping is at global level across all transactions");
 
+    public static final Field LAST_CALLBACK_TIMEOUT_MS = Field.create("last.callback.timeout.ms")
+           .withDisplayName("Last callback timeout")
+           .withImportance(Importance.LOW)
+           .withValidation(Field::isNonNegativeLong)
+           .withDefault(DEFAULT_LAST_CALLBACK_TIMEOUT_MS)
+           .withDescription("Time to wait for commit callback before attempting " +
+                            "a failure handling assuming that we have not received any callback");
+
     /**
      * A comma-separated list of regular expressions that match the prefix of logical decoding messages to be excluded
      * from monitoring. Must not be used with {@link #LOGICAL_DECODING_MESSAGE_PREFIX_INCLUDE_LIST}
@@ -1425,6 +1434,10 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
     public long mbeanRegistrationRetryDelayMs() {
         return getConfig().getLong(MBEAN_REGISTRATION_RETRY_DELAY_MS);
+    }
+
+    public long lastCallbackTimeoutMs() {
+        return getConfig().getLong(LAST_CALLBACK_TIMEOUT_MS);
     }
 
     /*
