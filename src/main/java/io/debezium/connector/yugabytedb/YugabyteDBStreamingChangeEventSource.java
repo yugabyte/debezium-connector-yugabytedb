@@ -53,6 +53,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     public static boolean TEST_UPDATE_EXPLICIT_CHECKPOINT = true;
     public static boolean TEST_PAUSE_GET_CHANGES_CALLS = false;
     public static boolean TEST_STOP_ADVANCING_CHECKPOINTS = false;
+    public static boolean TEST_FAIL_WHILE_PROCESSING_BATCH = false;
     public static Map<String, CdcSdkCheckpoint> TEST_explicitCheckpoints;
 
     protected static final String KEEP_ALIVE_THREAD_NAME = "keep-alive";
@@ -530,8 +531,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         explicitCheckpoint,
                                         tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part));
 
-                                tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
-
                                 // Test only.
                                 if (TEST_TRACK_EXPLICIT_CHECKPOINTS) {
                                     TEST_explicitCheckpoints.put(tabletId, explicitCheckpoint);
@@ -732,6 +731,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                 String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
 
+                                        // Do not change the error message.
+                                        if (TEST_FAIL_WHILE_PROCESSING_BATCH) {
+                                            throw new RuntimeException("[TEST ONLY] Failing while processing the batch of records");
+                                        }
+
                                         boolean dispatched = message.getOperation() != Operation.NOOP
                                             && dispatcher.dispatchDataChangeEvent(part, tableId,
                                                     new YugabyteDBChangeRecordEmitter(part, offsetContext, clock,
@@ -770,6 +774,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     response.getResp().getSafeHybridTime());
                             offsetContext.updateWalPosition(part, finalOpid);
                             offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
+
+                            tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
 
                             // In cases where there is no transactions on the server, the response checkpoint can still move ahead and we should
                             // also move the explicit checkpoint forward, given that it was already greater than the lsn of the last seen valid record.
