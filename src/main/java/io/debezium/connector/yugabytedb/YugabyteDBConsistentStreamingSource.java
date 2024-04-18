@@ -182,8 +182,6 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                             cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
                                             taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
                                             tabletSafeTime.getOrDefault(part.getId(), -1L), offsetContext.getWalSegmentIndex(part));
-
-                                    tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
                                 } catch (CDCErrorException cdcException) {
                                     // Check if exception indicates a tablet split.
                                     if (cdcException.getCDCError().getCode() == CdcService.CDCErrorPB.Code.TABLET_SPLIT) {
@@ -229,6 +227,9 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                             response.getResp().getSafeHybridTime());
                                     offsetContext.updateWalPosition(part, finalOpid);
                                     offsetContext.updateWalSegmentIndex(part, response.getWalSegmentIndex());
+
+                                    tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
+
                                     LOGGER.debug("The final opid for tablet {} is {}", part.getTabletId(), finalOpid);
                                 }
                             }
