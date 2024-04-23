@@ -552,8 +552,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   LAST_EXPLICIT_CHECKPOINT = explicitCdcSdkCheckpoint;
                 }
 
-                tabletSafeTime.put(part.getId(), resp.getResp().getSafeHybridTime());
-
                 OpId finalOpId = new OpId(resp.getTerm(), resp.getIndex(), resp.getKey(),
                         resp.getWriteId(), resp.getSnapshotTime());
                 LOGGER.debug("Final OpId for tablet {} is {}", part.getId(), finalOpId);
@@ -730,6 +728,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 }
 
                 previousOffset.updateWalPosition(part, finalOpId);
+
+                tabletSafeTime.put(part.getId(), resp.getResp().getSafeHybridTime());
             }
             
             // Reset the retry count here indicating that if the flow has reached here then

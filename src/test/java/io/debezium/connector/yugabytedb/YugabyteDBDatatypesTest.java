@@ -8,8 +8,10 @@ import java.util.concurrent.CompletableFuture;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
+import io.debezium.junit.logging.LogInterceptor;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -190,7 +192,41 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
                 .exceptionally(throwable -> {
                     throw new RuntimeException(throwable);
                 }).get();
+    }
 
+    @ParameterizedTest
+    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+    public void shouldNotCauseDataLossIfThereIsErrorWhileProcessingBatch(
+        boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        LogInterceptor logInterceptor = new LogInterceptor(YugabyteDBStreamingChangeEventSource.class);
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", consistentSnapshot, useSnapshot);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 60_000);
+        startEngine(configBuilder);
+        final long recordsCount = 1;
+
+        awaitUntilConnectorIsReady();
+        insertRecords(recordsCount);
+
+        YugabyteDBStreamingChangeEventSource.TEST_FAIL_WHILE_PROCESSING_BATCH = true;
+
+        // Do not change the error message.
+        final String errorMessage = "[TEST ONLY] Failing while processing the batch of records";
+
+        // Wait till we have received the failure message.
+        Awaitility.await()
+          .atMost(Duration.ofSeconds(60))
+          .until(() -> logInterceptor.containsStacktraceElement(errorMessage));
+
+        // Revert the flag so that processing can resume normally.
+        YugabyteDBStreamingChangeEventSource.TEST_FAIL_WHILE_PROCESSING_BATCH = false;
+
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, recordsCount);
     }
 
     @ParameterizedTest
