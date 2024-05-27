@@ -132,7 +132,7 @@ public class HashPartitionTest {
 			partitions.add(d);
 		}
 
-		assertThrows(AssertionError.class, () -> HashPartition.validateCompleteRanges(partitions));
+		assertThrows(IllegalStateException.class, () -> HashPartition.validateCompleteRanges(partitions));
 	}
 
 
