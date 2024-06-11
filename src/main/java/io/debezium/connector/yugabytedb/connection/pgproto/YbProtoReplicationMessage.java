@@ -13,6 +13,7 @@ import java.util.OptionalLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.Common;
@@ -124,7 +125,7 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
                         return new AbstractReplicationMessageColumn(columnName, type, fullType,
                                 typeInfo.map(CdcService.TypeInfo::getValueOptional).orElse(Boolean.FALSE), hasTypeMetadata()) {
                             @Override
-                            public Object getValue(PgConnectionSupplier connection, boolean includeUnknownDatatypes) {
+                            public Object getValue(YugabyteDBConnection connection, boolean includeUnknownDatatypes) {
                                 return YbProtoReplicationMessage.this.getValue(columnName, type,
                                         fullType, datum, connection, includeUnknownDatatypes);
                             }
@@ -139,7 +140,7 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
                         return new AbstractReplicationMessageColumn(columnName, type, fullType,
                                 typeInfo.map(CdcService.TypeInfo::getValueOptional).orElse(Boolean.FALSE), hasTypeMetadata()) {
                             @Override
-                            public Object getValue(PgConnectionSupplier connection, boolean includeUnknownDatatypes) {
+                            public Object getValue(YugabyteDBConnection connection, boolean includeUnknownDatatypes) {
                                 return YbProtoReplicationMessage.this.getValue(columnName, type, datum);
                             }
                             @Override
@@ -160,7 +161,7 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
 
     public Object getValue(String columnName, YugabyteDBType type, String fullType,
                            Common.DatumMessagePB datumMessage,
-                           final PgConnectionSupplier connection,
+                           final YugabyteDBConnection connection,
                            boolean includeUnknownDatatypes) {
         final YbProtoColumnValue columnValue = new YbProtoColumnValue(datumMessage);
         return ReplicationMessageColumnValueResolver.resolveValue(columnName, type, fullType,

@@ -14,6 +14,7 @@ import io.debezium.connector.yugabytedb.YugabyteDBType;
 import io.debezium.connector.yugabytedb.YugabyteDBTypeRegistry;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessageColumnValueResolver;
+import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 
 /**
  * @author Gunnar Morling
@@ -91,7 +92,7 @@ public class YbOutputReplicationMessage implements ReplicationMessage {
      *
      * @return the value; may be null
      */
-    public static Object getValue(String columnName, YugabyteDBType type, String fullType, String rawValue, final PgConnectionSupplier connection,
+    public static Object getValue(String columnName, YugabyteDBType type, String fullType, String rawValue, final YugabyteDBConnection connection,
                                   boolean includeUnknownDataTypes, YugabyteDBTypeRegistry yugabyteDBTypeRegistry) {
         final YbOutputColumnValue columnValue = new YbOutputColumnValue(rawValue);
         return ReplicationMessageColumnValueResolver.resolveValue(columnName, type, fullType, columnValue, connection, includeUnknownDataTypes, yugabyteDBTypeRegistry);

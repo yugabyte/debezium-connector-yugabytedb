@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.OptionalLong;
 import java.util.regex.Matcher;
 
+import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;
@@ -123,7 +124,7 @@ class Wal2JsonReplicationMessage implements ReplicationMessage {
             columns.add(new AbstractReplicationMessageColumn(columnName, columnType, columnTypeName, columnOptional, true) {
 
                 @Override
-                public Object getValue(PgConnectionSupplier connection, boolean includeUnknownDatatypes) {
+                public Object getValue(YugabyteDBConnection connection, boolean includeUnknownDatatypes) {
                     return Wal2JsonReplicationMessage.this.getValue(columnName, columnType, columnTypeName, rawValue, connection, includeUnknownDatatypes);
                 }
 
@@ -167,7 +168,7 @@ class Wal2JsonReplicationMessage implements ReplicationMessage {
      *
      * @return the value; may be null
      */
-    public Object getValue(String columnName, YugabyteDBType type, String fullType, Value rawValue, final PgConnectionSupplier connection,
+    public Object getValue(String columnName, YugabyteDBType type, String fullType, Value rawValue, final YugabyteDBConnection connection,
                            boolean includeUnknownDatatypes) {
         final Wal2JsonColumnValue columnValue = new Wal2JsonColumnValue(rawValue);
         return ReplicationMessageColumnValueResolver.resolveValue(columnName, type, fullType, columnValue, connection, includeUnknownDatatypes, yugabyteDBTypeRegistry);

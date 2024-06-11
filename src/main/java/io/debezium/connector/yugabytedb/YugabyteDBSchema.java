@@ -373,15 +373,19 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     private int getLength(int oid) {
-        return getTypeRegistry().get(oid).getDefaultLength();
+//        return getTypeRegistry().get(oid).getDefaultLength();
+        return -1;
     }
 
     private int getScale(int oid) {
-        return getTypeRegistry().get(oid).getDefaultScale();
+//        return getTypeRegistry().get(oid).getDefaultScale();
+        return -1;
     }
 
     private int resolveNativeType(int oid) {
-        return getTypeRegistry().get(oid).getRootType().getOid();
+        int nativeOid = getTypeRegistry().get(oid).getRootType().getOid();
+        LOGGER.info("VKVK native type oid is " + nativeOid);
+        return nativeOid;
     }
 
     private int resolveQLType(QLType type)

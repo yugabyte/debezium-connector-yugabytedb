@@ -87,7 +87,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
                                                YugabyteDBTaskContext taskContext,
-                                               Snapshotter snapshotter, YugabyteDBConnection connection,
+                                               Snapshotter snapshotter,
                                                YugabyteDBSchema schema, YugabyteDBEventDispatcher<TableId> dispatcher, Clock clock,
                                                SnapshotProgressListener snapshotProgressListener) {
         super(connectorConfig, snapshotProgressListener);
@@ -97,7 +97,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.dispatcher = dispatcher;
         this.clock = clock;
         this.snapshotter = snapshotter;
-        this.connection = connection;
+        this.connection = new YugabyteDBConnection(connectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL);
         this.snapshotProgressListener = snapshotProgressListener;
 
         AsyncYBClient asyncClient = new AsyncYBClient.AsyncYBClientBuilder(connectorConfig.masterAddresses())
@@ -155,7 +155,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             partitions.forEach(YBPartition::markTableAsColocated);
 
             LOGGER.info("Setting offsetContext/previousOffset for snapshot...");
-            previousOffset = YugabyteDBOffsetContext.initialContextForSnapshot(this.connectorConfig, connection, clock, partitions);
+            previousOffset = YugabyteDBOffsetContext.initialContextForSnapshot(this.connectorConfig, clock, partitions);
 
             this.partitionRanges = YugabyteDBConnectorUtils.populatePartitionRanges(
               connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST));
@@ -187,6 +187,16 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             }
             else {
                 snapshotProgressListener.snapshotAborted(partition);
+            }
+
+            // Close YugabyteDBConnection if opened.
+            try {
+              if (connection.isConnected()) {
+                LOGGER.info("Closing YugabyteDBConnection after snapshot");
+                connection.close();
+              }
+            } catch (SQLException sqle) {
+              LOGGER.error("Error while closing JDBC connection during snapshot", sqle);
             }
         }
     }

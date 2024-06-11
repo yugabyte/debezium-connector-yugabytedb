@@ -55,7 +55,6 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
     private final InconsistentSchemaHandler<YBPartition, T> inconsistentSchemaHandler;
     private final Signal<YBPartition> signal;
     private final boolean neverSkip;
-    private final Heartbeat heartbeat;
     private final EnumSet<Envelope.Operation> skippedOperations;
     private final DataCollectionFilters.DataCollectionFilter<T> filter;
     private final YugabyteDBTransactionMonitor transactionMonitor;
@@ -64,8 +63,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
     public YugabyteDBEventDispatcher(YugabyteDBConnectorConfig connectorConfig, TopicSelector<T> topicSelector,
                                    DatabaseSchema<T> schema, ChangeEventQueue<DataChangeEvent> queue, DataCollectionFilters.DataCollectionFilter<T> filter,
                                    ChangeEventCreator changeEventCreator, InconsistentSchemaHandler<YBPartition, T> inconsistentSchemaHandler,
-                                   EventMetadataProvider metadataProvider, HeartbeatFactory<T> heartbeatFactory, SchemaNameAdjuster schemaNameAdjuster,
-                                   JdbcConnection jdbcConnection) {
+                                   EventMetadataProvider metadataProvider, HeartbeatFactory<T> heartbeatFactory, SchemaNameAdjuster schemaNameAdjuster) {
         super(connectorConfig, topicSelector, schema, queue, filter, changeEventCreator, inconsistentSchemaHandler, metadataProvider,
                 heartbeatFactory, schemaNameAdjuster);
         this.connectorConfig = connectorConfig;
@@ -74,7 +72,6 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
         this.logicalDecodingMessageMonitor = new LogicalDecodingMessageMonitor(connectorConfig, this::enqueueLogicalDecodingMessage);
         this.messageFilter = connectorConfig.getMessageFilter();
         this.topicSelector = topicSelector;
-        this.heartbeat = heartbeatFactory.createHeartbeat();
         this.streamingReceiver = new YugabyteDBStreamingChangeRecordReceiver();
         this.inconsistentSchemaHandler = inconsistentSchemaHandler != null ? inconsistentSchemaHandler : this::errorOnMissingSchema;
         this.signal = new Signal<>(connectorConfig, this);

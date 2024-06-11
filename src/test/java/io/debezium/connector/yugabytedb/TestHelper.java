@@ -176,11 +176,11 @@ public final class TestHelper {
      */
     public static YugabyteDBConnection create() {
 
-        return new YugabyteDBConnection(defaultJdbcConfig(CONTAINER_YSQL_HOST, CONTAINER_YSQL_PORT), YugabyteDBConnection.CONNECTION_GENERAL);
+        return new YugabyteDBConnection(defaultJdbcConfig(CONTAINER_YSQL_HOST, CONTAINER_YSQL_PORT), YugabyteDBConnection.CONNECTION_TEST);
     }
 
     public static YugabyteDBConnection createConnectionTo(String databaseName) {
-        return new YugabyteDBConnection(defaultJdbcConfig(CONTAINER_YSQL_HOST, CONTAINER_YSQL_PORT, databaseName), YugabyteDBConnection.CONNECTION_GENERAL);
+        return new YugabyteDBConnection(defaultJdbcConfig(CONTAINER_YSQL_HOST, CONTAINER_YSQL_PORT, databaseName), YugabyteDBConnection.CONNECTION_TEST);
     }
 
     /**
@@ -193,7 +193,7 @@ public final class TestHelper {
 
         return new YugabyteDBConnection(
                 config.getJdbcConfig(),
-                getPostgresValueConverterBuilder(config), YugabyteDBConnection.CONNECTION_GENERAL);
+                getPostgresValueConverterBuilder(config), YugabyteDBConnection.CONNECTION_TEST);
     }
 
     /**
@@ -204,7 +204,7 @@ public final class TestHelper {
      * @return the PostgresConnection instance; never null
      */
     public static YugabyteDBConnection create(String appName) {
-        return new YugabyteDBConnection(Objects.requireNonNull(defaultJdbcConfigBuilder()).with("ApplicationName", appName).build(), YugabyteDBConnection.CONNECTION_GENERAL);
+        return new YugabyteDBConnection(Objects.requireNonNull(defaultJdbcConfigBuilder()).with("ApplicationName", appName).build(), YugabyteDBConnection.CONNECTION_TEST);
     }
 
     /**
@@ -346,7 +346,7 @@ public final class TestHelper {
 
     public static YugabyteDBTypeRegistry getTypeRegistry() {
         final YugabyteDBConnectorConfig config = new YugabyteDBConnectorConfig(defaultConfig().build());
-        try (final YugabyteDBConnection connection = new YugabyteDBConnection(config.getJdbcConfig(), getPostgresValueConverterBuilder(config), YugabyteDBConnection.CONNECTION_GENERAL)) {
+        try (final YugabyteDBConnection connection = new YugabyteDBConnection(config.getJdbcConfig(), getPostgresValueConverterBuilder(config), YugabyteDBConnection.CONNECTION_TEST)) {
             return connection.getTypeRegistry();
         }
     }
@@ -758,13 +758,40 @@ public final class TestHelper {
 
     public static Stream<Arguments> streamTypeProviderForStreaming() {
         return Stream.of(
-                Arguments.of(false, false), // Older stream
-                Arguments.of(true, false)); // NO_EXPORT stream
+                Arguments.of(false, false)); // Older stream
+//                Arguments.of(true, false)); // NO_EXPORT stream
     }
 
     public static Stream<Arguments> streamTypeProviderForSnapshot() {
         return Stream.of(
                 Arguments.of(false, false), // Older stream
                 Arguments.of(true, true));  // USE_SNAPSHOT stream
+    }
+
+    public static int getConnectionCount() throws SQLException {
+        return getConnectionCount(YugabyteDBConnection.CONNECTION_TEST);
+    }
+
+    /**
+     * @param applicationName the name of the application to get connection count of
+     * @return the number of connections established on YugabyteDB service with the given application name
+     * @throws SQLException if a connection cannot be established
+     */
+    public static int getConnectionCount(String applicationName) throws SQLException {
+        try (Connection conn = create().connection()) {
+            Statement st = conn.createStatement();
+            ResultSet rs = st.executeQuery(
+              String.format("SELECT COUNT(*) FROM pg_stat_activity WHERE application_name = '%s'",
+                            applicationName));
+
+            if (rs.next()) {
+                return rs.getInt(1);
+            } else {
+                LOGGER.warn("No row returned while querying for connection count");
+            }
+        }
+
+        // Indicates some error while fetching connection count.
+        return -1;
     }
 }

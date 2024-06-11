@@ -83,24 +83,21 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     }
 
     public static YugabyteDBOffsetContext initialContextForSnapshot(YugabyteDBConnectorConfig connectorConfig,
-                                                                    YugabyteDBConnection jdbcConnection,
                                                                     Clock clock,
                                                                     Set<YBPartition> partitions) {
-        return initialContext(connectorConfig, jdbcConnection, clock, snapshotStartLsn(),
+        return initialContext(connectorConfig, clock, snapshotStartLsn(),
                               snapshotStartLsn(), partitions);
     }
 
     public static YugabyteDBOffsetContext initialContext(YugabyteDBConnectorConfig connectorConfig,
-                                                         YugabyteDBConnection jdbcConnection,
                                                          Clock clock,
                                                          Set<YBPartition> partitions) {
         LOGGER.info("Initializing streaming context");
-        return initialContext(connectorConfig, jdbcConnection, clock, streamingStartLsn(),
+        return initialContext(connectorConfig, clock, streamingStartLsn(),
                               streamingStartLsn(), partitions);
     }
 
     public static YugabyteDBOffsetContext initialContext(YugabyteDBConnectorConfig connectorConfig,
-                                                         YugabyteDBConnection jdbcConnection,
                                                          Clock clock,
                                                          OpId lastCommitLsn,
                                                          OpId lastCompletelyProcessedLsn,

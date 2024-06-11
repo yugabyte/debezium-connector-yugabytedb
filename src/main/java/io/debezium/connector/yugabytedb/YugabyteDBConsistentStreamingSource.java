@@ -29,14 +29,13 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
     public YugabyteDBConsistentStreamingSource(YugabyteDBConnectorConfig connectorConfig,
                                                Snapshotter snapshotter,
-                                               YugabyteDBConnection connection,
                                                YugabyteDBEventDispatcher<TableId> dispatcher,
                                                ErrorHandler errorHandler, Clock clock,
                                                YugabyteDBSchema schema,
                                                YugabyteDBTaskContext taskContext,
                                                ReplicationConnection replicationConnection,
                                                ChangeEventQueue<DataChangeEvent> queue) {
-        super(connectorConfig, snapshotter, connection, dispatcher, errorHandler, clock, schema,
+        super(connectorConfig, snapshotter, dispatcher, errorHandler, clock, schema,
               taskContext, replicationConnection, queue);
     }
 

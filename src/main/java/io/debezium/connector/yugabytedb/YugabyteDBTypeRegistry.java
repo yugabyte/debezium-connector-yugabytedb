@@ -19,10 +19,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import io.debezium.jdbc.JdbcConfiguration;
+import io.debezium.jdbc.JdbcConnection;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.postgresql.core.BaseConnection;
 import org.postgresql.core.TypeInfo;
 import org.postgresql.jdbc.PgDatabaseMetaData;
+import org.postgresql.jdbc.TypeInfoCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -115,8 +118,9 @@ public class YugabyteDBTypeRegistry {
 
     private final int maxConnectionRetries = 5;
 
-    private final YugabyteDBConnection yugabyteDBConnection;
-    private final transient TypeInfo typeInfo;
+    private YugabyteDBConnection yugabyteDBConnection;
+    private transient JdbcConfiguration jdbcConfig;
+    private transient TypeInfo typeInfo;
     private SqlTypeMapper sqlTypeMapper;
 
     private int geometryOid = Integer.MIN_VALUE;
@@ -139,8 +143,8 @@ public class YugabyteDBTypeRegistry {
 
     public YugabyteDBTypeRegistry(YugabyteDBConnection connection) {
         try {
-            this.connection = connection.connection();
             this.yugabyteDBConnection = connection;
+            this.connection = this.yugabyteDBConnection.connection();
             this.oidToType = new HashMap<>();
             this.nameToType = new HashMap<>();
             typeInfo = ((BaseConnection) this.connection).getTypeInfo();
@@ -152,13 +156,10 @@ public class YugabyteDBTypeRegistry {
         }
     }
 
-    public YugabyteDBTypeRegistry(YugabyteDBTaskConnection connection,
+    public YugabyteDBTypeRegistry(JdbcConfiguration jdbcConfig,
                                   Map<String, YugabyteDBType> nameToType,
-                                  Map<Integer, YugabyteDBType> oidToType,
-                                  YugabyteDBConnection yugabyteDBConnection) {
-        this.connection = connection;
-        this.yugabyteDBConnection = yugabyteDBConnection;
-        typeInfo = ((BaseConnection) this.connection).getTypeInfo();
+                                  Map<Integer, YugabyteDBType> oidToType) {
+        this.jdbcConfig = jdbcConfig;
         this.oidToType = oidToType;
         this.nameToType = nameToType;
         for (YugabyteDBType t : oidToType.values()) {
@@ -171,44 +172,10 @@ public class YugabyteDBTypeRegistry {
         nameToType.put(type.getName(), type);
 
         updateType(type);
-        // updateType(type.getOid());
     }
 
     private void updateType(YugabyteDBType type) {
 
-        if (TYPE_NAME_GEOMETRY.equals(type.getName())) {
-            geometryOid = type.getOid();
-        }
-        else if (TYPE_NAME_GEOGRAPHY.equals(type.getName())) {
-            geographyOid = type.getOid();
-        }
-        else if (TYPE_NAME_CITEXT.equals(type.getName())) {
-            citextOid = type.getOid();
-        }
-        else if (TYPE_NAME_HSTORE.equals(type.getName())) {
-            hstoreOid = type.getOid();
-        }
-        else if (TYPE_NAME_LTREE.equals(type.getName())) {
-            ltreeOid = type.getOid();
-        }
-        else if (TYPE_NAME_HSTORE_ARRAY.equals(type.getName())) {
-            hstoreArrayOid = type.getOid();
-        }
-        else if (TYPE_NAME_GEOMETRY_ARRAY.equals(type.getName())) {
-            geometryArrayOid = type.getOid();
-        }
-        else if (TYPE_NAME_GEOGRAPHY_ARRAY.equals(type.getName())) {
-            geographyArrayOid = type.getOid();
-        }
-        else if (TYPE_NAME_CITEXT_ARRAY.equals(type.getName())) {
-            citextArrayOid = type.getOid();
-        }
-        else if (TYPE_NAME_LTREE_ARRAY.equals(type.getName())) {
-            ltreeArrayOid = type.getOid();
-        }
-    }
-
-    private void updateTypeByOid(YugabyteDBType type) {
         if (TYPE_NAME_GEOMETRY.equals(type.getName())) {
             geometryOid = type.getOid();
         }
@@ -248,13 +215,13 @@ public class YugabyteDBTypeRegistry {
     public YugabyteDBType get(int oid) {
         YugabyteDBType r = oidToType.get(oid);
         if (r == null) {
+            LOGGER.trace("Looking up type from database for oid {}", oid);
             r = resolveUnknownType(oid);
             if (r == null) {
                 LOGGER.warn("Unknown OID {} requested", oid);
                 r = YugabyteDBType.UNKNOWN;
             }
         }
-        // new IllegalArgumentException().printStackTrace();
         return r;
     }
 
@@ -381,9 +348,6 @@ public class YugabyteDBTypeRegistry {
         while (retryCount <= maxConnectionRetries) {
             try {
                 final List<YugabyteDBType.Builder> delayResolvedBuilders = new ArrayList<>();
-                if (retryCount > 0) {
-                    this.connection = yugabyteDBConnection.connection();
-                }
                 final Statement statement = connection.createStatement();
                 final ResultSet rs = statement.executeQuery(SQL_TYPES);
                 while (rs.next()) {
@@ -411,7 +375,7 @@ public class YugabyteDBTypeRegistry {
                     LOGGER.error("Error while executing query on database, all the {} retries failed.", maxConnectionRetries);
                     throw e;
                 }
-                LOGGER.warn("Error while executing query on database, will retry. Attempt {} out of {}",retryCount, maxConnectionRetries );
+                LOGGER.warn("Error while executing query on database, will retry. Attempt {} out of {} for error:", retryCount, maxConnectionRetries, e);
             }
         }
     }
@@ -449,9 +413,6 @@ public class YugabyteDBTypeRegistry {
         Exception exception = null;
         while (retryCount <= maxConnectionRetries) {
             try {
-                if (retryCount > 0) {
-                    connection = yugabyteDBConnection.connection();
-                }
                 final PreparedStatement statement = connection.prepareStatement(SQL_NAME_LOOKUP);
                 statement.setString(1, name);
                 return loadType(statement);
@@ -477,9 +438,6 @@ public class YugabyteDBTypeRegistry {
         Exception exception = null;
         while (retryCount <= maxConnectionRetries) {
             try {
-                if (retryCount > 0) {
-                    connection = yugabyteDBConnection.connection();
-                }
                 final PreparedStatement statement = connection.prepareStatement(SQL_OID_LOOKUP);
                 statement.setInt(1, lookupOid);
                 return loadType(statement);

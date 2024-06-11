@@ -16,6 +16,8 @@ import io.debezium.connector.yugabytedb.YugabyteDBTypeRegistry;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage.ColumnValue;
 import org.yb.QLType;
 
+import java.sql.SQLException;
+
 /**
  * @author Chris Cranford
  */
@@ -37,7 +39,7 @@ public class ReplicationMessageColumnValueResolver {
      * @return
      */
     public static Object resolveValue(String columnName, YugabyteDBType type, String fullType,
-                                      ColumnValue value, final PgConnectionSupplier connection,
+                                      ColumnValue value, final YugabyteDBConnection connection,
                                       boolean includeUnknownDatatypes,
                                       YugabyteDBTypeRegistry yugabyteDBTypeRegistry) {
         if (value.isNull()) {
@@ -52,8 +54,7 @@ public class ReplicationMessageColumnValueResolver {
                     includeUnknownDatatypes, yugabyteDBTypeRegistry);
         }
 
-        // CDCSDK this too we can avoid using connection.
-        // only date and string requires
+        // We will only open a connection once we detect that it is an array type.
         if (value.isArray(type)) {
             return value.asArray(columnName, type, fullType, connection);
         }

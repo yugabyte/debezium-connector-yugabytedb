@@ -12,6 +12,7 @@ import java.time.OffsetDateTime;
 import java.time.OffsetTime;
 import java.util.List;
 
+import io.debezium.jdbc.JdbcConnection;
 import org.postgresql.geometric.PGbox;
 import org.postgresql.geometric.PGcircle;
 import org.postgresql.geometric.PGline;
@@ -65,7 +66,7 @@ public interface ReplicationMessage {
          */
         ColumnTypeMetadata getTypeMetadata();
 
-        Object getValue(final PgConnectionSupplier connection, boolean includeUnknownDatatypes);
+        Object getValue(final YugabyteDBConnection connection, boolean includeUnknownDatatypes);
 
         boolean isOptional();
 
@@ -133,9 +134,9 @@ public interface ReplicationMessage {
 
         boolean isArray(YugabyteDBType type);
 
-        Object asArray(String columnName, YugabyteDBType type, String fullType, PgConnectionSupplier connection);
+        Object asArray(String columnName, YugabyteDBType type, String fullType, YugabyteDBConnection connection);
 
-        Object asDefault(YugabyteDBTypeRegistry typeRegistry, int columnType, String columnName, String fullType, boolean includeUnknownDatatypes, PgConnectionSupplier connection);
+        Object asDefault(YugabyteDBTypeRegistry typeRegistry, int columnType, String columnName, String fullType, boolean includeUnknownDatatypes, YugabyteDBConnection connection);
     }
 
     /**

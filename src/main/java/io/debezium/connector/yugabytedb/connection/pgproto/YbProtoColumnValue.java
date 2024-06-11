@@ -16,6 +16,8 @@ import java.time.OffsetTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 
+import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
+import org.postgresql.core.BaseConnection;
 import org.postgresql.geometric.PGpoint;
 import org.postgresql.jdbc.PgArray;
 import org.postgresql.util.PGmoney;
@@ -310,7 +312,7 @@ public class YbProtoColumnValue extends AbstractColumnValue<Common.DatumMessageP
     }
 
     @Override
-    public Object asArray(String columnName, YugabyteDBType type, String fullType, PgConnectionSupplier connection) {
+    public Object asArray(String columnName, YugabyteDBType type, String fullType, YugabyteDBConnection connection) {
         // Currently the logical decoding plugin sends unhandled types as a byte array containing the string
         // representation (in Postgres) of the array value.
         // The approach to decode this is sub-optimal but the only way to improve this is to update the plugin.
@@ -328,7 +330,7 @@ public class YbProtoColumnValue extends AbstractColumnValue<Common.DatumMessageP
              * }
              */
             final String dataString = asString();
-            return new PgArray(connection.get(), type.getOid(), dataString);
+            return new PgArray((BaseConnection) connection.connection(), type.getOid(), dataString);
             /*
              * String dataString = new String(data, Charset.forName("UTF-8"));
              * PgArray arrayData = new PgArray(connection.get(), (int) value.getColumnType(), dataString);
@@ -344,7 +346,7 @@ public class YbProtoColumnValue extends AbstractColumnValue<Common.DatumMessageP
 
     @Override
     public Object asDefault(YugabyteDBTypeRegistry yugabyteDBTypeRegistry, int columnType, String columnName, String fullType, boolean includeUnknownDatatypes,
-                            PgConnectionSupplier connection) {
+                            YugabyteDBConnection connection) {
         final YugabyteDBType type = yugabyteDBTypeRegistry.get(columnType);
         if (type.getOid() == yugabyteDBTypeRegistry.geometryOid() ||
                 type.getOid() == yugabyteDBTypeRegistry.geographyOid() ||

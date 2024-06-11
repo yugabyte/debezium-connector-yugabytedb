@@ -8,6 +8,7 @@ import java.util.concurrent.CompletableFuture;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
+import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.junit.logging.LogInterceptor;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
@@ -29,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 
-public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBDatatypesTest extends YugabytedTestBase {
     private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
             "INSERT INTO s2.a (aa) VALUES (1);";
     private static final String CREATE_TABLES_STMT = "DROP SCHEMA IF EXISTS s1 CASCADE;" +
@@ -192,6 +193,13 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
                 .exceptionally(throwable -> {
                     throw new RuntimeException(throwable);
                 }).get();
+
+        // Since this table has no datatypes which require a JDBC connection to be decoded,
+        // we shouldn't have opened any connections.
+        assertEquals(0, TestHelper.getConnectionCount(YugabyteDBConnection.CONNECTION_GENERAL));
+
+        LOGGER.info("Waiting for 2 minutes");
+        TestHelper.waitFor(Duration.ofMinutes(2));
     }
 
     @ParameterizedTest

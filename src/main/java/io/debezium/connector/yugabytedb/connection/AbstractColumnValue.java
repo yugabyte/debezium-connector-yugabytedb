@@ -13,6 +13,7 @@ import java.time.OffsetTime;
 import java.time.ZoneOffset;
 
 import org.apache.kafka.connect.errors.ConnectException;
+import org.postgresql.core.BaseConnection;
 import org.postgresql.geometric.PGbox;
 import org.postgresql.geometric.PGcircle;
 import org.postgresql.geometric.PGline;
@@ -191,10 +192,10 @@ public abstract class AbstractColumnValue<T> implements ReplicationMessage.Colum
     }
 
     @Override
-    public Object asArray(String columnName, YugabyteDBType type, String fullType, PgConnectionSupplier connection) {
+    public Object asArray(String columnName, YugabyteDBType type, String fullType, YugabyteDBConnection connection) {
         try {
             final String dataString = asString();
-            return new PgArray(connection.get(), type.getOid(), dataString);
+            return new PgArray((BaseConnection) connection.connection(), type.getOid(), dataString);
         }
         catch (SQLException e) {
             LOGGER.warn("Unexpected exception trying to process PgArray ({}) column '{}', {}", fullType, columnName, e);
@@ -204,7 +205,7 @@ public abstract class AbstractColumnValue<T> implements ReplicationMessage.Colum
 
     @Override
     public Object asDefault(YugabyteDBTypeRegistry yugabyteDBTypeRegistry, int columnType, String columnName, String fullType, boolean includeUnknownDatatypes,
-                            PgConnectionSupplier connection) {
+                            YugabyteDBConnection connection) {
         if (includeUnknownDatatypes) {
             // this includes things like PostGIS geoemetries or other custom types
             // leave up to the downstream message recipient to deal with

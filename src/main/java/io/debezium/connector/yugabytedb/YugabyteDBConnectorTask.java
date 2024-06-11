@@ -50,7 +50,7 @@ import io.debezium.util.SchemaNameAdjuster;
 /**
  * Kafka connect source task which uses YugabyteDB CDC API to process DB changes.
  *
- * @author Suranjan Kumar (skumar@yugabyte.com)
+ * @author Suranjan Kumar (skumar@yugabyte.com), Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class YugabyteDBConnectorTask
         extends BaseSourceTask<YBPartition, YugabyteDBOffsetContext> {
@@ -60,8 +60,6 @@ public class YugabyteDBConnectorTask
 
     private volatile YugabyteDBTaskContext taskContext;
     private volatile ChangeEventQueue<DataChangeEvent> queue;
-    private volatile YugabyteDBConnection jdbcConnection;
-    private volatile YugabyteDBConnection heartbeatConnection;
     private volatile YugabyteDBSchema schema;
 
     @Override
@@ -81,19 +79,12 @@ public class YugabyteDBConnectorTask
         final String databaseCharsetName = config.getString(YugabyteDBConnectorConfig.CHAR_SET);
         final Charset databaseCharset = Charset.forName(databaseCharsetName);
 
-        Encoding encoding = Encoding.defaultEncoding(); // UTF-8
-        YugabyteDBTaskConnection taskConnection = new YugabyteDBTaskConnection(encoding);
-                                                                                          
-
         final YugabyteDBValueConverterBuilder valueConverterBuilder = (typeRegistry) -> YugabyteDBValueConverter.of(
                 connectorConfig,
                 databaseCharset,
                 typeRegistry);
 
-
-
         if (connectorConfig.isYSQLDbType()) {
-
             String nameToTypeStr = config.getString(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString());
             String oidToTypeStr = config.getString(YugabyteDBConnectorConfig.OID_TO_TYPE.toString());
 
@@ -114,15 +105,10 @@ public class YugabyteDBConnectorTask
                 LOGGER.error("Error while deserializing object to type string", e);
             }
 
-            // Global JDBC connection used both for snapshotting and streaming.
-            // Must be able to resolve datatypes.
-            jdbcConnection = new YugabyteDBConnection(connectorConfig.getJdbcConfig(), valueConverterBuilder,
-                    YugabyteDBConnection.CONNECTION_GENERAL);
 
-            // CDCSDK We can just build the type registry on the co-ordinator and then send
-            // the map of Postgres Type and Oid to the Task using Config
-            final YugabyteDBTypeRegistry yugabyteDBTypeRegistry = new YugabyteDBTypeRegistry(taskConnection, nameToType,
-                    oidToType, jdbcConnection);
+            // This type registry is being build with the nameToType and oidToType map populated.
+            final YugabyteDBTypeRegistry yugabyteDBTypeRegistry =
+              new YugabyteDBTypeRegistry(connectorConfig.getJdbcConfig(), nameToType, oidToType);
 
             schema = new YugabyteDBSchema(connectorConfig, yugabyteDBTypeRegistry, topicSelector,
                     valueConverterBuilder.build(yugabyteDBTypeRegistry));
@@ -146,15 +132,9 @@ public class YugabyteDBConnectorTask
                 new YugabyteDBOffsetContext.Loader(connectorConfig));
         final Clock clock = Clock.system();
 
-        YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(previousOffsets,
-                                                                      connectorConfig);
-
         LoggingContext.PreviousContext previousContext = taskContext
                 .configureLoggingContext(CONTEXT_NAME + "|" + taskId);
         try {
-            // Print out the server information
-            // CDCSDK Get the table,
-
             queue = new ChangeEventQueue.Builder<DataChangeEvent>()
                     .pollInterval(connectorConfig.getPollInterval())
                     .maxBatchSize(connectorConfig.getMaxBatchSize())
@@ -167,7 +147,7 @@ public class YugabyteDBConnectorTask
 
             final YugabyteDBEventMetadataProvider metadataProvider = new YugabyteDBEventMetadataProvider();
 
-            Configuration configuration = connectorConfig.getConfig();
+            // todo Vaibhav: see if we can get rid of heartbeat factory
             HeartbeatFactory heartbeatFactory = new HeartbeatFactory<>(
                     connectorConfig,
                     topicSelector,
@@ -197,8 +177,7 @@ public class YugabyteDBConnectorTask
                     YugabyteDBChangeRecordEmitter::updateSchema,
                     metadataProvider,
                     heartbeatFactory,
-                    schemaNameAdjuster,
-                    jdbcConnection);
+                    schemaNameAdjuster);
 
             YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
                     previousOffsets,
@@ -208,7 +187,6 @@ public class YugabyteDBConnectorTask
                     new YugabyteDBChangeEventSourceFactory(
                             connectorConfig,
                             snapshotter,
-                            jdbcConnection,
                             errorHandler,
                             dispatcher,
                             clock,
@@ -233,6 +211,7 @@ public class YugabyteDBConnectorTask
         }
     }
 
+    // todo Vaibhav: not being used.
     Map<YBPartition, YugabyteDBOffsetContext> getPreviousOffsetss(
         Partition.Provider<YBPartition> provider,
         OffsetContext.Loader<YugabyteDBOffsetContext> loader) {
@@ -340,14 +319,6 @@ public class YugabyteDBConnectorTask
 
     @Override
     protected void doStop() {
-        if (jdbcConnection != null) {
-            jdbcConnection.close();
-        }
-
-        if (heartbeatConnection != null) {
-            heartbeatConnection.close();
-        }
-
         if (schema != null) {
             schema.close();
         }
