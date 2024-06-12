@@ -101,7 +101,8 @@ public class YugabyteDBStreamingChangeEventSource implements
     protected Set<String> splitTabletsWaitingForCallback;
     protected List<HashPartition> partitionRanges;
 
-    public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
+    public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
+                                                YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
                                                 YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection,
                                                 ChangeEventQueue<DataChangeEvent> queue) {
         this.connectorConfig = connectorConfig;
@@ -143,7 +144,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         if (!hasStartLsnStoredInContext) {
             LOGGER.info("No start opid found in the context.");
-                offsetContext = YugabyteDBOffsetContext.initialContext(connectorConfig, clock, partitions);
+                offsetContext = YugabyteDBOffsetContext.initialContext(connectorConfig, null /* connection */, clock, partitions);
         }
         try {
             // Populate partition ranges.

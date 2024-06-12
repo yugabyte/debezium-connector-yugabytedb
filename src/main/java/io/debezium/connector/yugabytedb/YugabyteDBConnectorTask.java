@@ -177,7 +177,8 @@ public class YugabyteDBConnectorTask
                     YugabyteDBChangeRecordEmitter::updateSchema,
                     metadataProvider,
                     heartbeatFactory,
-                    schemaNameAdjuster);
+                    schemaNameAdjuster,
+                    null /* jdbcConnection */);
 
             YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
                     previousOffsets,

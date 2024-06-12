@@ -87,7 +87,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
                                                YugabyteDBTaskContext taskContext,
-                                               Snapshotter snapshotter,
+                                               Snapshotter snapshotter, YugabyteDBConnection connection,
                                                YugabyteDBSchema schema, YugabyteDBEventDispatcher<TableId> dispatcher, Clock clock,
                                                SnapshotProgressListener snapshotProgressListener) {
         super(connectorConfig, snapshotProgressListener);
@@ -155,7 +155,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             partitions.forEach(YBPartition::markTableAsColocated);
 
             LOGGER.info("Setting offsetContext/previousOffset for snapshot...");
-            previousOffset = YugabyteDBOffsetContext.initialContextForSnapshot(this.connectorConfig, clock, partitions);
+            previousOffset = YugabyteDBOffsetContext.initialContextForSnapshot(this.connectorConfig, null /* connection */, clock, partitions);
 
             this.partitionRanges = YugabyteDBConnectorUtils.populatePartitionRanges(
               connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST));

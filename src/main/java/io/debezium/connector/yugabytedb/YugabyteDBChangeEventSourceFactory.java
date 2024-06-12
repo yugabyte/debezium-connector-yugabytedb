@@ -73,6 +73,7 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
                 configuration,
                 taskContext,
                 snapshotter,
+                null, /* yugabyteDBConnection */
                 schema,
                 dispatcher,
                 clock,
@@ -87,6 +88,7 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
             return new YugabyteDBStreamingChangeEventSource(
                     configuration,
                     snapshotter,
+                    null, /* yugabyteDBConnection */
                     dispatcher,
                     errorHandler,
                     clock,
@@ -99,6 +101,7 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
             return new YugabyteDBConsistentStreamingSource(
                     configuration,
                     snapshotter,
+                    null, /* yugabyteDBConnection */
                     dispatcher,
                     errorHandler,
                     clock,
@@ -113,6 +116,14 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
     public Optional<IncrementalSnapshotChangeEventSource<YBPartition, ? extends DataCollectionId>> getIncrementalSnapshotChangeEventSource(YugabyteDBOffsetContext offsetContext,
                                                                                                                               SnapshotProgressListener snapshotProgressListener,
                                                                                                                               DataChangeEventListener dataChangeEventListener) {
-        return Optional.empty();
+            final SignalBasedIncrementalSnapshotChangeEventSource<YBPartition, TableId> incrementalSnapshotChangeEventSource = new SignalBasedIncrementalSnapshotChangeEventSource<YBPartition, TableId>(
+                    configuration,
+                    null, /* jdbcConnection */
+                    dispatcher,
+                    schema,
+                    clock,
+                    snapshotProgressListener,
+                    dataChangeEventListener);
+            return Optional.of(incrementalSnapshotChangeEventSource);
     }
 }
