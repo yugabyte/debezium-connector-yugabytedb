@@ -188,6 +188,7 @@ public class YugabyteDBConnectorTask
                     new YugabyteDBChangeEventSourceFactory(
                             connectorConfig,
                             snapshotter,
+                            null, /* jdbcConnection */
                             errorHandler,
                             dispatcher,
                             clock,
