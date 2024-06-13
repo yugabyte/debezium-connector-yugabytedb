@@ -138,12 +138,11 @@ public class YugabyteDBCompleteTypesTest extends YugabytedTestBase {
         assertEquals(0, TestHelper.getConnectionCount(YugabyteDBConnection.CONNECTION_GENERAL));
     }
 
-    @ParameterizedTest
-    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
-    public void shouldCreateConnectionWhenArrayPresent(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+    @Test
+    public void shouldCreateConnectionWhenArrayPresent() throws Exception {
         TestHelper.execute("CREATE TABLE test_arr (id INT PRIMARY KEY, textarr text[], intarr int[]);");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_arr", consistentSnapshot, useSnapshot);
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_arr");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_arr", dbStreamId);
         startEngine(configBuilder);
 
@@ -174,16 +173,14 @@ public class YugabyteDBCompleteTypesTest extends YugabytedTestBase {
         assertEquals(1, TestHelper.getConnectionCount(YugabyteDBConnection.CONNECTION_GENERAL));
     }
 
-    @ParameterizedTest
-    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
-    public void shouldCreateSingleConnectionAcrossSnapshotAndStreaming(
-      boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+    @Test
+    public void shouldCreateSingleConnectionAcrossSnapshotAndStreaming() throws Exception {
         LogInterceptor logInterceptor = new LogInterceptor(YugabyteDBStreamingChangeEventSource.class);
 
         TestHelper.execute("CREATE TABLE test_arr (id INT PRIMARY KEY, textarr text[], intarr int[]);");
         TestHelper.execute("INSERT INTO test_arr VALUES (1, '{\"element1\",\"element2\"}', '{0,1,2}');");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_arr", consistentSnapshot, useSnapshot);
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_arr");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_arr", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
         startEngine(configBuilder);
@@ -208,13 +205,11 @@ public class YugabyteDBCompleteTypesTest extends YugabytedTestBase {
         assertEquals(1, TestHelper.getConnectionCount(YugabyteDBConnection.CONNECTION_GENERAL));
     }
 
-    @ParameterizedTest
-    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
-    public void shouldOpenConnectionOnceArrayTypeColumnIsAdded(
-      boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+    @Test
+    public void shouldOpenConnectionOnceArrayTypeColumnIsAdded() throws Exception {
         TestHelper.execute("CREATE TABLE test_table (id INT PRIMARY KEY);");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_table", consistentSnapshot, useSnapshot);
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_table");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_table", dbStreamId);
         startEngine(configBuilder);
 
@@ -248,13 +243,11 @@ public class YugabyteDBCompleteTypesTest extends YugabytedTestBase {
         assertEquals(1, TestHelper.getConnectionCount(YugabyteDBConnection.CONNECTION_GENERAL));
     }
 
-    @ParameterizedTest
-    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
-    public void shouldNotOpenConnectionWithEnumTypes(
-      boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+    @Test
+    public void shouldNotOpenConnectionWithEnumTypes() throws Exception {
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_enum", consistentSnapshot, useSnapshot);
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_enum");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_enum", dbStreamId);
         startEngine(configBuilder);
 
@@ -273,15 +266,13 @@ public class YugabyteDBCompleteTypesTest extends YugabytedTestBase {
     }
 
     @Disabled
-    @ParameterizedTest
-    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
-    public void shouldNotOpenConnectionAfterRestartOnceArrayColumnIsDropped(
-      boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+    @Test
+    public void shouldNotOpenConnectionAfterRestartOnceArrayColumnIsDropped() throws Exception {
         LogInterceptor logInterceptor = new LogInterceptor(YugabyteDBStreamingChangeEventSource.class);
 
         TestHelper.execute("CREATE TABLE test_arr (id INT PRIMARY KEY, textarr text[]);");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_arr", consistentSnapshot, useSnapshot);
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_arr");
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_arr", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
         startEngine(configBuilder);
