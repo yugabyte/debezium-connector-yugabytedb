@@ -196,7 +196,8 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
             undeliveredToastableColumns.remove(columnName);
             int position = getPosition(columnName, table, values);
             if (position != -1) {
-                Object value = column.getValue(() -> (BaseConnection) connection.connection(), connectorConfig.includeUnknownDatatypes());
+                Object value = column.getValue(() -> (BaseConnection) connection.connection(),
+                        connectorConfig.includeUnknownDatatypes());
                 // values[position] = value;
                 values[position] = new Object[]{ value, Boolean.TRUE };
             }
@@ -239,7 +240,8 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
 
             int position = getPosition(columnName, table, values);
             if (position != -1) {
-                Object value = column.getValue(() -> (BaseConnection) connection.connection(), connectorConfig.includeUnknownDatatypes());
+                Object value = column.getValue(() -> (BaseConnection) connection.connection(),
+                        connectorConfig.includeUnknownDatatypes());
 
                 values[position] = new Object[]{ value, Boolean.TRUE };
             }

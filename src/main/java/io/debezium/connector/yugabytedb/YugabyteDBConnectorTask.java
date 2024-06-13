@@ -111,7 +111,8 @@ public class YugabyteDBConnectorTask
 
             // This type registry is being build with the nameToType and oidToType map populated.
             final YugabyteDBTypeRegistry yugabyteDBTypeRegistry =
-              new YugabyteDBTypeRegistry(taskConnection, nameToType, oidToType, null /* yugabyteDBConnection */);
+              new YugabyteDBTypeRegistry(taskConnection, nameToType,
+                    oidToType, null /* yugabyteDBConnection */);
 
             schema = new YugabyteDBSchema(connectorConfig, yugabyteDBTypeRegistry, topicSelector,
                     valueConverterBuilder.build(yugabyteDBTypeRegistry));
