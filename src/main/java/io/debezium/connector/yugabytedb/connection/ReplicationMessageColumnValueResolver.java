@@ -16,8 +16,6 @@ import io.debezium.connector.yugabytedb.YugabyteDBTypeRegistry;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage.ColumnValue;
 import org.yb.QLType;
 
-import java.sql.SQLException;
-
 /**
  * @author Chris Cranford
  */

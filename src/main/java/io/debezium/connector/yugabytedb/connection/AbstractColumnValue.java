@@ -13,7 +13,6 @@ import java.time.OffsetTime;
 import java.time.ZoneOffset;
 
 import org.apache.kafka.connect.errors.ConnectException;
-import org.postgresql.core.BaseConnection;
 import org.postgresql.geometric.PGbox;
 import org.postgresql.geometric.PGcircle;
 import org.postgresql.geometric.PGline;

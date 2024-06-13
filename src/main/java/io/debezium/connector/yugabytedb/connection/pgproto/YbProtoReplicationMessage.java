@@ -13,7 +13,6 @@ import java.util.OptionalLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.Common;

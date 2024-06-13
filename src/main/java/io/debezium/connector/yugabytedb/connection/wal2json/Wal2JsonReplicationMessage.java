@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.OptionalLong;
 import java.util.regex.Matcher;
 
-import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;

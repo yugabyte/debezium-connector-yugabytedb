@@ -12,7 +12,6 @@ import java.time.OffsetDateTime;
 import java.time.OffsetTime;
 import java.util.List;
 
-import io.debezium.jdbc.JdbcConnection;
 import org.postgresql.geometric.PGbox;
 import org.postgresql.geometric.PGcircle;
 import org.postgresql.geometric.PGline;

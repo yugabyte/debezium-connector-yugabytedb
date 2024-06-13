@@ -14,7 +14,6 @@ import io.debezium.connector.yugabytedb.YugabyteDBType;
 import io.debezium.connector.yugabytedb.YugabyteDBTypeRegistry;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessageColumnValueResolver;
-import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 
 /**
  * @author Gunnar Morling

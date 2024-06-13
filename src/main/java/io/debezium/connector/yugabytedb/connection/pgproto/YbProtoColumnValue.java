@@ -16,8 +16,6 @@ import java.time.OffsetTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 
-import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
-import org.postgresql.core.BaseConnection;
 import org.postgresql.geometric.PGpoint;
 import org.postgresql.jdbc.PgArray;
 import org.postgresql.util.PGmoney;

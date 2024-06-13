@@ -7,7 +7,6 @@
 package io.debezium.connector.yugabytedb.connection;
 
 import java.nio.charset.Charset;
-import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
