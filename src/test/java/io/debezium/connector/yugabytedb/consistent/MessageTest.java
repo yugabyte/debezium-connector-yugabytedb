@@ -1,6 +1,7 @@
 package io.debezium.connector.yugabytedb.consistent;
 
 import com.google.protobuf.ByteString;
+import io.debezium.connector.yugabytedb.annotations.MinimumYBVersion;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.yb.cdc.CdcService;
@@ -19,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * @author Rajat Venkatesh, Vaibhav Kushwaha
  */
+@MinimumYBVersion("2.18.2")
 public class MessageTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(MessageTest.class);
     private final String DUMMY_TABLE_ID = "dummy_table_id";

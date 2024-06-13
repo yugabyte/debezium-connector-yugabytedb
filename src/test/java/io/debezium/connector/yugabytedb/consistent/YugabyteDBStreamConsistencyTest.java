@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 import io.debezium.connector.yugabytedb.TestHelper;
 import io.debezium.connector.yugabytedb.YugabyteDBConnector;
 import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
+import io.debezium.connector.yugabytedb.annotations.MinimumYBVersion;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
@@ -39,6 +40,7 @@ import io.debezium.config.Configuration;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 
+@MinimumYBVersion("2.18.2")
 public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase {
     private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBStreamConsistencyTest.class);
     
