@@ -125,7 +125,7 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
                         return new AbstractReplicationMessageColumn(columnName, type, fullType,
                                 typeInfo.map(CdcService.TypeInfo::getValueOptional).orElse(Boolean.FALSE), hasTypeMetadata()) {
                             @Override
-                            public Object getValue(YugabyteDBConnection connection, boolean includeUnknownDatatypes) {
+                            public Object getValue(PgConnectionSupplier connection, boolean includeUnknownDatatypes) {
                                 return YbProtoReplicationMessage.this.getValue(columnName, type,
                                         fullType, datum, connection, includeUnknownDatatypes);
                             }
@@ -140,7 +140,7 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
                         return new AbstractReplicationMessageColumn(columnName, type, fullType,
                                 typeInfo.map(CdcService.TypeInfo::getValueOptional).orElse(Boolean.FALSE), hasTypeMetadata()) {
                             @Override
-                            public Object getValue(YugabyteDBConnection connection, boolean includeUnknownDatatypes) {
+                            public Object getValue(PgConnectionSupplier connection, boolean includeUnknownDatatypes) {
                                 return YbProtoReplicationMessage.this.getValue(columnName, type, datum);
                             }
                             @Override
@@ -161,7 +161,7 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
 
     public Object getValue(String columnName, YugabyteDBType type, String fullType,
                            Common.DatumMessagePB datumMessage,
-                           final YugabyteDBConnection connection,
+                           final PgConnectionSupplier connection,
                            boolean includeUnknownDatatypes) {
         final YbProtoColumnValue columnValue = new YbProtoColumnValue(datumMessage);
         return ReplicationMessageColumnValueResolver.resolveValue(columnName, type, fullType,

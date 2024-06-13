@@ -66,7 +66,7 @@ public interface ReplicationMessage {
          */
         ColumnTypeMetadata getTypeMetadata();
 
-        Object getValue(final YugabyteDBConnection connection, boolean includeUnknownDatatypes);
+        Object getValue(final PgConnectionSupplier connection, boolean includeUnknownDatatypes);
 
         boolean isOptional();
 
@@ -134,9 +134,9 @@ public interface ReplicationMessage {
 
         boolean isArray(YugabyteDBType type);
 
-        Object asArray(String columnName, YugabyteDBType type, String fullType, YugabyteDBConnection connection);
+        Object asArray(String columnName, YugabyteDBType type, String fullType, PgConnectionSupplier connection);
 
-        Object asDefault(YugabyteDBTypeRegistry typeRegistry, int columnType, String columnName, String fullType, boolean includeUnknownDatatypes, YugabyteDBConnection connection);
+        Object asDefault(YugabyteDBTypeRegistry typeRegistry, int columnType, String columnName, String fullType, boolean includeUnknownDatatypes, PgConnectionSupplier connection);
     }
 
     /**

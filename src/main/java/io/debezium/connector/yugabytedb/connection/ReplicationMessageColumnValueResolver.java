@@ -39,7 +39,7 @@ public class ReplicationMessageColumnValueResolver {
      * @return
      */
     public static Object resolveValue(String columnName, YugabyteDBType type, String fullType,
-                                      ColumnValue value, final YugabyteDBConnection connection,
+                                      ColumnValue value, final PgConnectionSupplier connection,
                                       boolean includeUnknownDatatypes,
                                       YugabyteDBTypeRegistry yugabyteDBTypeRegistry) {
         if (value.isNull()) {

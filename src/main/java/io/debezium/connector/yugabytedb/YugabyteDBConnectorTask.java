@@ -79,6 +79,9 @@ public class YugabyteDBConnectorTask
         final String databaseCharsetName = config.getString(YugabyteDBConnectorConfig.CHAR_SET);
         final Charset databaseCharset = Charset.forName(databaseCharsetName);
 
+        Encoding encoding = Encoding.defaultEncoding(); // UTF-8
+        YugabyteDBTaskConnection taskConnection = new YugabyteDBTaskConnection(encoding);
+
         final YugabyteDBValueConverterBuilder valueConverterBuilder = (typeRegistry) -> YugabyteDBValueConverter.of(
                 connectorConfig,
                 databaseCharset,
@@ -108,7 +111,7 @@ public class YugabyteDBConnectorTask
 
             // This type registry is being build with the nameToType and oidToType map populated.
             final YugabyteDBTypeRegistry yugabyteDBTypeRegistry =
-              new YugabyteDBTypeRegistry(connectorConfig.getJdbcConfig(), nameToType, oidToType);
+              new YugabyteDBTypeRegistry(taskConnection, nameToType, oidToType, null /* yugabyteDBConnection */);
 
             schema = new YugabyteDBSchema(connectorConfig, yugabyteDBTypeRegistry, topicSelector,
                     valueConverterBuilder.build(yugabyteDBTypeRegistry));
@@ -147,7 +150,6 @@ public class YugabyteDBConnectorTask
 
             final YugabyteDBEventMetadataProvider metadataProvider = new YugabyteDBEventMetadataProvider();
 
-            // todo Vaibhav: see if we can get rid of heartbeat factory
             HeartbeatFactory heartbeatFactory = new HeartbeatFactory<>(
                     connectorConfig,
                     topicSelector,
@@ -213,7 +215,6 @@ public class YugabyteDBConnectorTask
         }
     }
 
-    // todo Vaibhav: not being used.
     Map<YBPartition, YugabyteDBOffsetContext> getPreviousOffsetss(
         Partition.Provider<YBPartition> provider,
         OffsetContext.Loader<YugabyteDBOffsetContext> loader) {
