@@ -110,8 +110,7 @@ public class YugabyteDBConnectorTask
 
 
             // This type registry is being build with the nameToType and oidToType map populated.
-            final YugabyteDBTypeRegistry yugabyteDBTypeRegistry =
-              new YugabyteDBTypeRegistry(taskConnection, nameToType,
+            final YugabyteDBTypeRegistry yugabyteDBTypeRegistry = new YugabyteDBTypeRegistry(taskConnection, nameToType,
                     oidToType, null /* yugabyteDBConnection */);
 
             schema = new YugabyteDBSchema(connectorConfig, yugabyteDBTypeRegistry, topicSelector,
@@ -139,6 +138,9 @@ public class YugabyteDBConnectorTask
         LoggingContext.PreviousContext previousContext = taskContext
                 .configureLoggingContext(CONTEXT_NAME + "|" + taskId);
         try {
+            // Print out the server information
+            // CDCSDK Get the table,
+
             queue = new ChangeEventQueue.Builder<DataChangeEvent>()
                     .pollInterval(connectorConfig.getPollInterval())
                     .maxBatchSize(connectorConfig.getMaxBatchSize())
