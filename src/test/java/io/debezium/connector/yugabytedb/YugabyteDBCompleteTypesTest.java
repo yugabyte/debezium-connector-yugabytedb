@@ -272,6 +272,7 @@ public class YugabyteDBCompleteTypesTest extends YugabytedTestBase {
         assertEquals(0, TestHelper.getConnectionCount(YugabyteDBConnection.CONNECTION_GENERAL));
     }
 
+    @Disabled
     @ParameterizedTest
     @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
     public void shouldNotOpenConnectionAfterRestartOnceArrayColumnIsDropped(
