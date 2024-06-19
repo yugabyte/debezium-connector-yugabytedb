@@ -290,16 +290,25 @@ public class HashPartition implements Comparable<HashPartition>, Serializable {
   public static void validateCompleteRanges(List<HashPartition> hashPartitions) {
     Collections.sort(hashPartitions);
 
+    // Retrieve a table ID from any of the partition.
+    final String tableId = hashPartitions.get(0).getTableId();
+
     // We will start by the lower boundary key.
     byte[] nextKey = BOUNDARY_KEY;
     for (HashPartition hashPartition : hashPartitions) {
-      assert compareKey(nextKey, hashPartition.getPartitionKeyStart()) == 0;
+      if (compareKey(nextKey, hashPartition.getPartitionKeyStart()) != 0) {
+        throw new IllegalStateException(
+          String.format("Tablet missing starting with key %s for table %s", Arrays.toString(nextKey), tableId));
+      }
 
       nextKey = hashPartition.getPartitionKeyEnd();
     }
 
     // Verify that the end key of the last partition is the upper boundary key.
-    assert compareKey(nextKey, BOUNDARY_KEY) == 0;
+    if (compareKey(nextKey, BOUNDARY_KEY) != 0) {
+      throw new IllegalStateException(
+        String.format("End tablet missing for table %s in the provided range", tableId));
+    }
   }
 
   /**
