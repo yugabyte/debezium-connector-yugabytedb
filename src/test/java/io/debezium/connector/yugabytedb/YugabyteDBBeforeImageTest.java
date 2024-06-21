@@ -2,21 +2,25 @@ package io.debezium.connector.yugabytedb;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.yb.client.CDCStreamInfo;
 
 import io.debezium.config.Configuration;
@@ -42,6 +46,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
   @AfterEach
   public void after() throws Exception {
       stopConnector();
+      TestHelper.execute("DROP TABLE IF EXISTS test_table;");
       TestHelper.executeDDL("drop_tables_and_databases.ddl");
   }
 
@@ -458,6 +463,142 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
     SourceRecord record2 = records.get(2);
     assertBeforeImage(record2, 1, "updated_first_name", "last_name_d", 12.345);
     assertAfterImage(record2, 1, "updated_first_name_2", "updated_last_name", 98.765);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  public void shouldWorkWhenDefaultOldValueIsNull(boolean shouldUpdateToNull) throws Exception {
+    TestHelper.execute("CREATE TABLE test_table (id INT PRIMARY KEY, bigint_col bigint);");
+
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_table", true /* withBeforeImage */,
+        true, BeforeImageMode.ALL, true, true);
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_table", dbStreamId);
+    startEngine(configBuilder);
+
+    awaitUntilConnectorIsReady();
+
+    TestHelper.execute("INSERT INTO test_table VALUES (1);");
+
+    TestHelper.execute(
+      String.format("UPDATE test_table SET bigint_col = %s WHERE id = 1;", shouldUpdateToNull ? "NULL" : "12345"));
+
+    TestHelper.execute("INSERT INTO test_table VALUES (2, 202);");
+
+    List<SourceRecord> records = new ArrayList<>();
+    waitAndFailIfCannotConsume(records, 3);
+
+    // Assert insert record.
+    SourceRecord insertRecord = records.get(0);
+    Struct recordVal = (Struct) insertRecord.value();
+    assertEquals("c", TestHelper.getOpValue(insertRecord));
+    assertEquals(1, recordVal.getStruct("after").getStruct("id").getInt32("value"));
+    assertNull(recordVal.getStruct("after").getStruct("bigint_col").get("value"));
+
+    SourceRecord updateRecord = records.get(1);
+    Struct updateRecordVal = (Struct) updateRecord.value();
+    assertEquals("u", TestHelper.getOpValue(updateRecord));
+
+    if (shouldUpdateToNull) {
+      assertNull(updateRecordVal.getStruct("after").getStruct("bigint_col").get("value"));
+    } else {
+      assertEquals(12345, updateRecordVal.getStruct("after").getStruct("bigint_col").getInt64("value"));
+    }
+
+    assertEquals(1, updateRecordVal.getStruct("before").getStruct("id").getInt32("value"));
+    assertNull(updateRecordVal.getStruct("before").getStruct("bigint_col"));
+
+    // Assert second insert record.
+    SourceRecord insertRecordAfterUpdate = records.get(2);
+    Struct insertValAfterUpdate = (Struct) insertRecordAfterUpdate.value();
+    assertEquals("c", TestHelper.getOpValue(insertRecord));
+    assertEquals(2, insertValAfterUpdate.getStruct("after").getStruct("id").getInt32("value"));
+    assertEquals(202, insertValAfterUpdate.getStruct("after").getStruct("bigint_col").getInt64("value"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {true, false})
+  public void shouldWorkWhenDefaultHasOldValue(boolean shouldUpdateToNull) throws Exception {
+    TestHelper.execute("CREATE TABLE test_table (id INT PRIMARY KEY, bigint_col bigint DEFAULT 123);");
+
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_table", true /* withBeforeImage */,
+      true, BeforeImageMode.ALL, true, true);
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_table", dbStreamId);
+    startEngine(configBuilder);
+
+    awaitUntilConnectorIsReady();
+
+    TestHelper.execute("INSERT INTO test_table VALUES (1);");
+
+    TestHelper.execute(
+      String.format("UPDATE test_table SET bigint_col = %s WHERE id = 1;", shouldUpdateToNull ? "NULL" : "12345"));
+
+    List<SourceRecord> records = new ArrayList<>();
+    waitAndFailIfCannotConsume(records, 2);
+
+    // Assert insert record.
+    SourceRecord insertRecord = records.get(0);
+    Struct recordVal = (Struct) insertRecord.value();
+    assertEquals("c", TestHelper.getOpValue(insertRecord));
+    assertEquals(1, recordVal.getStruct("after").getStruct("id").getInt32("value"));
+    assertEquals(123, recordVal.getStruct("after").getStruct("bigint_col").getInt64("value"));
+
+    SourceRecord updateRecord = records.get(1);
+    Struct updateRecordVal = (Struct) updateRecord.value();
+    assertEquals("u", TestHelper.getOpValue(updateRecord));
+
+    if (shouldUpdateToNull) {
+      assertNull(updateRecordVal.getStruct("after").getStruct("bigint_col").get("value"));
+    } else {
+      assertEquals(12345, updateRecordVal.getStruct("after").getStruct("bigint_col").getInt64("value"));
+    }
+
+    assertEquals(1, updateRecordVal.getStruct("before").getStruct("id").getInt32("value"));
+    assertEquals(123, updateRecordVal.getStruct("before").getStruct("bigint_col").getInt64("value"));
+  }
+
+  @Test
+  public void shouldHaveBeforeImageWhenUpdatesArePerformedInTransaction() throws Exception {
+    TestHelper.execute("CREATE TABLE test_table (id INT PRIMARY KEY, bigint_col bigint);");
+
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_table", true /* withBeforeImage */,
+      true, BeforeImageMode.ALL, true, true);
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_table", dbStreamId);
+    startEngine(configBuilder);
+
+    awaitUntilConnectorIsReady();
+
+    TestHelper.execute("INSERT INTO test_table VALUES (1);");
+
+    TestHelper.execute("BEGIN; " +
+                       "UPDATE test_table SET bigint_col = NULL WHERE id = 1; " +
+                       "UPDATE test_table SET bigint_col = 123456 WHERE id = 1; " +
+                       "COMMIT;");
+
+    List<SourceRecord> records = new ArrayList<>();
+    waitAndFailIfCannotConsume(records, 3);
+
+    // Assert insert record.
+    SourceRecord insertRecord = records.get(0);
+    Struct recordVal = (Struct) insertRecord.value();
+    assertEquals("c", TestHelper.getOpValue(insertRecord));
+    assertEquals(1, recordVal.getStruct("after").getStruct("id").getInt32("value"));
+    assertNull(recordVal.getStruct("after").getStruct("bigint_col").get("value"));
+
+    SourceRecord updateRecordOne = records.get(1);
+    Struct updateRecordOneVal = (Struct) updateRecordOne.value();
+    assertEquals("u", TestHelper.getOpValue(updateRecordOne));
+    assertNull(updateRecordOneVal.getStruct("after").getStruct("bigint_col").get("value"));
+
+    assertEquals(1, updateRecordOneVal.getStruct("before").getStruct("id").getInt32("value"));
+    assertNull(updateRecordOneVal.getStruct("before").getStruct("bigint_col"));
+
+    SourceRecord updateRecordTwo = records.get(2);
+    Struct updateRecordTwoVal = (Struct) updateRecordTwo.value();
+    assertEquals("u", TestHelper.getOpValue(updateRecordTwo));
+    assertEquals(123456, updateRecordTwoVal.getStruct("after").getStruct("bigint_col").getInt64("value"));
+
+    assertEquals(1, updateRecordTwoVal.getStruct("before").getStruct("id").getInt32("value"));
+    assertNull(updateRecordTwoVal.getStruct("before").getStruct("bigint_col"));
   }
 
   private void assertBeforeImage(SourceRecord record, Integer id, String firstName, String lastName,

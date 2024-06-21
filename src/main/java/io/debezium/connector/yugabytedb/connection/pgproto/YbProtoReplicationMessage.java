@@ -112,9 +112,10 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
 
     private List<ReplicationMessage.Column> transform(List<Common.DatumMessagePB> messageList,
                                                       List<CdcService.TypeInfo> typeInfoList) {
-        return IntStream.range(0, messageList.size())
+        return IntStream.range(0, messageList.size()).filter(index -> messageList.get(index).hasColumnName())
                 .mapToObj(index -> {
                     final Common.DatumMessagePB datum = messageList.get(index);
+
                     final Optional<CdcService.TypeInfo> typeInfo = Optional.ofNullable(hasTypeMetadata() && typeInfoList != null ? typeInfoList.get(index) : null);
                     final String columnName = Strings.unquoteIdentifierPart(datum.getColumnName());
 
