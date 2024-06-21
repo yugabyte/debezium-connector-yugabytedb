@@ -112,22 +112,12 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
 
     private List<ReplicationMessage.Column> transform(List<Common.DatumMessagePB> messageList,
                                                       List<CdcService.TypeInfo> typeInfoList) {
-        return IntStream.range(0, messageList.size())
+        return IntStream.range(0, messageList.size()).filter(index -> messageList.get(index).hasColumnName())
                 .mapToObj(index -> {
                     final Common.DatumMessagePB datum = messageList.get(index);
 
                     final Optional<CdcService.TypeInfo> typeInfo = Optional.ofNullable(hasTypeMetadata() && typeInfoList != null ? typeInfoList.get(index) : null);
                     final String columnName = Strings.unquoteIdentifierPart(datum.getColumnName());
-
-                    if (!datum.hasColumnName()) {
-                        LOGGER.debug("No column name present in datum message, returning null");
-                        return new AbstractReplicationMessageColumn(columnName, (YugabyteDBType) null, null, false, false) {
-                            @Override
-                            public Object getValue(PgConnectionSupplier connection, boolean includeUnknownDatatypes) {
-                                return null;
-                            }
-                        };
-                    }
 
                     if (!datum.hasCqlType()) {
                         final YugabyteDBType type = yugabyteDBTypeRegistry.get((int) datum.getColumnType());

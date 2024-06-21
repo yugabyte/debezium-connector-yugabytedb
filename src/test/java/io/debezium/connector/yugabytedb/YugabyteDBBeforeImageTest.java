@@ -556,6 +556,51 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
     assertEquals(123, updateRecordVal.getStruct("before").getStruct("bigint_col").getInt64("value"));
   }
 
+  @Test
+  public void shouldHaveBeforeImageWhenUpdatesArePerformedInTransaction() throws Exception {
+    TestHelper.execute("CREATE TABLE test_table (id INT PRIMARY KEY, bigint_col bigint);");
+
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_table", true /* withBeforeImage */,
+      true, BeforeImageMode.ALL, true, true);
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_table", dbStreamId);
+    startEngine(configBuilder);
+
+    awaitUntilConnectorIsReady();
+
+    TestHelper.execute("INSERT INTO test_table VALUES (1);");
+
+    TestHelper.execute("BEGIN; " +
+                       "UPDATE test_table SET bigint_col = NULL WHERE id = 1; " +
+                       "UPDATE test_table SET bigint_col = 123456 WHERE id = 1; " +
+                       "COMMIT;");
+
+    List<SourceRecord> records = new ArrayList<>();
+    waitAndFailIfCannotConsume(records, 3);
+
+    // Assert insert record.
+    SourceRecord insertRecord = records.get(0);
+    Struct recordVal = (Struct) insertRecord.value();
+    assertEquals("c", TestHelper.getOpValue(insertRecord));
+    assertEquals(1, recordVal.getStruct("after").getStruct("id").getInt32("value"));
+    assertNull(recordVal.getStruct("after").getStruct("bigint_col").get("value"));
+
+    SourceRecord updateRecordOne = records.get(1);
+    Struct updateRecordOneVal = (Struct) updateRecordOne.value();
+    assertEquals("u", TestHelper.getOpValue(updateRecordOne));
+    assertNull(updateRecordOneVal.getStruct("after").getStruct("bigint_col").get("value"));
+
+    assertEquals(1, updateRecordOneVal.getStruct("before").getStruct("id").getInt32("value"));
+    assertNull(updateRecordOneVal.getStruct("before").getStruct("bigint_col"));
+
+    SourceRecord updateRecordTwo = records.get(2);
+    Struct updateRecordTwoVal = (Struct) updateRecordTwo.value();
+    assertEquals("u", TestHelper.getOpValue(updateRecordTwo));
+    assertEquals(123456, updateRecordTwoVal.getStruct("after").getStruct("bigint_col").getInt64("value"));
+
+    assertEquals(1, updateRecordTwoVal.getStruct("before").getStruct("id").getInt32("value"));
+    assertNull(updateRecordTwoVal.getStruct("before").getStruct("bigint_col"));
+  }
+
   private void assertBeforeImage(SourceRecord record, Integer id, String firstName, String lastName,
                                  Double hours) {
       assertValueField(record, "before/id/value", id);
