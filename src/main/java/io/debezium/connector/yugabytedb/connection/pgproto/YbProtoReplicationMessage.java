@@ -120,7 +120,7 @@ public class YbProtoReplicationMessage implements ReplicationMessage {
                     final String columnName = Strings.unquoteIdentifierPart(datum.getColumnName());
 
                     if (!datum.hasColumnName()) {
-                        LOGGER.info("Returning a null value");
+                        LOGGER.debug("No column name present in datum message, returning null");
                         return new AbstractReplicationMessageColumn(columnName, (YugabyteDBType) null, null, false, false) {
                             @Override
                             public Object getValue(PgConnectionSupplier connection, boolean includeUnknownDatatypes) {
