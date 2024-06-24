@@ -373,11 +373,17 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     private int getLength(int oid) {
-        return getTypeRegistry().get(oid).getDefaultLength();
+        // YB Note: Since we are anyway getting the default length as -1 as the service doesn't send
+        // this value, it will not make any difference to return it directly without looking it up.
+        // return getTypeRegistry().get(oid).getDefaultLength();
+        return -1;
     }
 
     private int getScale(int oid) {
-        return getTypeRegistry().get(oid).getDefaultScale();
+        // YB Note: Since we are anyway getting the default scale as -1 as the service doesn't send
+        // this value, it will not make any difference to return it directly without looking it up.
+        // return getTypeRegistry().get(oid).getDefaultScale();
+        return -1;
     }
 
     private int resolveNativeType(int oid) {

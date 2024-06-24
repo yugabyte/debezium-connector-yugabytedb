@@ -106,7 +106,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                 YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection,
                                                 ChangeEventQueue<DataChangeEvent> queue) {
         this.connectorConfig = connectorConfig;
-        this.connection = connection;
+        this.connection = new YugabyteDBConnection(connectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL);
         this.dispatcher = dispatcher;
         this.errorHandler = errorHandler;
         this.clock = clock;
@@ -144,7 +144,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         if (!hasStartLsnStoredInContext) {
             LOGGER.info("No start opid found in the context.");
-                offsetContext = YugabyteDBOffsetContext.initialContext(connectorConfig, connection, clock, partitions);
+                offsetContext = YugabyteDBOffsetContext.initialContext(connectorConfig, null /* connection */, clock, partitions);
         }
         try {
             // Populate partition ranges.

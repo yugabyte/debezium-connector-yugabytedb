@@ -3,17 +3,23 @@ package io.debezium.connector.yugabytedb;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.jdbc.TemporalPrecisionMode;
+import io.debezium.junit.logging.LogInterceptor;
 import io.debezium.relational.RelationalDatabaseConnectorConfig.DecimalHandlingMode;
 import io.debezium.util.HexConverter;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
+import org.apache.kafka.connect.data.Field;
+import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 
@@ -26,7 +32,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBCompleteTypesTest extends YugabytedTestBase {
     @BeforeAll
     public static void beforeClass() throws SQLException {
         initializeYBContainer();
@@ -34,8 +40,9 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
     }
 
     @BeforeEach
-    public void before() {
+    public void before() throws SQLException {
         initializeConnectorTestFramework();
+        TestHelper.dropAllSchemas();
     }
 
     @AfterEach
@@ -72,7 +79,6 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
     @ParameterizedTest
     @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
     public void verifyAllWorkingDataTypesInSingleTable(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
-        TestHelper.dropAllSchemas();
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
         Thread.sleep(1000);
 
@@ -127,12 +133,215 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
         assertValueField(record, "after/ts/value", 1637841600123456L);
         assertValueField(record, "after/tstz/value", "2021-11-25T06:30:00Z");
         assertValueField(record, "after/uuidval/value", "ffffffff-ffff-ffff-ffff-ffffffffffff");
+
+        // No array types are present here so we should not be opening any connection to database.
+        assertEquals(0, TestHelper.getConnectionCount(YugabyteDBConnection.CONNECTION_GENERAL));
+    }
+
+    @Test
+    public void shouldCreateConnectionWhenArrayPresent() throws Exception {
+        TestHelper.execute("CREATE TABLE test_arr (id INT PRIMARY KEY, textarr text[], intarr int[]);");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_arr");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_arr", dbStreamId);
+        startEngine(configBuilder);
+
+        awaitUntilConnectorIsReady();
+
+        // Insert a record to the table.
+        TestHelper.execute("INSERT INTO test_arr VALUES (1, '{\"element1\",\"element2\"}', '{0,1,2}');");
+
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, 1 /* records to consume */);
+
+        assertEquals(1, records.size());
+
+        SourceRecord record = records.get(0);
+        Struct recordValue = (Struct) record.value();
+
+        List<Object> textArrayList = recordValue.getStruct("after").getStruct("textarr").getArray("value");
+        assertEquals(textArrayList.get(0).toString(), "element1");
+        assertEquals(textArrayList.get(1).toString(), "element2");
+
+        List<Object> intArrayList = recordValue.getStruct("after").getStruct("intarr").getArray("value");
+        assertEquals(intArrayList.get(0).toString(), String.valueOf(0));
+        assertEquals(intArrayList.get(1).toString(), String.valueOf(1));
+        assertEquals(intArrayList.get(2).toString(), String.valueOf(2));
+
+        // Since we have one task running which has a array type present in it, we should expect
+        // a single JDBC connection on YugabyteDB service.
+        assertEquals(1, TestHelper.getConnectionCount(YugabyteDBConnection.CONNECTION_GENERAL));
+    }
+
+    @Test
+    public void shouldCreateSingleConnectionAcrossSnapshotAndStreaming() throws Exception {
+        LogInterceptor logInterceptor = new LogInterceptor(YugabyteDBStreamingChangeEventSource.class);
+
+        TestHelper.execute("CREATE TABLE test_arr (id INT PRIMARY KEY, textarr text[], intarr int[]);");
+        TestHelper.execute("INSERT INTO test_arr VALUES (1, '{\"element1\",\"element2\"}', '{0,1,2}');");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_arr");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_arr", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
+        startEngine(configBuilder);
+
+        awaitUntilConnectorIsReady();
+
+        Awaitility.await()
+          .atMost(Duration.ofSeconds(30))
+          .pollInterval(Duration.ofSeconds(1))
+          .until(() -> logInterceptor.containsMessage("Beginning to poll the changes from the server"));
+
+        // Insert another record in streaming phase.
+        TestHelper.execute("INSERT INTO test_arr VALUES (2, '{\"element1\",\"element2\"}', '{0,1,2}');");
+
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, 2 /* records to consume */);
+
+        assertEquals(2, records.size());
+
+        // No need to verify record values since they are being verified in another test, simply
+        // verify that we have only a single connection open.
+        assertEquals(1, TestHelper.getConnectionCount(YugabyteDBConnection.CONNECTION_GENERAL));
+    }
+
+    @Test
+    public void shouldOpenConnectionOnceArrayTypeColumnIsAdded() throws Exception {
+        TestHelper.execute("CREATE TABLE test_table (id INT PRIMARY KEY);");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_table");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_table", dbStreamId);
+        startEngine(configBuilder);
+
+        awaitUntilConnectorIsReady();
+
+        // Insert a record to the table.
+        TestHelper.execute("INSERT INTO test_table VALUES (1);");
+
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, 1 /* records to consume */);
+
+        assertEquals(1, records.size());
+
+        // We do not have any array type present yet, so there should not be any connection.
+        assertEquals(0, TestHelper.getConnectionCount(YugabyteDBConnection.CONNECTION_GENERAL));
+
+        // Alter the table and add an array type column.
+        TestHelper.execute("ALTER TABLE test_table ADD COLUMN textarr text[];");
+        TestHelper.execute("INSERT INTO test_table VALUES (2, '{\"element1\",\"element2\"}');");
+
+        // Consume another record.
+        waitAndFailIfCannotConsume(records, 1 /* records to consume */);
+
+        SourceRecord recordWithArrayType = records.get(1);
+        Struct recordValue = (Struct) recordWithArrayType.value();
+        List<Object> textArrayList = recordValue.getStruct("after").getStruct("textarr").getArray("value");
+        assertEquals(textArrayList.get(0).toString(), "element1");
+        assertEquals(textArrayList.get(1).toString(), "element2");
+
+        // Now we should see a database connection being opened since we have to decode an array type.
+        assertEquals(1, TestHelper.getConnectionCount(YugabyteDBConnection.CONNECTION_GENERAL));
+    }
+
+    @Test
+    public void shouldNotOpenConnectionWithEnumTypes() throws Exception {
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_enum");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_enum", dbStreamId);
+        startEngine(configBuilder);
+
+        awaitUntilConnectorIsReady();
+
+        // Insert a record.
+        TestHelper.execute("INSERT INTO test_enum VALUES (1, 'ONE');");
+
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, 1 /* records to consume */);
+
+        assertValueField(records.get(0), "after/enum_col/value", "ONE");
+
+        // There should not be any connection open to server.
+        assertEquals(0, TestHelper.getConnectionCount(YugabyteDBConnection.CONNECTION_GENERAL));
+    }
+
+    @Disabled
+    @Test
+    public void shouldNotOpenConnectionAfterRestartOnceArrayColumnIsDropped() throws Exception {
+        LogInterceptor logInterceptor = new LogInterceptor(YugabyteDBStreamingChangeEventSource.class);
+
+        TestHelper.execute("CREATE TABLE test_arr (id INT PRIMARY KEY, textarr text[]);");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_arr");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_arr", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial");
+        startEngine(configBuilder);
+
+        awaitUntilConnectorIsReady();
+
+        // Insert a record.
+        TestHelper.execute("INSERT INTO test_arr VALUES (1, '{\"element1\",\"element2\"}');");
+
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, 1 /* records to consume */);
+
+        assertEquals(1, records.size());
+
+        // No need to verify record values since they are being verified in another test, simply
+        // verify that we have only a single connection open.
+        assertEquals(1, TestHelper.getConnectionCount(YugabyteDBConnection.CONNECTION_GENERAL));
+
+        // Drop the array column on the table and insert another record.
+        TestHelper.execute("ALTER TABLE test_arr DROP COLUMN textarr;");
+        TestHelper.execute("INSERT INTO test_arr VALUES (2);");
+
+        waitAndFailIfCannotConsume(records, 1 /* 1 new record to consume */);
+
+        SourceRecord recordWithOutArrayTypeColumn = records.get(1);
+        Struct recordValue = (Struct) recordWithOutArrayTypeColumn.value();
+        assertEquals(2, recordValue.getStruct("after").getStruct("id").getInt32("value"));
+        for (Field field : recordValue.schema().fields()) {
+            assertNotEquals("textarr", field.name());
+        }
+
+        // The connection will still remain open as we do not close the existing connection once
+        // the array column is removed from the schema.
+        assertEquals(1, TestHelper.getConnectionCount(YugabyteDBConnection.CONNECTION_GENERAL));
+
+        // Restart the connector after a wait.
+        stopConnector();
+        TestHelper.waitFor(Duration.ofSeconds(10));
+        startEngine(configBuilder);
+
+        awaitUntilConnectorIsReady();
+
+        // Wait till we reach the streaming phase.
+        Awaitility.await()
+          .atMost(Duration.ofSeconds(30))
+          .pollInterval(Duration.ofSeconds(1))
+          .until(() -> logInterceptor.countOccurrences("Beginning to poll the changes from the server") == 2);
+
+        // Insert a new record once the connector is up and since we do not have any array columns
+        // now, there should not be any connection open.
+        TestHelper.execute("INSERT INTO test_arr VALUES (3);");
+        waitAndFailIfCannotConsume(records, 1 /* 1 new record to consume */);
+
+        SourceRecord recordAfterRestart = records.get(2);
+        Struct recordValueAfterRestart = (Struct) recordAfterRestart.value();
+        assertEquals(3, recordValueAfterRestart.getStruct("after").getStruct("id").getInt32("value"));
+        for (Field field : recordValueAfterRestart.schema().fields()) {
+            assertNotEquals("textarr", field.name());
+        }
+
+        LOGGER.info("Check if a connection is still open till a timeout");
+        TestHelper.waitFor(Duration.ofMinutes(2));
+
+        assertEquals(0, TestHelper.getConnectionCount(YugabyteDBConnection.CONNECTION_GENERAL));
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"adaptive", "adaptive_time_microseconds", "connect"})
     public void shouldEmitTimestampValuesWithCorrectPrecision(String temporalPrecisionMode) throws Exception {
-        TestHelper.dropAllSchemas();
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
         Thread.sleep(1000);
 
@@ -174,7 +383,6 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
     @ParameterizedTest
     @ValueSource(strings = {"precise", "double", "string"})
     public void shouldWorkWithAllDecimalTypes(String decimalMode) throws Exception {
-        TestHelper.dropAllSchemas();
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
         Thread.sleep(1000);
 
@@ -216,7 +424,6 @@ public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
     @ParameterizedTest
     @ValueSource(strings = {"precise", "double", "string"})
     public void shouldHaveLossOfPrecisionWithDecimalModeWithLargeValue(String decimalMode) throws Exception {
-        TestHelper.dropAllSchemas();
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
         Thread.sleep(1000);
 
