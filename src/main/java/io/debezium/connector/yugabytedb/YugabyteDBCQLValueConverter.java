@@ -20,8 +20,6 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
 import java.time.temporal.TemporalAdjuster;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.Base64.Encoder;
@@ -134,7 +132,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
 
     private final TemporalAdjuster adjuster;
 
-    private static final Logger logger = LoggerFactory.getLogger(YugabyteDBConnector.class);
+    private static final Logger logger = LoggerFactory.getLogger(YugabyteDBgRPCConnector.class);
 
 
     public static YugabyteDBCQLValueConverter of(YugabyteDBConnectorConfig connectorConfig, Charset databaseCharset) {

@@ -77,7 +77,7 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
     -d '{
     "name": "ybconnector",
     "config": {
-        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnectorctor",
         "database.hostname":"'$IP'",
         "database.port":"5433",
         "database.master.addresses": "'$IP':7100",

@@ -41,9 +41,9 @@ import io.debezium.relational.RelationalDatabaseConnectorConfig;
  *
  * @author Suranjan Kumar (skumar@yugabyte.com), Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBConnector extends RelationalBaseSourceConnector {
+public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBConnector.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBgRPCConnector.class);
     private static final long MAX_TIMEOUT = 10000L;
 
     private Map<String, String> props;
@@ -54,7 +54,7 @@ public class YugabyteDBConnector extends RelationalBaseSourceConnector {
 
     private YugabyteDBTablePoller tableMonitorThread;
 
-    public YugabyteDBConnector() {
+    public YugabyteDBgRPCConnector() {
     }
 
     @Override
