@@ -14,6 +14,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import io.debezium.heartbeat.HeartbeatFactory;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.source.SourceRecord;
