@@ -368,10 +368,10 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
                     if (recordsInTransactionalBlock.containsKey(part.getId())) {
                         if (recordsInTransactionalBlock.get(part.getId()) == 0) {
-                            LOGGER.trace("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                            LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                     message.getTransactionId(), lsn, part.getTabletId());
                         } else {
-                            LOGGER.trace("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
+                            LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
                                     message.getTransactionId(), lsn, part.getTabletId(), recordsInTransactionalBlock.get(part.getId()));
                         }
                     } else if (beginCountForTablet.get(part.getId()).intValue() == 0) {
