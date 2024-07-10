@@ -609,7 +609,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       }
                     } else {
                       // DML event
-                      LOGGER.debug("For table {}, received a DML record {}",
+                      LOGGER.trace("For table {}, received a DML record {}",
                                   message.getTable(), record);
 
                       TableId tId = null;
