@@ -582,7 +582,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       // that some debugging is required
                       LOGGER.warn("Transactional record of type {} encountered while snapshotting the table", message.getOperation().toString());
                     } else if (message.isDDLMessage()) {
-                      LOGGER.debug("For table {}, received a DDL record {}",
+                      LOGGER.trace("For table {}, received a DDL record {}",
                                   message.getTable(), message.getSchema().toString());
 
                       schemaNeeded.put(part.getId(), Boolean.FALSE);
@@ -609,7 +609,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       }
                     } else {
                       // DML event
-                      LOGGER.debug("For table {}, received a DML record {}",
+                      LOGGER.trace("For table {}, received a DML record {}",
                                   message.getTable(), record);
 
                       TableId tId = null;

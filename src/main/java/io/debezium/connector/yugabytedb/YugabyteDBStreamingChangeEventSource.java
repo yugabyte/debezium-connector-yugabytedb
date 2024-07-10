@@ -621,26 +621,26 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     // Tx BEGIN/END event
                                     if (message.isTransactionalMessage()) {
                                         if (!connectorConfig.shouldProvideTransactionMetadata()) {
-                                            LOGGER.debug("Received transactional message {}", record);
+                                            LOGGER.trace("Received transactional message {}", record);
                                             // Don't skip on BEGIN message as it would flush LSN for the whole transaction
                                             // too early
                                             if (message.getOperation() == Operation.BEGIN) {
-                                                LOGGER.debug("LSN in case of BEGIN is " + lsn);
+                                                LOGGER.trace("LSN in case of BEGIN is " + lsn);
 
                                                 recordsInTransactionalBlock.put(part.getId(), 0);
                                                 beginCountForTablet.merge(part.getId(), 1, Integer::sum);
                                             }
                                             if (message.getOperation() == Operation.COMMIT) {
-                                                LOGGER.debug("LSN in case of COMMIT is " + lsn);
+                                                LOGGER.trace("LSN in case of COMMIT is " + lsn);
                                                 offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                         String.valueOf(message.getTransactionId()), null, message.getRecordTime());
 
                                                 if (recordsInTransactionalBlock.containsKey(part.getId())) {
                                                     if (recordsInTransactionalBlock.get(part.getId()) == 0) {
-                                                        LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                        LOGGER.trace("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                                                 message.getTransactionId(), lsn, part.getId());
                                                     } else {
-                                                        LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
+                                                        LOGGER.trace("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
                                                                 message.getTransactionId(), lsn, part.getId(), recordsInTransactionalBlock.get(part.getId()));
                                                     }
                                                 } else if (beginCountForTablet.get(part.getId()).intValue() == 0) {
@@ -654,23 +654,23 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         }
 
                                         if (message.getOperation() == Operation.BEGIN) {
-                                            LOGGER.debug("LSN in case of BEGIN is " + lsn);
+                                            LOGGER.trace("LSN in case of BEGIN is " + lsn);
                                             dispatcher.dispatchTransactionStartedEvent(part, message.getTransactionId(), offsetContext);
 
                                             recordsInTransactionalBlock.put(part.getId(), 0);
                                             beginCountForTablet.merge(part.getId(), 1, Integer::sum);
                                         } else if (message.getOperation() == Operation.COMMIT) {
-                                            LOGGER.debug("LSN in case of COMMIT is " + lsn);
+                                            LOGGER.trace("LSN in case of COMMIT is " + lsn);
                                             offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                     String.valueOf(message.getTransactionId()), null, message.getRecordTime());
                                             dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
 
                                             if (recordsInTransactionalBlock.containsKey(part.getId())) {
                                                 if (recordsInTransactionalBlock.get(part.getId()) == 0) {
-                                                    LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
+                                                    LOGGER.trace("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                                             message.getTransactionId(), lsn, part.getId());
                                                 } else {
-                                                    LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
+                                                    LOGGER.trace("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
                                                             message.getTransactionId(), lsn, part.getId(), recordsInTransactionalBlock.get(part.getId()));
                                                 }
                                             } else if (beginCountForTablet.get(part.getId()).intValue() == 0) {
@@ -682,7 +682,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         }
                                         maybeWarnAboutGrowingWalBacklog(true);
                                     } else if (message.isDDLMessage()) {
-                                        LOGGER.debug("Received DDL message {}", message.getSchema().toString()
+                                        LOGGER.trace("Received DDL message {}", message.getSchema().toString()
                                                 + " the table is " + message.getTable());
 
                                         // If a DDL message is received for a tablet, we do not need its schema again
@@ -726,7 +726,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             Objects.requireNonNull(tableId);
                                         }
                                         // If you need to print the received record, change debug level to info
-                                        LOGGER.debug("Received DML record {}", record);
+                                        LOGGER.trace("Received DML record {}", record);
 
                                         offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                 String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
