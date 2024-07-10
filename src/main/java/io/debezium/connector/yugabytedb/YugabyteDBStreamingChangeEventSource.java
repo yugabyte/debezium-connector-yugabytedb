@@ -682,7 +682,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         }
                                         maybeWarnAboutGrowingWalBacklog(true);
                                     } else if (message.isDDLMessage()) {
-                                        LOGGER.trace("Received DDL message {}", message.getSchema().toString()
+                                        LOGGER.debug("Received DDL message {}", message.getSchema().toString()
                                                 + " the table is " + message.getTable());
 
                                         // If a DDL message is received for a tablet, we do not need its schema again
