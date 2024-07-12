@@ -58,6 +58,8 @@ public class YugabyteDBConnection extends JdbcConnection {
     public static final String CONNECTION_VALIDATE_CONNECTION = "Debezium Validate Connection";
     public static final String CONNECTION_HEARTBEAT = "Debezium Heartbeat";
     public static final String CONNECTION_GENERAL = "Debezium General";
+    public static final String CONNECTION_TYPE_REGISTRY = "Debezium Type Registry";
+    public static final String CONNECTION_TEST = "Debezium Test";
 
     private static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBConnection.class);
 

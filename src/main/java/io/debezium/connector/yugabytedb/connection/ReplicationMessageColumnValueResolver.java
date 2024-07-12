@@ -52,8 +52,7 @@ public class ReplicationMessageColumnValueResolver {
                     includeUnknownDatatypes, yugabyteDBTypeRegistry);
         }
 
-        // CDCSDK this too we can avoid using connection.
-        // only date and string requires
+        // We will only open a connection once we detect that it is an array type.
         if (value.isArray(type)) {
             return value.asArray(columnName, type, fullType, connection);
         }
