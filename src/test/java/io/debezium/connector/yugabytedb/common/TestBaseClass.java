@@ -2,7 +2,7 @@ package io.debezium.connector.yugabytedb.common;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.TestHelper;
-import io.debezium.connector.yugabytedb.YugabyteDBConnector;
+import io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.connector.yugabytedb.container.YugabyteCustomContainer;
 import io.debezium.connector.yugabytedb.rules.YugabyteDBLogTestName;
@@ -22,7 +22,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import java.time.Duration;
 import java.util.*;
@@ -77,7 +76,7 @@ public class TestBaseClass extends AbstractConnectorTest {
 
   @BeforeAll
   public static void initializeTestFramework() {
-    LoggingContext.forConnector(YugabyteDBConnector.class.getSimpleName(), "", "test");
+    LoggingContext.forConnector(YugabyteDBgRPCConnector.class.getSimpleName(), "", "test");
     linesConsumed = new BlockingArrayQueue<>();
   }
 
@@ -183,7 +182,7 @@ public class TestBaseClass extends AbstractConnectorTest {
       .with(EmbeddedEngine.ENGINE_NAME, "test-connector")
       .with(EmbeddedEngine.OFFSET_STORAGE, MemoryOffsetBackingStore.class.getName())
       .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
-      .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBConnector.class);
+      .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class);
 
     countDownLatch = new CountDownLatch(1);
     DebeziumEngine.CompletionCallback wrapperCallback = (success, msg, error) -> {
@@ -255,7 +254,7 @@ public class TestBaseClass extends AbstractConnectorTest {
       .with(EmbeddedEngine.ENGINE_NAME, "test-connector")
       .with(EmbeddedEngine.OFFSET_STORAGE, MemoryOffsetBackingStore.class.getName())
       .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
-      .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBConnector.class);
+      .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class);
 
     countDownLatch = new CountDownLatch(1);
     DebeziumEngine.CompletionCallback wrapperCallback = (success, msg, error) -> {
