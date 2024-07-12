@@ -3,8 +3,10 @@ package io.debezium.connector.yugabytedb;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.embedded.EmbeddedEngine;
+import io.debezium.engine.DebeziumEngine;
 import io.debezium.engine.spi.OffsetCommitPolicy;
 import io.debezium.util.LoggingContext;
 import io.debezium.util.Testing;
@@ -18,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.CdcSdkCheckpoint;
 import org.yb.client.GetCheckpointResponse;
 import org.yb.client.YBClient;
+import org.yb.client.YBTable;
 
 import java.sql.SQLException;
 import java.time.Duration;

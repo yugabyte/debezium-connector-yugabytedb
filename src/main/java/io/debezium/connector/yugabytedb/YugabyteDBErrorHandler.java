@@ -5,6 +5,7 @@
  */
 package io.debezium.connector.yugabytedb;
 
+import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
