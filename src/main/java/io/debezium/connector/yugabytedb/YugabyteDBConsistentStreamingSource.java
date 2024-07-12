@@ -320,17 +320,17 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
         try {
             // Tx BEGIN/END event
             if (message.isTransactionalMessage()) {
-                LOGGER.debug("Received transactional message {}", record);
+                LOGGER.trace("Received transactional message {}", record);
                 if (!connectorConfig.shouldProvideTransactionMetadata()) {
                     // Don't skip on BEGIN message as it would flush LSN for the whole transaction
                     // too early
                     if (message.getOperation() == ReplicationMessage.Operation.BEGIN) {
-                        LOGGER.debug("LSN in case of BEGIN is " + lsn);
+                        LOGGER.trace("LSN in case of BEGIN is " + lsn);
 
                         recordsInTransactionalBlock.put(part.getId(), 0);
                         beginCountForTablet.merge(part.getId(), 1, Integer::sum);
                     } else if (message.getOperation() == ReplicationMessage.Operation.COMMIT) {
-                        LOGGER.debug("LSN in case of COMMIT is " + lsn);
+                        LOGGER.trace("LSN in case of COMMIT is " + lsn);
                         offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                 String.valueOf(message.getTransactionId()), null, message.getRecordTime());
 
@@ -354,14 +354,14 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 }
 
                 if (message.getOperation() == ReplicationMessage.Operation.BEGIN) {
-                    LOGGER.debug("LSN in case of BEGIN is " + lsn);
+                    LOGGER.trace("LSN in case of BEGIN is " + lsn);
                     dispatcher.dispatchTransactionStartedEvent(part,
                             message.getTransactionId(), offsetContext);
 
                     recordsInTransactionalBlock.put(part.getId(), 0);
                     beginCountForTablet.merge(part.getId(), 1, Integer::sum);
                 } else if (message.getOperation() == ReplicationMessage.Operation.COMMIT) {
-                    LOGGER.debug("LSN in case of COMMIT is " + lsn);
+                    LOGGER.trace("LSN in case of COMMIT is " + lsn);
                     offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                             String.valueOf(message.getTransactionId()), null, message.getRecordTime());
                     dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
@@ -414,7 +414,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                     Objects.requireNonNull(tableId);
                 }
                 // If you need to print the received record, change debug level to info
-                LOGGER.debug("Received DML record {}", record);
+                LOGGER.trace("Received DML record {}", record);
 
                 offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                         String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
