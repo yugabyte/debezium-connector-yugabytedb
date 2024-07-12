@@ -7,15 +7,14 @@ import org.apache.kafka.common.config.ConfigDef;
 import io.debezium.config.Configuration;
 import io.debezium.config.Field;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
-import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public class YugabyteDBgRPCConnectorIT extends YugabyteDBContainerTestBase {
+public class YugabyteDBConnectorIT extends YugabyteDBContainerTestBase {
 
-    private YugabyteDBgRPCConnector connector;
+    private YugabyteDBConnector connector;
 
     @BeforeEach
     public void before() {
@@ -41,7 +40,7 @@ public class YugabyteDBgRPCConnectorIT extends YugabyteDBContainerTestBase {
 
     @Test
     public void shouldValidateConnectorConfigDef() {
-        connector = new YugabyteDBgRPCConnector();
+        connector = new YugabyteDBConnector();
         ConfigDef configDef = connector.config();
         assertThat(configDef).isNotNull();
         YugabyteDBConnectorConfig.ALL_FIELDS.forEach(this::validateFieldDef);

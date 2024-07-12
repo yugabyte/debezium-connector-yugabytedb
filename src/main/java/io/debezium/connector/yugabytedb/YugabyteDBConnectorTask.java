@@ -14,7 +14,6 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import io.debezium.heartbeat.HeartbeatFactory;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.source.SourceRecord;
@@ -36,7 +35,6 @@ import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.pipeline.ChangeEventSourceCoordinator;
 import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.pipeline.ErrorHandler;
-import io.debezium.pipeline.metrics.DefaultChangeEventSourceMetricsFactory;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Offsets;
 import io.debezium.pipeline.spi.Partition;
@@ -203,7 +201,7 @@ public class YugabyteDBConnectorTask
             YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
                     previousOffsets,
                     errorHandler,
-                    YugabyteDBgRPCConnector.class,
+                    YugabyteDBConnector.class,
                     connectorConfig,
                     new YugabyteDBChangeEventSourceFactory(
                             connectorConfig,

@@ -64,7 +64,7 @@ import io.debezium.util.Metronome;
 import io.debezium.util.Strings;
 
 /**
- * The configuration properties for the {@link YugabyteDBgRPCConnector}
+ * The configuration properties for the {@link YugabyteDBConnector}
  *
  * @author Suranjan Kumar, Vaibhav Kushwaha
  */

@@ -17,7 +17,6 @@ import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.Common.QLTypePB;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.CDCSDKColumnInfoPB;
 import org.yb.cdc.CdcService.CDCSDKSchemaPB;
@@ -28,13 +27,12 @@ import io.debezium.annotation.NotThreadSafe;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.relational.*;
 import io.debezium.relational.Tables.TableFilter;
-import io.debezium.schema.DataCollectionSchema;
 import io.debezium.schema.TopicSelector;
 import io.debezium.util.Collect;
 import io.debezium.util.SchemaNameAdjuster;
 
 /**
- * Component that records the schema information for the {@link YugabyteDBgRPCConnector}. The schema information contains
+ * Component that records the schema information for the {@link YugabyteDBConnector}. The schema information contains
  * the {@link Tables table definitions} and the Kafka Connect {@link #schemaFor(TableId) Schema}s for each table, where the
  * {@link Schema} excludes any columns that have been {@link YugabyteDBConnectorConfig#COLUMN_EXCLUDE_LIST specified} in the
  * configuration.
