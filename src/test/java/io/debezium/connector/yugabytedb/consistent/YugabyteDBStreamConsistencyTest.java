@@ -16,7 +16,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import io.debezium.connector.yugabytedb.TestHelper;
-import io.debezium.connector.yugabytedb.YugabyteDBConnector;
 import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;

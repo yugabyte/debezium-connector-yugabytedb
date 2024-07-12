@@ -34,7 +34,7 @@ import io.debezium.util.Collect;
 import io.debezium.util.SchemaNameAdjuster;
 
 /**
- * Component that records the schema information for the {@link YugabyteDBConnector}. The schema information contains
+ * Component that records the schema information for the {@link YugabyteDBgRPCConnector}. The schema information contains
  * the {@link Tables table definitions} and the Kafka Connect {@link #schemaFor(TableId) Schema}s for each table, where the
  * {@link Schema} excludes any columns that have been {@link YugabyteDBConnectorConfig#COLUMN_EXCLUDE_LIST specified} in the
  * configuration.

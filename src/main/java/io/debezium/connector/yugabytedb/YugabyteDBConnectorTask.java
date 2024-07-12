@@ -203,7 +203,7 @@ public class YugabyteDBConnectorTask
             YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
                     previousOffsets,
                     errorHandler,
-                    YugabyteDBConnector.class,
+                    YugabyteDBgRPCConnector.class,
                     connectorConfig,
                     new YugabyteDBChangeEventSourceFactory(
                             connectorConfig,

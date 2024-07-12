@@ -21,7 +21,7 @@ public class YugabyteDBErrorHandler extends ErrorHandler {
     private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBErrorHandler.class);
 
     public YugabyteDBErrorHandler(YugabyteDBConnectorConfig connectorConfig, ChangeEventQueue<?> queue) {
-        super(YugabyteDBConnector.class, connectorConfig, queue);
+        super(YugabyteDBgRPCConnector.class, connectorConfig, queue);
     }
 
     @Override

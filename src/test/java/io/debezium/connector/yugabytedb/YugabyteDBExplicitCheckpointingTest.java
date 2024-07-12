@@ -75,7 +75,7 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
                 .with(EmbeddedEngine.ENGINE_NAME, CONNECTOR_NAME)
                 .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG, Testing.Files.createTestingFile("file-connector-offsets.txt").getAbsolutePath())
                 .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
-                .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBConnector.class);
+                .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class);
         final Configuration config = configBuilder.build();
 
         CountDownLatch firstLatch = new CountDownLatch(1);

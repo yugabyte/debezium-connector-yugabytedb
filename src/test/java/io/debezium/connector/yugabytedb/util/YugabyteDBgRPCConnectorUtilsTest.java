@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBConnectorUtilsTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBgRPCConnectorUtilsTest extends YugabyteDBContainerTestBase {
 	// We can use an empty pair here to signify the tablet ranges since those values will not even be
 	// used. This test class is just to verify the grouping.
 	private final Pair<String, String> emptyPair = new ImmutablePair<>("", "");

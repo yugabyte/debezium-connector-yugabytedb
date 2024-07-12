@@ -134,7 +134,7 @@ public class YugabyteDBCQLValueConverter implements ValueConverterProvider {
 
     private final TemporalAdjuster adjuster;
 
-    private static final Logger logger = LoggerFactory.getLogger(YugabyteDBConnector.class);
+    private static final Logger logger = LoggerFactory.getLogger(YugabyteDBgRPCConnector.class);
 
 
     public static YugabyteDBCQLValueConverter of(YugabyteDBConnectorConfig connectorConfig, Charset databaseCharset) {

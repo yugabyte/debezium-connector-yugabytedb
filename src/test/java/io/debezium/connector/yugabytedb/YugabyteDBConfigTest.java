@@ -105,7 +105,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", consistentSnapshot, useSnapshot);
 
         // Create a same table in another database
-        // This is to ensure that when the yb-client returns all the tables, then the YugabyteDBConnector
+        // This is to ensure that when the yb-client returns all the tables, then the YugabyteDBgRPCConnector
         // is filtering them properly
         String createNewTableStatement = "CREATE TABLE t1 (id INT PRIMARY KEY, first_name TEXT NOT NULL, last_name VARCHAR(40), hours DOUBLE PRECISION);";
         
@@ -302,7 +302,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.dummy_table", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_ORDERING, true);
 
-        start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+        start(YugabyteDBgRPCConnector.class, configBuilder.build(), (success, message, error) -> {
            assertFalse(success);
 
            assertTrue(error.getMessage().contains("Explicit checkpointing not enabled in consistent streaming mode"));
@@ -323,7 +323,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
         configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_ORDERING, true);
         configBuilder.with("tasks.max", 2);
 
-        start(YugabyteDBConnector.class, configBuilder.build(), (success, message, error) -> {
+        start(YugabyteDBgRPCConnector.class, configBuilder.build(), (success, message, error) -> {
            assertFalse(success);
 
            assertTrue(error.getMessage().contains("Transaction ordering is only supported with 1 task"));
