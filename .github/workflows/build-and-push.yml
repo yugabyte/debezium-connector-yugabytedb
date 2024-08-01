@@ -1,0 +1,82 @@
+name: Publish YugabyteDBgRPCConnector
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version"
+        required: true
+        type: string
+      devVersion:
+        description: "Next development version"
+        required: true
+        type: string
+      isSnapshotBuild:
+        description: "Snapshot build?"
+        required: true
+        type: boolean
+        default: true
+
+permissions: write-all
+
+jobs:
+  build:
+    name: "Publish YugabyteDBgRPCConnector"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check version
+        run: |
+          if [[ "${{ inputs.isSnapshotBuild }}" == "true" ]]; then
+            if [[ "${{ inputs.version }}" != *"SNAPSHOT"* ]]; then
+              echo "Error: version does not contain SNAPSHOT for a snapshot build."
+              exit 1
+            fi
+          fi
+        shell: bash
+
+      - name: Checkout Action
+        uses: actions/checkout@v4
+      
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 11
+
+      - name: Clean targets
+        run: mvn release:clean
+
+      - name: Prepare jar for release
+        run: mvn --batch-mode -Dtag=v${{ inputs.version }} release:prepare -DreleaseVersion=${{ inputs.version }} -DdevelopmentVersion=${{ inputs.devVersion }} -DignoreSnapshots=True -Darguments="-DskipTests -DskipITs -Dmaven.javadoc.skip=true
+
+      - name: Login to Quay.io
+        uses: docker/login-action@v2
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_BOT_USERNAME }}
+          password: ${{ secrets.QUAY_BOT_TOKEN }}
+
+      - name: Push image to Quay
+        run: docker push quay.io/yugabyte/debezium-connector:${{ inputs.version }}
+
+      - name: Create GitHub release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ inputs.version }}
+          release_name: Release ${{ inputs.version }}
+          draft: true
+          prerelease: ${{ inputs.isSnapshotBuild }}
+
+      - name: Upload fat jar to GitHub release
+        id: upload-release-asset-fat-jar
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./target/debezium-connector-yugabytedb-${{ inputs.version }}.jar
+          asset_name: debezium-connector-yugabytedb-${{ inputs.version }}.jar
+          asset_content_type: application/java-archive
