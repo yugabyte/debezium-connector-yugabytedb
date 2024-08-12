@@ -287,9 +287,11 @@ public class YugabyteDBConnectorTask
         if (offsets != null) {
             found = true;
 
-            for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry : offsets.getOffsets().entrySet()) {
-                if (entry.getKey() != null && entry.getValue() != null) {
-                    LOGGER.info("Entry {} --> {}", entry.getKey().getId(), entry.getValue().getOffset());
+            if (LOGGER.isDebugEnabled()) {
+                for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry : offsets.getOffsets().entrySet()) {
+                    if (entry.getKey() != null && entry.getValue() != null) {
+                        LOGGER.debug("Read offset map {} for partition {} from topic", entry.getValue().getOffset(), entry.getKey());
+                    }
                 }
             }
         }
@@ -414,12 +416,15 @@ public class YugabyteDBConnectorTask
                               Map<String, ?> lastOffset = entry.getValue().getOffset();
                               this.ybOffset = getHigherOffsets(lastOffset);
                           });
-                    }
+                    
+                        if (LOGGER.isDebugEnabled()) {
+                            for (Map.Entry<String, ?> entry : ybOffset.entrySet()) {
+                                LOGGER.debug("Committing offset map {} for partition {}", entry.getValue(), entry.getKey());
+                            }
+                        }
 
-                    for (Map.Entry<String, ?> entry : ybOffset.entrySet()) {
-                        LOGGER.info("VKVK committing for partition {} value {}", entry.getKey(), entry.getValue());
+                        this.coordinator.commitOffset(ybOffset);
                     }
-                    this.coordinator.commitOffset(ybOffset);
                 }
             } finally {
                 commitLock.unlock();
@@ -429,16 +434,24 @@ public class YugabyteDBConnectorTask
         }
     }
 
+    /**
+     * Get a map of keys with the higher values after comparing the cached map and the one we pass.
+     * <br/>
+     * For example, suppose we have the ybOffset as {a=1,b=12,c=6} and offsets as {a=3,b=1,c=6} then the value
+     * returned will be {a=3,b=12,c=6}.
+     * @param offsets the offset map read from Kafka topic
+     * @return a map with the values higher among the cached ybOffset and passed offsets map
+     */
     protected Map<String, ?> getHigherOffsets(Map<String, ?> offsets) {
         if (this.ybOffset == null) {
             return offsets;
         }
 
         // We are assuming that offsets will never have null values.
-        Map<String, String> finalOffsets = (Map<String, String>) offsets;
+        Map<String, String> finalOffsets = (Map<String, String>) this.ybOffset;
         for (Map.Entry<String, ?> entry : offsets.entrySet()) {
             OpId currentEntry = OpId.valueOf((String) this.ybOffset.get(entry.getKey()));
-            if (currentEntry == null || currentEntry.compareTo(OpId.valueOf((String) entry.getValue())) < 0) {
+            if (currentEntry == null || currentEntry.isLesserThanOrEqualTo(OpId.valueOf((String) entry.getValue()).toCdcSdkCheckpoint())) {
                 finalOffsets.put(entry.getKey(), (String) entry.getValue());
             }
         }

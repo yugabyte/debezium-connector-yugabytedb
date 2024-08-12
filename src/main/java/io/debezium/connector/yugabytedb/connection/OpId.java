@@ -127,13 +127,13 @@ public class OpId implements Comparable<OpId> {
     public int compareTo(OpId o) {
         // Unsigned comparison
         if (term != o.term) {
-            return term + Long.MIN_VALUE < o.term + Long.MIN_VALUE ? -1 : 1;
+            return term < o.term ? -1 : 1;
         } else if (index != o.index) {
-            return index + Long.MIN_VALUE < o.index + Long.MIN_VALUE ? -1 : 1;
+            return index < o.index ? -1 : 1;
         } else if (time != o.time) {
-            return time + Long.MIN_VALUE < o.time + Long.MIN_VALUE ? -1 : 1;
+            return time < o.time ? -1 : 1;
         } else if (write_id != o.write_id) {
-            return write_id + Long.MIN_VALUE < o.write_id + Long.MIN_VALUE ? -1 : 1;
+            return write_id < o.write_id ? -1 : 1;
         } else {
             // This is the case where the objects are equal.
             return 0;
