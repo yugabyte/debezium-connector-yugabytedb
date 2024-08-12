@@ -281,13 +281,18 @@ public class YugabyteDBConnectorTask
             Offsets.of(reader.offsets(partitions));
 
         boolean found = false;
-        for (YBPartition partition : partitions) {
-            YugabyteDBOffsetContext offset = offsets.getOffsets().get(partition); //offsets.get(partition);
+//        for (YBPartition partition : partitions) {
+//            YugabyteDBOffsetContext offset = offsets.getOffsets().get(partition); //offsets.get(partition);
+//
+//            if (offset != null) {
+//                found = true;
+//                LOGGER.info("Found previous partition offset {}: {}", partition, offset);
+//            }
+//        }
 
-            if (offset != null) {
-                found = true;
-                LOGGER.info("Found previous partition offset {}: {}", partition, offset);
-            }
+        if (offsets != null) {
+            found = true;
+            LOGGER.info("Found previous partition offsets for partitions {}", offsets.getPartitions().stream().map(YBPartition::getId).collect(Collectors.toSet()));
         }
 
         if (!found) {
