@@ -492,14 +492,14 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   // If the timeout has exceeded from the last GetChanges call and we haven't received
                   // any callback on the last snapshot record yet, publish last snapshot record again.
                   if (!snapshotCompletedTablets.contains(part.getId()) && hasCallbackTimeoutExceeded(part)) {
-                    LOGGER.info("Publishing last snapshot record for partition {} again", part.getId());
-                    publishLastSnapshotRecord(part, previousOffset);
+                    LOGGER.info("[LOG ONLY] Publishing last snapshot record for partition {} again", part.getId());
+//                    publishLastSnapshotRecord(part, previousOffset);
 
                     // Also update the last GetChanges time to ensure that we do not end up publishing
                     // the last record continuously without exhausting the delay. In other words, it
                     // can be understood that the publishing the last snapshot record was the result
                     // of a GetChanges call, thus we are updating the map for time.
-                    lastGetChangesTime.put(part.getId(), System.currentTimeMillis());
+//                    lastGetChangesTime.put(part.getId(), System.currentTimeMillis());
                   }
 
                   continue;
