@@ -11,8 +11,10 @@ import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
+import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.heartbeat.HeartbeatFactory;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.kafka.connect.errors.ConnectException;
@@ -63,6 +65,12 @@ public class YugabyteDBConnectorTask
     private volatile YugabyteDBConnection jdbcConnection;
     private volatile YugabyteDBConnection heartbeatConnection;
     private volatile YugabyteDBSchema schema;
+    private YugabyteDBChangeEventSourceCoordinator coordinator;
+
+    private YBPartition.Provider partitionProvider;
+    private YugabyteDBOffsetContext.Loader offsetContextLoader;
+
+    private final ReentrantLock commitLock = new ReentrantLock();
 
     @Override
     public ChangeEventSourceCoordinator<YBPartition, YugabyteDBOffsetContext> start(Configuration config) {
@@ -70,6 +78,9 @@ public class YugabyteDBConnectorTask
         final TopicSelector<TableId> topicSelector = YugabyteDBTopicSelector.create(connectorConfig);
         final Snapshotter snapshotter = connectorConfig.getSnapshotter();
         final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
+
+        this.partitionProvider = new YBPartition.Provider(connectorConfig);
+        this.offsetContextLoader = new YugabyteDBOffsetContext.Loader(connectorConfig);
 
         LOGGER.debug("The config is " + config);
 
@@ -141,9 +152,7 @@ public class YugabyteDBConnectorTask
 
         // Get the tablet ids and load the offsets
         final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets =
-            getPreviousOffsetsFromProviderAndLoader(
-                new YBPartition.Provider(connectorConfig),
-                new YugabyteDBOffsetContext.Loader(connectorConfig));
+            getPreviousOffsetsFromProviderAndLoader(this.partitionProvider, this.offsetContextLoader);
         final Clock clock = Clock.system();
 
         YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(previousOffsets,
@@ -200,7 +209,7 @@ public class YugabyteDBConnectorTask
                     schemaNameAdjuster,
                     jdbcConnection);
 
-            YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
+            this.coordinator = new YugabyteDBChangeEventSourceCoordinator(
                     previousOffsets,
                     errorHandler,
                     YugabyteDBgRPCConnector.class,
@@ -224,9 +233,9 @@ public class YugabyteDBConnectorTask
                     snapshotter,
                     null/* slotInfo */);
 
-            coordinator.start(taskContext, this.queue, metadataProvider);
+            this.coordinator.start(taskContext, this.queue, metadataProvider);
 
-            return coordinator;
+            return this.coordinator;
         }
         finally {
             previousContext.restore();
@@ -361,6 +370,40 @@ public class YugabyteDBConnectorTask
     @Override
     protected Iterable<Field> getAllConfigurationFields() {
         return YugabyteDBConnectorConfig.ALL_FIELDS;
+    }
+
+    @Override
+    public void commitRecord(SourceRecord record) throws InterruptedException {
+        // Do nothing.
+    }
+
+    @Override
+    public void commit() throws InterruptedException {
+        boolean locked = commitLock.tryLock();
+
+        if (locked) {
+            try {
+                if (this.coordinator != null) {
+                    Offsets<YBPartition, YugabyteDBOffsetContext> offsets = getPreviousOffsetsFromProviderAndLoader(this.partitionProvider, this.offsetContextLoader);
+                    if (offsets.getOffsets() != null) {
+                        offsets.getOffsets()
+                          .entrySet()
+                          .stream()
+                          .filter(e -> e.getValue() != null)
+                          .forEach(entry -> {
+                              Map<String, ?> lastOffset = entry.getValue().getOffset();
+                              LOGGER.info("Committing offset '{}' for partition {}", lastOffset, entry.getKey().getId());
+
+                              this.coordinator.commitOffset(lastOffset);
+                          });
+                    }
+                }
+            } finally {
+                commitLock.unlock();
+            }
+        } else {
+            LOGGER.warn("Couldn't commit processed checkpoints with the source database due to a concurrent connector shutdown or restart");
+        }
     }
 
     public YugabyteDBTaskContext getTaskContext() {
