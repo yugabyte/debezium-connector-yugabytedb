@@ -232,7 +232,7 @@ public class HashPartition implements Comparable<HashPartition>, Serializable {
   }
 
   public YBPartition toYBPartition() {
-    return new YBPartition(tableId, tabletId);
+    return new YBPartition(tableId, tabletId, true);
   }
 
   /**
