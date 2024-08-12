@@ -72,6 +72,8 @@ public class YugabyteDBConnectorTask
 
     private final ReentrantLock commitLock = new ReentrantLock();
 
+    protected volatile Map<String, ?> ybOffset;
+
     @Override
     public ChangeEventSourceCoordinator<YBPartition, YugabyteDBOffsetContext> start(Configuration config) {
         final YugabyteDBConnectorConfig connectorConfig = new YugabyteDBConnectorConfig(config);
@@ -281,18 +283,15 @@ public class YugabyteDBConnectorTask
             Offsets.of(reader.offsets(partitions));
 
         boolean found = false;
-//        for (YBPartition partition : partitions) {
-//            YugabyteDBOffsetContext offset = offsets.getOffsets().get(partition); //offsets.get(partition);
-//
-//            if (offset != null) {
-//                found = true;
-//                LOGGER.info("Found previous partition offset {}: {}", partition, offset);
-//            }
-//        }
 
         if (offsets != null) {
             found = true;
-            LOGGER.info("Found previous partition offsets for partitions {}", offsets.getPartitions().stream().map(YBPartition::getId).collect(Collectors.toSet()));
+
+            for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry : offsets.getOffsets().entrySet()) {
+                if (entry.getKey() != null && entry.getValue() != null) {
+                    LOGGER.info("Entry {} --> {}", entry.getKey().getId(), entry.getValue().getOffset());
+                }
+            }
         }
 
         if (!found) {
@@ -382,6 +381,22 @@ public class YugabyteDBConnectorTask
         // Do nothing.
     }
 
+    /*
+     Let's say there are 3 partitions or 3 tablets
+     tablet_0 (0-1, 1-0, 2-0)
+     tablet_1 (0-1, 1-1, 2-0))
+     tablet_3 (0-1, 1-1, 2-1)
+
+     The records are also published in the same order i.e. tablet_0, tablet_1, tablet_2
+
+     But it is not guaranteed that while reading the offsets from kafka we will read in the same order, we can end up reading the partitions/tablets in the order
+     tablet_2
+     tablet_3
+     tablet_1
+
+     and if we call commitOffset on each of the partition, we will basically be overriding the offsets with a lower value which we do not want to happen
+     */
+
     @Override
     public void commit() throws InterruptedException {
         boolean locked = commitLock.tryLock();
@@ -397,7 +412,7 @@ public class YugabyteDBConnectorTask
                           .filter(e -> e.getValue() != null)
                           .forEach(entry -> {
                               Map<String, ?> lastOffset = entry.getValue().getOffset();
-                              LOGGER.info("Committing offset '{}' for partition {}", lastOffset, entry.getKey().getId());
+                            //   LOGGER.info("Committing offset '{}' for partition {}", lastOffset.toString(), entry.getKey().getId());
 
                               this.coordinator.commitOffset(lastOffset);
                           });

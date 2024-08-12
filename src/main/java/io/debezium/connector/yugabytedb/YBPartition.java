@@ -43,6 +43,11 @@ public class YBPartition implements Partition {
         this.colocated = isTableColocated;
     }
 
+    public static YBPartition from(String fullPartitionId) {
+        String[] tableTablet = fullPartitionId.split("\\.");
+        return new YBPartition(tableTablet[0], tableTablet[1], true);
+    }
+
     @Override
     public Map<String, String> getSourcePartition() {
         return Collect.hashMapOf(PARTITION_KEY, getId());
