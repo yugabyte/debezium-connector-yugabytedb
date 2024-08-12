@@ -412,11 +412,14 @@ public class YugabyteDBConnectorTask
                           .filter(e -> e.getValue() != null)
                           .forEach(entry -> {
                               Map<String, ?> lastOffset = entry.getValue().getOffset();
-                            //   LOGGER.info("Committing offset '{}' for partition {}", lastOffset.toString(), entry.getKey().getId());
-
-                              this.coordinator.commitOffset(lastOffset);
+                              this.ybOffset = getHigherOffsets(lastOffset);
                           });
                     }
+
+                    for (Map.Entry<String, ?> entry : ybOffset.entrySet()) {
+                        LOGGER.info("VKVK committing for partition {} value {}", entry.getKey(), entry.getValue());
+                    }
+                    this.coordinator.commitOffset(ybOffset);
                 }
             } finally {
                 commitLock.unlock();
@@ -424,6 +427,23 @@ public class YugabyteDBConnectorTask
         } else {
             LOGGER.warn("Couldn't commit processed checkpoints with the source database due to a concurrent connector shutdown or restart");
         }
+    }
+
+    protected Map<String, ?> getHigherOffsets(Map<String, ?> offsets) {
+        if (this.ybOffset == null) {
+            return offsets;
+        }
+
+        // We are assuming that offsets will never have null values.
+        Map<String, String> finalOffsets = (Map<String, String>) offsets;
+        for (Map.Entry<String, ?> entry : offsets.entrySet()) {
+            OpId currentEntry = OpId.valueOf((String) this.ybOffset.get(entry.getKey()));
+            if (currentEntry == null || currentEntry.compareTo(OpId.valueOf((String) entry.getValue())) < 0) {
+                finalOffsets.put(entry.getKey(), (String) entry.getValue());
+            }
+        }
+
+        return finalOffsets;
     }
 
     public YugabyteDBTaskContext getTaskContext() {
