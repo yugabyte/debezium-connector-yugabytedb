@@ -37,6 +37,7 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
     private final boolean sendBeforeImage;
 
     private final boolean enableExplicitCheckpointing;
+    private boolean snapshotInProgress;
 
     protected YugabyteDBTaskContext(YugabyteDBConnectorConfig config, YugabyteDBSchema schema,
                                     TopicSelector<TableId> topicSelector, String taskId,
@@ -48,6 +49,10 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
         this.schema = schema;
         this.sendBeforeImage = sendBeforeImage;
         this.enableExplicitCheckpointing = enableExplicitCheckpointing;
+
+        // We will always start with snapshot in progress. However, depending on snapshot mode
+        // we can skip snapshot, this flag will be unset once the coordinator moves to streaming.
+        this.snapshotInProgress = true;
     }
 
     protected TopicSelector<TableId> topicSelector() {
@@ -68,6 +73,14 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
 
     protected boolean shouldEnableExplicitCheckpointing() {
         return this.enableExplicitCheckpointing;
+    }
+
+    protected void markSnapshotOver() {
+        this.snapshotInProgress = false;
+    }
+
+    protected boolean isSnapshotInProgress() {
+        return this.snapshotInProgress;
     }
 
     protected void refreshSchema(YugabyteDBConnection connection,
