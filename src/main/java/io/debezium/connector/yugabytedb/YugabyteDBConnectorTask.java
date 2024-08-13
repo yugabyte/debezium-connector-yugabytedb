@@ -274,6 +274,8 @@ public class YugabyteDBConnectorTask
     Offsets<YBPartition, YugabyteDBOffsetContext> getPreviousOffsetsFromProviderAndLoader(
         Partition.Provider<YBPartition> provider,
         OffsetContext.Loader<YugabyteDBOffsetContext> loader) {
+        // For each kafka partition, I needed that last record and then I needed source partition of
+        // each record then I need maximum of each partition.
         Set<YBPartition> partitions = provider.getPartitions();
         LOGGER.debug("The size of partitions is " + partitions.size());
         OffsetReader<YBPartition, YugabyteDBOffsetContext,
@@ -385,20 +387,23 @@ public class YugabyteDBConnectorTask
 
     /*
      Let's say there are 3 partitions or 3 tablets
-     tablet_0 (0-1, 1-0, 2-0)
-     tablet_1 (0-1, 1-1, 2-0))
-     tablet_3 (0-1, 1-1, 2-1)
+     - tablet_0 (0-1, 1-0, 2-0)
+     - tablet_1 (0-1, 1-1, 2-0))
+     - tablet_2 (0-1, 1-1, 2-1)
 
      The records are also published in the same order i.e. tablet_0, tablet_1, tablet_2
 
-     But it is not guaranteed that while reading the offsets from kafka we will read in the same order, we can end up reading the partitions/tablets in the order
-     tablet_2
-     tablet_3
-     tablet_1
+     But it is not guaranteed that while reading the offsets from kafka we will read in the same
+     order, we can end up reading the partitions/tablets in the following order:
+     - tablet_1
+     - tablet_2
+     - tablet_0
 
-     and if we call commitOffset on each of the partition, we will basically be overriding the offsets with a lower value which we do not want to happen
+     Now, if we call commitOffset on each of the partition, we will basically be overriding the
+     offsets with a lower value which we do not want to happen. And that is specifically the reason
+     why we use the method getHigherOffsets() to get the highest offset (OpId for YugabyteDB tablet)
+     for each tablet across all partitions.
      */
-
     @Override
     public void commit() throws InterruptedException {
         boolean locked = commitLock.tryLock();
@@ -436,9 +441,9 @@ public class YugabyteDBConnectorTask
 
     /**
      * Get a map of keys with the higher values after comparing the cached map and the one we pass.
-     * <br/>
-     * For example, suppose we have the ybOffset as {a=1,b=12,c=6} and offsets as {a=3,b=1,c=6} then the value
-     * returned will be {a=3,b=12,c=6}.
+     * <br/><br/>
+     * For example, suppose we have the ybOffset as <code>{a=1,b=12,c=6}</code> and offsets as
+     * <code>{a=3,b=1,c=6}</code> then the value returned will be <code>{a=3,b=12,c=6}</code>.
      * @param offsets the offset map read from Kafka topic
      * @return a map with the values higher among the cached ybOffset and passed offsets map
      */
