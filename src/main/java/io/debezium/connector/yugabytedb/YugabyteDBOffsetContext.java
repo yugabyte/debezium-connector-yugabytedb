@@ -44,7 +44,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     // tabletSourceInfo - this has the offset for each processed record and thus these offsets are
     // used in the commitOffset callback to set checkpoints
     // fromLsn - stores the OpId we should use to call next GetChangesRequest
-    private Map<String, SourceInfo> tabletSourceInfo;
+    private final Map<String, SourceInfo> tabletSourceInfo;
     private final Map<String, OpId> fromLsn;
     private YugabyteDBTransactionContext transactionContext;
     private IncrementalSnapshotContext<TableId> incrementalSnapshotContext;
@@ -79,6 +79,17 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         this.transactionContext = new YugabyteDBTransactionContext();
         this.incrementalSnapshotContext = new SignalBasedIncrementalSnapshotContext<>();
         this.connectorConfig = config;
+        this.tabletWalSegmentIndex = new ConcurrentHashMap<>();
+    }
+
+    /**
+     * This constructor is only supposed to be used by the loader class which only initialises
+     * the <code>tabletSourceInfo</code> map to be used later.
+     * @param sourceInfoMap a map of {@link YBPartition#getId()} to {@link SourceInfo}
+     */
+    public YugabyteDBOffsetContext(Map<String, SourceInfo> sourceInfoMap) {
+        this.tabletSourceInfo = sourceInfoMap;
+        this.fromLsn = new ConcurrentHashMap<>();
         this.tabletWalSegmentIndex = new ConcurrentHashMap<>();
     }
 
@@ -155,10 +166,6 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         }
 
         return result;
-    }
-
-    private void setTabletSourceInfo(Map<String, SourceInfo> tabletSourceInfo) {
-        this.tabletSourceInfo = tabletSourceInfo;
     }
 
     public Struct getSourceInfoForTablet(YBPartition partition) {
@@ -379,13 +386,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         public YugabyteDBOffsetContext load(Map<String, ?> offset) {
             LOGGER.debug("The offset being loaded in YugabyteDBOffsetContext.. " + offset);
 
-            YugabyteDBOffsetContext offsetContext = new YugabyteDBOffsetContext(connectorConfig,
-                    YugabyteDBTransactionContext.load(offset),
-                    SignalBasedIncrementalSnapshotContext.load(offset));
-
-            offsetContext.setTabletSourceInfo(getTabletSourceInfoMap(offset));
-
-            return offsetContext;
+            return new YugabyteDBOffsetContext(getTabletSourceInfoMap(offset));
         }
     }
 }
