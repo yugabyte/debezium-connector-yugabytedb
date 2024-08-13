@@ -107,6 +107,16 @@ public class YBPartition implements Partition {
         return String.format("YBPartition {tableId=%s, tabletId=%s}", this.tableId, this.tabletId);
     }
 
+    public static YBPartition from(String partitionId) {
+        String[] tableTablet = partitionId.split("\\.");
+
+        if (tableTablet.length == 1) {
+            return new YBPartition("", tableTablet[0]);
+        }
+
+        return new YBPartition(tableTablet[0], tableTablet[1]);
+    }
+
     static class Provider implements Partition.Provider<YBPartition> {
         private final YugabyteDBConnectorConfig connectorConfig;
         private static final Logger LOGGER = LoggerFactory.getLogger(YBPartition.class);

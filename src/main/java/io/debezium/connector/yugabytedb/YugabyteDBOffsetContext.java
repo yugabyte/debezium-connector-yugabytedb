@@ -44,7 +44,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     // tabletSourceInfo - this has the offset for each processed record and thus these offsets are
     // used in the commitOffset callback to set checkpoints
     // fromLsn - stores the OpId we should use to call next GetChangesRequest
-    private final Map<String, SourceInfo> tabletSourceInfo;
+    private Map<String, SourceInfo> tabletSourceInfo;
     private final Map<String, OpId> fromLsn;
     private YugabyteDBTransactionContext transactionContext;
     private IncrementalSnapshotContext<TableId> incrementalSnapshotContext;
@@ -155,6 +155,10 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         }
 
         return result;
+    }
+
+    private void setTabletSourceInfo(Map<String, SourceInfo> tabletSourceInfo) {
+        this.tabletSourceInfo = tabletSourceInfo;
     }
 
     public Struct getSourceInfoForTablet(YBPartition partition) {
@@ -358,42 +362,30 @@ public class YugabyteDBOffsetContext implements OffsetContext {
             return (obj == null) ? null : ((String) obj);
         }
 
+        private Map<String, SourceInfo> getTabletSourceInfoMap(Map<String, ?> offset) {
+            Map<String, SourceInfo> resultMap = new ConcurrentHashMap<>();
+
+            for (Map.Entry<String, ?> entry : offset.entrySet()) {
+                YBPartition p = YBPartition.from(entry.getKey());
+
+                resultMap.put(p.getId(), new SourceInfo(this.connectorConfig, OpId.valueOf((String) entry.getValue())));
+            }
+
+            return resultMap;
+        }
+
         @SuppressWarnings("unchecked")
         @Override
         public YugabyteDBOffsetContext load(Map<String, ?> offset) {
-
             LOGGER.debug("The offset being loaded in YugabyteDBOffsetContext.. " + offset);
-            OpId lastCompletelyProcessedLsn;
-            if (offset != null) {
-                lastCompletelyProcessedLsn = OpId.valueOf((String) offset.get(YugabyteDBOffsetContext.LAST_COMPLETELY_PROCESSED_LSN_KEY));
-            }
-            else {
-                lastCompletelyProcessedLsn = new OpId(0, 0, "".getBytes(), 0, 0);
-            }
-            /*
-             * final OpId lsn = OpId.valueOf(readOptionalString(offset, SourceInfo.LSN_KEY));
-             * final OpId lastCompletelyProcessedLsn = OpId.valueOf(readOptionalString(offset,
-             * LAST_COMPLETELY_PROCESSED_LSN_KEY));
-             * final OpId lastCommitLsn = OpId.valueOf(readOptionalString(offset,
-             * LAST_COMPLETELY_PROCESSED_LSN_KEY));
-             * final String txId = readOptionalString(offset, SourceInfo.TXID_KEY);
-             *
-             * final Instant useconds = Conversions.toInstantFromMicros((Long) offset
-             * .get(SourceInfo.TIMESTAMP_USEC_KEY));
-             * final boolean snapshot = (boolean) ((Map<String, Object>) offset)
-             * .getOrDefault(SourceInfo.SNAPSHOT_KEY, Boolean.FALSE);
-             * final boolean lastSnapshotRecord = (boolean) ((Map<String, Object>) offset)
-             * .getOrDefault(SourceInfo.LAST_SNAPSHOT_RECORD_KEY, Boolean.FALSE);
-             * return new YugabyteDBOffsetContext(connectorConfig, lsn, lastCompletelyProcessedLsn,
-             * lastCommitLsn, txId, useconds, snapshot, lastSnapshotRecord,
-             * TransactionContext.load(offset), SignalBasedIncrementalSnapshotContext
-             * .load(offset));
-             */
 
-            return new YugabyteDBOffsetContext(connectorConfig,
+            YugabyteDBOffsetContext offsetContext = new YugabyteDBOffsetContext(connectorConfig,
                     YugabyteDBTransactionContext.load(offset),
                     SignalBasedIncrementalSnapshotContext.load(offset));
 
+            offsetContext.setTabletSourceInfo(getTabletSourceInfoMap(offset));
+
+            return offsetContext;
         }
     }
 }
