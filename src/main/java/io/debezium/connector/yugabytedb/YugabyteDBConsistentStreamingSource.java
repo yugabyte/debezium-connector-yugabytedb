@@ -75,7 +75,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
             // Initialize the offsetContext and other supporting flags
             Map<String, Boolean> schemaNeeded = new HashMap<>();
-            Map<String, Long> tabletSafeTime = new HashMap<>();
+
             for (Pair<String, String> entry : tabletPairList) {
                 // entry.getValue() will give the tabletId
                 OpId opId = YBClientUtils.getOpIdFromGetTabletListResponse(
@@ -89,7 +89,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                     opId = YugabyteDBOffsetContext.streamingStartLsn();
                 }
 
-                YBPartition partition = new YBPartition(entry.getKey(), entry.getValue(), false);
+                YBPartition partition = new YBPartition(entry.getKey(), entry.getValue());
                 offsetContext.initSourceInfo(partition, this.connectorConfig, opId);
                 schemaNeeded.put(partition.getId(), Boolean.TRUE);
             }
@@ -149,7 +149,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                         for (Pair<String, String> entry : tabletPairList) {
                             final String tabletId = entry.getValue();
                             curTabletId = entry.getValue();
-                            YBPartition part = new YBPartition(entry.getKey(), tabletId, false);
+                            YBPartition part = new YBPartition(entry.getKey(), tabletId);
 
                             OpId cp = offsetContext.lsn(part);
 
@@ -181,7 +181,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                             table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                                             cp.getWrite_id(), cp.getTime(), schemaNeeded.get(tabletId),
                                             taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(part.getId()) : null,
-                                            tabletSafeTime.getOrDefault(part.getId(), -1L), offsetContext.getWalSegmentIndex(part));
+                                            offsetContext.getTabletSafeTime(part), offsetContext.getWalSegmentIndex(part));
                                 } catch (CDCErrorException cdcException) {
                                     // Check if exception indicates a tablet split.
                                     if (cdcException.getCDCError().getCode() == CdcService.CDCErrorPB.Code.TABLET_SPLIT) {
@@ -210,13 +210,14 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                         YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(record.getRowMessage(), this.yugabyteDBTypeRegistry);
                                         dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
                                                 beginCountForTablet, tabletId, part,
-                                                response.getSnapshotTime(), record, record.getRowMessage(), ybMessage);
+                                                response.getSnapshotTime(), record, record.getRowMessage(), ybMessage, table.isColocated());
                                     } else {
                                         merger.addMessage(new Message.Builder()
                                                 .setRecord(record)
                                                 .setTableId(part.getTableId())
                                                 .setTabletId(part.getTabletId())
                                                 .setSnapshotTime(response.getSnapshotTime())
+                                                .setColocated(table.isColocated())
                                                 .build());
                                     }
                                     OpId finalOpid = new OpId(
@@ -225,10 +226,9 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                             response.getKey(),
                                             response.getWriteId(),
                                             response.getResp().getSafeHybridTime());
-                                    offsetContext.updateWalPosition(part, finalOpid);
-                                    offsetContext.updateWalSegmentIndex(part, response.getWalSegmentIndex());
-
-                                    tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
+                                    offsetContext.updateWalPosition(part, finalOpid, table.isColocated());
+                                    offsetContext.updateWalSegmentIndex(part, response.getWalSegmentIndex(), table.isColocated());
+                                    offsetContext.updateTabletSafeTime(part, response.getResp().getSafeHybridTime(), table.isColocated());
 
                                     LOGGER.debug("The final opid for tablet {} is {}", part.getTabletId(), finalOpid);
                                 }
@@ -251,8 +251,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                             YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(
                                     m, this.yugabyteDBTypeRegistry);
                             dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
-                                    beginCountForTablet, message.tablet, new YBPartition(message.tableId, message.tablet, false),
-                                    message.snapShotTime.longValue(), message.record, m, ybMessage);
+                                    beginCountForTablet, message.tablet, new YBPartition(message.tableId, message.tablet),
+                                    message.snapShotTime.longValue(), message.record, m, ybMessage, message.colocated);
 
                             pollMessage = merger.poll();
                         }
@@ -297,7 +297,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                  Map<String, Integer> beginCountForTablet,
                                  String tabletId, YBPartition part, long snapshotTime,
                                  CdcService.CDCSDKProtoRecordPB record, CdcService.RowMessage m,
-                                 YbProtoReplicationMessage message) throws SQLException {
+                                 YbProtoReplicationMessage message, boolean colocated) throws SQLException {
         String pgSchemaNameInRecord = m.getPgschemaName();
 
         // This is a hack to skip tables in case of colocated tables
@@ -332,7 +332,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                     } else if (message.getOperation() == ReplicationMessage.Operation.COMMIT) {
                         LOGGER.trace("LSN in case of COMMIT is " + lsn);
                         offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                                String.valueOf(message.getTransactionId()), null, message.getRecordTime());
+                                String.valueOf(message.getTransactionId()), null, message.getRecordTime(), colocated);
 
                         if (recordsInTransactionalBlock.containsKey(part.getId())) {
                             if (recordsInTransactionalBlock.get(part.getId()) == 0) {
@@ -363,7 +363,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 } else if (message.getOperation() == ReplicationMessage.Operation.COMMIT) {
                     LOGGER.trace("LSN in case of COMMIT is " + lsn);
                     offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                            String.valueOf(message.getTransactionId()), null, message.getRecordTime());
+                            String.valueOf(message.getTransactionId()), null, message.getRecordTime(), colocated);
                     dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
 
                     if (recordsInTransactionalBlock.containsKey(part.getId())) {
@@ -417,7 +417,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 LOGGER.trace("Received DML record {}", record);
 
                 offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                        String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
+                        String.valueOf(message.getTransactionId()), tableId, message.getRecordTime(), colocated);
 
                 boolean dispatched = message.getOperation() != ReplicationMessage.Operation.NOOP
                         && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,

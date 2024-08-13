@@ -367,7 +367,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             // Initialize the offsetContext and other supporting flags.
             // This schemaNeeded map here would have the elements as <tableId.tabletId>:<boolean-value>
             Map<String, Boolean> schemaNeeded = new HashMap<>();
-            Map<String, Long> tabletSafeTime = new HashMap<>();
+
             for (Pair<String, String> entry : tabletPairList) {
                 // entry.getValue() will give the tabletId
                 OpId opId = YBClientUtils.getOpIdFromGetTabletListResponse(
@@ -393,9 +393,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                     opId = YugabyteDBOffsetContext.streamingStartLsn();
                 }
 
-                // For streaming, we do not want any colocated information and want to process the tables
-                // based on just their tablet IDs - pass false as the 'colocated' flag to enforce the same.
-                YBPartition p = new YBPartition(entry.getKey(), entry.getValue(), false /* colocated */);
+                YBPartition p = new YBPartition(entry.getKey(), entry.getValue());
                 offsetContext.initSourceInfo(p, this.connectorConfig, opId);
 
                 if (taskContext.shouldEnableExplicitCheckpointing()) {
@@ -460,7 +458,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                         for (Pair<String, String> entry : tabletPairList) {
                             final String tabletId = entry.getValue();
                             curTabletId = entry.getValue();
-                            YBPartition part = new YBPartition(entry.getKey() /* tableId */, tabletId, false /* colocated */);
+                            YBPartition part = new YBPartition(entry.getKey() /* tableId */, tabletId);
 
                             OpId cp = offsetContext.lsn(part);
 
@@ -482,7 +480,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     LOGGER.info("Setting explicit checkpoint is set to {}.{}", explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex());
                                     setCheckpointWithGetChanges(syncClient, tableIdToTable.get(part.getTableId()), part,
                                             cp, explicitCheckpoint, schemaNeeded.get(part.getId()),
-                                            tabletSafeTime.get(part.getId()), offsetContext.getWalSegmentIndex(part));
+                                            offsetContext.getTabletSafeTime(part), offsetContext.getWalSegmentIndex(part));
 
                                     LOGGER.info("Handling tablet split for enqueued tablet {} as we have now received the commit callback",
                                             part.getTabletId());
@@ -529,7 +527,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                                         cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
                                         explicitCheckpoint,
-                                        tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part));
+                                        offsetContext.getTabletSafeTime(part), offsetContext.getWalSegmentIndex(part));
 
                                 // Test only.
                                 if (TEST_TRACK_EXPLICIT_CHECKPOINTS) {
@@ -633,7 +631,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             if (message.getOperation() == Operation.COMMIT) {
                                                 LOGGER.trace("LSN in case of COMMIT is " + lsn);
                                                 offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                                                        String.valueOf(message.getTransactionId()), null, message.getRecordTime());
+                                                        String.valueOf(message.getTransactionId()), null, message.getRecordTime(), table.isColocated());
 
                                                 if (recordsInTransactionalBlock.containsKey(part.getId())) {
                                                     if (recordsInTransactionalBlock.get(part.getId()) == 0) {
@@ -662,7 +660,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         } else if (message.getOperation() == Operation.COMMIT) {
                                             LOGGER.trace("LSN in case of COMMIT is " + lsn);
                                             offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                                                    String.valueOf(message.getTransactionId()), null, message.getRecordTime());
+                                                    String.valueOf(message.getTransactionId()), null, message.getRecordTime(), table.isColocated());
                                             dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
 
                                             if (recordsInTransactionalBlock.containsKey(part.getId())) {
@@ -729,7 +727,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         LOGGER.trace("Received DML record {}", record);
 
                                         offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                                                String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
+                                                String.valueOf(message.getTransactionId()), tableId, message.getRecordTime(), table.isColocated());
 
                                         // Do not change the error message.
                                         if (TEST_FAIL_WHILE_PROCESSING_BATCH) {
@@ -772,10 +770,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     response.getKey(),
                                     response.getWriteId(),
                                     response.getResp().getSafeHybridTime());
-                            offsetContext.updateWalPosition(part, finalOpid);
-                            offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
-
-                            tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
+                            offsetContext.updateWalPosition(part, finalOpid, table.isColocated());
+                            offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex(), table.isColocated());
+                            offsetContext.updateTabletSafeTime(part, response.getResp().getSafeHybridTime(), table.isColocated());
 
                             // In cases where there is no transactions on the server, the response checkpoint can still move ahead and we should
                             // also move the explicit checkpoint forward, given that it was already greater than the lsn of the last seen valid record.
@@ -1043,7 +1040,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             // This flow will be executed in case of tablet split only and since tablet split
             // is not possible on colocated tables, it is safe to assume that the tablets here
             // would be all non-colocated.
-            YBPartition p = new YBPartition(tableId, tabletId, false /* colocated */);
+            YBPartition p = new YBPartition(tableId, tabletId);
 
             // Get the checkpoint for child tablet and unset its time.
             OpId checkpoint = OpId.from(pair.getCdcSdkCheckpoint());

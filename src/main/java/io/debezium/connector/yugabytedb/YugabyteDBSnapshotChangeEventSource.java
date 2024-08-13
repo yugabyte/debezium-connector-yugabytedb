@@ -70,7 +70,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
     private YugabyteDBTypeRegistry yugabyteDbTypeRegistry;
     private Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
-    protected Map<String, Long> tabletSafeTime;
     protected Map<String, YBTable> tableIdToTable;
     protected Set<String> shouldWaitForCallback;
 
@@ -115,7 +114,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
         this.yugabyteDbTypeRegistry = taskContext.schema().getTypeRegistry();
         this.tabletToExplicitCheckpoint = new HashMap<>();
-        this.tabletSafeTime = new HashMap<>();
         this.tableIdToTable = new HashMap<>();
         this.shouldWaitForCallback = new HashSet<>();
         this.tabletsWaitingForCallback = new HashSet<>();
@@ -150,9 +148,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         try {
             snapshotProgressListener.snapshotStarted(partition);
             Set<YBPartition> partitions = new YBPartition.Provider(connectorConfig).getPartitions();
-
-            // For snapshot, set all partitions to use tableID as identifier.
-            partitions.forEach(YBPartition::markTableAsColocated);
 
             LOGGER.info("Setting offsetContext/previousOffset for snapshot...");
             previousOffset = YugabyteDBOffsetContext.initialContextForSnapshot(this.connectorConfig, connection, clock, partitions);
@@ -413,7 +408,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         // We can use tableIdToTable.get(entry.getKey()).isColocated() to get actual status.
         String tableId = entry.getKey();
         String tabletId = entry.getValue();
-        YBPartition p = new YBPartition(tableId, tabletId, true /* colocated */);
+        YBPartition p = new YBPartition(tableId, tabletId);
 
         GetCheckpointResponse resp =
             YBClientUtils.getCheckpointWithRetry(connectorConfig, syncClient, tableIdToTable.get(tableId), tabletId);
@@ -468,7 +463,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 YBTable table = tableIdToTable.get(tableUUID);
 
                 String tabletId = tableIdToTabletId.getValue();
-                YBPartition part = new YBPartition(tableUUID, tabletId, true /* colocated */);
+                YBPartition part = new YBPartition(tableUUID, tabletId);
 
                  // Check if snapshot is completed here, if it is, then break out of the loop
                 if (snapshotCompletedTablets.size() == tableToTabletForSnapshot.size()) {
@@ -545,7 +540,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
                     explicitCdcSdkCheckpoint,
-                    tabletSafeTime.getOrDefault(part.getId(), -1L));
+                    previousOffset.getTabletSafeTime(part));
                 lastGetChangesTime.put(part.getId(), System.currentTimeMillis());
 
                 if (TRACK_EXPLICIT_CHECKPOINTS) {
@@ -637,7 +632,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       previousOffset.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn,
                                                           message.getRawCommitTime(),
                                                           String.valueOf(message.getTransactionId()),
-                                                          tId, message.getRecordTime());
+                                                          tId, message.getRecordTime(), table.isColocated());
 
                       boolean dispatched = (message.getOperation() != Operation.NOOP) &&
                           dispatcher.dispatchDataChangeEvent(part, tId,
@@ -727,9 +722,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     part.getTabletId(), table.getName(), part.getTableId());
                 }
 
-                previousOffset.updateWalPosition(part, finalOpId);
-
-                tabletSafeTime.put(part.getId(), resp.getResp().getSafeHybridTime());
+                // We will treat all the tables in the snapshot phase as regular tables since we
+                // know the service knows how to handle the snapshot for colocated tables at the
+                // table level.
+                previousOffset.updateWalPosition(part, finalOpId, false);
+                previousOffset.updateTabletSafeTime(part, resp.getResp().getSafeHybridTime(), false);
             }
             
             // Reset the retry count here indicating that if the flow has reached here then
@@ -828,7 +825,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                              snapshotDoneMarker.getWrite_id(), snapshotDoneMarker.getTime(),
                               false /* schema is not needed since this is a dummy call */,
                                              taskContext.shouldEnableExplicitCheckpointing() ? tabletToExplicitCheckpoint.get(partition.getId()) : null,
-                                             tabletSafeTime.getOrDefault(partition.getId(), -1L));
+                                             offsetContext.getTabletSafeTime(partition));
 
         // Break upon successful request.
         break;

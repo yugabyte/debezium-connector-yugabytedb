@@ -26,20 +26,9 @@ public class YBPartition implements Partition {
     private final String tabletId;
     private final String tableId;
 
-    private boolean colocated;
-
     public YBPartition(String tableId, String tabletId) {
         this.tableId = tableId;
         this.tabletId = tabletId;
-
-        // By default, assume that the table is not colocated.
-        this.colocated = false;
-    }
-
-    public YBPartition(String tableId, String tabletId, boolean isTableColocated) {
-        this.tableId = tableId;
-        this.tabletId = tabletId;
-        this.colocated = isTableColocated;
     }
 
     @Override
@@ -56,14 +45,9 @@ public class YBPartition implements Partition {
     }
 
     /**
-     * @return the ID of this partition in the format {@code tableId.tabletId} (if table is
-     * colocated) or {@code tabletId} (if table is not colocated)
+     * @return the ID of this partition in the format {@code tableId.tabletId}
      */
     public String getId() {
-        if (!isTableColocated()) {
-            return getTabletId();
-        }
-
         return getFullPartitionName();
     }
 
@@ -74,14 +58,6 @@ public class YBPartition implements Partition {
      */
     public String getFullPartitionName() {
         return getTableId() + "." + getTabletId();
-    }
-
-    public boolean isTableColocated() {
-        return this.colocated;
-    }
-
-    public void markTableAsColocated() {
-        this.colocated = true;
     }
 
     @Override
@@ -105,6 +81,16 @@ public class YBPartition implements Partition {
     @Override
     public String toString() {
         return String.format("YBPartition {tableId=%s, tabletId=%s}", this.tableId, this.tabletId);
+    }
+
+    public static YBPartition fromFullPartitionId(String fullPartitionId) {
+        String[] tableTablet = fullPartitionId.split("\\.");
+
+        if (tableTablet.length == 1) {
+            throw new RuntimeException("Full partition ID expected of the form tabletId.tabletId, provided " + fullPartitionId);
+        }
+
+        return new YBPartition(tableTablet[0], tableTablet[1]);
     }
 
     static class Provider implements Partition.Provider<YBPartition> {

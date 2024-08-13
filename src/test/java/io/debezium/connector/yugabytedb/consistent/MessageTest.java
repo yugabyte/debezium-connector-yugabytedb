@@ -38,7 +38,7 @@ public class MessageTest {
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.ZERO,
                 BigInteger.ZERO,
-                34);
+                34, false);
 
         CdcService.CDCSDKProtoRecordPB insertRecord = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder()
@@ -47,7 +47,7 @@ public class MessageTest {
                 "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.valueOf(6822178296477519872L),
-                BigInteger.ZERO, 35);
+                BigInteger.ZERO, 35, false);
 
         CdcService.CDCSDKProtoRecordPB commitRecord = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder()
@@ -57,7 +57,7 @@ public class MessageTest {
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.ZERO,
                 BigInteger.ZERO,
-                36);
+                36, false);
 
         assertEquals(-1, begin.compareTo(commit));
         assertEquals(-1, begin.compareTo(insert));
@@ -79,12 +79,12 @@ public class MessageTest {
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.ZERO,
                 BigInteger.ZERO,
-                34);
+                34, false);
 
         CdcService.CDCSDKProtoRecordPB record = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder()
                         .setOp(op).build()).build();
-        Message m2 = new Message(record, DUMMY_TABLE_ID, tabletId, txn, commitTime, recordTime, snapshotTime, 35);
+        Message m2 = new Message(record, DUMMY_TABLE_ID, tabletId, txn, commitTime, recordTime, snapshotTime, 35, false);
 
         assertFalse(m1.equals(m2));
     }
@@ -102,14 +102,14 @@ public class MessageTest {
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.ZERO,
                 BigInteger.ZERO,
-                34);
+                34, false);
 
         Message m2 = new Message(dummyRecord, DUMMY_TABLE_ID, "3fe122ffe3f24ad39c2cf8a57fa124b3",
                 "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.ZERO,
                 BigInteger.ZERO,
-                34);
+                34, false);
 
         assertTrue(m1.equals(m2));
     }
@@ -166,9 +166,9 @@ public class MessageTest {
                 .setRowMessage(rowMessage).build();
 
         Message m1 = new Message.Builder().setRecord(record).setTabletId("dummyTabletId")
-                .setTableId(DUMMY_TABLE_ID).setSnapshotTime(0).build();
+                .setTableId(DUMMY_TABLE_ID).setSnapshotTime(0).setColocated(false).build();
         Message m2 = new Message.Builder().setRecord(record).setTabletId("anotherDummyTablet")
-                .setTableId(DUMMY_TABLE_ID).setSnapshotTime(0).build();
+                .setTableId(DUMMY_TABLE_ID).setSnapshotTime(0).setColocated(false).build();
 
         assertTrue(Message.notBeginCommit(m1, m2));
     }

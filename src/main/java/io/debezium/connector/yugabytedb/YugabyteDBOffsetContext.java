@@ -50,6 +50,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     private IncrementalSnapshotContext<TableId> incrementalSnapshotContext;
     private YugabyteDBConnectorConfig connectorConfig;
     private final Map<String, Integer> tabletWalSegmentIndex;
+    private final Map<String, Long> tabletSafeTime;
 
     private YugabyteDBOffsetContext(YugabyteDBConnectorConfig connectorConfig,
                                     YugabyteDBTransactionContext transactionContext,
@@ -60,6 +61,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         this.incrementalSnapshotContext = incrementalSnapshotContext;
         this.connectorConfig = connectorConfig;
         this.tabletWalSegmentIndex = new ConcurrentHashMap<>();
+        this.tabletSafeTime = new ConcurrentHashMap<>();
     }
 
     public YugabyteDBOffsetContext(Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets,
@@ -72,7 +74,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
             YugabyteDBOffsetContext c = context.getValue();
             if (c != null) {
                initSourceInfo(context.getKey() /* YBPartition */, config, streamingStartLsn());
-               this.updateRecordPosition(context.getKey(), streamingStartLsn(), streamingStartLsn(), 0L, null, null, 0L);
+               this.updateRecordPosition(context.getKey(), streamingStartLsn(), streamingStartLsn(), 0L, null, null, 0L, false);
             }
         }
         LOGGER.debug("Populating the tabletsourceinfo with " + this.getTabletSourceInfo());
@@ -80,6 +82,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         this.incrementalSnapshotContext = new SignalBasedIncrementalSnapshotContext<>();
         this.connectorConfig = config;
         this.tabletWalSegmentIndex = new ConcurrentHashMap<>();
+        this.tabletSafeTime = new ConcurrentHashMap<>();
     }
 
     public static YugabyteDBOffsetContext initialContextForSnapshot(YugabyteDBConnectorConfig connectorConfig,
@@ -87,7 +90,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                                                                     Clock clock,
                                                                     Set<YBPartition> partitions) {
         return initialContext(connectorConfig, jdbcConnection, clock, snapshotStartLsn(),
-                              snapshotStartLsn(), partitions);
+                              snapshotStartLsn(), partitions, false);
     }
 
     public static YugabyteDBOffsetContext initialContext(YugabyteDBConnectorConfig connectorConfig,
@@ -96,7 +99,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                                                          Set<YBPartition> partitions) {
         LOGGER.info("Initializing streaming context");
         return initialContext(connectorConfig, jdbcConnection, clock, streamingStartLsn(),
-                              streamingStartLsn(), partitions);
+                              streamingStartLsn(), partitions, false);
     }
 
     public static YugabyteDBOffsetContext initialContext(YugabyteDBConnectorConfig connectorConfig,
@@ -104,7 +107,8 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                                                          Clock clock,
                                                          OpId lastCommitLsn,
                                                          OpId lastCompletelyProcessedLsn,
-                                                         Set<YBPartition> partitions) {
+                                                         Set<YBPartition> partitions,
+                                                         boolean colocated) {
         LOGGER.info("Creating initial offset context");
 
         final long txId = 0L;// new OpId(0,0,"".getBytes(), 0);
@@ -116,7 +120,10 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         for (YBPartition p : partitions) {
             if (context.getTabletSourceInfo().get(p.getId()) == null) {
                 context.initSourceInfo(p, connectorConfig, lastCompletelyProcessedLsn);
-                context.updateRecordPosition(p, lastCommitLsn, lastCompletelyProcessedLsn, clock.currentTimeInMillis(), String.valueOf(txId), null, 0L);
+
+                // Since this loop is called on every partition, it is safe to pass `false` as
+                // colocated as we will anyway end up updating all the partitions.
+                context.updateRecordPosition(p, lastCommitLsn, lastCompletelyProcessedLsn, clock.currentTimeInMillis(), String.valueOf(txId), null, 0L, false);
             }
         }
         return context;
@@ -161,12 +168,40 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         return this.tabletSourceInfo.get(partition.getId()).struct();
     }
 
-    public void updateWalSegmentIndex(YBPartition partition, int index) {
+    public void updateWalSegmentIndex(YBPartition partition, int index, boolean colocated) {
         this.tabletWalSegmentIndex.put(partition.getId(), index);
+
+        if (colocated) {
+            // Iterate over the complete fromLsn map and update every entry which contains the
+            // same tablet.
+            for (Map.Entry<String, Integer> entry : this.tabletWalSegmentIndex.entrySet()) {
+                if (entry.getKey().contains(partition.getTabletId())) {
+                    this.tabletWalSegmentIndex.put(entry.getKey(), index);
+                }
+            }
+        }
     }
 
     public Integer getWalSegmentIndex(YBPartition partition) {
         return this.tabletWalSegmentIndex.getOrDefault(partition.getId(), 0);
+    }
+
+    public void updateTabletSafeTime(YBPartition partition, Long tabletSafeTime, boolean colocated) {
+        this.tabletSafeTime.put(partition.getId(), tabletSafeTime);
+
+        if (colocated) {
+            // Iterate over the complete fromLsn map and update every entry which contains the
+            // same tablet.
+            for (Map.Entry<String, Long> entry : this.tabletSafeTime.entrySet()) {
+                if (entry.getKey().contains(partition.getTabletId())) {
+                    this.tabletSafeTime.put(entry.getKey(), tabletSafeTime);
+                }
+            }
+        }
+    }
+
+    public long getTabletSafeTime(YBPartition partition) {
+        return this.tabletSafeTime.getOrDefault(partition.getId(), this.fromLsn.get(partition.getId()).getTime());
     }
 
     /**
@@ -226,9 +261,20 @@ public class YugabyteDBOffsetContext implements OffsetContext {
      * Update the offset position which we should use to call the next {@code GetChangesRequest}
      * @param partition the {@link YBPartition} to update the lsn/offset/OpId for
      * @param lsn the {@link OpId} to update the offset with
+     * @param colocated whether the table is a colocated table
      */
-    public void updateWalPosition(YBPartition partition, OpId lsn) {
+    public void updateWalPosition(YBPartition partition, OpId lsn, boolean colocated) {
         this.fromLsn.put(partition.getId(), lsn);
+
+        if (colocated) {
+            // Iterate over the complete fromLsn map and update every entry which contains the
+            // same tablet.
+            for (Map.Entry<String, OpId> entry : this.fromLsn.entrySet()) {
+                if (entry.getKey().contains(partition.getTabletId())) {
+                    this.fromLsn.put(entry.getKey(), lsn);
+                }
+            }
+        }
     }
 
     /**
@@ -240,10 +286,27 @@ public class YugabyteDBOffsetContext implements OffsetContext {
      * @param txId transaction ID to which the record belongs
      * @param tableId {@link TableId} object to identify the table
      * @param recordTime record time for the record
+     * @param colocated whether the table is colocated
      */
     public void updateRecordPosition(YBPartition partition, OpId lsn,
                                      OpId lastCompletelyProcessedLsn, long commitTime,
-                                     String txId, TableId tableId, Long recordTime) {
+                                     String txId, TableId tableId, Long recordTime,
+                                     boolean colocated) {
+        updateRecordPositionImpl(partition, lsn, lastCompletelyProcessedLsn, commitTime, txId, tableId, recordTime);
+
+        if (colocated) {
+            for (Map.Entry<String, SourceInfo> entry : this.tabletSourceInfo.entrySet()) {
+                if (entry.getKey().contains(partition.getTabletId())) {
+                    updateRecordPositionImpl(YBPartition.fromFullPartitionId(entry.getKey()), lsn,
+                                                lastCompletelyProcessedLsn, commitTime, txId, tableId, recordTime);
+                }
+            }
+        }
+    }
+
+    private void updateRecordPositionImpl(YBPartition partition, OpId lsn,
+                                          OpId lastCompletelyProcessedLsn, long commitTime,
+                                          String txId, TableId tableId, Long recordTime) {
         SourceInfo info = this.tabletSourceInfo.get(partition.getId());
 
         // There is a possibility upon the transition from snapshot to streaming mode that we try

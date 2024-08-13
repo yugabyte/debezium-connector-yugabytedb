@@ -25,9 +25,11 @@ public class Message implements Comparable<Message> {
     public final BigInteger recordTime;
     public final BigInteger snapShotTime;
     public final long sequence;
+    public final boolean colocated;
 
     public Message(CdcService.CDCSDKProtoRecordPB record, String tableId, String tablet, String txn,
-                   BigInteger commitTime, BigInteger recordTime, BigInteger snapShotTime, long sequence) {
+                   BigInteger commitTime, BigInteger recordTime, BigInteger snapShotTime, long sequence,
+                   boolean colocated) {
         this.record = record;
         this.tableId = tableId;
         this.tablet = tablet;
@@ -36,6 +38,7 @@ public class Message implements Comparable<Message> {
         this.recordTime = recordTime;
         this.snapShotTime = snapShotTime;
         this.sequence = sequence;
+        this.colocated = colocated;
     }
 
     /**
@@ -134,6 +137,7 @@ public class Message implements Comparable<Message> {
         private String tableId;
         private String tabletId;
         private long snapshotTime;
+        private boolean colocated;
 
         private final static AtomicLong sequence = new AtomicLong();
 
@@ -157,12 +161,17 @@ public class Message implements Comparable<Message> {
             return this;
         }
 
+        public Builder setColocated(boolean colocated) {
+            this.colocated = colocated;
+            return this;
+        }
+
         public Message build() {
             CdcService.RowMessage m = record.getRowMessage();
             return new Message(this.record, this.tableId, this.tabletId,
                     String.valueOf(m.getTransactionId()),
                     toUnsignedBigInteger(m.getCommitTime()), toUnsignedBigInteger(m.getRecordTime()), toUnsignedBigInteger(this.snapshotTime),
-                    sequence.incrementAndGet());
+                    sequence.incrementAndGet(), this.colocated);
         }
     }
 
