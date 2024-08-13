@@ -26,6 +26,7 @@ public class YBPartition implements Partition {
     private final String tabletId;
     private final String tableId;
 
+    // todo:  This is not being used now. Keeping it for future purposes or should we remove it completely?
     private boolean colocated;
 
     public YBPartition(String tableId, String tabletId) {
@@ -49,7 +50,7 @@ public class YBPartition implements Partition {
             throw new RuntimeException("Full partition ID expected of the form tabletId.tabletId, provided " + fullPartitionId);
         }
 
-        return new YBPartition(tableTablet[0], tableTablet[1], true);
+        return new YBPartition(tableTablet[0], tableTablet[1]);
     }
 
     @Override
@@ -83,13 +84,13 @@ public class YBPartition implements Partition {
         return getTableId() + "." + getTabletId();
     }
 
-    public boolean isTableColocated() {
-        return this.colocated;
-    }
+    // public boolean isTableColocated() {
+    //     return this.colocated;
+    // }
 
-    public void markTableAsColocated() {
-        this.colocated = true;
-    }
+    // public void markTableAsColocated() {
+    //     this.colocated = true;
+    // }
 
     @Override
     public boolean equals(Object obj) {

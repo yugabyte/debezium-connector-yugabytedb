@@ -633,7 +633,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             if (message.getOperation() == Operation.COMMIT) {
                                                 LOGGER.trace("LSN in case of COMMIT is " + lsn);
                                                 offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                                                        String.valueOf(message.getTransactionId()), null, message.getRecordTime());
+                                                        String.valueOf(message.getTransactionId()), null, message.getRecordTime(), table.isColocated());
 
                                                 if (recordsInTransactionalBlock.containsKey(part.getId())) {
                                                     if (recordsInTransactionalBlock.get(part.getId()) == 0) {
@@ -662,7 +662,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         } else if (message.getOperation() == Operation.COMMIT) {
                                             LOGGER.trace("LSN in case of COMMIT is " + lsn);
                                             offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                                                    String.valueOf(message.getTransactionId()), null, message.getRecordTime());
+                                                    String.valueOf(message.getTransactionId()), null, message.getRecordTime(), table.isColocated());
                                             dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
 
                                             if (recordsInTransactionalBlock.containsKey(part.getId())) {
@@ -729,7 +729,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         LOGGER.trace("Received DML record {}", record);
 
                                         offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                                                String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
+                                                String.valueOf(message.getTransactionId()), tableId, message.getRecordTime(), table.isColocated());
 
                                         // Do not change the error message.
                                         if (TEST_FAIL_WHILE_PROCESSING_BATCH) {
@@ -772,7 +772,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     response.getKey(),
                                     response.getWriteId(),
                                     response.getResp().getSafeHybridTime());
-                            offsetContext.updateWalPosition(part, finalOpid);
+                            offsetContext.updateWalPosition(part, finalOpid, table.isColocated());
                             offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
 
                             tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());

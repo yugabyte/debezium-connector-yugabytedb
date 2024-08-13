@@ -422,9 +422,9 @@ public class YugabyteDBConnectorTask
                               this.ybOffset = getHigherOffsets(lastOffset);
                           });
                     
-                        if (LOGGER.isDebugEnabled()) {
+                        if (LOGGER.isInfoEnabled()) {
                             for (Map.Entry<String, ?> entry : ybOffset.entrySet()) {
-                                LOGGER.debug("Committing offset map {} for partition {}", entry.getValue(), entry.getKey());
+                                LOGGER.info("Committing offset map {} for partition {}", entry.getValue(), entry.getKey());
                             }
                         }
 

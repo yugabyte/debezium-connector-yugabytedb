@@ -235,6 +235,21 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         this.fromLsn.put(partition.getId(), lsn);
     }
 
+    public void updateWalPosition(YBPartition partition, OpId lsn, boolean colocated) {
+        this.fromLsn.put(partition.getId(), lsn);
+
+        if (colocated) {
+            // Iterate over the complete fromLsn map and update every entry which contains the
+            // same tablet.
+
+            for (Map.Entry<String, OpId> entry : this.fromLsn.entrySet()) {
+                if (entry.getKey().contains(partition.getTabletId())) {
+                    this.fromLsn.put(entry.getKey(), lsn);
+                }
+            }
+        }
+    }
+
     /**
      * Update the offsets for the records which are processed by the connector.
      * @param partition {@link YBPartition} to update the offset for
@@ -260,6 +275,33 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         info.update(partition, lsn, commitTime, txId, tableId, recordTime);
         info.updateLastCommit(lsn);
         this.tabletSourceInfo.put(partition.getId(), info);
+    }
+
+    public void updateRecordPosition(YBPartition partition, OpId lsn,
+                                     OpId lastCompletelyProcessedLsn, long commitTime,
+                                     String txId, TableId tableId, Long recordTime,
+                                     boolean colocated) {
+        SourceInfo info = this.tabletSourceInfo.get(partition.getId());
+
+        // todo: most likely info will never be null.
+        if (info == null) {
+            info = new SourceInfo(connectorConfig, lsn);
+        }
+
+        info.update(partition, lsn, commitTime, txId, tableId, recordTime);
+        info.updateLastCommit(lsn);
+        this.tabletSourceInfo.put(partition.getId(), info);
+
+        if (colocated) {
+            for (Map.Entry<String, SourceInfo> entry : this.tabletSourceInfo.entrySet()) {
+                if (entry.getKey().contains(partition.getTabletId())) {
+                    // todo: if entry.getValue() is null ever, we will run into NullPointerException
+                    entry.getValue()
+                        .update(YBPartition.fromFullPartitionId(entry.getKey()), lsn, commitTime, txId, tableId, recordTime)
+                        .updateLastCommit(lsn);
+                }
+            }
+        }
     }
 
     public void initSourceInfo(YBPartition partition, YugabyteDBConnectorConfig connectorConfig, OpId opId) {

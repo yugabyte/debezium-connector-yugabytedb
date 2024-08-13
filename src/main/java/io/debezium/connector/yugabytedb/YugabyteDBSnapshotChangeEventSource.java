@@ -149,9 +149,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             snapshotProgressListener.snapshotStarted(partition);
             Set<YBPartition> partitions = new YBPartition.Provider(connectorConfig).getPartitions();
 
-            // For snapshot, set all partitions to use tableID as identifier.
-            partitions.forEach(YBPartition::markTableAsColocated);
-
             LOGGER.info("Setting offsetContext/previousOffset for snapshot...");
             previousOffset = YugabyteDBOffsetContext.initialContextForSnapshot(this.connectorConfig, connection, clock, partitions);
 
