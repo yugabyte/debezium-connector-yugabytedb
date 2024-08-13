@@ -451,13 +451,15 @@ public class YugabyteDBConnectorTask
         Map<String, String> finalOffsets = new HashMap<>();
 
         if (offsets == null) {
-
+            // We do not have anything to commit here, returning an empty map should be fine.
+            return finalOffsets;
         }
 
         for (Map.Entry<String, ?> entry : offsets.entrySet()) {
-            LOGGER.info("Task {} isSnapshotInProgress {}", getTaskContext().getTaskId(), getTaskContext().isSnapshotInProgress());
-            if ((entry.getKey().contains(".") && !getTaskContext().isSnapshotInProgress())
-                  || (!entry.getKey().contains(".") && getTaskContext().isSnapshotInProgress())) {
+            LOGGER.info("Task {} snapshotPhase {}", getTaskContext().getTaskId(), isTaskInSnapshotPhase());
+            if ((entry.getKey().contains(".") && !isTaskInSnapshotPhase())
+                  || (!entry.getKey().contains(".") && isTaskInSnapshotPhase())) {
+                LOGGER.debug("Skipping the offset for entry {}", entry.getKey());
                 continue;
             }
 
@@ -470,6 +472,15 @@ public class YugabyteDBConnectorTask
         }
 
         return finalOffsets;
+    }
+
+    /**
+     * @return true if the {@link YugabyteDBChangeEventSourceCoordinator} for this task has started
+     * executing the streaming source, false otherwise. In other words, this method indicates the
+     * status whether this task is in the snapshot phase.
+     */
+    protected boolean isTaskInSnapshotPhase() {
+        return coordinator.isSnapshotInProgress();
     }
 
     public YugabyteDBTaskContext getTaskContext() {

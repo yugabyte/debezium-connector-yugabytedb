@@ -127,8 +127,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
         previousLogContext.set(taskContext.configureLoggingContext(
             String.format("streaming|%s", taskContext.getTaskId())));
 
-        ((YugabyteDBTaskContext) taskContext).markSnapshotOver();
-        LOGGER.info("Snapshot flag upon transition: {}", ((YugabyteDBTaskContext) taskContext).isSnapshotInProgress());
+        LOGGER.info("Snapshot flag upon transition for task {}: {}", taskContext.getTaskId(), isSnapshotInProgress());
 
         for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry :
                 streamingOffsets.getOffsets().entrySet()) {
@@ -170,6 +169,10 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
         if (!commitOffsetLock.isLocked() && streamingSource != null && offset != null) {
             streamingSource.commitOffset(offset);
         }
+    }
+
+    protected boolean isSnapshotInProgress() {
+        return snapshotter.shouldSnapshot() && !snapshotSource.isSnapshotComplete();
     }
 
     private void setSnapshotStartLsn(YugabyteDBSnapshotChangeEventSource snapshotSource,
