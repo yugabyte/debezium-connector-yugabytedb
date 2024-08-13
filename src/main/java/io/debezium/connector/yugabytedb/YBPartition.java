@@ -8,7 +8,6 @@ import java.util.Set;
 
 import io.debezium.connector.yugabytedb.connection.HashPartition;
 import io.debezium.connector.yugabytedb.util.YugabyteDBConnectorUtils;
-import io.debezium.util.LoggingContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,8 +42,13 @@ public class YBPartition implements Partition {
         this.colocated = isTableColocated;
     }
 
-    public static YBPartition from(String fullPartitionId) {
+    public static YBPartition fromFullPartitionId(String fullPartitionId) {
         String[] tableTablet = fullPartitionId.split("\\.");
+
+        if (tableTablet.length == 1) {
+            throw new RuntimeException("Full partition ID expected of the form tabletId.tabletId, provided " + fullPartitionId);
+        }
+
         return new YBPartition(tableTablet[0], tableTablet[1], true);
     }
 
@@ -66,10 +70,7 @@ public class YBPartition implements Partition {
      * colocated) or {@code tabletId} (if table is not colocated)
      */
     public String getId() {
-        if (!isTableColocated()) {
-            return getTabletId();
-        }
-
+        // Always return the full partition name.
         return getFullPartitionName();
     }
 

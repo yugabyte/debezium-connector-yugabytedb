@@ -366,7 +366,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
             Map<String, SourceInfo> resultMap = new ConcurrentHashMap<>();
 
             for (Map.Entry<String, ?> entry : offset.entrySet()) {
-                YBPartition p = YBPartition.from(entry.getKey());
+                YBPartition p = YBPartition.fromFullPartitionId(entry.getKey());
 
                 resultMap.put(p.getId(), new SourceInfo(this.connectorConfig, OpId.valueOf((String) entry.getValue())));
             }
