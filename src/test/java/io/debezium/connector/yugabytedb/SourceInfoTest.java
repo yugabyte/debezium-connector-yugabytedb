@@ -45,7 +45,7 @@ public class SourceInfoTest extends YugabyteDBContainerTestBase {
             fail();
         }
 
-        YBPartition partition = new YBPartition(DUMMY_TABLE_ID, DUMMY_TABLET_ID, false);
+        YBPartition partition = new YBPartition(DUMMY_TABLE_ID, DUMMY_TABLET_ID);
 
         source.update(partition, OpId.valueOf("1:2:keyStrValue:4:5"), 123L, "txId",
                       new TableId("yugabyte", "public", DUMMY_TABLE_NAME), 123L);

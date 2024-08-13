@@ -27,7 +27,7 @@ class MergerTest {
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.ZERO,
                 BigInteger.ZERO,
-                34);
+                34, false);
 
         CdcService.CDCSDKProtoRecordPB insertProtoRecord = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.INSERT).build())
@@ -36,7 +36,7 @@ class MergerTest {
                 "57b8705f-69cd-4709-ac9b-b6c57fa995ce",
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.valueOf(6822178296477519872L),
-                BigInteger.ZERO, 35);
+                BigInteger.ZERO, 35, false);
 
         CdcService.CDCSDKProtoRecordPB commitProtoRecord = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.COMMIT).build())
@@ -46,7 +46,7 @@ class MergerTest {
                 BigInteger.valueOf(6822178296495259648L),
                 BigInteger.ZERO,
                 BigInteger.ZERO,
-                36);
+                36, false);
 
         merger.addMessage(begin);
         merger.addMessage(insert);
@@ -72,7 +72,7 @@ class MergerTest {
                 BigInteger.valueOf(6863526294757593088L),
                 BigInteger.valueOf(6863526294428749824L),
                 BigInteger.ZERO,
-                605244);
+                605244, false);
 
         CdcService.CDCSDKProtoRecordPB childProtoRecord = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.INSERT).build())
@@ -81,7 +81,7 @@ class MergerTest {
                 BigInteger.valueOf(6863526294757593088L),
                 BigInteger.valueOf(6863526294462816256L),
                 BigInteger.ZERO,
-                605228);
+                605228, false);
 
         // Purposely insert the child message first and verify the sorting after parent is inserted.
         merger.addMessage(child);
@@ -108,7 +108,7 @@ class MergerTest {
                 BigInteger.valueOf(6863526294757593088L),
                 BigInteger.valueOf(6863526294428749824L),
                 BigInteger.ZERO,
-                605244);
+                605244, false);
 
         CdcService.CDCSDKProtoRecordPB proto2 = CdcService.CDCSDKProtoRecordPB.newBuilder()
                 .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.INSERT).build())
@@ -117,7 +117,7 @@ class MergerTest {
                 BigInteger.valueOf(68635262947L), // Lower commit time than previous record.
                 BigInteger.valueOf(6863526294462816256L),
                 BigInteger.ZERO,
-                605228);
+                605228, false);
 
         Merger merger = new Merger(List.of(dummyTablet));
 
@@ -178,54 +178,54 @@ class MergerTest {
           BigInteger.valueOf(commitTime1),
           BigInteger.ZERO,
           BigInteger.ZERO,
-          1);
+          1, false);
         Message m2 = new Message(insert1, DUMMY_TABLE_ID, tablet1, txn,
           BigInteger.valueOf(commitTime1),
           BigInteger.ZERO,
           BigInteger.ZERO,
-          2);
+          2, false);
         Message m3 = new Message(commit1, DUMMY_TABLE_ID, tablet1, txn,
           BigInteger.valueOf(commitTime1),
           BigInteger.ZERO,
           BigInteger.ZERO,
-          3);
+          3, false);
 
         Message m4 = new Message(begin2, DUMMY_TABLE_ID, tablet1, txn,
           BigInteger.valueOf(commitTime2),
           BigInteger.ZERO,
           BigInteger.ZERO,
-          4);
+          4, false);
         Message m5 = new Message(insert2, DUMMY_TABLE_ID, tablet1, txn,
           BigInteger.valueOf(commitTime2),
           BigInteger.ZERO,
           BigInteger.ZERO,
-          5);
+          5, false);
         Message m6 = new Message(commit2, DUMMY_TABLE_ID, tablet1, txn,
           BigInteger.valueOf(commitTime2),
           BigInteger.ZERO,
           BigInteger.ZERO,
-          6);
+          6, false);
 
         Message m7 = new Message(begin3, DUMMY_TABLE_ID, tablet2, txn,
           BigInteger.valueOf(commitTime1),
           BigInteger.ZERO,
           BigInteger.ZERO,
-          7);
+          7, false);
         Message m8 = new Message(insert3, DUMMY_TABLE_ID, tablet2, txn,
           BigInteger.valueOf(commitTime1),
           BigInteger.ZERO,
           BigInteger.ZERO,
-          8);
+          8, false);
         Message m9 = new Message(commit3, DUMMY_TABLE_ID, tablet2, txn,
           BigInteger.valueOf(commitTime1),
           BigInteger.ZERO,
           BigInteger.ZERO,
-          9);
+          9, false);
 
         CdcService.CDCSDKProtoRecordPB sp = CdcService.CDCSDKProtoRecordPB.newBuilder()
                                                 .setRowMessage(CdcService.RowMessage.newBuilder().setOp(CdcService.RowMessage.Op.SAFEPOINT)
                                                    .setCommitTime(commitTime2).build()).build();
-        Message safepoint = new Message(sp, DUMMY_TABLE_ID, tablet2, txn, BigInteger.valueOf(commitTime2), BigInteger.ZERO, BigInteger.ZERO, 10);
+        Message safepoint = new Message(sp, DUMMY_TABLE_ID, tablet2, txn, BigInteger.valueOf(commitTime2), BigInteger.ZERO, BigInteger.ZERO, 10, false);
 
         merger.addMessage(m1);
         merger.addMessage(m2);
