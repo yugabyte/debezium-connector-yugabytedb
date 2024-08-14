@@ -415,18 +415,12 @@ public class YugabyteDBConnectorTask
                           .filter(e -> e.getValue() != null)
                           .forEach(entry -> {
                               Map<String, ?> lastOffset = entry.getValue().getOffset();
-                              if (lastOffset == null) {
-                                LOGGER.info("lastOffset is null");
-                              }
                               this.ybOffset = getHigherOffsets(lastOffset);
                           });
 
-                        if (LOGGER.isInfoEnabled()) {
-                            if (ybOffset == null) {
-                                LOGGER.info("ybOffset is null");
-                            }
+                        if (LOGGER.isDebugEnabled()) {
                             for (Map.Entry<String, ?> entry : ybOffset.entrySet()) {
-                                LOGGER.info("Committing offset {} for partition {}", entry.getValue(), entry.getKey());
+                                LOGGER.debug("Committing offset {} for partition {}", entry.getValue(), entry.getKey());
                             }
                         }
 
@@ -462,7 +456,6 @@ public class YugabyteDBConnectorTask
         }
 
         for (Map.Entry<String, ?> entry : offsets.entrySet()) {
-            LOGGER.info("Task {} snapshotPhase {}", getTaskContext().getTaskId(), isTaskInSnapshotPhase());
             if ((entry.getKey().contains(".") && !isTaskInSnapshotPhase())
                   || (!entry.getKey().contains(".") && isTaskInSnapshotPhase())) {
                 LOGGER.debug("Skipping the offset for entry {}", entry.getKey());

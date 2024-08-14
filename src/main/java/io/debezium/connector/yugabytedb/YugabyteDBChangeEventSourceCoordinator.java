@@ -127,8 +127,6 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
         previousLogContext.set(taskContext.configureLoggingContext(
             String.format("streaming|%s", taskContext.getTaskId())));
 
-        LOGGER.info("Snapshot flag upon transition for task {}: {}", taskContext.getTaskId(), isSnapshotInProgress());
-
         for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry :
                 streamingOffsets.getOffsets().entrySet()) {
             initStreamEvents(entry.getKey(), entry.getValue());
