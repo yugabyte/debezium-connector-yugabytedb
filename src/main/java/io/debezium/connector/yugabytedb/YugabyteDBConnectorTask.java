@@ -415,12 +415,18 @@ public class YugabyteDBConnectorTask
                           .filter(e -> e.getValue() != null)
                           .forEach(entry -> {
                               Map<String, ?> lastOffset = entry.getValue().getOffset();
+                              if (lastOffset == null) {
+                                LOGGER.info("lastOffset is null");
+                              }
                               this.ybOffset = getHigherOffsets(lastOffset);
                           });
 
                         if (LOGGER.isInfoEnabled()) {
+                            if (ybOffset == null) {
+                                LOGGER.info("ybOffset is null");
+                            }
                             for (Map.Entry<String, ?> entry : ybOffset.entrySet()) {
-                                LOGGER.info("Committing offset map {} for partition {}", entry.getValue(), entry.getKey());
+                                LOGGER.info("Committing offset {} for partition {}", entry.getValue(), entry.getKey());
                             }
                         }
 

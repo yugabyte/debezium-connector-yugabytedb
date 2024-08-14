@@ -44,7 +44,7 @@ public class YBPartition implements Partition {
 
     @Override
     public Map<String, String> getSourcePartition() {
-        return Collect.hashMapOf(PARTITION_KEY, getId());
+        return Collect.hashMapOf(PARTITION_KEY, getFullPartitionName());
     }
 
     public String getTableId() {
@@ -111,10 +111,10 @@ public class YBPartition implements Partition {
         String[] tableTablet = partitionId.split("\\.");
 
         if (tableTablet.length == 1) {
-            return new YBPartition("", tableTablet[0]);
+            return new YBPartition("", tableTablet[0], false);
         }
 
-        return new YBPartition(tableTablet[0], tableTablet[1]);
+        return new YBPartition(tableTablet[0], tableTablet[1], true);
     }
 
     static class Provider implements Partition.Provider<YBPartition> {
@@ -127,6 +127,7 @@ public class YBPartition implements Partition {
 
         @Override
         public Set<YBPartition> getPartitions() {
+            // todo VAIBHAV: Current implementation has a bug, we need to find a way to figure out current set of partitions.
             String tabletListSerialized = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST);
             List<HashPartition> tabletPairList;
             try {
