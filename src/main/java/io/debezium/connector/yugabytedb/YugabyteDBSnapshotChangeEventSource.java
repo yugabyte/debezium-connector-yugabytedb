@@ -82,7 +82,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
     private boolean snapshotComplete = false;
     private Map<String, Long> lastGetChangesTime;
-    private Map<String, YbProtoReplicationMessage> lastSnapshotRecord;
     private final String LAST_SNAPSHOT_RECORD_KEY = "LAST_SNAPSHOT_RECORD";
 
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
@@ -489,19 +488,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 if (tabletsWaitingForCallback.contains(part.getId()) && taskContext.shouldEnableExplicitCheckpointing()) {
                   doSnapshotCompletionCheck(part, snapshotCompletedTablets, tabletsWaitingForCallback, previousOffset);
 
-                  // If the timeout has exceeded from the last GetChanges call and we haven't received
-                  // any callback on the last snapshot record yet, publish last snapshot record again.
-                  if (!snapshotCompletedTablets.contains(part.getId()) && hasCallbackTimeoutExceeded(part)) {
-                    LOGGER.info("Publishing last snapshot record for partition {} again", part.getId());
-                    publishLastSnapshotRecord(part, previousOffset);
-
-                    // Also update the last GetChanges time to ensure that we do not end up publishing
-                    // the last record continuously without exhausting the delay. In other words, it
-                    // can be understood that the publishing the last snapshot record was the result
-                    // of a GetChanges call, thus we are updating the map for time.
-                    lastGetChangesTime.put(part.getId(), System.currentTimeMillis());
-                  }
-
                   continue;
                 }
 
@@ -628,7 +614,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                                 (idx == (resp.getResp().getCdcSdkProtoRecordsList().size() - 1))) {
                           LOGGER.info("Modifying record checkpoint for last snapshot record of the last snapshot batch");
                           lsn = getIdentificationMarkerForLastSnapshotRecord();
-                          lastSnapshotRecord.put(part.getId(), message);
                         }
                       }
 
@@ -1005,34 +990,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     protected boolean hasCallbackTimeoutExceeded(YBPartition partition) {
       return (System.currentTimeMillis() - lastGetChangesTime.get(partition.getId())
                 >= connectorConfig.lastCallbackTimeoutMs());
-    }
-
-  /**
-   * Publish the last snapshot record using the stored value.
-   * @param partition a {@link YBPartition} object denoting the tablet for which last snapshot
-   *                  record needs to be published
-   * @param offsetContext {@link YugabyteDBOffsetContext} object storing offset map
-   * @throws NullPointerException if no last snapshot record is cached or if a {@link TableId}
-   * cannot be formed using the stored message
-   * @throws InterruptedException when the flow is interrupted while dispatching the message
-   */
-  protected void publishLastSnapshotRecord(YBPartition partition, YugabyteDBOffsetContext offsetContext)
-      throws NullPointerException, InterruptedException {
-      YbProtoReplicationMessage message = lastSnapshotRecord.get(partition.getId());
-      Objects.requireNonNull(message);
-
-      TableId tId = connectorConfig.isYSQLDbType()
-                      ? YugabyteDBSchema.parseWithSchema(message.getTable(), message.getPgSchemaName())
-                        : YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
-      Objects.requireNonNull(tId);
-
-
-      dispatcher.dispatchDataChangeEvent(partition, tId,
-        new YugabyteDBChangeRecordEmitter(partition, offsetContext, clock,
-          this.connectorConfig, schema,
-          connection, tId, message,
-          connectorConfig.isYSQLDbType() ? message.getPgSchemaName() : tId.catalog(), partition.getTabletId(),
-          taskContext.isBeforeImageEnabled()));
     }
 
     protected Set<TableId> getAllTableIds(RelationalSnapshotChangeEventSource.RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx)
