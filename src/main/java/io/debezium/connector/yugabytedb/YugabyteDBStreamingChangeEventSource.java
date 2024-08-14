@@ -137,7 +137,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             return;
         }
 
-        Set<YBPartition> partitions = new YBPartition.Provider(connectorConfig).getPartitions();
+        Set<YBPartition> partitions = new YBPartition.Provider(connectorConfig).getPartitionsFromConfig();
         boolean hasStartLsnStoredInContext = offsetContext != null && !offsetContext.getTabletSourceInfo().isEmpty();
 
         LOGGER.info("Starting the change streaming process now");

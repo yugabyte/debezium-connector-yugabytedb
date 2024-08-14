@@ -119,15 +119,29 @@ public class YBPartition implements Partition {
 
     static class Provider implements Partition.Provider<YBPartition> {
         private final YugabyteDBConnectorConfig connectorConfig;
+        private YugabyteDBOffsetContext offsetContext;
         private static final Logger LOGGER = LoggerFactory.getLogger(YBPartition.class);
 
         Provider(YugabyteDBConnectorConfig connectorConfig) {
             this.connectorConfig = connectorConfig;
         }
 
+        Provider(YugabyteDBConnectorConfig connectorConfig, YugabyteDBOffsetContext offsetContext) {
+            this.connectorConfig = connectorConfig;
+            this.offsetContext = offsetContext;
+        }
+
         @Override
         public Set<YBPartition> getPartitions() {
-            // todo VAIBHAV: Current implementation has a bug, we need to find a way to figure out current set of partitions.
+            return offsetContext.getPartitions();
+        }
+
+        /**
+         * @return a {@link Set} of {@link YBPartition} formed using the configuration property
+         * {@link YugabyteDBConnectorConfig#HASH_RANGES_LIST} passed down to the task from the
+         * top level connector layer.
+         */
+        public Set<YBPartition> getPartitionsFromConfig() {
             String tabletListSerialized = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST);
             List<HashPartition> tabletPairList;
             try {

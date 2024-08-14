@@ -7,6 +7,7 @@ package io.debezium.connector.yugabytedb;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -276,6 +277,21 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     public Map<String, SourceInfo> getTabletSourceInfo() {
         return tabletSourceInfo;
+    }
+
+    /**
+     * @return a {@link Set} of partitions in this task. Note that this will also
+     * include the partitions for parent tablets which have been further split and are not
+     * actively polled.
+     */
+    public Set<YBPartition> getPartitions() {
+        Set<YBPartition> partitions = new HashSet<>();
+
+        for (Map.Entry<String, SourceInfo> entry : getTabletSourceInfo().entrySet()) {
+            partitions.add(new YBPartition(entry.getValue().tableUUID(), entry.getValue().tabletId()));
+        }
+
+        return partitions;
     }
 
     /**
