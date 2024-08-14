@@ -120,7 +120,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.tabletsWaitingForCallback = new HashSet<>();
         this.partitionRanges = new ArrayList<>();
         this.lastGetChangesTime = new HashMap<>();
-        this.lastSnapshotRecord = new HashMap<>();
     }
 
     @Override
