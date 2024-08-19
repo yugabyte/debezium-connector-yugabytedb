@@ -134,6 +134,10 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
                             signal.process(partition, value, offset);
                         }
 
+                        if (partition == null) {
+                            LOGGER.info("VKVK partition is null in event dispatcher");
+                        }
+
                         if (neverSkip || !skippedOperations.contains(operation)) {
                             transactionMonitor.dataEvent(partition, dataCollectionId, offset, key, value);
                             eventListener.onEvent(partition, dataCollectionId, offset, key, value, operation);
