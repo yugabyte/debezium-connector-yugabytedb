@@ -159,8 +159,8 @@ public class YugabyteDBConnectorTask
                 new YugabyteDBOffsetContext.Loader(connectorConfig));
         final Clock clock = Clock.system();
 
-        YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(previousOffsets,
-                                                                      connectorConfig);
+//        YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(previousOffsets,
+//                                                                      connectorConfig);
 
         LoggingContext.PreviousContext previousContext = taskContext
                 .configureLoggingContext(CONTEXT_NAME + "|" + taskId);
@@ -276,7 +276,7 @@ public class YugabyteDBConnectorTask
     Offsets<YBPartition, YugabyteDBOffsetContext> getPreviousOffsetsFromProviderAndLoader(
         Partition.Provider<YBPartition> provider,
         OffsetContext.Loader<YugabyteDBOffsetContext> loader) {
-        Optional<Set<YBPartition>> ybPartitions = coordinator.getPartitions();
+        Optional<Set<YBPartition>> ybPartitions = (coordinator == null) ? Optional.of(provider.getPartitions()) : coordinator.getPartitions();
         Set<YBPartition> partitions = ybPartitions.orElse(provider.getPartitions());
         LOGGER.debug("The size of partitions is " + partitions.size());
         OffsetReader<YBPartition, YugabyteDBOffsetContext,
