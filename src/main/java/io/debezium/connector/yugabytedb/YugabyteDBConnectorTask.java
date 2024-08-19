@@ -276,7 +276,8 @@ public class YugabyteDBConnectorTask
     Offsets<YBPartition, YugabyteDBOffsetContext> getPreviousOffsetsFromProviderAndLoader(
         Partition.Provider<YBPartition> provider,
         OffsetContext.Loader<YugabyteDBOffsetContext> loader) {
-        Set<YBPartition> partitions = provider.getPartitions();
+        Optional<Set<YBPartition>> ybPartitions = coordinator.getPartitions();
+        Set<YBPartition> partitions = ybPartitions.orElse(provider.getPartitions());
         LOGGER.debug("The size of partitions is " + partitions.size());
         OffsetReader<YBPartition, YugabyteDBOffsetContext,
                      OffsetContext.Loader<YugabyteDBOffsetContext>> reader = new OffsetReader<>(

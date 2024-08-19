@@ -8,6 +8,8 @@ package io.debezium.connector.yugabytedb;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.kafka.connect.source.SourceConnector;
@@ -45,6 +47,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
     private final SlotState slotInfo;
 
     private YugabyteDBSnapshotChangeEventSource snapshotSource;
+    private YugabyteDBStreamingChangeEventSource streamingChangeEventSource;
 
     public YugabyteDBChangeEventSourceCoordinator(Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets,
                                                   ErrorHandler errorHandler,
@@ -132,6 +135,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
             initStreamEvents(entry.getKey(), entry.getValue());
         }
 
+        streamingChangeEventSource = (YugabyteDBStreamingChangeEventSource) streamingSource;
         LOGGER.info("Performing the streaming process now");
 
         while (context.isRunning()) {
@@ -167,6 +171,18 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
         if (!commitOffsetLock.isLocked() && streamingSource != null && offset != null) {
             streamingSource.commitOffset(offset);
         }
+    }
+
+    /**
+     * @return the set of partitions i.e. {@link YBPartition} being in the streaming phase at a
+     * given point in time.
+     */
+    public Optional<Set<YBPartition>> getPartitions() {
+        if (streamingChangeEventSource == null) {
+            return Optional.empty();
+        }
+
+        return Optional.of(streamingChangeEventSource.getActivePartitionsBeingPolled());
     }
 
     protected boolean isSnapshotInProgress() {

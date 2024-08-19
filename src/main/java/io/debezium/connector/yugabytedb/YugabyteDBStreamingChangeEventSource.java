@@ -101,6 +101,10 @@ public class YugabyteDBStreamingChangeEventSource implements
     protected Set<String> splitTabletsWaitingForCallback;
     protected List<HashPartition> partitionRanges;
 
+    // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
+    // and the value is tablet UUID
+    protected List<Pair<String, String>> tabletPairList;
+
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
                                                 YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
                                                 YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection,
@@ -124,6 +128,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.splitTabletsWaitingForCallback = new HashSet<>();
         this.filters = new Filters(connectorConfig);
         this.partitionRanges = new ArrayList<>();
+        this.tabletPairList = new ArrayList<>();
 
         if (TEST_TRACK_EXPLICIT_CHECKPOINTS) {
             TEST_explicitCheckpoints = new ConcurrentHashMap<>();
@@ -332,10 +337,6 @@ public class YugabyteDBStreamingChangeEventSource implements
             throws Exception {
         LOGGER.info("Processing messages");
         try (YBClient syncClient = YBClientUtils.getYbClient(this.connectorConfig)) {
-            // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
-            // and the value is tablet UUID
-            List<Pair<String, String>> tabletPairList = new ArrayList<>();
-
             Map<String, YBTable> tableIdToTable = new HashMap<>();
             Map<String, GetTabletListToPollForCDCResponse> tabletListResponse = new HashMap<>();
             String streamId = connectorConfig.streamId();
@@ -861,6 +862,14 @@ public class YugabyteDBStreamingChangeEventSource implements
                 throw cdcErrorException;
             }
         }
+    }
+
+    protected Set<YBPartition> getActivePartitionsBeingPolled() {
+        Set<YBPartition> partitions = new HashSet<>();
+
+        this.tabletPairList.forEach(pair -> partitions.add(new YBPartition(pair.getKey(), pair.getValue(), false)));
+
+        return partitions;
     }
 
     /**
