@@ -312,8 +312,7 @@ public class YugabyteDBStreamingChangeEventSource implements
      * @param response of type {@link GetTabletListToPollForCDCResponse}
      * @param tabletPairList a list of {@link Pair} to be populated where each pair is {@code <tableId, tabletId>}
      */
-    protected void populateTableToTabletPairsForTask(String tableId, GetTabletListToPollForCDCResponse response,
-                                                     List<Pair<String, String>> tabletPairList) {
+    protected void populateTableToTabletPairsForTask(String tableId, GetTabletListToPollForCDCResponse response) {
         // Verify that the partitionRanges are already populated.
         Objects.requireNonNull(partitionRanges);
         assert !partitionRanges.isEmpty();
@@ -324,7 +323,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
             for (HashPartition parent : partitionRanges) {
                 if (parent.containsPartition(hp)) {
-                    tabletPairList.add(new ImmutablePair<>(hp.getTableId(), hp.getTabletId()));
+                    this.tabletPairList.add(new ImmutablePair<>(hp.getTableId(), hp.getTabletId()));
                 }
             }
         }
@@ -358,7 +357,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                 // TODO: One optimisation where we initialise the offset context here itself
                 //  without storing the GetTabletListToPollForCDCResponse
-                populateTableToTabletPairsForTask(tId, resp, tabletPairList);
+                populateTableToTabletPairsForTask(tId, resp);
                 LOGGER.info("Table: {} with number of tablets {}", tId, resp.getTabletCheckpointPairListSize());
                 tabletListResponse.put(tId, resp);
             }
@@ -459,6 +458,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                             LOGGER.debug("Queue has {} items. Skipping", queue.totalCapacity() - queue.remainingCapacity());
                             continue;
                         }
+
+                        LOGGER.info("tabletPairListSize before iterating over the loop: {}", this.tabletPairList.size());
 
                         for (Pair<String, String> entry : tabletPairList) {
                             final String tabletId = entry.getValue();
@@ -866,10 +867,8 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
-    protected Set<YBPartition> getActivePartitionsBeingPolled() {
+    public Set<YBPartition> getActivePartitionsBeingPolled() {
         Set<YBPartition> partitions = new HashSet<>();
-
-
         for (Pair<String, String> pair : this.tabletPairList) {
             partitions.add(new YBPartition(pair.getKey(), pair.getValue(), false));
         }

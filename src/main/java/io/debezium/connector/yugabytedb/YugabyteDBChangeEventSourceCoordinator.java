@@ -135,7 +135,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
             initStreamEvents(entry.getKey(), entry.getValue());
         }
 
-        streamingChangeEventSource = (YugabyteDBStreamingChangeEventSource) streamingSource;
+        this.streamingChangeEventSource = (YugabyteDBStreamingChangeEventSource) streamingSource;
         LOGGER.info("Performing the streaming process now");
 
         while (context.isRunning()) {
@@ -178,12 +178,12 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
      * given point in time.
      */
     public Optional<Set<YBPartition>> getPartitions() {
-        if (streamingChangeEventSource == null) {
+        if (this.streamingChangeEventSource == null) {
             LOGGER.info("Returning optional empty");
             return Optional.empty();
         }
 
-        return Optional.of(streamingChangeEventSource.getActivePartitionsBeingPolled());
+        return Optional.of(this.streamingChangeEventSource.getActivePartitionsBeingPolled());
     }
 
     protected boolean isSnapshotInProgress() {
