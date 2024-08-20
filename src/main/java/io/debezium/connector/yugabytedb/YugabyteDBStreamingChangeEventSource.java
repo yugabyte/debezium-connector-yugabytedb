@@ -867,7 +867,12 @@ public class YugabyteDBStreamingChangeEventSource implements
     protected Set<YBPartition> getActivePartitionsBeingPolled() {
         Set<YBPartition> partitions = new HashSet<>();
 
-        this.tabletPairList.forEach(pair -> partitions.add(new YBPartition(pair.getKey(), pair.getValue(), false)));
+
+        for (Pair<String, String> pair : this.tabletPairList) {
+            partitions.add(new YBPartition(pair.getKey(), pair.getValue(), false));
+        }
+
+        LOGGER.info("Active partitions size being returned from streaming source: {} with tablet pair list size {}", partitions.size(), this.tabletPairList.size());
 
         return partitions;
     }
@@ -940,7 +945,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // TODO: The transaction_id field is getting populated somewhere and see if it can
                 // be removed or blocked from getting added to this map.
                 if (!entry.getKey().equals("transaction_id")) {
-                    LOGGER.debug("Tablet: {} OpId: {}", entry.getKey(), entry.getValue());
+                    LOGGER.info("Tablet: {} OpId: {}", entry.getKey(), entry.getValue());
 
                     // Parse the string to get the OpId object.
                     OpId tempOpId = OpId.valueOf((String) entry.getValue());

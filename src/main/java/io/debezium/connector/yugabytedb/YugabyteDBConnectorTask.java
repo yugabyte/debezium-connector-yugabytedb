@@ -276,9 +276,19 @@ public class YugabyteDBConnectorTask
     Offsets<YBPartition, YugabyteDBOffsetContext> getPreviousOffsetsFromProviderAndLoader(
         Partition.Provider<YBPartition> provider,
         OffsetContext.Loader<YugabyteDBOffsetContext> loader) {
-        Optional<Set<YBPartition>> ybPartitions = (coordinator == null) ? Optional.of(provider.getPartitions()) : coordinator.getPartitions();
+        if (this.coordinator == null) {
+            LOGGER.info("Coordinator is null");
+        }
+        Optional<Set<YBPartition>> ybPartitions = (this.coordinator == null) ? Optional.of(provider.getPartitions()) : this.coordinator.getPartitions();
+
+        LOGGER.info("ybPartitions is present: {}", ybPartitions.isPresent());
+
+        if (ybPartitions.isPresent()) {
+            LOGGER.info("ybPartitions size is {}", ybPartitions.get().size());
+        }
+
         Set<YBPartition> partitions = ybPartitions.orElse(provider.getPartitions());
-        LOGGER.debug("The size of partitions is " + partitions.size());
+        LOGGER.info("The size of partitions is " + partitions.size());
         OffsetReader<YBPartition, YugabyteDBOffsetContext,
                      OffsetContext.Loader<YugabyteDBOffsetContext>> reader = new OffsetReader<>(
                         context.offsetStorageReader(), loader);
@@ -289,10 +299,10 @@ public class YugabyteDBConnectorTask
         if (offsets != null) {
             found = true;
 
-            if (LOGGER.isDebugEnabled()) {
+            if (LOGGER.isInfoEnabled()) {
                 for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry : offsets.getOffsets().entrySet()) {
                     if (entry.getKey() != null && entry.getValue() != null) {
-                        LOGGER.debug("Read offset map {} for partition {} from topic", entry.getValue().getOffset(), entry.getKey());
+                        LOGGER.info("Read offset map {} for partition {} from topic", entry.getValue().getOffset(), entry.getKey());
                     }
                 }
             }
@@ -416,12 +426,18 @@ public class YugabyteDBConnectorTask
                           .filter(e -> e.getValue() != null)
                           .forEach(entry -> {
                               Map<String, ?> lastOffset = entry.getValue().getOffset();
+                              if (lastOffset == null) {
+                                LOGGER.info("lastOffset is null");
+                              }
                               this.ybOffset = getHigherOffsets(lastOffset);
                           });
 
-                        if (LOGGER.isDebugEnabled()) {
+                        if (LOGGER.isInfoEnabled()) {
+                            if (ybOffset == null) {
+                                LOGGER.info("ybOffset is null");
+                            }
                             for (Map.Entry<String, ?> entry : ybOffset.entrySet()) {
-                                LOGGER.debug("Committing offset {} for partition {}", entry.getValue(), entry.getKey());
+                                LOGGER.info("Committing offset {} for partition {}", entry.getValue(), entry.getKey());
                             }
                         }
 
@@ -446,6 +462,7 @@ public class YugabyteDBConnectorTask
      */
     protected Map<String, ?> getHigherOffsets(Map<String, ?> offsets) {
         if (this.ybOffset == null) {
+            LOGGER.info("getHigherOffsets: returning offsets since ybOffset is null");
             return offsets;
         }
 
@@ -453,13 +470,15 @@ public class YugabyteDBConnectorTask
 
         if (offsets == null) {
             // We do not have anything to commit here, returning an empty map should be fine.
+            LOGGER.info("getHigherOffsets: returning an empty map of finalOffsets");
             return finalOffsets;
         }
 
         for (Map.Entry<String, ?> entry : offsets.entrySet()) {
+            LOGGER.info("getHigherOffsets: task in snapshot phase: {}", isTaskInSnapshotPhase());
             if ((entry.getKey().contains(".") && !isTaskInSnapshotPhase())
                   || (!entry.getKey().contains(".") && isTaskInSnapshotPhase())) {
-                LOGGER.debug("Skipping the offset for entry {}", entry.getKey());
+                LOGGER.info("Skipping the offset for entry {}", entry.getKey());
                 continue;
             }
 

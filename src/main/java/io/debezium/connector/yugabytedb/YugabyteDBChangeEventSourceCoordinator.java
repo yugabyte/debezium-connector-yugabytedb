@@ -179,6 +179,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
      */
     public Optional<Set<YBPartition>> getPartitions() {
         if (streamingChangeEventSource == null) {
+            LOGGER.info("Returning optional empty");
             return Optional.empty();
         }
 
