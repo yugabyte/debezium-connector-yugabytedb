@@ -363,6 +363,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                 tabletListResponse.put(tId, resp);
             }
 
+            LOGGER.info("tabletPairListSize after populating: {}", this.tabletPairList.size());
+
             LOGGER.debug("The init tabletSourceInfo before updating is " + offsetContext.getTabletSourceInfo());
 
             // Initialize the offsetContext and other supporting flags.
