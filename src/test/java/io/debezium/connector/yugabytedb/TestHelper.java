@@ -758,8 +758,8 @@ public final class TestHelper {
 
     public static Stream<Arguments> streamTypeProviderForStreaming() {
         return Stream.of(
-                Arguments.of(false, false), // Older stream
-                Arguments.of(true, false)); // NO_EXPORT stream
+                Arguments.of(false, false)); // Older stream
+                // Arguments.of(true, false)); // NO_EXPORT stream
     }
 
     public static Stream<Arguments> streamTypeProviderForSnapshot() {

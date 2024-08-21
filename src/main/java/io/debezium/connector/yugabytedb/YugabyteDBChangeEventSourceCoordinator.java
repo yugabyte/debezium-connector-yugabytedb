@@ -135,7 +135,6 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
             initStreamEvents(entry.getKey(), entry.getValue());
         }
 
-        this.streamingChangeEventSource = (YugabyteDBStreamingChangeEventSource) streamingSource;
         LOGGER.info("Performing the streaming process now");
 
         while (context.isRunning()) {
@@ -158,6 +157,18 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
     }
 
     @Override
+    protected void streamEvents(ChangeEventSourceContext context, YBPartition partition,
+            YugabyteDBOffsetContext offsetContext) throws InterruptedException {
+        initStreamEvents(partition, offsetContext);
+        LOGGER.info("Starting streaming");
+
+        this.streamingChangeEventSource = (YugabyteDBStreamingChangeEventSource) streamingSource;
+
+        streamingSource.execute(context, partition, offsetContext);
+        LOGGER.info("Finished streaming");
+    }
+
+    @Override
     public void commitOffset(Map<String, ?> offset) {
         // Check if snapshotter is enabled, if it is not then callback should go to the
         // streaming source only. If snapshot is complete, even then the callback should go to the
@@ -175,11 +186,13 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
 
     /**
      * @return the set of partitions i.e. {@link YBPartition} being in the streaming phase at a
-     * given point in time.
+     * given point in time. If streamingChangeEventSource is null that means we are still in the
+     * snapshot phase and in that case it should be safe to return an {@link Optional#empty()}
+     * which should be handled by the caller of this method.
      */
     public Optional<Set<YBPartition>> getPartitions() {
         if (this.streamingChangeEventSource == null) {
-            LOGGER.info("Returning optional empty");
+            LOGGER.debug("Streaming change event source is null, returning empty value");
             return Optional.empty();
         }
 

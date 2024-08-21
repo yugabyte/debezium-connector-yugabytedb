@@ -276,19 +276,31 @@ public class YugabyteDBConnectorTask
     Offsets<YBPartition, YugabyteDBOffsetContext> getPreviousOffsetsFromProviderAndLoader(
         Partition.Provider<YBPartition> provider,
         OffsetContext.Loader<YugabyteDBOffsetContext> loader) {
-        if (this.coordinator == null) {
-            LOGGER.info("Coordinator is null");
-        }
-        Optional<Set<YBPartition>> ybPartitions = (this.coordinator == null) ? Optional.of(provider.getPartitions()) : this.coordinator.getPartitions();
+        /*
+          This method will be invoked at following 3 timings:
+           1. While initialising the task
+           2. Commit callback during snapshot phase
+           3. Commit callback during streaming phase
 
-        LOGGER.info("ybPartitions is present: {}", ybPartitions.isPresent());
+           While initialising the task:
+             It is safe to return the partitions from provider since coordinator will be null at this
+             point and will have no information about the current set of partitions.
 
-        if (ybPartitions.isPresent()) {
-            LOGGER.info("ybPartitions size is {}", ybPartitions.get().size());
-        }
-
+           Snapshot phase:
+             The streaming change event source will be null at this stage and we will get an Optional.empty()
+             and subsequently this method will call provider.getPartitions() to get partitions which
+             should be fine since there would be no tablet split during snapshot phase. See
+             YugabyteDBChangeEventCoordinator#getPartitions for more details.
+ 
+           Streaming phase:
+             We can rely on coordinator to leverage the streaming change event source and send us the set
+             of active partitions being polled which includes the dynamically created partitions because
+             of tablet splitting too.
+         */    
+        Optional<Set<YBPartition>> ybPartitions = 
+            (this.coordinator == null) ? Optional.of(provider.getPartitions()) : this.coordinator.getPartitions();
         Set<YBPartition> partitions = ybPartitions.orElse(provider.getPartitions());
-        LOGGER.info("The size of partitions is " + partitions.size());
+
         OffsetReader<YBPartition, YugabyteDBOffsetContext,
                      OffsetContext.Loader<YugabyteDBOffsetContext>> reader = new OffsetReader<>(
                         context.offsetStorageReader(), loader);
@@ -299,10 +311,10 @@ public class YugabyteDBConnectorTask
         if (offsets != null) {
             found = true;
 
-            if (LOGGER.isInfoEnabled()) {
+            if (LOGGER.isDebugEnabled()) {
                 for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry : offsets.getOffsets().entrySet()) {
                     if (entry.getKey() != null && entry.getValue() != null) {
-                        LOGGER.info("Read offset map {} for partition {} from topic", entry.getValue().getOffset(), entry.getKey());
+                        LOGGER.debug("Read offset map {} for partition {} from topic", entry.getValue().getOffset(), entry.getKey());
                     }
                 }
             }
@@ -426,18 +438,12 @@ public class YugabyteDBConnectorTask
                           .filter(e -> e.getValue() != null)
                           .forEach(entry -> {
                               Map<String, ?> lastOffset = entry.getValue().getOffset();
-                              if (lastOffset == null) {
-                                LOGGER.info("lastOffset is null");
-                              }
                               this.ybOffset = getHigherOffsets(lastOffset);
                           });
 
-                        if (LOGGER.isInfoEnabled()) {
-                            if (ybOffset == null) {
-                                LOGGER.info("ybOffset is null");
-                            }
+                        if (LOGGER.isDebugEnabled()) {
                             for (Map.Entry<String, ?> entry : ybOffset.entrySet()) {
-                                LOGGER.info("Committing offset {} for partition {}", entry.getValue(), entry.getKey());
+                                LOGGER.debug("Committing offset {} for partition {}", entry.getValue(), entry.getKey());
                             }
                         }
 
@@ -462,23 +468,22 @@ public class YugabyteDBConnectorTask
      */
     protected Map<String, ?> getHigherOffsets(Map<String, ?> offsets) {
         if (this.ybOffset == null) {
-            LOGGER.info("getHigherOffsets: returning offsets since ybOffset is null");
+            LOGGER.debug("Returning original offsets since cached ybOffset is null");
             return offsets;
         }
 
         Map<String, String> finalOffsets = new HashMap<>();
 
         if (offsets == null) {
-            // We do not have anything to commit here, returning an empty map should be fine.
-            LOGGER.info("getHigherOffsets: returning an empty map of finalOffsets");
-            return finalOffsets;
+            // If we are hitting this block then ybOffset is not null at this point, so it should
+            // be safe to return ybOffset.
+            return this.ybOffset;
         }
 
         for (Map.Entry<String, ?> entry : offsets.entrySet()) {
-            LOGGER.info("getHigherOffsets: task in snapshot phase: {}", isTaskInSnapshotPhase());
             if ((entry.getKey().contains(".") && !isTaskInSnapshotPhase())
                   || (!entry.getKey().contains(".") && isTaskInSnapshotPhase())) {
-                LOGGER.info("Skipping the offset for entry {}", entry.getKey());
+                LOGGER.debug("Skipping the offset for entry {}", entry.getKey());
                 continue;
             }
 

@@ -459,8 +459,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                             continue;
                         }
 
-                        LOGGER.info("tabletPairListSize before iterating over the loop: {}", this.tabletPairList.size());
-
                         for (Pair<String, String> entry : tabletPairList) {
                             final String tabletId = entry.getValue();
                             curTabletId = entry.getValue();
@@ -869,11 +867,14 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     public Set<YBPartition> getActivePartitionsBeingPolled() {
         Set<YBPartition> partitions = new HashSet<>();
+
         for (Pair<String, String> pair : this.tabletPairList) {
             partitions.add(new YBPartition(pair.getKey(), pair.getValue(), false));
         }
 
-        LOGGER.info("Active partitions size being returned from streaming source: {} with tablet pair list size {}", partitions.size(), this.tabletPairList.size());
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Returning an active partition set with size: {}", partitions.size());
+        }
 
         return partitions;
     }
