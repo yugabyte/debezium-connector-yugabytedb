@@ -451,8 +451,9 @@ public class YugabyteDBConnectorTask
         Map<String, String> finalOffsets = new HashMap<>();
 
         if (offsets == null) {
-            // We do not have anything to commit here, returning an empty map should be fine.
-            return finalOffsets;
+            // If we are hitting this block then ybOffset is not null at this point, so it should
+            // be safe to return ybOffset.
+            return this.ybOffset;
         }
 
         for (Map.Entry<String, ?> entry : offsets.entrySet()) {
