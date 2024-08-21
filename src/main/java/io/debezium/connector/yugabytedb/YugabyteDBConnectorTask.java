@@ -159,8 +159,8 @@ public class YugabyteDBConnectorTask
                 new YugabyteDBOffsetContext.Loader(connectorConfig));
         final Clock clock = Clock.system();
 
-       YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(previousOffsets,
-                                                                     connectorConfig);
+        YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(previousOffsets,
+                                                                      connectorConfig);
 
         LoggingContext.PreviousContext previousContext = taskContext
                 .configureLoggingContext(CONTEXT_NAME + "|" + taskId);
