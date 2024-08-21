@@ -362,8 +362,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                 tabletListResponse.put(tId, resp);
             }
 
-            LOGGER.info("tabletPairListSize after populating: {}", this.tabletPairList.size());
-
             LOGGER.debug("The init tabletSourceInfo before updating is " + offsetContext.getTabletSourceInfo());
 
             // Initialize the offsetContext and other supporting flags.
@@ -947,7 +945,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // TODO: The transaction_id field is getting populated somewhere and see if it can
                 // be removed or blocked from getting added to this map.
                 if (!entry.getKey().equals("transaction_id")) {
-                    LOGGER.info("Tablet: {} OpId: {}", entry.getKey(), entry.getValue());
+                    LOGGER.debug("Tablet: {} OpId: {}", entry.getKey(), entry.getValue());
 
                     // Parse the string to get the OpId object.
                     OpId tempOpId = OpId.valueOf((String) entry.getValue());

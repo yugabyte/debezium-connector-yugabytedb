@@ -111,7 +111,6 @@ public class YBPartition implements Partition {
         String[] tableTablet = partitionId.split("\\.");
 
         if (tableTablet.length == 1) {
-            System.out.println("Creating YBPartition with just a tablet for tablet " + tableTablet[0]);
             return new YBPartition("", tableTablet[0], false);
         }
 
