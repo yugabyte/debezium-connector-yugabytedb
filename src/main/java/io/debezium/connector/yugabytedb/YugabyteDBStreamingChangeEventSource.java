@@ -940,7 +940,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // than one already present would throw the error: CDCSDK: Trying to fetch already GCed intents
                     if (this.tabletToExplicitCheckpoint.get(entry.getKey()) != null &&
                             tempOpId.getIndex() < this.tabletToExplicitCheckpoint.get(entry.getKey()).getIndex()) {
-                        LOGGER.warn("The received OpId {} is less than the older checkpoint {} for tablet {}",
+                        LOGGER.debug("The received OpId {} is less than the older checkpoint {} for tablet {}",
                                     tempOpId.getIndex(), this.tabletToExplicitCheckpoint.get(entry.getKey()).getIndex(), entry.getKey());
                         continue;
                     }

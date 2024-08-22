@@ -89,14 +89,6 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 			return;
 		}
 
-		if (transactionContext == null) {
-			LOGGER.info("VKVK transaction context is null");
-		}
-
-		if (partition == null) {
-			LOGGER.info("VKVK partition is null");
-		}
-
 		if (!transactionContext.isTransactionInProgress(partition)) {
 			transactionContext.beginTransaction(partition, txId);
 			beginTransaction(partition, offset);
