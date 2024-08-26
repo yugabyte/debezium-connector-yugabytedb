@@ -173,7 +173,9 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
      * @return true if the connector is in snapshot phase, false otherwise
      */
     protected boolean isSnapshotInProgress() {
-        return snapshotter.shouldSnapshot() && !snapshotSource.isSnapshotComplete();
+        return snapshotter.shouldSnapshot()
+                 && (snapshotSource != null)
+                 && !snapshotSource.isSnapshotComplete();
     }
 
     private void setSnapshotStartLsn(YugabyteDBSnapshotChangeEventSource snapshotSource,

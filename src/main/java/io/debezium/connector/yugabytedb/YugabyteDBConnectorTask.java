@@ -70,7 +70,7 @@ public class YugabyteDBConnectorTask
 
     private YBPartition.Provider partitionProvider;
     private YugabyteDBOffsetContext.Loader offsetContextLoader;
-
+    private long lastLoggedTime = 0;
     private final ReentrantLock commitLock = new ReentrantLock();
 
     protected volatile Map<String, ?> ybOffset;
@@ -288,12 +288,14 @@ public class YugabyteDBConnectorTask
         if (offsets != null) {
             found = true;
 
-            if (LOGGER.isDebugEnabled()) {
+            if (LOGGER.isDebugEnabled() || (System.currentTimeMillis() - lastLoggedTime) > 5 * 60 * 1000) {
                 for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry : offsets.getOffsets().entrySet()) {
                     if (entry.getKey() != null && entry.getValue() != null) {
-                        LOGGER.debug("Read offset map {} for partition {} from topic", entry.getValue().getOffset(), entry.getKey());
+                        LOGGER.info("Read offset map {} for partition {} from topic", entry.getValue().getOffset(), entry.getKey());
                     }
                 }
+
+                lastLoggedTime = System.currentTimeMillis();
             }
         }
 
