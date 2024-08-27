@@ -291,7 +291,8 @@ public class YugabyteDBConnectorTask
             if (LOGGER.isDebugEnabled() || (System.currentTimeMillis() - lastLoggedTime) > 5 * 60 * 1000) {
                 for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry : offsets.getOffsets().entrySet()) {
                     if (entry.getKey() != null && entry.getValue() != null) {
-                        LOGGER.info("Read offset map {} for partition {} from topic", entry.getValue().getOffset(), entry.getKey());
+                        LOGGER.info("{} | Read offset map {} for partition {} from topic",
+                                    taskContext.getTaskId(), entry.getValue().getOffset(), entry.getKey());
                     }
                 }
 
