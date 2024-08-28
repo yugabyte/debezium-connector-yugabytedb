@@ -155,7 +155,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
 
     @Override
     public void commitOffset(Map<String, ?> offset) {
-        if (snapshotSource == null) {
+        if (this.snapshotSource == null) {
             return;
         }
 
@@ -163,7 +163,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
         // streaming source only. If snapshot is complete, even then the callback should go to the
         // streaming source as in case of a finished snapshot, we do not want to do a duplicate call
         // for commitOffset.
-        if (!commitOffsetLock.isLocked() && snapshotter.shouldSnapshot() && !snapshotSource.isSnapshotComplete()) {
+        if (!commitOffsetLock.isLocked() && snapshotter.shouldSnapshot() && !this.snapshotSource.isSnapshotComplete()) {
             snapshotSource.commitOffset(offset);
             return;
         }
