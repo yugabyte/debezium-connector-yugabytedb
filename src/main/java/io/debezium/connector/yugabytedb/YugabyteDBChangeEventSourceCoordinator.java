@@ -155,6 +155,10 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
 
     @Override
     public void commitOffset(Map<String, ?> offset) {
+        if (snapshotSource == null) {
+            return;
+        }
+
         // Check if snapshotter is enabled, if it is not then callback should go to the
         // streaming source only. If snapshot is complete, even then the callback should go to the
         // streaming source as in case of a finished snapshot, we do not want to do a duplicate call
