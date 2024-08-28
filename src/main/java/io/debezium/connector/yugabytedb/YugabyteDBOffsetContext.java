@@ -46,7 +46,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     // fromLsn - stores the OpId we should use to call next GetChangesRequest
     private final Map<String, SourceInfo> tabletSourceInfo;
     private final Map<String, OpId> fromLsn;
-    private YugabyteDBTransactionContext transactionContext;
+    private final YugabyteDBTransactionContext transactionContext;
     private IncrementalSnapshotContext<TableId> incrementalSnapshotContext;
     private YugabyteDBConnectorConfig connectorConfig;
     private final Map<String, Integer> tabletWalSegmentIndex;
@@ -91,6 +91,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         this.tabletSourceInfo = sourceInfoMap;
         this.fromLsn = new ConcurrentHashMap<>();
         this.tabletWalSegmentIndex = new ConcurrentHashMap<>();
+        this.transactionContext = new YugabyteDBTransactionContext();
     }
 
     public static YugabyteDBOffsetContext initialContextForSnapshot(YugabyteDBConnectorConfig connectorConfig,

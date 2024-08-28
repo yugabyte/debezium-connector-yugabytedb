@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBSnapshotTest extends YugabytedTestBase {
+public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     @BeforeAll
     public static void beforeClass() throws Exception {
         initializeYBContainer();
@@ -1024,10 +1024,10 @@ public class YugabyteDBSnapshotTest extends YugabytedTestBase {
 
     static Stream<Arguments> streamTypeProviderForSnapshotWithColocation() {
         return Stream.of(
-                // Arguments.of(false, false, true), // Older stream with colocation
-                Arguments.of(false, false, false)); // Older stream without colocation
-                // Arguments.of(true, true, true), // USE_SNAPSHOT stream with colocation
-                // Arguments.of(true, true, false));  // USE_SNAPSHOT stream without colocation
+                Arguments.of(false, false, true), // Older stream with colocation
+                Arguments.of(false, false, false), // Older stream without colocation
+                Arguments.of(true, true, true), // USE_SNAPSHOT stream with colocation
+                Arguments.of(true, true, false));  // USE_SNAPSHOT stream without colocation
     }
 
     static Stream<Arguments> argumentProviderForEmptyNonEmptyNonColocatedTables() {

@@ -127,7 +127,6 @@ public class YBPartition implements Partition {
 
         @Override
         public Set<YBPartition> getPartitions() {
-            // todo VAIBHAV: Current implementation has a bug, we need to find a way to figure out current set of partitions.
             String tabletListSerialized = this.connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST);
             List<HashPartition> tabletPairList;
             try {
