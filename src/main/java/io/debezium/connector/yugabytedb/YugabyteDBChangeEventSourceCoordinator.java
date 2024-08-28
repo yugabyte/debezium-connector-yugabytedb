@@ -196,11 +196,24 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
      */
     public Optional<Set<YBPartition>> getPartitions() {
         if (this.streamingChangeEventSource == null) {
-            LOGGER.debug("Streaming change event source is null, returning empty value");
+            LOGGER.info("Streaming change event source is null, returning empty value");
             return Optional.empty();
         }
 
-        return Optional.of(this.streamingChangeEventSource.getActivePartitionsBeingPolled());
+        Optional<Set<YBPartition>> ybPartitions =
+          Optional.of(this.streamingChangeEventSource.getActivePartitionsBeingPolled());
+
+        // There's a small window during connector/task startup phase when the partitions being
+        // returned from the streaming source can be empty owing to the fact that it has not been
+        // populated yet. In that case, treat it as the streaming source itself has not been
+        // initialised.
+        if (ybPartitions.isPresent() && ybPartitions.get().size() == 0) {
+            // todo: See if it is possible to add a task ID in the log statement.
+            LOGGER.info("Received an empty set of partitions from streaming source, will use config to get partitions");
+            ybPartitions = Optional.empty();
+        }
+
+        return ybPartitions;
     }
 
     /**
