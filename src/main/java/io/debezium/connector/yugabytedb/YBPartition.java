@@ -44,7 +44,7 @@ public class YBPartition implements Partition {
 
     @Override
     public Map<String, String> getSourcePartition() {
-        return Collect.hashMapOf(PARTITION_KEY, getId());
+        return Collect.hashMapOf(PARTITION_KEY, getFullPartitionName());
     }
 
     public String getTableId() {
@@ -111,10 +111,10 @@ public class YBPartition implements Partition {
         String[] tableTablet = partitionId.split("\\.");
 
         if (tableTablet.length == 1) {
-            return new YBPartition("", tableTablet[0]);
+            return new YBPartition("", tableTablet[0], false);
         }
 
-        return new YBPartition(tableTablet[0], tableTablet[1]);
+        return new YBPartition(tableTablet[0], tableTablet[1], true);
     }
 
     static class Provider implements Partition.Provider<YBPartition> {

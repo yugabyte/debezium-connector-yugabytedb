@@ -11,8 +11,10 @@ import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
+import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.heartbeat.HeartbeatFactory;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.kafka.connect.errors.ConnectException;
@@ -64,6 +66,15 @@ public class YugabyteDBConnectorTask
     private volatile YugabyteDBConnection heartbeatConnection;
     private volatile YugabyteDBSchema schema;
 
+    private YugabyteDBChangeEventSourceCoordinator coordinator;
+
+    private YBPartition.Provider partitionProvider;
+    private YugabyteDBOffsetContext.Loader offsetContextLoader;
+    private long lastLoggedTime = 0;
+    private final ReentrantLock commitLock = new ReentrantLock();
+
+    protected volatile Map<String, ?> ybOffset;
+
     @Override
     public ChangeEventSourceCoordinator<YBPartition, YugabyteDBOffsetContext> start(Configuration config) {
         final YugabyteDBConnectorConfig connectorConfig = new YugabyteDBConnectorConfig(config);
@@ -83,7 +94,9 @@ public class YugabyteDBConnectorTask
 
         Encoding encoding = Encoding.defaultEncoding(); // UTF-8
         YugabyteDBTaskConnection taskConnection = new YugabyteDBTaskConnection(encoding);
-                                                                                          
+
+        this.partitionProvider = new YBPartition.Provider(connectorConfig);
+        this.offsetContextLoader = new YugabyteDBOffsetContext.Loader(connectorConfig);
 
         final YugabyteDBValueConverterBuilder valueConverterBuilder = (typeRegistry) -> YugabyteDBValueConverter.of(
                 connectorConfig,
@@ -141,9 +154,7 @@ public class YugabyteDBConnectorTask
 
         // Get the tablet ids and load the offsets
         final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets =
-            getPreviousOffsetsFromProviderAndLoader(
-                new YBPartition.Provider(connectorConfig),
-                new YugabyteDBOffsetContext.Loader(connectorConfig));
+            getPreviousOffsetsFromProviderAndLoader(this.partitionProvider, this.offsetContextLoader);
         final Clock clock = Clock.system();
 
         YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(previousOffsets,
@@ -200,7 +211,7 @@ public class YugabyteDBConnectorTask
                     schemaNameAdjuster,
                     jdbcConnection);
 
-            YugabyteDBChangeEventSourceCoordinator coordinator = new YugabyteDBChangeEventSourceCoordinator(
+            this.coordinator = new YugabyteDBChangeEventSourceCoordinator(
                     previousOffsets,
                     errorHandler,
                     YugabyteDBgRPCConnector.class,
@@ -224,9 +235,9 @@ public class YugabyteDBConnectorTask
                     snapshotter,
                     null/* slotInfo */);
 
-            coordinator.start(taskContext, this.queue, metadataProvider);
+            this.coordinator.start(taskContext, this.queue, metadataProvider);
 
-            return coordinator;
+            return this.coordinator;
         }
         finally {
             previousContext.restore();
@@ -272,12 +283,18 @@ public class YugabyteDBConnectorTask
             Offsets.of(reader.offsets(partitions));
 
         boolean found = false;
-        for (YBPartition partition : partitions) {
-            YugabyteDBOffsetContext offset = offsets.getOffsets().get(partition); //offsets.get(partition);
+        if (offsets != null) {
+            found = true;
 
-            if (offset != null) {
-                found = true;
-                LOGGER.info("Found previous partition offset {}: {}", partition, offset);
+            if (LOGGER.isDebugEnabled()) {
+                for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry : offsets.getOffsets().entrySet()) {
+                    if (entry.getKey() != null && entry.getValue() != null) {
+                        LOGGER.debug("{} | Read offset map {} for partition {} from topic",
+                                     taskContext.getTaskId(), entry.getValue().getOffset(), entry.getKey());
+                    }
+                }
+
+                lastLoggedTime = System.currentTimeMillis();
             }
         }
 
@@ -361,6 +378,110 @@ public class YugabyteDBConnectorTask
     @Override
     protected Iterable<Field> getAllConfigurationFields() {
         return YugabyteDBConnectorConfig.ALL_FIELDS;
+    }
+
+    @Override
+    public void commitRecord(SourceRecord record) throws InterruptedException {
+        // Do nothing.
+    }
+
+    /*
+     Let's say there are 3 partitions or 3 tablets
+     - tablet_0 (0-1, 1-0, 2-0)
+     - tablet_1 (0-1, 1-1, 2-0))
+     - tablet_2 (0-1, 1-1, 2-1)
+     The records are also published in the same order i.e. tablet_0, tablet_1, tablet_2
+     But it is not guaranteed that while reading the offsets from kafka we will read in the same
+     order, we can end up reading the partitions/tablets in the following order:
+     - tablet_1
+     - tablet_2
+     - tablet_0
+     Now, if we call commitOffset on each of the partition, we will basically be overriding the
+     offsets with a lower value which we do not want to happen. And that is specifically the reason
+     why we use the method getHigherOffsets() to get the highest offset (OpId for YugabyteDB tablet)
+     for each tablet across all partitions.
+     */
+    @Override
+    public void commit() throws InterruptedException {
+        boolean locked = commitLock.tryLock();
+
+        if (locked) {
+            try {
+                if (this.coordinator != null) {
+                    Offsets<YBPartition, YugabyteDBOffsetContext> offsets = getPreviousOffsetsFromProviderAndLoader(this.partitionProvider, this.offsetContextLoader);
+                    if (offsets.getOffsets() != null) {
+                        offsets.getOffsets()
+                          .entrySet()
+                          .stream()
+                          .filter(e -> e.getValue() != null)
+                          .forEach(entry -> {
+                              Map<String, ?> lastOffset = entry.getValue().getOffset();
+                              this.ybOffset = getHigherOffsets(lastOffset);
+                          });
+
+                        if (LOGGER.isDebugEnabled()) {
+                            for (Map.Entry<String, ?> entry : ybOffset.entrySet()) {
+                                LOGGER.debug("Committing offset {} for partition {}", entry.getValue(), entry.getKey());
+                            }
+                        }
+
+                        this.coordinator.commitOffset(ybOffset);
+                    }
+                }
+            } finally {
+                commitLock.unlock();
+            }
+        } else {
+            LOGGER.warn("Couldn't commit processed checkpoints with the source database due to a concurrent connector shutdown or restart");
+        }
+    }
+
+    /**
+     * Get a map of keys with the higher values after comparing the cached map and the one we pass.
+     * <br/><br/>
+     * For example, suppose we have the ybOffset as <code>{a=1,b=12,c=6}</code> and offsets as
+     * <code>{a=3,b=1,c=6}</code> then the value returned will be <code>{a=3,b=12,c=6}</code>.
+     * @param offsets the offset map read from Kafka topic
+     * @return a map with the values higher among the cached ybOffset and passed offsets map
+     */
+    protected Map<String, ?> getHigherOffsets(Map<String, ?> offsets) {
+        if (this.ybOffset == null) {
+            return offsets;
+        }
+
+        if (offsets == null) {
+            // If we are hitting this block then ybOffset is not null at this point, so it should
+            // be safe to return ybOffset.
+            return this.ybOffset;
+        }
+
+        Map<String, String> finalOffsets = new HashMap<>();
+
+        for (Map.Entry<String, ?> entry : offsets.entrySet()) {
+            if ((entry.getKey().contains(".") && !isTaskInSnapshotPhase())
+                  || (!entry.getKey().contains(".") && isTaskInSnapshotPhase())) {
+                LOGGER.debug("Skipping the offset for entry {}", entry.getKey());
+                continue;
+            }
+
+            OpId currentEntry = OpId.valueOf((String) this.ybOffset.get(entry.getKey()));
+            if (currentEntry == null || currentEntry.isLesserThanOrEqualTo(OpId.valueOf((String) entry.getValue()).toCdcSdkCheckpoint())) {
+                finalOffsets.put(entry.getKey(), (String) entry.getValue());
+            } else {
+                finalOffsets.put(entry.getKey(), (String) this.ybOffset.get(entry.getKey()));
+            }
+        }
+
+        return finalOffsets;
+    }
+
+    /**
+     * @return true if the {@link YugabyteDBChangeEventSourceCoordinator} for this task has started
+     * executing the streaming source, false otherwise. In other words, this method indicates the
+     * status whether this task is in the snapshot phase.
+     */
+    protected boolean isTaskInSnapshotPhase() {
+        return (this.coordinator == null) && this.coordinator.isSnapshotInProgress();
     }
 
     public YugabyteDBTaskContext getTaskContext() {

@@ -119,14 +119,9 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
     public Optional<IncrementalSnapshotChangeEventSource<YBPartition, ? extends DataCollectionId>> getIncrementalSnapshotChangeEventSource(YugabyteDBOffsetContext offsetContext,
                                                                                                                               SnapshotProgressListener snapshotProgressListener,
                                                                                                                               DataChangeEventListener dataChangeEventListener) {
-        final SignalBasedIncrementalSnapshotChangeEventSource<YBPartition, TableId> incrementalSnapshotChangeEventSource = new SignalBasedIncrementalSnapshotChangeEventSource<YBPartition, TableId>(
-                configuration,
-                jdbcConnection,
-                dispatcher,
-                schema,
-                clock,
-                snapshotProgressListener,
-                dataChangeEventListener);
-        return Optional.of(incrementalSnapshotChangeEventSource);
+        // YugabyteDB does not support incremental snapshots so when an incremental snapshot change
+        // event source is requested, we can simply return an empty value so that no action can be
+        // taken on this.
+        return Optional.empty();
     }
 }
