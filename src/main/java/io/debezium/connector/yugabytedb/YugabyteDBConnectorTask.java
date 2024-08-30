@@ -154,9 +154,7 @@ public class YugabyteDBConnectorTask
 
         // Get the tablet ids and load the offsets
         final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets =
-            getPreviousOffsetsFromProviderAndLoader(
-                new YBPartition.Provider(connectorConfig),
-                new YugabyteDBOffsetContext.Loader(connectorConfig));
+            getPreviousOffsetsFromProviderAndLoader(this.partitionProvider, this.offsetContextLoader);
         final Clock clock = Clock.system();
 
         YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(previousOffsets,
