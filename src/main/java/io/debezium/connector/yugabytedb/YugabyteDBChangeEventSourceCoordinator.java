@@ -8,6 +8,8 @@ package io.debezium.connector.yugabytedb;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.kafka.connect.source.SourceConnector;
@@ -45,6 +47,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
     private final SlotState slotInfo;
 
     private YugabyteDBSnapshotChangeEventSource snapshotSource;
+    private YugabyteDBStreamingChangeEventSource streamingChangeEventSource;
 
     public YugabyteDBChangeEventSourceCoordinator(Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets,
                                                   ErrorHandler errorHandler,
@@ -154,6 +157,18 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
     }
 
     @Override
+    protected void streamEvents(ChangeEventSourceContext context, YBPartition partition,
+            YugabyteDBOffsetContext offsetContext) throws InterruptedException {
+        initStreamEvents(partition, offsetContext);
+        LOGGER.info("Starting streaming");
+
+        this.streamingChangeEventSource = (YugabyteDBStreamingChangeEventSource) streamingSource;
+
+        streamingSource.execute(context, partition, offsetContext);
+        LOGGER.info("Finished streaming");
+    }
+
+    @Override
     public void commitOffset(Map<String, ?> offset) {
         if (this.snapshotSource == null) {
             return;
@@ -171,6 +186,32 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
         if (!commitOffsetLock.isLocked() && streamingSource != null && offset != null) {
             streamingSource.commitOffset(offset);
         }
+    }
+
+    /**
+     * @return the set of partitions i.e. {@link YBPartition} being in the streaming phase at a
+     * given point in time. If streamingChangeEventSource is null that means we are still in the
+     * snapshot phase and in that case it should be safe to return an {@link Optional#empty()}
+     * which should be handled by the caller of this method.
+     */
+    public Optional<Set<YBPartition>> getPartitions() {
+        // There can be one window where the coordinator has not initialized streaming change event
+        // or the connector is still in snapshot phase (streaming source will not be initialized at
+        // that time) then we can return an empty optional.
+        // There's another small window during connector/task startup phase when the partitions
+        // being returned from the streaming source can be empty owing to the fact that it has not
+        // been populated yet. In that case, treat it as the streaming source itself has not been
+        // initialized.
+        if (this.streamingChangeEventSource == null
+              || this.streamingChangeEventSource.getActivePartitionsBeingPolled().isEmpty()) {
+            LOGGER.debug("Returning empty optional for partition list");
+            return Optional.empty();
+        }
+
+        Optional<Set<YBPartition>> ybPartitions =
+          Optional.of(this.streamingChangeEventSource.getActivePartitionsBeingPolled());
+
+        return ybPartitions;
     }
 
     /**

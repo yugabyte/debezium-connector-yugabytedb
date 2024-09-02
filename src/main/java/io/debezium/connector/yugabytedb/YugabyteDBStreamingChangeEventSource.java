@@ -36,6 +36,7 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 import io.debezium.connector.base.ChangeEventQueue;
@@ -101,6 +102,10 @@ public class YugabyteDBStreamingChangeEventSource implements
     protected Set<String> splitTabletsWaitingForCallback;
     protected List<HashPartition> partitionRanges;
 
+    // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
+    // and the value is tablet UUID
+    protected List<Pair<String, String>> tabletPairList;
+
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
                                                 YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
                                                 YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection,
@@ -124,6 +129,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.splitTabletsWaitingForCallback = new HashSet<>();
         this.filters = new Filters(connectorConfig);
         this.partitionRanges = new ArrayList<>();
+        this.tabletPairList = new CopyOnWriteArrayList<>();
 
         if (TEST_TRACK_EXPLICIT_CHECKPOINTS) {
             TEST_explicitCheckpoints = new ConcurrentHashMap<>();
@@ -307,8 +313,7 @@ public class YugabyteDBStreamingChangeEventSource implements
      * @param response of type {@link GetTabletListToPollForCDCResponse}
      * @param tabletPairList a list of {@link Pair} to be populated where each pair is {@code <tableId, tabletId>}
      */
-    protected void populateTableToTabletPairsForTask(String tableId, GetTabletListToPollForCDCResponse response,
-                                                     List<Pair<String, String>> tabletPairList) {
+    protected void populateTableToTabletPairsForTask(String tableId, GetTabletListToPollForCDCResponse response) {
         // Verify that the partitionRanges are already populated.
         Objects.requireNonNull(partitionRanges);
         assert !partitionRanges.isEmpty();
@@ -319,7 +324,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
             for (HashPartition parent : partitionRanges) {
                 if (parent.containsPartition(hp)) {
-                    tabletPairList.add(new ImmutablePair<>(hp.getTableId(), hp.getTabletId()));
+                    this.tabletPairList.add(new ImmutablePair<>(hp.getTableId(), hp.getTabletId()));
                 }
             }
         }
@@ -332,10 +337,6 @@ public class YugabyteDBStreamingChangeEventSource implements
             throws Exception {
         LOGGER.info("Processing messages");
         try (YBClient syncClient = YBClientUtils.getYbClient(this.connectorConfig)) {
-            // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
-            // and the value is tablet UUID
-            List<Pair<String, String>> tabletPairList = new ArrayList<>();
-
             Map<String, YBTable> tableIdToTable = new HashMap<>();
             Map<String, GetTabletListToPollForCDCResponse> tabletListResponse = new HashMap<>();
             String streamId = connectorConfig.streamId();
@@ -357,7 +358,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                 // TODO: One optimisation where we initialise the offset context here itself
                 //  without storing the GetTabletListToPollForCDCResponse
-                populateTableToTabletPairsForTask(tId, resp, tabletPairList);
+                populateTableToTabletPairsForTask(tId, resp);
                 LOGGER.info("Table: {} with number of tablets {}", tId, resp.getTabletCheckpointPairListSize());
                 tabletListResponse.put(tId, resp);
             }
@@ -861,6 +862,20 @@ public class YugabyteDBStreamingChangeEventSource implements
                 throw cdcErrorException;
             }
         }
+    }
+
+    public Set<YBPartition> getActivePartitionsBeingPolled() {
+        Set<YBPartition> partitions = new HashSet<>();
+
+        for (Pair<String, String> pair : this.tabletPairList) {
+            partitions.add(new YBPartition(pair.getKey(), pair.getValue(), false));
+        }
+
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Returning an active partition set with size: {}", partitions.size());
+        }
+
+        return partitions;
     }
 
     /**

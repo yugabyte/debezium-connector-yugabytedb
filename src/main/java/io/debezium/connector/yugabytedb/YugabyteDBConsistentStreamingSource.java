@@ -48,10 +48,6 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
         LOGGER.info("Processing consistent messages");
 
         try (YBClient syncClient = YBClientUtils.getYbClient(this.connectorConfig)) {
-            // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
-            // and the value is tablet UUID
-            List<Pair<String, String>> tabletPairList = new ArrayList<>();
-
             Map<String, YBTable> tableIdToTable = new HashMap<>();
             Map<String, GetTabletListToPollForCDCResponse> tabletListResponse = new HashMap<>();
             String streamId = connectorConfig.streamId();
@@ -67,7 +63,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
                 GetTabletListToPollForCDCResponse resp =
                         YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
-                populateTableToTabletPairsForTask(tId, resp, tabletPairList);
+                populateTableToTabletPairsForTask(tId, resp);
                 tabletListResponse.put(tId, resp);
             }
 

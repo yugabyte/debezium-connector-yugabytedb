@@ -274,8 +274,40 @@ public class YugabyteDBConnectorTask
     Offsets<YBPartition, YugabyteDBOffsetContext> getPreviousOffsetsFromProviderAndLoader(
         Partition.Provider<YBPartition> provider,
         OffsetContext.Loader<YugabyteDBOffsetContext> loader) {
-        Set<YBPartition> partitions = provider.getPartitions();
-        LOGGER.debug("The size of partitions is " + partitions.size());
+        /*
+          This method will be invoked at following 3 timings:
+           1. While initialising the task
+           2. Commit callback during snapshot phase
+           3. Commit callback during streaming phase
+
+           While initialising the task:
+             It is safe to return the partitions from provider since coordinator will be null at this
+             point and will have no information about the current set of partitions.
+
+           Snapshot phase:
+             The streaming change event source will be null at this stage, and we will get an
+             Optional.empty() and subsequently this method will call provider.getPartitions() to
+             get partitions which should be fine since there would be no tablet split during
+             snapshot phase. See YugabyteDBChangeEventCoordinator#getPartitions for more details.
+ 
+           Streaming phase:
+             We can rely on coordinator to leverage the streaming change event source and send us
+             the set of active partitions being polled which includes the dynamically created
+             partitions because of tablet splitting too. There can be a small window of time when
+             the partition list in streaming change event source will be empty and not populated,
+             so using the provider to get partitions is fine in this case as well.
+         */
+        Set<YBPartition> partitions;
+
+        if (this.coordinator == null || this.coordinator.getPartitions().isEmpty()) {
+            // Coordinator can be null during task initialization, or it is snapshot phase or
+            // streaming initialization phase.
+            partitions = provider.getPartitions();
+        } else {
+            // Normal case with streaming running fine.
+            partitions = this.coordinator.getPartitions().get();
+        }
+
         OffsetReader<YBPartition, YugabyteDBOffsetContext,
                      OffsetContext.Loader<YugabyteDBOffsetContext>> reader = new OffsetReader<>(
                         context.offsetStorageReader(), loader);
@@ -446,6 +478,7 @@ public class YugabyteDBConnectorTask
      */
     protected Map<String, ?> getHigherOffsets(Map<String, ?> offsets) {
         if (this.ybOffset == null) {
+            LOGGER.debug("Returning original offsets since cached ybOffset is null");
             return offsets;
         }
 
