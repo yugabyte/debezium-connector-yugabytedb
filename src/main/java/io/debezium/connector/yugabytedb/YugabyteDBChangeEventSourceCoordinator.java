@@ -195,23 +195,21 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
      * which should be handled by the caller of this method.
      */
     public Optional<Set<YBPartition>> getPartitions() {
-        if (this.streamingChangeEventSource == null) {
-            LOGGER.info("Streaming change event source is null, returning empty value");
+        // There can be one window where the coordinator has not initialized streaming change event
+        // or the connector is still in snapshot phase (streaming source will not be initialized at
+        // that time) then we can return an empty optional.
+        // There's another small window during connector/task startup phase when the partitions
+        // being returned from the streaming source can be empty owing to the fact that it has not
+        // been populated yet. In that case, treat it as the streaming source itself has not been
+        // initialized.
+        if (this.streamingChangeEventSource == null
+              || this.streamingChangeEventSource.getActivePartitionsBeingPolled().isEmpty()) {
+            LOGGER.debug("Returning empty optional for partition list");
             return Optional.empty();
         }
 
         Optional<Set<YBPartition>> ybPartitions =
           Optional.of(this.streamingChangeEventSource.getActivePartitionsBeingPolled());
-
-        // There's a small window during connector/task startup phase when the partitions being
-        // returned from the streaming source can be empty owing to the fact that it has not been
-        // populated yet. In that case, treat it as the streaming source itself has not been
-        // initialised.
-        if (ybPartitions.isPresent() && ybPartitions.get().size() == 0) {
-            // todo: See if it is possible to add a task ID in the log statement.
-            LOGGER.info("Received an empty set of partitions from streaming source, will use config to get partitions");
-            ybPartitions = Optional.empty();
-        }
 
         return ybPartitions;
     }

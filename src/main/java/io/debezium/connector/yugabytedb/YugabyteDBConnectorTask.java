@@ -285,15 +285,17 @@ public class YugabyteDBConnectorTask
              point and will have no information about the current set of partitions.
 
            Snapshot phase:
-             The streaming change event source will be null at this stage and we will get an Optional.empty()
-             and subsequently this method will call provider.getPartitions() to get partitions which
-             should be fine since there would be no tablet split during snapshot phase. See
-             YugabyteDBChangeEventCoordinator#getPartitions for more details.
+             The streaming change event source will be null at this stage, and we will get an
+             Optional.empty() and subsequently this method will call provider.getPartitions() to
+             get partitions which should be fine since there would be no tablet split during
+             snapshot phase. See YugabyteDBChangeEventCoordinator#getPartitions for more details.
  
            Streaming phase:
-             We can rely on coordinator to leverage the streaming change event source and send us the set
-             of active partitions being polled which includes the dynamically created partitions because
-             of tablet splitting too.
+             We can rely on coordinator to leverage the streaming change event source and send us
+             the set of active partitions being polled which includes the dynamically created
+             partitions because of tablet splitting too. There can be a small window of time when
+             the partition list in streaming change event source will be empty and not populated,
+             so using the provider to get partitions is fine in this case as well.
          */    
         Optional<Set<YBPartition>> ybPartitions = 
             (this.coordinator == null) ? Optional.of(provider.getPartitions()) : this.coordinator.getPartitions();
