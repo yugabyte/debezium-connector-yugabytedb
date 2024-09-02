@@ -504,7 +504,8 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                             YBTable table = tableIdToTable.get(entry.getKey());
 
-                            CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
+                            CdcSdkCheckpoint explicitCheckpoint = getExplicitCheckpoint(part, cp);
+
                             if (connectorConfig.logGetChanges() || LOGGER.isDebugEnabled()
                                   || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
                                 LOGGER.info("Requesting changes for table {} tablet {}, explicit_checkpoint: {} from_op_id: {}",
@@ -825,6 +826,23 @@ public class YugabyteDBStreamingChangeEventSource implements
         // connection.prepareQuery("SELECT 1");
         // connection.commit();
         // }
+    }
+
+    /**
+     * @param partition the {@link YBPartition} to get the checkpoint for
+     * @param fromOpId the request {@link OpId} (from_op_id)
+     * @return the checkpoint which should be marked as explicit checkpoint on service
+     */
+    protected CdcSdkCheckpoint getExplicitCheckpoint(YBPartition partition, OpId fromOpId) {
+        CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(partition.getId());
+
+        if (fromOpId.isLesserThanOrEqualTo(explicitCheckpoint)) {
+            LOGGER.debug("Request OpId for partition {} ({}) is less than or equal to explicit checkpoint ({})",
+                         partition.getId(), fromOpId.toSerString(), explicitCheckpoint);
+            return fromOpId.toCdcSdkCheckpoint();
+        }
+
+        return explicitCheckpoint;
     }
 
     /**
