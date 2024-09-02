@@ -296,10 +296,17 @@ public class YugabyteDBConnectorTask
              partitions because of tablet splitting too. There can be a small window of time when
              the partition list in streaming change event source will be empty and not populated,
              so using the provider to get partitions is fine in this case as well.
-         */    
-        Optional<Set<YBPartition>> ybPartitions = 
-            (this.coordinator == null) ? Optional.of(provider.getPartitions()) : this.coordinator.getPartitions();
-        Set<YBPartition> partitions = ybPartitions.orElse(provider.getPartitions());
+         */
+        Set<YBPartition> partitions;
+
+        if (this.coordinator == null || this.coordinator.getPartitions().isEmpty()) {
+            // Coordinator can be null during task initialization, or it is snapshot phase or
+            // streaming initialization phase.
+            partitions = provider.getPartitions();
+        } else {
+            // Normal case with streaming running fine.
+            partitions = this.coordinator.getPartitions().get();
+        }
 
         OffsetReader<YBPartition, YugabyteDBOffsetContext,
                      OffsetContext.Loader<YugabyteDBOffsetContext>> reader = new OffsetReader<>(
