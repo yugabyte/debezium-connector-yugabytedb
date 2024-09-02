@@ -154,9 +154,7 @@ public class YugabyteDBConnectorTask
 
         // Get the tablet ids and load the offsets
         final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets =
-            getPreviousOffsetsFromProviderAndLoader(
-                new YBPartition.Provider(connectorConfig),
-                new YugabyteDBOffsetContext.Loader(connectorConfig));
+            getPreviousOffsetsFromProviderAndLoader(this.partitionProvider, this.offsetContextLoader);
         final Clock clock = Clock.system();
 
         YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(previousOffsets,
@@ -475,13 +473,13 @@ public class YugabyteDBConnectorTask
             return offsets;
         }
 
-        Map<String, String> finalOffsets = new HashMap<>();
-
         if (offsets == null) {
             // If we are hitting this block then ybOffset is not null at this point, so it should
             // be safe to return ybOffset.
             return this.ybOffset;
         }
+
+        Map<String, String> finalOffsets = new HashMap<>();
 
         for (Map.Entry<String, ?> entry : offsets.entrySet()) {
             if ((entry.getKey().contains(".") && !isTaskInSnapshotPhase())
@@ -507,7 +505,7 @@ public class YugabyteDBConnectorTask
      * status whether this task is in the snapshot phase.
      */
     protected boolean isTaskInSnapshotPhase() {
-        return coordinator.isSnapshotInProgress();
+        return (this.coordinator == null) && this.coordinator.isSnapshotInProgress();
     }
 
     public YugabyteDBTaskContext getTaskContext() {
