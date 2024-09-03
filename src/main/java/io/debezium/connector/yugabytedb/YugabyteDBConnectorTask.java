@@ -514,7 +514,7 @@ public class YugabyteDBConnectorTask
      * status whether this task is in the snapshot phase.
      */
     protected boolean isTaskInSnapshotPhase() {
-        return (this.coordinator == null) && this.coordinator.isSnapshotInProgress();
+        return (this.coordinator == null) || this.coordinator.isSnapshotInProgress();
     }
 
     public YugabyteDBTaskContext getTaskContext() {
