@@ -494,8 +494,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 long readRecordsReceived = 0;
 
                 CdcSdkCheckpoint explicitCdcSdkCheckpoint = null;
+                OpId cp = previousOffset.snapshotLSN(part);
+
                 if (taskContext.shouldEnableExplicitCheckpointing()) {
-                  CdcSdkCheckpoint checkpoint = tabletToExplicitCheckpoint.get(part.getId());
+                  CdcSdkCheckpoint checkpoint = getExplicitCheckpoint(part, cp);
 
                   // If the checkpoint in tabletToExplicitCheckpoint map corresponds to the last record's checkpoint
                   // of last snapshot batch, it means kafka has consumed the last record. So, we should
@@ -511,8 +513,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   }
                   explicitCdcSdkCheckpoint = checkpoint;
                 }
-
-                OpId cp = previousOffset.snapshotLSN(part);
 
                 if (connectorConfig.logGetChanges() || LOGGER.isDebugEnabled()
                     || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
@@ -977,6 +977,23 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       // 1. Snapshot hasn't been initiated (so snapshot incomplete) -> indicated by invalid OpId 
       // 2. Snapshot is complete and tablet is in streaming mode -> OpId is valid
       return OpId.isValid(getCheckpointResponse.getTerm(), getCheckpointResponse.getIndex());
+    }
+
+    /**
+     * @param partition the {@link YBPartition} to get the checkpoint for
+     * @param fromOpId the request {@link OpId} (from_op_id)
+     * @return the checkpoint which should be marked as explicit checkpoint on service
+     */
+    protected CdcSdkCheckpoint getExplicitCheckpoint(YBPartition partition, OpId fromOpId) {
+      CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(partition.getId());
+
+      if (fromOpId.isLesserThanOrEqualTo(explicitCheckpoint)) {
+        LOGGER.debug("Request OpId for partition {} ({}) is less than or equal to explicit checkpoint ({})",
+          partition.getId(), fromOpId.toSerString(), explicitCheckpoint);
+        return fromOpId.toCdcSdkCheckpoint();
+      }
+
+      return explicitCheckpoint;
     }
 
     /**
