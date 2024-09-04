@@ -987,7 +987,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     protected CdcSdkCheckpoint getExplicitCheckpoint(YBPartition partition, OpId fromOpId) {
       CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(partition.getId());
 
-      if (fromOpId.isLesserThanOrEqualTo(explicitCheckpoint)) {
+      if (fromOpId.isLesserThanOrEqualTo(explicitCheckpoint)
+            && !isLastSnapshotRecordOfLastBatch(OpId.from(explicitCheckpoint))) {
         LOGGER.debug("Request OpId for partition {} ({}) is less than or equal to explicit checkpoint ({})",
           partition.getId(), fromOpId.toSerString(), explicitCheckpoint);
         return fromOpId.toCdcSdkCheckpoint();
