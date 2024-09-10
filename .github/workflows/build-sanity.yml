@@ -1,4 +1,4 @@
-name: Sanity test with YugabyteDB preview build
+name: Build sanity for compilation
 
 on:
   push:
