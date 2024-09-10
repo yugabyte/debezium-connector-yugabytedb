@@ -1,4 +1,4 @@
-name: Sanity test with YugabyteDB stable build
+name: Sanity test to run all tests
 
 on:
   push:
