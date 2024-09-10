@@ -36,7 +36,7 @@ jobs:
           username: ${{ secrets.QUAY_BOT_USERNAME }}
           password: ${{ secrets.QUAY_BOT_TOKEN }}
       - name: Log YugabyteDB version
-        run: echo "YugabyteDB version being used $YB_DOCKER_IMAGE"
+        run: echo "YugabyteDB version being used: $YB_DOCKER_IMAGE"
       - name: Pull docker image
         run: docker pull $YB_DOCKER_IMAGE
       - name: YugabyteDBDatatypesTest
