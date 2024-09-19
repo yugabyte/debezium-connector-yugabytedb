@@ -173,6 +173,14 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             throw new DebeziumException(e);
         }
 
+        if (!enableExplicitCheckpointing && !this.yugabyteDBConnectorConfig.forceUseImplicitStream()) {
+            final String errorMessage = "The provided stream " + this.yugabyteDBConnectorConfig.streamId()
+                    + " is a IMPLICIT stream, create a stream with EXPLICIT checkpointing and try again."
+                    + " To forcefully use an IMPLICIT stream, set configuration property force.use.implicit.stream"
+                    + " to true";
+            throw new DebeziumException(errorMessage);
+        }
+
         if (this.yugabyteDBConnectorConfig.transactionOrdering() && !enableExplicitCheckpointing) {
             final String errorMessage = "Explicit checkpointing not enabled in consistent streaming mode, "
                     + "create a stream with explicit checkpointing and try again";

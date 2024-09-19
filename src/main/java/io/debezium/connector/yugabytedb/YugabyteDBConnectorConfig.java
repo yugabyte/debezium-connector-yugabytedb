@@ -731,6 +731,12 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withImportance(Importance.LOW)
             .withDefault(false);
 
+    public static final Field FORCE_USE_IMPLICIT_STREAM = Field.create("force.use.implicit.stream")
+              .withDisplayName("Flag to forcefully use implicit streams in connector")
+              .withType(Type.BOOLEAN)
+              .withImportance(Importance.LOW)
+              .withDefault(false);
+
     public static final Field CHAR_SET = Field.create(TASK_CONFIG_PREFIX + "charset")
             .withDisplayName("YugabyteDB charset")
             .withType(ConfigDef.Type.STRING)
@@ -1266,6 +1272,10 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
     public boolean ignoreExceptions() {
         return getConfig().getBoolean(IGNORE_EXCEPTIONS);
+    }
+
+    public boolean forceUseImplicitStream() {
+        return getConfig().getBoolean(FORCE_USE_IMPLICIT_STREAM);
     }
 
     public int maxNumTablets() {
