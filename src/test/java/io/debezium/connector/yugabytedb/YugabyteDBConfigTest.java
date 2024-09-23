@@ -311,6 +311,41 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
         assertConnectorNotRunning();
     }
 
+    @Test
+    public void throwExceptionIfImplicitStreamSpecified() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        // Create a stream ID with IMPLICIT checkpointing and then deploy it in a consistent streaming setup.
+        TestHelper.execute("CREATE TABLE dummy_table (id INT PRIMARY KEY);");
+        final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "dummy_table", false,
+          false, false, false);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.dummy_table", dbStreamId);
+
+        start(YugabyteDBgRPCConnector.class, configBuilder.build(), (success, message, error) -> {
+            assertFalse(success);
+
+            assertTrue(error.getMessage().contains("is an IMPLICIT stream, create a stream with EXPLICIT checkpointing and try again"));
+        });
+
+        assertConnectorNotRunning();
+    }
+
+    @Test
+    public void shouldWorkIfForceUseImplicitStreamIsSet() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        // Create a stream ID with IMPLICIT checkpointing and then deploy it in a consistent streaming setup.
+        TestHelper.execute("CREATE TABLE dummy_table (id INT PRIMARY KEY);");
+        final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "dummy_table", false,
+          false, false, false);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.dummy_table", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.FORCE_USE_IMPLICIT_STREAM, true);
+
+        start(YugabyteDBgRPCConnector.class, configBuilder.build(), (success, message, error) -> {
+            assertTrue(success);
+        });
+    }
+
     @ParameterizedTest
     @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
     public void throwExceptionWithIncorrectTaskCountWithTransactionOrdering(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
