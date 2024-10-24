@@ -292,6 +292,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
 
     @ParameterizedTest
     @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+    @Disabled("Disabled in lieu of transaction ordering with logical replication")
     public void throwExceptionIfExplicitCheckpointingNotConfiguredWithConsistency(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
         TestHelper.dropAllSchemas();
 
@@ -348,6 +349,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
 
     @ParameterizedTest
     @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+    @Disabled("Disabled in lieu of transaction ordering with logical replication")
     public void throwExceptionWithIncorrectTaskCountWithTransactionOrdering(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
         TestHelper.dropAllSchemas();
 

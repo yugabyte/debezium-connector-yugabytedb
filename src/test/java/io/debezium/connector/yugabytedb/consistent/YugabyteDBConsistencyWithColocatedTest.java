@@ -22,6 +22,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import io.debezium.config.Configuration;
@@ -30,6 +31,7 @@ import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 
+@Disabled("Disabled in lieu of transaction ordering with logical replication")
 public class YugabyteDBConsistencyWithColocatedTest extends YugabyteDBContainerTestBase {
     @BeforeAll
     public static void beforeClass() throws SQLException {
