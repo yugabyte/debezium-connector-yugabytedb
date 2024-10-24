@@ -1069,8 +1069,26 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
            .withImportance(Importance.HIGH)
            .withDefault(false)
            .withType(Type.BOOLEAN)
-           .withValidation(Field::isBoolean)
+           .withValidation((config, field, output) -> {
+               if (config.getBoolean(field)) {
+                   final String errorMessage =
+                     "transaction.ordering is disabled with gRPC connector, use CDC with logical " +
+                       "replication to leverage transaction ordering " +
+                       "https://docs.yugabyte.com/preview/explore/change-data-capture/using-logical-replication/";
+                   LOGGER.error(errorMessage);
+                   output.accept(field, "", errorMessage);
+                   return 1;
+               }
+
+               return 0;
+           })
            .withDescription("Specify whether the transactions need to be ordered");
+
+    public static final Field OVERRIDE_TRANSACTION_ORDERING_DEPRECATION = Field.create("override.transaction.ordering.deprecation")
+           .withDisplayName("Internal config to override and forcefully use transaction ordering")
+           .withImportance(Importance.LOW)
+           .withDefault(false)
+           .withType(Type.BOOLEAN);
 
     public static final Field CONSISTENCY_MODE = Field.create("consistency.mode")
             .withDisplayName("Transaction Consistency mode")
