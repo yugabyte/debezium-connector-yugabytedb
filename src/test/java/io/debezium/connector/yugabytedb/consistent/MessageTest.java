@@ -1,6 +1,8 @@
 package io.debezium.connector.yugabytedb.consistent;
 
 import com.google.protobuf.ByteString;
+
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.yb.cdc.CdcService;
@@ -19,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * @author Rajat Venkatesh, Vaibhav Kushwaha
  */
+@Disabled("Disabled in lieu of transaction ordering with logical replication")
 public class MessageTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(MessageTest.class);
     private final String DUMMY_TABLE_ID = "dummy_table_id";

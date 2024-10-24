@@ -1063,13 +1063,31 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     "'skip' to skip / ignore TRUNCATE events (default), " +
                     "'include' to handle and include TRUNCATE events");
 
+    public static final Field OVERRIDE_TRANSACTION_ORDERING_DEPRECATION = Field.create("override.transaction.ordering.deprecation")
+            .withDisplayName("Internal config to override and forcefully use transaction ordering")
+            .withImportance(Importance.LOW)
+            .withDefault(false)
+            .withType(Type.BOOLEAN);
+
     public static final Field TRANSACTION_ORDERING = Field.create("transaction.ordering")
            .withDisplayName("Order transactions")
            .withGroup(Field.createGroupEntry(Field.Group.CONNECTOR, 23))
            .withImportance(Importance.HIGH)
            .withDefault(false)
            .withType(Type.BOOLEAN)
-           .withValidation(Field::isBoolean)
+           .withValidation((config, field, output) -> {
+               if (config.getBoolean(field) && !config.getBoolean(OVERRIDE_TRANSACTION_ORDERING_DEPRECATION)) {
+                   final String errorMessage =
+                     "transaction.ordering is disabled with gRPC connector, use CDC with logical " +
+                       "replication to leverage transaction ordering " +
+                       "https://docs.yugabyte.com/preview/explore/change-data-capture/using-logical-replication/";
+                   LOGGER.error(errorMessage);
+                   output.accept(field, "", errorMessage);
+                   return 1;
+               }
+
+               return 0;
+           })
            .withDescription("Specify whether the transactions need to be ordered");
 
     public static final Field CONSISTENCY_MODE = Field.create("consistency.mode")
