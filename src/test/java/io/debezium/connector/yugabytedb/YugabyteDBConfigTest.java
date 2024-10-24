@@ -313,6 +313,25 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
     }
 
     @Test
+    public void shouldAllowConnectorDeploymentWhenTransactionOrderingDeprecationIsOverridden() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        TestHelper.execute("CREATE TABLE dummy_table (id INT PRIMARY KEY);");
+        final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "dummy_table");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.dummy_table", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_ORDERING, true);
+        configBuilder.with(YugabyteDBConnectorConfig.OVERRIDE_TRANSACTION_ORDERING_DEPRECATION, true);
+
+        start(YugabyteDBgRPCConnector.class, configBuilder.build(), (success, message, error) -> {
+           assertTrue(success);
+
+           assertFalse(error.getMessage().contains("transaction.ordering is disabled with gRPC connector"));
+        });
+
+        assertConnectorIsRunning();
+    }
+
+    @Test
     public void throwExceptionIfImplicitStreamSpecified() throws Exception {
         TestHelper.dropAllSchemas();
 
