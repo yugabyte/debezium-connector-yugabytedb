@@ -1063,12 +1063,13 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     "'skip' to skip / ignore TRUNCATE events (default), " +
                     "'include' to handle and include TRUNCATE events");
 
-    public static final Field OVERRIDE_TRANSACTION_ORDERING_DEPRECATION = Field.create("override.transaction.ordering.deprecation")
+    public static final Field OVERRIDE_TRANSACTION_ORDERING_DEPRECATION = Field.create("TEST.override.transaction.ordering.deprecation")
             .withDisplayName("Internal config to override and forcefully use transaction ordering")
             .withImportance(Importance.LOW)
             .withDefault(false)
             .withType(Type.BOOLEAN);
 
+    // This field is now deprecated and its usage will be removed in future releases.
     public static final Field TRANSACTION_ORDERING = Field.create("transaction.ordering")
            .withDisplayName("Order transactions")
            .withGroup(Field.createGroupEntry(Field.Group.CONNECTOR, 23))
