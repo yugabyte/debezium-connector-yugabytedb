@@ -52,9 +52,7 @@ public class TestBaseClass extends AbstractConnectorTest {
     protected static List<String> masterFlags =
       new ArrayList<>(
         List.of(
-          "enable_tablet_split_of_cdcsdk_streamed_tables=true",
-          "allowed_preview_flags_csv=yb_enable_cdc_consistent_snapshot_streams",
-          "yb_enable_cdc_consistent_snapshot_streams=true"
+          "enable_tablet_split_of_cdcsdk_streamed_tables=true"
         ));
 
     // Set the GFLAG: "cdc_state_checkpoint_update_interval_ms" to 0 in all tests, forcing every

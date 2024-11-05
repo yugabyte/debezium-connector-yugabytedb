@@ -292,6 +292,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
 
     @ParameterizedTest
     @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+    @Disabled("Disabled in lieu of transaction ordering with logical replication")
     public void throwExceptionIfExplicitCheckpointingNotConfiguredWithConsistency(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
         TestHelper.dropAllSchemas();
 
@@ -309,6 +310,25 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
         });
 
         assertConnectorNotRunning();
+    }
+
+    @Test
+    public void shouldAllowConnectorDeploymentWhenTransactionOrderingDeprecationIsOverridden() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        TestHelper.execute("CREATE TABLE dummy_table (id INT PRIMARY KEY);");
+        final String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "dummy_table");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.dummy_table", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_ORDERING, true);
+        configBuilder.with(YugabyteDBConnectorConfig.OVERRIDE_TRANSACTION_ORDERING_DEPRECATION, true);
+
+        start(YugabyteDBgRPCConnector.class, configBuilder.build(), (success, message, error) -> {
+           assertTrue(success);
+
+           assertFalse(error.getMessage().contains("transaction.ordering is disabled with gRPC connector"));
+        });
+
+        assertConnectorIsRunning();
     }
 
     @Test
@@ -348,6 +368,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
 
     @ParameterizedTest
     @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
+    @Disabled("Disabled in lieu of transaction ordering with logical replication")
     public void throwExceptionWithIncorrectTaskCountWithTransactionOrdering(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
         TestHelper.dropAllSchemas();
 

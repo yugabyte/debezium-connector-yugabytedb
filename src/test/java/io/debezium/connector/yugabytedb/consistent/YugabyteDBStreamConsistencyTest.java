@@ -37,7 +37,7 @@ import io.debezium.config.Configuration;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-
+// @Disabled("Disabled in lieu of transaction ordering with logical replication")
 public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase {
     private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBStreamConsistencyTest.class);
     
