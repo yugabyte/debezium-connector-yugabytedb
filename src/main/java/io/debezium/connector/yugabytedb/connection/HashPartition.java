@@ -288,7 +288,7 @@ public class HashPartition implements Comparable<HashPartition>, Serializable {
    * @param hashPartitions a list of all the HashPartitions
    */
   public static void validateCompleteRanges(List<HashPartition> hashPartitions) {
-    Collections.sort(hashPartitions);
+    Collections.sort(hashPartitions); // ["", 1), [1, 10), [10, "");
 
     // Retrieve a table ID from any of the partition.
     final String tableId = hashPartitions.get(0).getTableId();
