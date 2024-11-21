@@ -32,6 +32,7 @@ import org.yb.cdc.CdcService.CDCErrorPB.Code;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.client.*;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
@@ -1055,9 +1056,15 @@ public class YugabyteDBStreamingChangeEventSource implements
         boolean tabletFound = false;
 
         HashPartition tabletToVerify = HashPartition.from(tabletCheckpointPair, tableId);
-        LOGGER.info("Tablet to verify {}", tabletToVerify.toString());
+        LOGGER.info("Tablet to verify {} with start {} and end {}",
+            tabletToVerify.getTabletId(),
+            tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyStart().toStringUtf8(),
+            tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyEnd().toStringUtf8());
         for (HashPartition parent : partitionRanges) {
-            LOGGER.info("parent {}", parent.toString());
+            LOGGER.info("parent {} start {} end {}",
+                parent.getTabletId(),
+                new String(parent.getPartitionKeyStart(), StandardCharsets.UTF_8),
+                new String(parent.getPartitionKeyEnd(), StandardCharsets.UTF_8));
             if (parent.containsPartition(tabletToVerify)) {
                 tabletFound = true;
                 break;
