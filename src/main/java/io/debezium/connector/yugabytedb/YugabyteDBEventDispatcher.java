@@ -105,7 +105,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
         try {
             boolean handled = false;
             if (!filter.isIncluded(dataCollectionId)) {
-                LOGGER.info("Filtered data change event for {}", dataCollectionId);
+                LOGGER.trace("Filtered data change event for {}", dataCollectionId);
                 eventListener.onFilteredEvent(partition, "source = " + dataCollectionId, changeRecordEmitter.getOperation());
                 dispatchFilteredEvent(changeRecordEmitter.getPartition(), changeRecordEmitter.getOffset());
             } else {

@@ -204,7 +204,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
         // initialized.
         if (this.streamingChangeEventSource == null
               || this.streamingChangeEventSource.getActivePartitionsBeingPolled().isEmpty()) {
-            LOGGER.info("Returning empty optional for partition list");
+            LOGGER.debug("Returning empty optional for partition list");
             return Optional.empty();
         }
 

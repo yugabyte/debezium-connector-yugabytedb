@@ -302,19 +302,10 @@ public class YugabyteDBConnectorTask
         if (this.coordinator == null || this.coordinator.getPartitions().isEmpty()) {
             // Coordinator can be null during task initialization, or it is snapshot phase or
             // streaming initialization phase.
-            LOGGER.info("Getting into base condition while getting partitions");
             partitions = provider.getPartitions();
         } else {
             // Normal case with streaming running fine.
             partitions = this.coordinator.getPartitions().get();
-        }
-
-        if (partitions.isEmpty()) {
-            LOGGER.info("Partitions is empty");
-        }
-
-        for (YBPartition p : partitions) {
-            LOGGER.info("Partitions returned in partitions: {}", p.toString());
         }
 
         OffsetReader<YBPartition, YugabyteDBOffsetContext,
@@ -327,10 +318,10 @@ public class YugabyteDBConnectorTask
         if (offsets != null) {
             found = true;
 
-            if (LOGGER.isInfoEnabled()) {
+            if (LOGGER.isDebugEnabled()) {
                 for (Map.Entry<YBPartition, YugabyteDBOffsetContext> entry : offsets.getOffsets().entrySet()) {
                     if (entry.getKey() != null && entry.getValue() != null) {
-                        LOGGER.info("{} | Read offset map {} for partition {} from topic",
+                        LOGGER.debug("{} | Read offset map {} for partition {} from topic",
                                      taskContext.getTaskId(), entry.getValue().getOffset(), entry.getKey());
                     }
                 }
@@ -450,29 +441,26 @@ public class YugabyteDBConnectorTask
             try {
                 if (this.coordinator != null) {
                     Offsets<YBPartition, YugabyteDBOffsetContext> offsets = getPreviousOffsetsFromProviderAndLoader(this.partitionProvider, this.offsetContextLoader);
-                    // A, B
-                    // B, C, D
                     if (offsets.getOffsets() != null) {
                         offsets.getOffsets()
                           .entrySet()
                           .stream()
-                        //   .filter(e -> e.getValue() != null)
+                          .filter(e -> e.getValue() != null)
                           .forEach(entry -> {
-                              if (entry.getValue() != null) {
-                                Map<String, ?> lastOffset = entry.getValue().getOffset();
-                                if (this.ybOffset == null) {
-                                    this.ybOffset = new HashMap<>();
-                                }
-                                
-                                this.ybOffset.putAll(getHigherOffsets(lastOffset));
-                              } else {
-                                LOGGER.info("Entry value is null for key {}, filtering", entry.getKey().toString());
+                              Map<String, ?> lastOffset = entry.getValue().getOffset();
+                              if (this.ybOffset == null) {
+                                  this.ybOffset = new HashMap<>();
                               }
+
+                              // This will ensure that all the keys present in the result of getHigherOffsets
+                              // are merged to ybOffset and if any key is present in ybOffset but not present
+                              // in the result of getHigherOffsets, we keep that key as it is.
+                              this.ybOffset.putAll(getHigherOffsets(lastOffset));
                           });
 
-                        if (LOGGER.isInfoEnabled()) {
+                        if (LOGGER.isDebugEnabled()) {
                             for (Map.Entry<String, ?> entry : ybOffset.entrySet()) {
-                                LOGGER.info("{} | Committing offset {} for partition {}",
+                                LOGGER.debug("{} | Committing offset {} for partition {}",
                                              taskContext.getTaskId(), entry.getValue(), entry.getKey());
                             }
                         }
@@ -511,12 +499,10 @@ public class YugabyteDBConnectorTask
 
         Map<String, String> finalOffsets = new HashMap<>();
 
-        // returned map = ybOffset + keyin Offsets 
-
         for (Map.Entry<String, ?> entry : offsets.entrySet()) {
             if ((entry.getKey().contains(".") && !isTaskInSnapshotPhase())
                   || (!entry.getKey().contains(".") && isTaskInSnapshotPhase())) {
-                LOGGER.info("{} | Skipping the offset for entry {}", taskContext.getTaskId(), entry.getKey());
+                LOGGER.debug("{} | Skipping the offset for entry {}", taskContext.getTaskId(), entry.getKey());
                 continue;
             }
 
@@ -526,8 +512,6 @@ public class YugabyteDBConnectorTask
             } else {
                 finalOffsets.put(entry.getKey(), (String) this.ybOffset.get(entry.getKey()));
             }
-
-            LOGGER.info("VKVK offset returned for key {} is {}", entry.getKey(), finalOffsets.get(entry.getKey()));
         }
 
         return finalOffsets;

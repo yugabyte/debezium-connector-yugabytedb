@@ -32,7 +32,6 @@ import org.yb.cdc.CdcService.CDCErrorPB.Code;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.client.*;
 
-import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
@@ -323,7 +322,6 @@ public class YugabyteDBStreamingChangeEventSource implements
         for (TabletCheckpointPair pair : response.getTabletCheckpointPairList()) {
             HashPartition hp = HashPartition.from(pair, tableId);
 
-            // ["", "")
             for (HashPartition parent : partitionRanges) {
                 if (parent.containsPartition(hp)) {
                     this.tabletPairList.add(new ImmutablePair<>(hp.getTableId(), hp.getTabletId()));
@@ -482,7 +480,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     // handle tablet split and delete the tablet from the waiting list.
 
                                     // Call getChanges to make sure checkpoint is set on the cdc_state table.
-                                    LOGGER.info("Setting explicit checkpoint for tablet {} to {}.{}", part.getTabletId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex());
+                                    LOGGER.info("Setting explicit checkpoint for tablet {} to {}.{}", part.getTabletId(),
+                                                explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex());
                                     setCheckpointWithGetChanges(syncClient, tableIdToTable.get(part.getTableId()), part,
                                             cp, explicitCheckpoint, schemaNeeded.get(part.getId()),
                                             tabletSafeTime.get(part.getId()), offsetContext.getWalSegmentIndex(part));
@@ -491,7 +490,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             part.getTabletId());
                                     handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
                                     splitTabletsWaitingForCallback.remove(part.getId());
-                                    LOGGER.info("Removed tablet {} from splitTabletsWaitingForCallback", part.getId());
                                     // Break out of the loop so that processing can happen on the modified list.
                                     break;
                                 } else {
@@ -582,8 +580,6 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                             LOGGER.debug("Processing {} records from getChanges call",
                                     response.getResp().getCdcSdkProtoRecordsList().size());
-                            int dmlRecords = 0;
-                            int queuedDmlRecords = 0;
                             for (CdcService.CDCSDKProtoRecordPB record : response
                                     .getResp()
                                     .getCdcSdkProtoRecordsList()) {
@@ -735,8 +731,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         // If you need to print the received record, change debug level to info
                                         LOGGER.debug("Received DML record {}", record);
 
-                                        ++dmlRecords;
-
                                         offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                 String.valueOf(message.getTransactionId()), tableId, message.getRecordTime());
 
@@ -754,9 +748,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                             taskContext.isBeforeImageEnabled()));
 
                                         if (!dispatched) {
-                                            LOGGER.info("Failed to dispatch record for tablet {}: {}", tabletId, record);
-                                        } else {
-                                            ++queuedDmlRecords;
+                                            LOGGER.warn("Failed to dispatch record for table {} tablet {}", tableId, tabletId);
                                         }
 
                                         if (recordsInTransactionalBlock.containsKey(part.getId())) {
@@ -770,8 +762,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     Thread.currentThread().interrupt();
                                 }
                             }
-
-                            LOGGER.info("Received DML records in batch {} with queued {}", dmlRecords, queuedDmlRecords);
 
                             probeConnectionIfNeeded();
 
@@ -801,12 +791,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                             if (taskContext.shouldEnableExplicitCheckpointing() && !TEST_STOP_ADVANCING_CHECKPOINTS) {
                                 OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
                                 if (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint)) {
-                                    LOGGER.info("Incremented the explicit checkpoint for tablet {} to {}", tabletId, finalOpid.toSerString());
                                     tabletToExplicitCheckpoint.put(part.getId(), finalOpid.toCdcSdkCheckpoint());
                                 }
                             }
 
-                            LOGGER.info("The final opid for tablet {} is {}", part.getId(), finalOpid);
+                            LOGGER.debug("The final opid for tablet {} is {}", part.getId(), finalOpid);
                         }
                         // Reset the retry count, because if flow reached at this point, it means that the connection
                         // has succeeded
@@ -989,13 +978,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // than one already present would throw the error: CDCSDK: Trying to fetch already GCed intents
                     if (this.tabletToExplicitCheckpoint.get(entry.getKey()) != null &&
                             tempOpId.getIndex() < this.tabletToExplicitCheckpoint.get(entry.getKey()).getIndex()) {
-                        LOGGER.warn("The received OpId {} is less than the older checkpoint {} for tablet {}",
+                        LOGGER.debug("The received OpId {} is less than the older checkpoint {} for tablet {}",
                                     tempOpId.getIndex(), this.tabletToExplicitCheckpoint.get(entry.getKey()).getIndex(), entry.getKey());
                         continue;
                     }
                     this.tabletToExplicitCheckpoint.put(entry.getKey(), tempOpId.toCdcSdkCheckpoint());
 
-                    LOGGER.info("Committed checkpoint on server for stream ID {} tablet {} with term {} index {}",
+                    LOGGER.debug("Committed checkpoint on server for stream ID {} tablet {} with term {} index {}",
                                 this.connectorConfig.streamId(), entry.getKey(), tempOpId.getTerm(), tempOpId.getIndex());
                 }
             }
@@ -1056,23 +1045,16 @@ public class YugabyteDBStreamingChangeEventSource implements
         boolean tabletFound = false;
 
         HashPartition tabletToVerify = HashPartition.from(tabletCheckpointPair, tableId);
-        LOGGER.info("Tablet to verify {} with start {} and end {}",
-            tabletToVerify.getTabletId(),
-            tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyStart().toStringUtf8(),
-            tabletCheckpointPair.getTabletLocations().getPartition().getPartitionKeyEnd().toStringUtf8());
         for (HashPartition parent : partitionRanges) {
-            LOGGER.info("parent {} start {} end {}",
-                parent.getTabletId(),
-                new String(parent.getPartitionKeyStart(), StandardCharsets.UTF_8),
-                new String(parent.getPartitionKeyEnd(), StandardCharsets.UTF_8));
             if (parent.containsPartition(tabletToVerify)) {
                 tabletFound = true;
                 break;
             }
         }
 
-        LOGGER.info("Tablet {} present in original ranges: {}", tabletCheckpointPair.getTabletLocations().getTabletId().toStringUtf8(), tabletFound);
-        assert tabletFound;
+        if (!tabletFound) {
+            throw new IllegalStateException("None of the specified partition ranges contain the tablet " + tabletToVerify.getTabletId());
+        }
     }
 
     /**
@@ -1115,7 +1097,6 @@ public class YugabyteDBStreamingChangeEventSource implements
 
             // Add the flag to indicate that we need the schema for the new tablets so that the schema can be registered.
             schemaNeeded.put(p.getId(), Boolean.TRUE);
-            LOGGER.info("Added tablet ID to schemaNeeded, tabletPairList and tabletToExplicitCheckpoint {}", tabletId);
         }
     }
 
@@ -1157,8 +1138,6 @@ public class YugabyteDBStreamingChangeEventSource implements
         // Remove the entry for the tablet which has been split from: 'tabletToExplicitCheckpoint'.
         tabletToExplicitCheckpoint.remove(splitTabletId);
 
-        LOGGER.info("Removed the tablet ID from tabletPairList, schemaNeeded and tabletToExplicitCheckpoint: {}", splitTabletId);
-
         // Log a warning if the element cannot be removed from the list.
         if (!removeSuccessful) {
             LOGGER.warn("Failed to remove the entry table {} - tablet {} from tablet pair list after split, will try once again", entryToBeDeleted.getKey(), entryToBeDeleted.getValue());
@@ -1173,13 +1152,6 @@ public class YugabyteDBStreamingChangeEventSource implements
             LOGGER.warn("Received response with unexpected children count: {}", getTabletListResponse.getTabletCheckpointPairListSize());
             for (TabletCheckpointPair p : getTabletListResponse.getTabletCheckpointPairList()) {
                 LOGGER.warn("Tablet {}", p.getTabletLocations().getTabletId().toStringUtf8());
-            }
-        } else {
-            for (TabletCheckpointPair p : getTabletListResponse.getTabletCheckpointPairList()) {
-                LOGGER.info("Received tcp: {} with start {} and end {}",
-                  p.getTabletLocations().getTabletId().toStringUtf8(),
-                  p.getTabletLocations().getPartition().getPartitionKeyStart().toStringUtf8(),
-                  p.getTabletLocations().getPartition().getPartitionKeyEnd().toStringUtf8());
             }
         }
 
