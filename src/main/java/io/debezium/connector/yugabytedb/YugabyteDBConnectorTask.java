@@ -73,7 +73,7 @@ public class YugabyteDBConnectorTask
     private long lastLoggedTime = 0;
     private final ReentrantLock commitLock = new ReentrantLock();
 
-    protected volatile Map<String, ?> ybOffset;
+    protected volatile Map<String, String> ybOffset;
 
     @Override
     public ChangeEventSourceCoordinator<YBPartition, YugabyteDBOffsetContext> start(Configuration config) {
@@ -448,7 +448,14 @@ public class YugabyteDBConnectorTask
                           .filter(e -> e.getValue() != null)
                           .forEach(entry -> {
                               Map<String, ?> lastOffset = entry.getValue().getOffset();
-                              this.ybOffset = getHigherOffsets(lastOffset);
+                              if (this.ybOffset == null) {
+                                  this.ybOffset = new HashMap<>();
+                              }
+
+                              // This will ensure that all the keys present in the result of getHigherOffsets
+                              // are merged to ybOffset and if any key is present in ybOffset but not present
+                              // in the result of getHigherOffsets, we keep that key as it is.
+                              this.ybOffset.putAll(getHigherOffsets(lastOffset));
                           });
 
                         if (LOGGER.isDebugEnabled()) {
@@ -477,10 +484,11 @@ public class YugabyteDBConnectorTask
      * @param offsets the offset map read from Kafka topic
      * @return a map with the values higher among the cached ybOffset and passed offsets map
      */
-    protected Map<String, ?> getHigherOffsets(Map<String, ?> offsets) {
+    @SuppressWarnings("unchecked")
+    protected Map<String, String> getHigherOffsets(Map<String, ?> offsets) {
         if (this.ybOffset == null) {
             LOGGER.debug("Returning original offsets since cached ybOffset is null");
-            return offsets;
+            return (Map<String, String>) offsets;
         }
 
         if (offsets == null) {
