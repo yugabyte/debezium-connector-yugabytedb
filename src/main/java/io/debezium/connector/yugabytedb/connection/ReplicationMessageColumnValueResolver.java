@@ -152,7 +152,7 @@ public class ReplicationMessageColumnValueResolver {
                 return value.asLseg();
             case "money":
                 final Object v = value.asMoney();
-                return (v instanceof PGmoney) ? ((PGmoney) v).val : v;
+                return (v instanceof PGmoney) ? ((PGmoney) v).getValue() : v;
             case "path":
                 return value.asPath();
             case "point":
