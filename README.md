@@ -43,7 +43,7 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
   export IP=$(ipconfig getifaddr en0)
 
   # Linux:
-  export IP=$(hostname -i)
+  export IP=$(hostname -I | awk '{print $1}')
   ```
 4. Start a cluster using yugabyted. Note that you need to run yugabyted with the IP of your machine; otherwise, it would consider localhost (which would be mapped to the docker host instead of your machine). The yugabyted binary along with other required binaries can be downloaded from [download.yugabyte.com](https://download.yugabyte.com/).
   ```sh
@@ -77,7 +77,7 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
     -d '{
     "name": "ybconnector",
     "config": {
-        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnectorctor",
+        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector",
         "database.hostname":"'$IP'",
         "database.port":"5433",
         "database.master.addresses": "'$IP':7100",
