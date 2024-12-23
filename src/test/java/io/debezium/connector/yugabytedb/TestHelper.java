@@ -767,9 +767,13 @@ public final class TestHelper {
     }
 
     public static Stream<Arguments> streamTypeProviderForSnapshot() {
-        return Stream.of(
-                Arguments.of(false, false), // Older stream
-                Arguments.of(true, true));  // USE_SNAPSHOT stream
+        List<Arguments> argList = List.of(Arguments.of(true, false) /* NO_EXPORT stream */);
+
+        if (shouldRunOldStream()) {
+            argList.add(Arguments.of(false, false));
+        }
+
+        return argList.stream();
     }
 
     public static boolean shouldRunOldStream() {
