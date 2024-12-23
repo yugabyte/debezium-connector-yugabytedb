@@ -1,0 +1,40 @@
+name: Test run on released versions
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  YB_DOCKER_IMAGE: "yugabytedb/yugabyte:2024.2.0.0-b145"
+  YB_RUN_OLD_STREAM_TEST: "false"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Cache local Maven repository
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Log YugabyteDB version
+        run: echo YugabyteDB version being used $YB_DOCKER_IMAGE
+      - name: Pull docker image
+        run: docker pull $YB_DOCKER_IMAGE
+      - name: YugabyteDBDatatypesTest
+        run: mvn clean test -Dtest=YugabyteDBDatatypesTest
+      - name: YugabyteDBBeforeImageTest
+        run: mvn clean test -Dtest=YugabyteDBBeforeImageTest
+      - name: YugabyteDBTabletSplitTest
+        run: mvn clean test -Dtest=YugabyteDBTabletSplitTest
+      - name: YugabyteDBEnumValuesTest
+        run: mvn clean test -Dtest=YugabyteDBEnumValuesTest
+      - name: YugabyteDBSnapshotTest
+        run: mvn clean test -Dtest=YugabyteDBSnapshotTest

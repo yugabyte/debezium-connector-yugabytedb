@@ -757,14 +757,31 @@ public final class TestHelper {
     }
 
     public static Stream<Arguments> streamTypeProviderForStreaming() {
-        return Stream.of(
-                Arguments.of(false, false), // Older stream
-                Arguments.of(true, false)); // NO_EXPORT stream
+        List<Arguments> argList = List.of(Arguments.of(true, false) /* NO_EXPORT stream */);
+
+        if (shouldRunOldStream()) {
+            argList.add(Arguments.of(false, false));
+        }
+
+        return argList.stream();
     }
 
     public static Stream<Arguments> streamTypeProviderForSnapshot() {
         return Stream.of(
                 Arguments.of(false, false), // Older stream
                 Arguments.of(true, true));  // USE_SNAPSHOT stream
+    }
+
+    public static boolean shouldRunOldStream() {
+        String runOldStreamTest = System.getenv("YB_RUN_OLD_STREAM_TEST");
+
+        // If it is not present, then we want to assume that we want to run the test always.
+        // Otherwise, we will run the test whenever the value is present in the system.
+        if (runOldStreamTest == null || runOldStreamTest.equalsIgnoreCase("1")
+              || runOldStreamTest.equalsIgnoreCase("true")) {
+            return true;
+        }
+
+        return false;
     }
 }
