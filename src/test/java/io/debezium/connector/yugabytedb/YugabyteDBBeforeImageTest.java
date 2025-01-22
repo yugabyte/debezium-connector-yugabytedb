@@ -601,7 +601,138 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
     assertNull(updateRecordTwoVal.getStruct("before").getStruct("bigint_col"));
   }
 
-  private void assertBeforeImage(SourceRecord record, Integer id, String firstName, String lastName,
+    @Test
+    public void shouldSendNullValueForAddedColumns() throws Exception {
+        TestHelper.execute("CREATE TABLE test_table (id INT PRIMARY KEY, v1 INT DEFAULT 1, v2 INT DEFAULT 123);");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "test_table", true /* withBeforeImage */,
+                true, BeforeImageMode.ALL, true, true);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_table", dbStreamId);
+        startEngine(configBuilder);
+
+        awaitUntilConnectorIsReady();
+
+        // Perform 2 inserts.
+        TestHelper.execute("INSERT INTO test_table VALUES (1);");
+        TestHelper.execute("INSERT INTO test_table VALUES (2);");
+
+        // Add an integer column and update the previously added rows but keep v3 null.
+        TestHelper.execute("ALTER TABLE test_table ADD COLUMN v3 int;");
+        TestHelper.execute("UPDATE test_table SET v1 = 2;");
+
+        // Add a money column. Insert 1 row with null values for v3 and v4 and update all the rows keeping v3 and v4 null.
+        TestHelper.execute("ALTER TABLE test_table ADD COLUMN v4 MONEY;");
+        TestHelper.execute("INSERT INTO test_table VALUES (3, 2, 123, null, null);");
+        TestHelper.execute("UPDATE test_table SET v1 = 3;");
+
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, 8 /* 2 inserts, 2 updates, 1 insert, 3 updates */);
+
+        // Assert that first two updates have null v3 column values.
+        int i = 2;
+        for (; i < 4; i++) {
+            SourceRecord record = records.get(i);
+            Struct recordVal = (Struct) record.value();
+            assertEquals("u", TestHelper.getOpValue(record));
+            assertEquals(i - 1, recordVal.getStruct("before").getStruct("id").getInt32("value"));
+            assertEquals(1, recordVal.getStruct("before").getStruct("v1").getInt32("value"));
+            assertEquals(123, recordVal.getStruct("before").getStruct("v2").getInt32("value"));
+            assertNull(recordVal.getStruct("before").getStruct("v3").get("value"));
+
+            assertEquals(i - 1, recordVal.getStruct("after").getStruct("id").getInt32("value"));
+            assertEquals(2, recordVal.getStruct("after").getStruct("v1").getInt32("value"));
+            assertEquals(123, recordVal.getStruct("after").getStruct("v2").getInt32("value"));
+            assertNull(recordVal.getStruct("after").getStruct("v3").get("value"));
+        }
+
+        // Assert that the insert and the updates performed after adding v4 column have null v3 and v4 column values.
+        SourceRecord insertRecord = records.get(i);
+        Struct insertVal = (Struct) insertRecord.value();
+        assertEquals("c", TestHelper.getOpValue(insertRecord));
+        assertEquals(i - 1, insertVal.getStruct("after").getStruct("id").getInt32("value"));
+        assertEquals(2, insertVal.getStruct("after").getStruct("v1").getInt32("value"));
+        assertEquals(123, insertVal.getStruct("after").getStruct("v2").getInt32("value"));
+        assertNull(insertVal.getStruct("after").getStruct("v3").get("value"));
+        assertNull(insertVal.getStruct("after").getStruct("v4").get("value"));
+        ++i;
+
+        for (; i < 8; i++) {
+            SourceRecord record = records.get(i);
+            Struct recordVal = (Struct) record.value();
+            assertEquals("u", TestHelper.getOpValue(record));
+            assertEquals(i - 4, recordVal.getStruct("before").getStruct("id").getInt32("value"));
+            assertEquals(2, recordVal.getStruct("before").getStruct("v1").getInt32("value"));
+            assertEquals(123, recordVal.getStruct("before").getStruct("v2").getInt32("value"));
+            assertNull(recordVal.getStruct("before").getStruct("v3").get("value"));
+            assertNull(recordVal.getStruct("before").getStruct("v4").get("value"));
+
+            assertEquals(i - 4, recordVal.getStruct("after").getStruct("id").getInt32("value"));
+            assertEquals(3, recordVal.getStruct("after").getStruct("v1").getInt32("value"));
+            assertEquals(123, recordVal.getStruct("after").getStruct("v2").getInt32("value"));
+            assertNull(recordVal.getStruct("after").getStruct("v3").get("value"));
+            assertNull(recordVal.getStruct("after").getStruct("v4").get("value"));
+        }
+    }
+
+    @Test
+    public void shouldSendNullValuesForAllTypesInBeforeImage() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        Thread.sleep(1000);
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "all_types", true /* withBeforeImage */,
+                true, BeforeImageMode.ALL, true, true);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.all_types", dbStreamId);
+        startEngine(configBuilder);
+
+        awaitUntilConnectorIsReady();
+
+        // Perform one insert having only pk and all other columns null and delete the same row.
+        TestHelper.execute("INSERT INTO all_types (id) VALUES (1)");
+        TestHelper.execute("DELETE FROM all_types where id = 1");
+
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, 3);
+
+        // Assert that the before image sent for all the columns other than the pk is null.
+        SourceRecord deleteRecord = records.get(1);
+        Struct recordVal = (Struct) deleteRecord.value();
+        assertEquals("d", TestHelper.getOpValue(deleteRecord));
+        assertEquals(1, recordVal.getStruct("before").getStruct("id").getInt32("value"));
+        assertNull(recordVal.getStruct("before").getStruct("bitcol").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("varbitcol").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("booleanval").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("byteaval").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("ch").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("vchar").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("cidrval").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("dt").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("dp").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("inetval").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("intervalval").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("jsonval").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("jsonbval").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("mc").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("mc8").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("mn").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("nm").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("rl").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("si").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("i4r").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("i8r").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("nr").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("tsr").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("tstzr").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("dr").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("txt").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("tm").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("tmtz").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("ts").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("tstz").get("value"));
+        assertNull(recordVal.getStruct("before").getStruct("uuidval").get("value"));
+    }
+
+    private void assertBeforeImage(SourceRecord record, Integer id, String firstName, String lastName,
                                  Double hours) {
       assertValueField(record, "before/id/value", id);
       assertValueField(record, "before/first_name/value", firstName);

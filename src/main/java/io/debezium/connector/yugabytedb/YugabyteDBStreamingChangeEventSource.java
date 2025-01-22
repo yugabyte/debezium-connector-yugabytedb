@@ -480,7 +480,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     // handle tablet split and delete the tablet from the waiting list.
 
                                     // Call getChanges to make sure checkpoint is set on the cdc_state table.
-                                    LOGGER.info("Setting explicit checkpoint is set to {}.{}", explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex());
+                                    LOGGER.info("Setting explicit checkpoint for tablet {} to {}.{}", part.getTabletId(),
+                                                explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex());
                                     setCheckpointWithGetChanges(syncClient, tableIdToTable.get(part.getTableId()), part,
                                             cp, explicitCheckpoint, schemaNeeded.get(part.getId()),
                                             tabletSafeTime.get(part.getId()), offsetContext.getWalSegmentIndex(part));
@@ -745,6 +746,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                             schema, connection, tableId, message,
                                                             connectorConfig.isYSQLDbType()? pgSchemaNameInRecord : tableId.catalog(), tabletId,
                                                             taskContext.isBeforeImageEnabled()));
+
+                                        if (!dispatched) {
+                                            LOGGER.warn("Failed to dispatch record for table {} tablet {}", tableId, tabletId);
+                                        }
 
                                         if (recordsInTransactionalBlock.containsKey(part.getId())) {
                                             recordsInTransactionalBlock.merge(part.getId(), 1, Integer::sum);
@@ -1047,7 +1052,9 @@ public class YugabyteDBStreamingChangeEventSource implements
             }
         }
 
-        assert tabletFound;
+        if (!tabletFound) {
+            throw new IllegalStateException("None of the specified partition ranges contain the tablet " + tabletToVerify.getTabletId());
+        }
     }
 
     /**

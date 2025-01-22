@@ -1,5 +1,6 @@
 package io.debezium.connector.yugabytedb.consistent;
 
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -12,6 +13,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@Disabled("Disabled in lieu of transaction ordering with logical replication")
 class MergerTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(MergerTest.class);
     private final String DUMMY_TABLE_ID = "dummy_table_id";
