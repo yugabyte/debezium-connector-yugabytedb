@@ -317,11 +317,11 @@
             <version>3.12.0</version>
             <scope>compile</scope>
         </dependency>
-        <!-- https://mvnrepository.com/artifact/org.jboss.netty/netty -->
+        <!-- https://mvnrepository.com/artifact/io.netty/netty-all -->
         <dependency>
-            <groupId>org.jboss.netty</groupId>
-            <artifactId>netty</artifactId>
-            <version>3.2.10.Final</version>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-all</artifactId>
+            <version>4.1.115.Final</version>
         </dependency>
         <!-- https://mvnrepository.com/artifact/com.stumbleupon/async -->
         <dependency>
@@ -333,7 +333,7 @@
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcprov-jdk15on</artifactId>
-            <version>1.70</version>
+            <version>1.78</version>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
