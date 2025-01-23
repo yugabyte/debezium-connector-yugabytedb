@@ -24,7 +24,7 @@
         <version.surefire.plugin>3.0.0-M7</version.surefire.plugin>
         <version.failsafe.plugin>${version.surefire.plugin}</version.failsafe.plugin>
         <version.compiler.plugin>3.8.1</version.compiler.plugin>
-        <version.shade.plugin>3.4.1</version.shade.plugin>
+        <version.shade.plugin>3.6.0</version.shade.plugin>
         <version.release.plugin>3.0.0-M5</version.release.plugin>
         <version.site.plugin>3.7.1</version.site.plugin>
         <version.resources.plugin>3.1.0</version.resources.plugin>
@@ -47,7 +47,7 @@
         <version.kafka>3.7.0</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
-        <version.ybclient>0.8.95-20241014.162053-1</version.ybclient>
+        <version.ybclient>0.8.98-20250120.153122-1</version.ybclient>
         <version.gson>2.8.9</version.gson>
 
         <!--
@@ -317,11 +317,11 @@
             <version>3.12.0</version>
             <scope>compile</scope>
         </dependency>
-        <!-- https://mvnrepository.com/artifact/org.jboss.netty/netty -->
+        <!-- https://mvnrepository.com/artifact/io.netty/netty-all -->
         <dependency>
-            <groupId>org.jboss.netty</groupId>
-            <artifactId>netty</artifactId>
-            <version>3.2.10.Final</version>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-all</artifactId>
+            <version>4.1.115.Final</version>
         </dependency>
         <!-- https://mvnrepository.com/artifact/com.stumbleupon/async -->
         <dependency>
@@ -329,11 +329,11 @@
             <artifactId>async</artifactId>
             <version>1.4.1</version>
         </dependency>
-        <!-- https://mvnrepository.com/artifact/org.bouncycastle/bcprov-jdk15on -->
+        <!-- https://mvnrepository.com/artifact/org.bouncycastle/bcprov-jdk18on-->
         <dependency>
             <groupId>org.bouncycastle</groupId>
-            <artifactId>bcprov-jdk15on</artifactId>
-            <version>1.70</version>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.79</version>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
