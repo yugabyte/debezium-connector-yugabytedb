@@ -23,7 +23,7 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
 
     The docker image will be tagged as:
     ```
-    quay.io/yugabyte/debezium-connector:latest
+    quay.io/yugabyte/debezium-connector:dz.1.9.5.yb.grpc.2024.2-SNAPSHOT
     ```
     The above mentioned image is nothing but a Kafka Connect image bundled with the Debezium Connector for YugabyteDB.
 
@@ -31,11 +31,11 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
 
 1. Start Zookeeper:
   ```sh
-  docker run -it --rm --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 debezium/zookeeper:1.7
+  docker run -it --rm --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 debezium/zookeeper:1.9.5.Final
   ```
 2. Start Kafka:
   ```sh
-  docker run -it --rm --name kafka -p 9092:9092 --link zookeeper:zookeeper debezium/kafka:1.7
+  docker run -it --rm --name kafka -p 9092:9092 --link zookeeper:zookeeper debezium/kafka:1.9.5.Final
   ```
 3. Assign your machine's IP to an environment variable:
   ```sh
@@ -67,7 +67,7 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
     -e OFFSET_STORAGE_TOPIC=my_connect_offsets \
     -e STATUS_STORAGE_TOPIC=my_connect_statuses \
     --link zookeeper:zookeeper --link kafka:kafka \
-        quay.io/yugabyte/debezium-connector:latest
+        quay.io/yugabyte/debezium-connector:dz.1.9.5.yb.grpc.2024.2-SNAPSHOT
   ```
 8. Deploy the configuration for the connector:
   **NOTE: Do not forget to change the `database.streamid` with the value you obtained in step 6**
@@ -77,7 +77,7 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
     -d '{
     "name": "ybconnector",
     "config": {
-        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnectorctor",
+        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector",
         "database.hostname":"'$IP'",
         "database.port":"5433",
         "database.master.addresses": "'$IP':7100",
@@ -93,6 +93,6 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
   ```
 9. Start a Kafka console consumer:
   ```sh
-  docker run -it --rm --name consumer --link zookeeper:zookeeper --link kafka:kafka debezium/kafka:1.7 \
+  docker run -it --rm --name consumer --link zookeeper:zookeeper --link kafka:kafka debezium/kafka:1.9.5.Final \
   watch-topic -a dbserver1.public.test
   ```
