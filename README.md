@@ -31,11 +31,11 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
 
 1. Start Zookeeper:
   ```sh
-  docker run -it --rm --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 debezium/zookeeper:1.7
+  docker run -it --rm --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 debezium/zookeeper:1.9.5.Final
   ```
 2. Start Kafka:
   ```sh
-  docker run -it --rm --name kafka -p 9092:9092 --link zookeeper:zookeeper debezium/kafka:1.7
+  docker run -it --rm --name kafka -p 9092:9092 --link zookeeper:zookeeper debezium/kafka:1.9.5.Final
   ```
 3. Assign your machine's IP to an environment variable:
   ```sh
@@ -77,7 +77,7 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
     -d '{
     "name": "ybconnector",
     "config": {
-        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnectorctor",
+        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector",
         "database.hostname":"'$IP'",
         "database.port":"5433",
         "database.master.addresses": "'$IP':7100",
@@ -93,6 +93,6 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
   ```
 9. Start a Kafka console consumer:
   ```sh
-  docker run -it --rm --name consumer --link zookeeper:zookeeper --link kafka:kafka debezium/kafka:1.7 \
+  docker run -it --rm --name consumer --link zookeeper:zookeeper --link kafka:kafka debezium/kafka:1.9.5.Final \
   watch-topic -a dbserver1.public.test
   ```
