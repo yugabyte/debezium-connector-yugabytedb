@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-public class YugabyteDBTransactionalTest extends YugabytedTestBase {
+public class YugabyteDBTransactionalTest extends YugabyteDBContainerTestBase {
   @BeforeAll
   public static void beforeClass() throws SQLException {
     setMasterFlags("cdc_wal_retention_time_secs=60");
@@ -331,7 +331,7 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
   }
 
   @Test
-  public void shouldNotFailWhenConnectorRestartsInMiddleOfATransaction() throws Exception {
+  public void shouldNotFailWithIndexCreation() throws Exception {
     final ReentrantLock lock = new ReentrantLock();
     YugabyteDBStreamingChangeEventSource.TEST_TRACK_EXPLICIT_CHECKPOINTS = true;
     TestHelper.dropAllSchemas();
