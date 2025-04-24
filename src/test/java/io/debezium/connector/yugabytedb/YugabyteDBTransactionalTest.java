@@ -3,6 +3,8 @@ package io.debezium.connector.yugabytedb;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
+
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -12,12 +14,18 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.yb.CommonTypes;
 import org.yb.client.*;
 
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-public class YugabyteDBTransactionalTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBTransactionalTest extends YugabytedTestBase {
   @BeforeAll
   public static void beforeClass() throws SQLException {
     setMasterFlags("cdc_wal_retention_time_secs=60");
@@ -320,5 +328,131 @@ public class YugabyteDBTransactionalTest extends YugabyteDBContainerTestBase {
 
     // Delete the snapshot schedule at the end of the test.
     ybClient.deleteSnapshotSchedule(snapshotScheduleResponse.getSnapshotScheduleUUID());
+  }
+
+  @Test
+  public void shouldNotFailWhenConnectorRestartsInMiddleOfATransaction() throws Exception {
+    final ReentrantLock lock = new ReentrantLock();
+    YugabyteDBStreamingChangeEventSource.TEST_TRACK_EXPLICIT_CHECKPOINTS = true;
+    TestHelper.dropAllSchemas();
+    TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+    TestHelper.executeInDatabase("CREATE TABLE t1_colocated (id varchar(36) primary key, status varchar(64) not null, "
+                                  + "roundid int not null, userid bigint not null, shardid int not null, "
+                                  + "createdat timestamp with time zone not null default now(), "
+                                  + "updatedat timestamp with time zone not null default now()) WITH (COLOCATION = true);",
+                                  DEFAULT_COLOCATED_DB_NAME);
+
+    String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "t1_colocated", false, false);
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1_colocated", dbStreamId)
+                                            .with(YugabyteDBConnectorConfig.DATABASE_NAME, DEFAULT_COLOCATED_DB_NAME)
+                                            .with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 1000);
+    startEngine(configBuilder);
+    awaitUntilConnectorIsReady();
+
+    YBClient ybClient = TestHelper.getYbClient(TestHelper.getMasterAddress());
+    YBTable ybTable = TestHelper.getYbTable(ybClient, "t1_colocated");
+    assertNotNull(ybTable);
+
+    Set<String> tablets = ybClient.getTabletUUIDs(ybTable);
+
+    String tabletId = tablets.iterator().next();
+    assertNotNull(tabletId);
+    assertEquals(1, tablets.size());
+
+    final int iterations = 30;
+    final int batchSize = 1500;
+
+    // Launch insertion thread here.
+    ExecutorService exec = Executors.newFixedThreadPool(3);
+    Future<?> future = exec.submit(() -> {
+        long idBegin = 1;
+        LOGGER.info("Starting the insertion thread");
+        try (YugabyteDBConnection pgConn = TestHelper.createConnectionTo(DEFAULT_COLOCATED_DB_NAME)) {
+            Statement st = pgConn.connection().createStatement();
+
+            for (int i = 0; i < iterations; ++i) {
+                lock.lock();
+                try {
+                    LOGGER.info("Inserting records in batch {}", i);
+                    st.execute(String.format("insert into t1_colocated values (generate_series(%d,%d), 'SHIPPED', 12, 1234, 2345);",
+                                idBegin, idBegin + batchSize - 1));
+                }
+                finally {
+                    lock.unlock();
+                }
+                // Sleep for 1 second to allow the index creation thread to acquire the lock.
+                Thread.sleep(1000);
+
+                idBegin += batchSize;
+            }
+        }
+        catch (Exception ex) {
+            LOGGER.error("Exception in the insertion thread: ", ex);
+            throw new RuntimeException(ex);
+        }
+    });
+
+    Future<?> indexCreationFuture = exec.submit(() -> {
+      try (YugabyteDBConnection ybConn = TestHelper.createConnectionTo(DEFAULT_COLOCATED_DB_NAME)) {
+          Statement st = ybConn.connection().createStatement();
+          for (int i = 0; i < iterations; ++i) {
+              final String columnName = "new_column_" + i;
+              lock.lock();
+              try {
+                  // Add a new column to s2.orders of type text and default value equal to its name.
+                  st.execute("ALTER TABLE t1_colocated ADD COLUMN IF NOT EXISTS " + columnName + " text DEFAULT '" + columnName + "';");
+                  LOGGER.info("Creating index on column {}", columnName);
+                  st.execute("CREATE INDEX idx_t1_colocated_" + i + " ON t1_colocated (" + columnName + ");");
+              }
+              catch (Exception e) {
+                  LOGGER.error("Exception in the index creation thread, will retry: ", e);
+              }
+              finally {
+                  lock.unlock();
+                  Thread.sleep(2 * 1000);
+              }
+          }
+      }
+      catch (Exception ex) {
+          LOGGER.error("Exception in the index creation thread: ", ex);
+          throw new RuntimeException(ex);
+      }
+    });
+
+    // Consume all the records.
+    List<SourceRecord> consumedRecords = new ArrayList<>();
+    Set<Integer> primaryKeys = new HashSet<>();
+
+    int recordCount = 0;
+    while (!future.isDone()) {
+      // Consume records.
+      int local = consumeAvailableRecords(consumedRecords::add);
+      if (local > 0) {
+        recordCount += local;
+        LOGGER.info("Consumed {} records", recordCount);
+      }
+
+      Thread.sleep(1000);
+    }
+
+    for (SourceRecord record : consumedRecords) {
+      Struct value = (Struct) record.value();
+      primaryKeys.add(value.getStruct("after").getStruct("id").getInt32("value"));
+    }
+
+    // Connect to the database and get the count of records and assert with the primary key size.
+    try (YugabyteDBConnection conn = TestHelper.createConnectionTo(DEFAULT_COLOCATED_DB_NAME)) {
+      Statement st = conn.connection().createStatement();
+      st.execute("SELECT count(*) FROM t1_colocated;");
+      ResultSet rs = st.getResultSet();
+      assertTrue(rs.next());
+      int count = rs.getInt(1);
+      assertEquals(count, primaryKeys.size());
+    }
+
+    // assertEquals(recordsToBeInserted, primaryKeys.size());
+    indexCreationFuture.cancel(true);
+    YugabyteDBStreamingChangeEventSource.TEST_TRACK_EXPLICIT_CHECKPOINTS = false;
   }
 }
