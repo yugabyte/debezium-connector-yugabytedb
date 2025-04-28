@@ -183,6 +183,10 @@ public final class TestHelper {
         return new YugabyteDBConnection(defaultJdbcConfig(CONTAINER_YSQL_HOST, CONTAINER_YSQL_PORT, databaseName), YugabyteDBConnection.CONNECTION_GENERAL);
     }
 
+    public static YugabyteDBConnection createConnectionTo(String databaseName, String host) {
+        return new YugabyteDBConnection(defaultJdbcConfig(host, CONTAINER_YSQL_PORT, databaseName), YugabyteDBConnection.CONNECTION_GENERAL);
+    }
+
     /**
      * Obtain a DB connection providing type registry.
      *
@@ -505,7 +509,7 @@ public final class TestHelper {
                                           boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode, boolean withCQL,
                                           boolean consistentSnapshot, boolean useSnapshot)
             throws Exception {
-        YBClient syncClient = getYbClient(MASTER_ADDRESS);
+        YBClient syncClient = getYbClient("127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100");
 
         YBTable placeholderTable = getYbTable(syncClient, tableName);
 
