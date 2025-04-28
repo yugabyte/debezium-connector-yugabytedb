@@ -656,21 +656,19 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
     Set<String> primaryKeys = new HashSet<>();
 
     int recordCount = 0;
-    while (!insertFuture.isDone() || !reverseInsertFuture.isDone() || areThereRecordsToConsume()) {
+    int noRecordIterations = 0;
+    while (!insertFuture.isDone() || !reverseInsertFuture.isDone() || areThereRecordsToConsume() || noRecordIterations < 10) {
       // Consume records.
       int local = consumeAvailableRecords(consumedRecords::add);
       if (local > 0) {
         recordCount += local;
         LOGGER.info("Consumed {} records", recordCount);
+        noRecordIterations = 0;
+      } else {
+        noRecordIterations++;
       }
 
       Thread.sleep(1000);
-    }
-
-    for (int i = 0; i < 10; ++i) {
-      // Check for 10 iterations that there are no records to consume.
-      assertNoRecordsToConsume();
-      TestHelper.waitFor(Duration.ofSeconds(1));
     }
 
     for (SourceRecord record : consumedRecords) {
