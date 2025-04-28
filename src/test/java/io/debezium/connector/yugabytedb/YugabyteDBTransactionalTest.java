@@ -506,7 +506,7 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
                     st.execute(String.format("insert into t1_colocated values (generate_series(%d,%d), 'SHIPPED', 12, 1234, 2345);",
                                 idBegin, idBegin + batchSize - 1));
                 } catch (Exception psqle) {
-                  LOGGER.warn("Exception caught, will continue: {}", psqle.getMessage());
+                  LOGGER.warn("Exception caught 1, will continue: {}", psqle.getMessage());
                 }
                 // Sleep for 1 second to allow the index creation thread to acquire the lock.
                 Thread.sleep(1000);
@@ -534,7 +534,7 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
                   st.execute(String.format("insert into t1_colocated values (generate_series(%d,%d), 'SHIPPED', 12, 1234, 2345);",
                              idBegin - batchSize + 1, idBegin));
               } catch (Exception psqle) {
-                LOGGER.warn("Exception caught, will continue: {}", psqle.getMessage());
+                LOGGER.warn("Exception caught 2, will continue: {}", psqle.getMessage());
               }
               // Sleep for 1 second to allow the index creation thread to acquire the lock.
               Thread.sleep(1000);
@@ -597,7 +597,7 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
                   st.execute("CREATE INDEX idx_t1_colocated_" + i + " ON t1_colocated (" + columnName + ");");
               }
               catch (Exception e) {
-                  LOGGER.error("Exception in the index creation thread, will continue: {}", e.getMessage());
+                  LOGGER.error("Exception in the index creation thread 3, will continue: {}", e.getMessage());
               }
               finally {
                   // lock.unlock();
