@@ -488,10 +488,10 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
     awaitUntilConnectorIsReady();
 
     final int iterations = 200;
-    final int batchSize = 1500;
+    final int batchSize = 2000;
 
     // Launch insertion thread here.
-    ExecutorService exec = Executors.newFixedThreadPool(5);
+    ExecutorService exec = Executors.newFixedThreadPool(6);
     Future<?> insertFuture = exec.submit(() -> {
         long idBegin = 1;
         LOGGER.info("Starting the insertion thread");
@@ -520,15 +520,13 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
         }
     });
 
-    Future<?> reverseInsertFuture = exec.submit(() -> {
+  Future<?> reverseInsertFuture = exec.submit(() -> {
       long idBegin = -1;
       LOGGER.info("Starting the reverse insertion thread");
       YugabyteDBConnection pgConn = TestHelper.createConnectionTo(DEFAULT_COLOCATED_DB_NAME,  "127.0.0.2");
       try {
           Statement st = pgConn.connection().createStatement();
-
           for (int i = 0; i < iterations; ++i) {
-              // lock.lock();
               try {
                   LOGGER.info("Inserting reverse records in batch {}", i);
                   st.execute(String.format("insert into t1_colocated values (generate_series(%d,%d), 'SHIPPED', 12, 1234, 2345);",
@@ -536,9 +534,7 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
               } catch (Exception psqle) {
                 LOGGER.warn("Exception caught 2, will continue: {}", psqle.getMessage());
               }
-              // Sleep for 1 second to allow the index creation thread to acquire the lock.
               Thread.sleep(1000);
-
               idBegin -= batchSize;
           }
       }
@@ -546,6 +542,81 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
           LOGGER.error("Exception in the reverse insertion thread: ", ex);
           throw new RuntimeException(ex);
       }
+  });
+
+  // Second forward insertion thread
+  Future<?> forwardInsertFuture1 = exec.submit(() -> {
+    long idBegin = 1000000000L;
+    LOGGER.info("Starting the second forward insertion thread");
+    YugabyteDBConnection pgConn = TestHelper.createConnectionTo(DEFAULT_COLOCATED_DB_NAME, "127.0.0.3");
+    try {
+        Statement st = pgConn.connection().createStatement();
+        for (int i = 0; i < iterations; ++i) {
+            try {
+                LOGGER.info("Inserting second batch {}", i);
+                st.execute(String.format("insert into t1_colocated values (generate_series(%d,%d), 'SHIPPED', 12, 1234, 2345);",
+                           idBegin, idBegin + batchSize - 1));
+            } catch (Exception psqle) {
+              LOGGER.warn("Exception caught 3, will continue: {}", psqle.getMessage());
+            }
+            Thread.sleep(1000);
+            idBegin += batchSize;
+        }
+    }
+    catch (Exception ex) {
+        LOGGER.error("Exception in the second insertion thread: ", ex);
+        throw new RuntimeException(ex);
+    }
+  });
+
+  // Third forward insertion thread
+  Future<?> forwardInsertFuture2 = exec.submit(() -> {
+    long idBegin = 2000000000L;
+    LOGGER.info("Starting the third forward insertion thread");
+    YugabyteDBConnection pgConn = TestHelper.createConnectionTo(DEFAULT_COLOCATED_DB_NAME, "127.0.0.1");
+    try {
+        Statement st = pgConn.connection().createStatement();
+        for (int i = 0; i < iterations; ++i) {
+            try {
+                LOGGER.info("Inserting third batch {}", i);
+                st.execute(String.format("insert into t1_colocated values (generate_series(%d,%d), 'SHIPPED', 12, 1234, 2345);",
+                           idBegin, idBegin + batchSize - 1));
+            } catch (Exception psqle) {
+              LOGGER.warn("Exception caught 4, will continue: {}", psqle.getMessage());
+            }
+            Thread.sleep(1000);
+            idBegin += batchSize;
+        }
+    }
+    catch (Exception ex) {
+        LOGGER.error("Exception in the third insertion thread: ", ex);
+        throw new RuntimeException(ex);
+    }
+  });
+
+  // Fourth forward insertion thread
+  Future<?> forwardInsertFuture3 = exec.submit(() -> {
+    long idBegin = 3000000000L;
+    LOGGER.info("Starting the fourth forward insertion thread");
+    YugabyteDBConnection pgConn = TestHelper.createConnectionTo(DEFAULT_COLOCATED_DB_NAME, "127.0.0.2");
+    try {
+        Statement st = pgConn.connection().createStatement();
+        for (int i = 0; i < iterations; ++i) {
+            try {
+                LOGGER.info("Inserting fourth batch {}", i);
+                st.execute(String.format("insert into t1_colocated values (generate_series(%d,%d), 'SHIPPED', 12, 1234, 2345);",
+                           idBegin, idBegin + batchSize - 1));
+            } catch (Exception psqle) {
+              LOGGER.warn("Exception caught 5, will continue: {}", psqle.getMessage());
+            }
+            Thread.sleep(1000);
+            idBegin += batchSize;
+        }
+    }
+    catch (Exception ex) {
+        LOGGER.error("Exception in the fourth insertion thread: ", ex);
+        throw new RuntimeException(ex);
+    }
   });
 
   /*
@@ -582,6 +653,13 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
   //       throw new RuntimeException(ex);
   //   }
   // });
+
+  List<Future<?>> insertionFutures = new ArrayList<>();
+  insertionFutures.add(insertFuture);
+  insertionFutures.add(reverseInsertFuture);
+  insertionFutures.add(forwardInsertFuture1);
+  insertionFutures.add(forwardInsertFuture2);
+  insertionFutures.add(forwardInsertFuture3);
 
     Future<?> indexCreationFuture = exec.submit(() -> {
       YugabyteDBConnection pgConn = TestHelper.createConnectionTo(DEFAULT_COLOCATED_DB_NAME,  "127.0.0.3");
@@ -657,7 +735,7 @@ public class YugabyteDBTransactionalTest extends YugabytedTestBase {
 
     int recordCount = 0;
     int noRecordIterations = 0;
-    while (!insertFuture.isDone() || !reverseInsertFuture.isDone() || areThereRecordsToConsume() || noRecordIterations < 10) {
+    while (insertionFutures.stream().anyMatch(f -> !f.isDone()) || areThereRecordsToConsume() || noRecordIterations < 10) {
       // Consume records.
       int local = consumeAvailableRecords(consumedRecords::add);
       if (local > 0) {
