@@ -6,6 +6,7 @@ import java.util.Objects;
 import org.apache.kafka.common.cache.Cache;
 import org.apache.kafka.common.cache.LRUCache;
 import org.apache.kafka.common.cache.SynchronizedCache;
+import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.connect.connector.ConnectRecord;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
@@ -19,14 +20,32 @@ import org.yb.util.Pair;
 import io.debezium.transforms.ExtractNewRecordState;
 
 public class YBExtractNewRecordState<R extends ConnectRecord<R>> extends ExtractNewRecordState<R> {
-    private Cache<Schema, Schema> schemaUpdateCache = new SynchronizedCache<>(new LRUCache<>(256));
     private static final Logger LOGGER = LoggerFactory.getLogger(YBExtractNewRecordState.class);
+
+    public static final String DELETE_TO_TOMBSTONE = "delete.to.tombstone";
+
+    private Cache<Schema, Schema> schemaUpdateCache = new SynchronizedCache<>(new LRUCache<>(256));
+    private boolean convertDeleteToTombstone = false;
+
+    @Override
+    public void configure(Map<String, ?> configs) {
+        super.configure(configs);
+
+        // The config will be null when the user will not provide anything. We are relying on
+        // Boolean.valueOf() in that case as it would return false when the provided argument is null.
+        convertDeleteToTombstone = Boolean.valueOf((String) configs.get(DELETE_TO_TOMBSTONE));
+    }
 
     @Override
     public R apply(final R record) {
         final R ret = super.apply(record);
         if (ret == null || (ret.value() != null && !(ret.value() instanceof Struct))) {
             return ret;
+        }
+
+        // If the record is a tombstone record, drop it.
+        if (convertDeleteToTombstone && ret.value() == null) {
+            return null;
         }
 
         Pair p = getUpdatedValueAndSchema((Struct) ret.key());
@@ -39,6 +58,12 @@ public class YBExtractNewRecordState<R extends ConnectRecord<R>> extends Extract
             Pair val = getUpdatedValueAndSchema((Struct) ret.value());
             updatedSchemaForValue = (Schema) val.getFirst();
             updatedValueForValue = (Struct) val.getSecond();
+        }
+
+        boolean isDeleteRecord = updatedValueForValue.getString("op").equalsIgnoreCase("d");
+
+        if (convertDeleteToTombstone && isDeleteRecord) {
+            return ret.newRecord(ret.topic(), ret.kafkaPartition(), updatedSchemaForKey, updatedValueForKey, null, null, ret.timestamp());
         }
 
         return ret.newRecord(ret.topic(), ret.kafkaPartition(), updatedSchemaForKey, updatedValueForKey, updatedSchemaForValue, updatedValueForValue, ret.timestamp());

@@ -8,6 +8,7 @@ import java.util.concurrent.CompletableFuture;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
+import io.debezium.data.VerifyRecord;
 import io.debezium.junit.logging.LogInterceptor;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
@@ -29,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 
-public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBDatatypesTest extends YugabytedTestBase {
     private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
             "INSERT INTO s2.a (aa) VALUES (1);";
     private static final String CREATE_TABLES_STMT = "DROP SCHEMA IF EXISTS s1 CASCADE;" +
@@ -315,6 +316,52 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
                 }).get();
 
         transformation.close();
+    }
+
+    @Test
+    public void deletesShouldBeConvertedToTombstoneWhenTransformationEnabled() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        YBExtractNewRecordState<SourceRecord> transformation = new YBExtractNewRecordState<>();
+
+        Map<String, Object> configs = new HashMap<String, Object>();
+        configs.put(YBExtractNewRecordState.DELETE_TO_TOMBSTONE, "true");
+        transformation.configure(configs);
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false, false);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+        startEngine(configBuilder);
+        final long rowsCount = 1;
+
+        awaitUntilConnectorIsReady();
+
+        // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
+        insertRecords(rowsCount);
+
+        // delete rows in the table t1 where id is <some-pk>
+        deleteRecords(rowsCount);
+
+        // Wait for 10 iterations to ensure there's nothing left to consume.
+        List<SourceRecord> records = new ArrayList<>();
+        int noMessageIterations = 0;
+        while (noMessageIterations < 10) {
+            // We should only receive 2 records: 1 insert record and 1 delete record which would be
+            // converted to tombstone.
+            int consumed = consumeAvailableRecords(records::add);
+
+            if (consumed == 0) {
+                ++noMessageIterations;
+                TestHelper.waitFor(Duration.ofSeconds(2));
+            } else {
+                noMessageIterations = 0;
+            }
+        }
+
+        assertEquals(2, records.size());
+
+        // Validate that instead of delete, we have received a tombstone record.
+        VerifyRecord.isValidTombstone(records.get(0));
     }
 
     @ParameterizedTest
