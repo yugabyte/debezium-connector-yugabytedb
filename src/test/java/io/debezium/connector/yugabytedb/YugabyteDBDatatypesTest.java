@@ -358,10 +358,16 @@ public class YugabyteDBDatatypesTest extends YugabytedTestBase {
             }
         }
 
-        assertEquals(2, records.size());
+        assertEquals(3, records.size());
 
-        // Validate that instead of delete, we have received a tombstone record.
-        VerifyRecord.isValidTombstone(records.get(0));
+        // Validate that the last record is a tombstone record.
+        VerifyRecord.isValidTombstone(records.get(2));
+
+        // Record 2 will be a delete, check that it becomes a tombstone after transformation.
+        VerifyRecord.isValidTombstone(transformation.apply(records.get(1)));
+
+        // The actual tombstone record will be null after transformation.
+        assertNull(transformation.apply(records.get(2)));
     }
 
     @ParameterizedTest
