@@ -6,7 +6,6 @@ import java.util.Objects;
 import org.apache.kafka.common.cache.Cache;
 import org.apache.kafka.common.cache.LRUCache;
 import org.apache.kafka.common.cache.SynchronizedCache;
-import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.connect.connector.ConnectRecord;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
@@ -18,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.util.Pair;
 
 import io.debezium.transforms.ExtractNewRecordState;
+import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
 
 public class YBExtractNewRecordState<R extends ConnectRecord<R>> extends ExtractNewRecordState<R> {
     private static final Logger LOGGER = LoggerFactory.getLogger(YBExtractNewRecordState.class);
@@ -29,22 +29,36 @@ public class YBExtractNewRecordState<R extends ConnectRecord<R>> extends Extract
 
     @Override
     public void configure(Map<String, ?> configs) {
-        super.configure(configs);
-
-        // The config will be null when the user will not provide anything. We are relying on
+        // The config will be null when the user will not provide anything. We are falling back on
         // Boolean.valueOf() in that case as it would return false when the provided argument is null.
         convertDeleteToTombstone = Boolean.valueOf((String) configs.get(DELETE_TO_TOMBSTONE));
+
+        // Create a mutable copy of configs to allow modifications
+        Map<String, Object> mutableConfigs = new java.util.HashMap<>(configs);
+
+        if (convertDeleteToTombstone) {
+            // If we need to convert delete records to tombstones, we do not want
+            // the base SMT to drop delete records, set delete.handling.mode to 'none'.
+            mutableConfigs.put(ExtractNewRecordStateConfigDefinition.HANDLE_DELETES.name(), "none");
+        }
+
+        super.configure(mutableConfigs);
     }
 
     @Override
     public R apply(final R record) {
         final R ret = super.apply(record);
         if (ret == null || (ret.value() != null && !(ret.value() instanceof Struct))) {
+            // If ret == null, it means that the base SMT has dropped the record.
+            LOGGER.trace("Returning the value as returned by the base transform");
             return ret;
         }
 
-        // If the record is a tombstone record, drop it.
-        if (convertDeleteToTombstone && ret.value() == null) {
+        // If the config drop.tombstone is set to true, they will be dropped by the base SMT
+        // which is handled in the previous block itself, but if it is set to false and our
+        // config delete.to.tombstone is set to true, we need to drop it here.
+        if (convertDeleteToTombstone && isTombstoneRecord(record)) {
+            LOGGER.trace("Dropping tombstone record as per configuration");
             return null;
         }
 
@@ -60,10 +74,9 @@ public class YBExtractNewRecordState<R extends ConnectRecord<R>> extends Extract
             updatedValueForValue = (Struct) val.getSecond();
         }
 
-        boolean isDeleteRecord = updatedValueForValue.getString("op").equalsIgnoreCase("d");
-
-        if (convertDeleteToTombstone && isDeleteRecord) {
-            return ret.newRecord(ret.topic(), ret.kafkaPartition(), updatedSchemaForKey, updatedValueForKey, null, null, ret.timestamp());
+        if (convertDeleteToTombstone && isDeleteRecord(record)) {
+            LOGGER.trace("Converting delete record to tombstone as per configuration");
+            return ret.newRecord(ret.topic(), ret.kafkaPartition(), updatedSchemaForKey, updatedValueForKey, null, null, record.timestamp());
         }
 
         return ret.newRecord(ret.topic(), ret.kafkaPartition(), updatedSchemaForKey, updatedValueForKey, updatedSchemaForValue, updatedValueForValue, ret.timestamp());
@@ -86,6 +99,22 @@ public class YBExtractNewRecordState<R extends ConnectRecord<R>> extends Extract
             return false;
         }
         return true;
+    }
+
+    /**
+     * @param record
+     * @return true if the record is a tombstone record, false otherwise.
+     */
+    protected boolean isTombstoneRecord(R record) {
+        return record.valueSchema() == null && record.value() == null;
+    }
+
+    /**
+     * @param record
+     * @return true if the record is a delete record, false otherwise.
+     */
+    protected boolean isDeleteRecord(R record) {
+        return record.valueSchema() != null && ((Struct) record.value()).getStruct("after") == null;
     }
 
     // todo: this function can be removed

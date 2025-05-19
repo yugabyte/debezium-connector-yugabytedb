@@ -320,54 +320,55 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
     @Test
     public void deletesShouldBeConvertedToTombstoneWhenTransformationEnabled() throws Exception {
-        TestHelper.dropAllSchemas();
-        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        try (YBExtractNewRecordState<SourceRecord> transformation = new YBExtractNewRecordState<>()) {
+            TestHelper.dropAllSchemas();
+            TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
-        YBExtractNewRecordState<SourceRecord> transformation = new YBExtractNewRecordState<>();
+            Map<String, Object> configs = new HashMap<String, Object>();
+            configs.put(YBExtractNewRecordState.DELETE_TO_TOMBSTONE, "true");
+            transformation.configure(configs);
 
-        Map<String, Object> configs = new HashMap<String, Object>();
-        configs.put(YBExtractNewRecordState.DELETE_TO_TOMBSTONE, "true");
-        transformation.configure(configs);
+            String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false, false);
+            Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+            startEngine(configBuilder);
+            final long rowsCount = 1;
 
-        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false, false);
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-        startEngine(configBuilder);
-        final long rowsCount = 1;
+            awaitUntilConnectorIsReady();
 
-        awaitUntilConnectorIsReady();
+            // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
+            insertRecords(rowsCount);
 
-        // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
-        insertRecords(rowsCount);
+            // delete rows in the table t1 where id is <some-pk>
+            deleteRecords(rowsCount);
 
-        // delete rows in the table t1 where id is <some-pk>
-        deleteRecords(rowsCount);
+            // Wait for 10 iterations to ensure there's nothing left to consume.
+            List<SourceRecord> records = new ArrayList<>();
+            int noMessageIterations = 0;
+            while (noMessageIterations < 10) {
+                // We should only receive 2 records: 1 insert record and 1 delete record which would be
+                // converted to tombstone.
+                int consumed = consumeAvailableRecords(records::add);
 
-        // Wait for 10 iterations to ensure there's nothing left to consume.
-        List<SourceRecord> records = new ArrayList<>();
-        int noMessageIterations = 0;
-        while (noMessageIterations < 10) {
-            // We should only receive 2 records: 1 insert record and 1 delete record which would be
-            // converted to tombstone.
-            int consumed = consumeAvailableRecords(records::add);
-
-            if (consumed == 0) {
-                ++noMessageIterations;
-                TestHelper.waitFor(Duration.ofSeconds(2));
-            } else {
-                noMessageIterations = 0;
+                if (consumed == 0) {
+                    ++noMessageIterations;
+                    TestHelper.waitFor(Duration.ofSeconds(2));
+                } else {
+                    noMessageIterations = 0;
+                }
             }
+
+            assertEquals(3, records.size());
+
+            // Validate that the last record is a tombstone record.
+            VerifyRecord.isValidTombstone(records.get(2));
+
+            // Record 2 will be a delete, check that it becomes a tombstone after transformation.
+            SourceRecord transformedRecord = transformation.apply(records.get(1));
+            VerifyRecord.isValidTombstone(transformedRecord);
+
+            // The actual tombstone record will be null after transformation.
+            assertNull(transformation.apply(records.get(2)));
         }
-
-        assertEquals(3, records.size());
-
-        // Validate that the last record is a tombstone record.
-        VerifyRecord.isValidTombstone(records.get(2));
-
-        // Record 2 will be a delete, check that it becomes a tombstone after transformation.
-        VerifyRecord.isValidTombstone(transformation.apply(records.get(1)));
-
-        // The actual tombstone record will be null after transformation.
-        assertNull(transformation.apply(records.get(2)));
     }
 
     @ParameterizedTest
