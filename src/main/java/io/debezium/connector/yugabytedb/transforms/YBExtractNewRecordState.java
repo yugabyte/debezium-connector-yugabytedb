@@ -50,6 +50,9 @@ public class YBExtractNewRecordState<R extends ConnectRecord<R>> extends Extract
         final R ret = super.apply(record);
         if (ret == null || (ret.value() != null && !(ret.value() instanceof Struct))) {
             // If ret == null, it means that the base SMT has dropped the record.
+            // The other condition is to check if the record is a valid envelope record
+            // (DML record) and not a metadata record like a transactional or heartbeat
+            // record, as the latter ones need to be passed through as is.
             LOGGER.trace("Returning the value as returned by the base transform");
             return ret;
         }
