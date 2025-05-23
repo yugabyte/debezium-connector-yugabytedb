@@ -335,10 +335,10 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
             awaitUntilConnectorIsReady();
 
-            // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
+            // Insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>.
             insertRecords(rowsCount);
 
-            // delete rows in the table t1 where id is <some-pk>
+            // Delete rows in the table t1 where id is <some-pk>.
             deleteRecords(rowsCount);
 
             // Wait for 10 iterations to ensure there's nothing left to consume.
