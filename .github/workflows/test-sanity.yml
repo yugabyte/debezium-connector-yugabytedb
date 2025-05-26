@@ -55,7 +55,7 @@ jobs:
         run: mvn clean verify -Dquick
 
       - name: Run All Tests
-        if: ${{ !inputs.run_subset_tests }}
+        if: ${{ github.event_name == 'workflow_dispatch' }} || ${{ !inputs.run_subset_tests }} 
         run: mvn test
 
       - name: Run Subset of Tests
