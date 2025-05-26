@@ -16,6 +16,7 @@ import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.yb.client.*;
 
 import io.debezium.config.Configuration;
@@ -30,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 
-public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBDatatypesTest extends YugabytedTestBase {
     private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
             "INSERT INTO s2.a (aa) VALUES (1);";
     private static final String CREATE_TABLES_STMT = "DROP SCHEMA IF EXISTS s1 CASCADE;" +
@@ -318,14 +319,16 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         transformation.close();
     }
 
-    @Test
-    public void deletesShouldBeConvertedToTombstoneWhenTransformationEnabled() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void deletesShouldBeConvertedToTombstoneWhenTransformationEnabled(boolean dropTombstones) throws Exception {
         try (YBExtractNewRecordState<SourceRecord> transformation = new YBExtractNewRecordState<>()) {
             TestHelper.dropAllSchemas();
             TestHelper.executeDDL("yugabyte_create_tables.ddl");
 
             Map<String, Object> configs = new HashMap<String, Object>();
             configs.put(YBExtractNewRecordState.DELETE_TO_TOMBSTONE, "true");
+            configs.put(ExtractNewRecordStateConfigDefinition.DROP_TOMBSTONES.toString(), String.valueOf(dropTombstones));
             transformation.configure(configs);
 
             String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false, false);
