@@ -26,7 +26,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class YugabyteDBCompleteTypesTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBCompleteTypesTest extends YugabytedTestBase {
     @BeforeAll
     public static void beforeClass() throws SQLException {
         initializeYBContainer();
