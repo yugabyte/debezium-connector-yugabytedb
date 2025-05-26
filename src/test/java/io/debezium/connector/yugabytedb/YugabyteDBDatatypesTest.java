@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 
-public class YugabyteDBDatatypesTest extends YugabytedTestBase {
+public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
     private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
             "INSERT INTO s2.a (aa) VALUES (1);";
     private static final String CREATE_TABLES_STMT = "DROP SCHEMA IF EXISTS s1 CASCADE;" +
@@ -328,6 +328,9 @@ public class YugabyteDBDatatypesTest extends YugabytedTestBase {
 
             Map<String, Object> configs = new HashMap<String, Object>();
             configs.put(YBExtractNewRecordState.DELETE_TO_TOMBSTONE, "true");
+            // The following config is used to indicate the base SMT and this shouldn't have any
+            // impact on the outcome of the test as we essentially need to drop the tombstone -
+            // it doesn't matter whether we drop the tombstone or the base SMT does.
             configs.put(ExtractNewRecordStateConfigDefinition.DROP_TOMBSTONES.toString(), String.valueOf(dropTombstones));
             transformation.configure(configs);
 
