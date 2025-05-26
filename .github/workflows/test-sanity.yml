@@ -64,7 +64,7 @@ jobs:
           #   if [[ -z "${{ inputs.test_regex }}" ]]; then
           #     echo "Error: 'test_regex' is required when 'run_subset_tests' is true."
           #     exit 1
-          #   fi
+          #   fi 
           echo "Running subset of tests with regex: ${{ inputs.test_regex }}"
           #   mvn test -Dtest="${{ inputs.test_regex }}"
           mvn test -Dtest=YugabyteDBCompleteTypesTest
