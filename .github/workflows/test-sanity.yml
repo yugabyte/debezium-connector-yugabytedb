@@ -46,7 +46,7 @@ jobs:
       - name: Starting up YugabyteDB cluster
         run: |
           # This is to ensure that only the version number is used in the directory name.
-          cd yugabytedb-$(echo ${{ inputs.yb_version }} | cut -d'-' -f1)
+          cd yugabytedb-$(echo ${{ env.YB_VERSION }} | cut -d'-' -f1)
           echo "Starting up YugabyteDB cluster"
           ./bin/yugabyted start --advertise_address 127.0.0.1 --daemon true
 
