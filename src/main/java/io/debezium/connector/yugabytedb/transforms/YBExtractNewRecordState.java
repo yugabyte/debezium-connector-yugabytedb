@@ -29,9 +29,10 @@ public class YBExtractNewRecordState<R extends ConnectRecord<R>> extends Extract
 
     @Override
     public void configure(Map<String, ?> configs) {
-        // The config will be null when the user will not provide anything. We are falling back on
-        // Boolean.valueOf() in that case as it would return false when the provided argument is null.
-        convertDeleteToTombstone = Boolean.valueOf((String) configs.get(DELETE_TO_TOMBSTONE));
+        // Explicitly set default value to false when config is not provided.
+        String deleteToTombstoneConfig = (String) configs.get(DELETE_TO_TOMBSTONE);
+        convertDeleteToTombstone = deleteToTombstoneConfig != null ?
+                                    Boolean.parseBoolean(deleteToTombstoneConfig) : false;
 
         // Create a mutable copy of configs to allow modifications
         Map<String, Object> mutableConfigs = new java.util.HashMap<>(configs);
