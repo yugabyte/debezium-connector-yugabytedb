@@ -635,11 +635,12 @@ public final class TestHelper {
     public static void executeDDL(String ddlFile, String databaseName) throws Exception {
         URL ddlTestFile = TestHelper.class.getClassLoader().getResource(ddlFile);
         assertNotNull(ddlTestFile, "Cannot locate " + ddlFile);
-        String statements = Files.readAllLines(Paths.get(ddlTestFile.toURI()))
-                .stream()
-                .collect(Collectors.joining(System.lineSeparator()));
+        List<String> statements = Files.readAllLines(Paths.get(ddlTestFile.toURI()));
         try (YugabyteDBConnection connection = createConnectionTo(databaseName)) {
-            connection.execute(statements);
+            for (String statement : statements) {
+                LOGGER.info("Executing: {}", statement);
+                connection.execute(statement);
+            }
         }
     }
 
