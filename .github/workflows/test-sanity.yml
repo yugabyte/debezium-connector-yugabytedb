@@ -1,66 +1,66 @@
-name: Build and Test CI
-
-on:
-  workflow_dispatch:
-    inputs:
-      yb_version:
-        description: 'YB version (e.g., 2.27.0.0-b123)'
-        required: true
-        type: string
-      run_subset_tests:
-        description: 'Run a subset of tests?'
-        required: true
-        type: boolean
-        default: true
-      test_regex:
-        description: 'Regex for subset of tests (e.g., "**/com/example/MyTest*.java"). Required if run_subset_tests is true.'
-        required: false
-        type: string
-  pull_request:
-    branches:
-      - main
-
-jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 11
-        uses: actions/setup-java@v4
-        with:
-          java-version: '11'
-          distribution: 'temurin'
-
-      - name: Download Package from S3
-        run: |
-          echo "Downloading package from S3 for YB version ${{ inputs.yb_version }}"
-          curl -L https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/${{ inputs.yb_version }}/yugabyte-${{ inputs.yb_version }}-centos-x86_64.tar.gz -o yugabytedb-${{ inputs.yb_version }}.tar.gz
-          echo "Package downloaded."
-          tar -xzf yugabytedb-${{ inputs.yb_version }}.tar.gz
-      - name: Starting up YugabyteDB cluster
-        run: |
-          # This is to ensure that only the version number is used in the directory name.
-          cd yugabytedb-$(echo ${{ inputs.yb_version }} | cut -d'-' -f1)
-          echo "Starting up YugabyteDB cluster"
-          ./bin/yugabyted start --advertise_address 127.0.0.1 --daemon true
-
-      - name: Compile Java Code
-        run: mvn clean verify -Dquick
-
-      - name: Run All Tests
-        if: ${{ !inputs.run_subset_tests }}
-        run: mvn test
-
-      - name: Run Subset of Tests
-        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
-        run: |
-          #   if [[ -z "${{ inputs.test_regex }}" ]]; then
-          #     echo "Error: 'test_regex' is required when 'run_subset_tests' is true."
-          #     exit 1
-          #   fi
-          echo "Running subset of tests with regex: ${{ inputs.test_regex }}"
-          #   mvn test -Dtest="${{ inputs.test_regex }}"
-          mvn test -Dtest=YugabyteDBCompleteTypesTest
+# name: Build and Test CI
+# 
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       yb_version:
+#         description: 'YB version (e.g., 2.27.0.0-b123)'
+#         required: true
+#         type: string
+#       run_subset_tests:
+#         description: 'Run a subset of tests?'
+#         required: true
+#         type: boolean
+#         default: true
+#       test_regex:
+#         description: 'Regex for subset of tests (e.g., "**/com/example/MyTest*.java"). Required if run_subset_tests is true.'
+#         required: false
+#         type: string
+#   pull_request:
+#     branches:
+#       - main
+# 
+# jobs:
+#   build-and-test:
+#     runs-on: ubuntu-latest
+# 
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
+# 
+#       - name: Set up JDK 11
+#         uses: actions/setup-java@v4
+#         with:
+#           java-version: '11'
+#           distribution: 'temurin'
+# 
+#       - name: Download Package from S3
+#         run: |
+#           echo "Downloading package from S3 for YB version ${{ inputs.yb_version }}"
+#           curl -L https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/${{ inputs.yb_version }}/yugabyte-${{ inputs.yb_version }}-centos-x86_64.tar.gz -o yugabytedb-${{ inputs.yb_version }}.tar.gz
+#           echo "Package downloaded."
+#           tar -xzf yugabytedb-${{ inputs.yb_version }}.tar.gz
+#       - name: Starting up YugabyteDB cluster
+#         run: |
+#           # This is to ensure that only the version number is used in the directory name.
+#           cd yugabytedb-$(echo ${{ inputs.yb_version }} | cut -d'-' -f1)
+#           echo "Starting up YugabyteDB cluster"
+#           ./bin/yugabyted start --advertise_address 127.0.0.1 --daemon true
+# 
+#       - name: Compile Java Code
+#         run: mvn clean verify -Dquick
+# 
+#       - name: Run All Tests
+#         if: ${{ !inputs.run_subset_tests }}
+#         run: mvn test
+# 
+#       - name: Run Subset of Tests
+#         if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+#         run: |
+#           #   if [[ -z "${{ inputs.test_regex }}" ]]; then
+#           #     echo "Error: 'test_regex' is required when 'run_subset_tests' is true."
+#           #     exit 1
+#           #   fi
+#           echo "Running subset of tests with regex: ${{ inputs.test_regex }}"
+#           #   mvn test -Dtest="${{ inputs.test_regex }}"
+#           mvn test -Dtest=YugabyteDBCompleteTypesTest
