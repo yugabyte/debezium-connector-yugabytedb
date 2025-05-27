@@ -642,7 +642,10 @@ public final class TestHelper {
             .filter(s -> !s.isEmpty())
             .toArray(String[]::new);
         try (YugabyteDBConnection connection = createConnectionTo(databaseName)) {
-            connection.execute(statements);
+            for (String statement : statements) {
+                LOGGER.info("Executing: {}", statement);
+                connection.execute(statement);
+            }
         }
     }
 
