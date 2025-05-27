@@ -17,6 +17,7 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -635,9 +636,11 @@ public final class TestHelper {
     public static void executeDDL(String ddlFile, String databaseName) throws Exception {
         URL ddlTestFile = TestHelper.class.getClassLoader().getResource(ddlFile);
         assertNotNull(ddlTestFile, "Cannot locate " + ddlFile);
-        String statements = Files.readAllLines(Paths.get(ddlTestFile.toURI()))
-                .stream()
-                .collect(Collectors.joining(System.lineSeparator()));
+        String content = Files.readString(Paths.get(ddlTestFile.toURI()));
+        String[] statements = Arrays.stream(content.split("(?<=;)\\s*"))
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .toArray(String[]::new);
         try (YugabyteDBConnection connection = createConnectionTo(databaseName)) {
             connection.execute(statements);
         }
