@@ -592,20 +592,21 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     continue;
                                 }
 
-                                String pgSchemaNameInRecord = m.getPgschemaName();; 
-                                TableId tempTid;
-                                if (connectorConfig.isYSQLDbType()) {
-                                    // This is a hack to skip tables in case of colocated tables
-                                    tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-                                } else {
-                                    tempTid = YugabyteDBSchema.parseWithKeyspace(message.getTable(),
+                                String pgSchemaNameInRecord = m.getPgschemaName();
+                                if (!message.isTransactionalMessage()) {
+                                    TableId tempTid;
+                                    if (connectorConfig.isYSQLDbType()) {
+                                        // This is a hack to skip tables in case of colocated tables
+                                        tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                    } else {
+                                        tempTid = YugabyteDBSchema.parseWithKeyspace(message.getTable(),
                                                 connectorConfig.databaseName());
-                                }
-                            
-                                if (!message.isTransactionalMessage()
-                                      && !filters.tableFilter().isIncluded(tempTid) && !connectorConfig.cqlTableFilter().isIncluded(tempTid)) {
-                                    LOGGER.info("Skipping a record for table {} because it was not included", tempTid.table());
-                                    continue;
+                                    }
+
+                                    if (!filters.tableFilter().isIncluded(tempTid) && !connectorConfig.cqlTableFilter().isIncluded(tempTid)) {
+                                        LOGGER.info("Skipping a record for table {} because it was not included", tempTid.table());
+                                        continue;
+                                    }
                                 }
 
                                 // TODO: Rename to Checkpoint, since OpId is misleading.
