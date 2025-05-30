@@ -54,17 +54,24 @@ jobs:
       - name: Compile Java Code
         run: mvn clean verify -Dquick
 
-      # - name: Run All Tests
-      #   if: ${{ github.event_name == 'workflow_dispatch' }} || ${{ !inputs.run_subset_tests }} 
-      #   run: mvn test
+      - name: Run All Tests
+        if: ${{ (github.event_name != 'pull_request') && (github.event_name == 'workflow_dispatch' || !inputs.run_subset_tests) }}
+        run: mvn clean test
 
-      - name: Run Subset of Tests
+      - name: Run Subset of Tests - 1
         if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
         run: |
-          #   if [[ -z "${{ inputs.test_regex }}" ]]; then
-          #     echo "Error: 'test_regex' is required when 'run_subset_tests' is true."
-          #     exit 1
-          #   fi 
           echo "Running subset of tests with regex: ${{ inputs.test_regex }}"
-          #   mvn test -Dtest="${{ inputs.test_regex }}"
           mvn test -Dtest=YugabyteDBCompleteTypesTest
+      
+      - name: Run Subset of Tests - 2
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        run: |
+          echo "Running YugabyteDBSnapshotTest"
+          mvn test -Dtest=YugabyteDBSnapshotTest
+
+      - name: Run Subset of Tests - 3
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        run: |
+          echo "Running YugabyteDBDatatypesTest"
+          mvn test -Dtest=YugabyteDBDatatypesTest
