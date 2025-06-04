@@ -19,6 +19,41 @@ import org.yb.util.Pair;
 import io.debezium.transforms.ExtractNewRecordState;
 import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
 
+/**
+ * This is a SMT used to flatten the records published by the YugabyteDB gRPC Connector. The connector
+ * publishes records which represent each operation that happen on a database - these records have a
+ * complex structure representing the details of the original database event.
+ *
+ * For example, a record representing an insert operation would have structure similar to the following:
+ * 
+ * <br/><br/>
+ * 
+ * <code>
+ *  "id": {"value": 123, "set": true},<br/>
+ *  "name": {"value": "John Doe", "set": true},<br/>
+ *  "email": {"value": "johndoe@email.com", "set": true}<br/>
+ * </code>
+ * 
+ * <br/>
+ * The complex structure published by the connector is not compatible with many downstream consumers
+ * and they expect a record in a simpler flattened format. This SMT extends the event flattening
+ * capabilities of the base {@link ExtractNewRecordState} SMT to facilitate event flattening.
+ *
+ * After flattening, the above record would look like:
+ * 
+ * <br/><br/>
+ * <code> {"id": 123, "name": "John Doe", "email": "johndoe@email.com"} </code>
+ * <br/><br/>
+ * 
+ * Now, the records published by the YugabyteDB gRPC Connector by default only contain the columns
+ * which were changed in the original database event. Similarly, there can be a case where a column
+ * can be explicitly set to null in the original database event. So in addition to the above
+ * flattening, this SMT also handles the case where it distinguishes between a column which was 
+ * explicitly set to null and a column which was not changed at all in the original database event
+ * and generates a flattened record accordingly.
+ *
+ * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
+ */
 public class YBExtractNewRecordState<R extends ConnectRecord<R>> extends ExtractNewRecordState<R> {
     private static final Logger LOGGER = LoggerFactory.getLogger(YBExtractNewRecordState.class);
 
