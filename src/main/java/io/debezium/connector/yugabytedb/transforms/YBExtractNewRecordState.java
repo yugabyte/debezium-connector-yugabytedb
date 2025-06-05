@@ -57,6 +57,10 @@ import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
 public class YBExtractNewRecordState<R extends ConnectRecord<R>> extends ExtractNewRecordState<R> {
     private static final Logger LOGGER = LoggerFactory.getLogger(YBExtractNewRecordState.class);
 
+    // This is a connector property, which, when set, will read the delete records and convert them
+    // all to tombstone records and subsequently drop all the tombstone records explicitly received
+    // from the source connector. This is useful when the downstream consumers expect
+    // tombstone records to process deletes.
     public static final String DELETE_TO_TOMBSTONE = "delete.to.tombstone";
 
     private Cache<Schema, Schema> schemaUpdateCache = new SynchronizedCache<>(new LRUCache<>(256));
