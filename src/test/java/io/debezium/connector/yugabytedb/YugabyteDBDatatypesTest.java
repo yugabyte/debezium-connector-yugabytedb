@@ -8,6 +8,7 @@ import java.util.concurrent.CompletableFuture;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
+import io.debezium.data.VerifyRecord;
 import io.debezium.junit.logging.LogInterceptor;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
@@ -15,6 +16,7 @@ import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.yb.client.*;
 
 import io.debezium.config.Configuration;
@@ -315,6 +317,64 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
                 }).get();
 
         transformation.close();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void deletesShouldBeConvertedToTombstoneWhenTransformationEnabled(boolean dropTombstones) throws Exception {
+        try (YBExtractNewRecordState<SourceRecord> transformation = new YBExtractNewRecordState<>()) {
+            TestHelper.dropAllSchemas();
+            TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+            Map<String, Object> configs = new HashMap<String, Object>();
+            configs.put(YBExtractNewRecordState.DELETE_TO_TOMBSTONE, "true");
+            // The following config is used to indicate the base SMT and this shouldn't have any
+            // impact on the outcome of the test as we essentially need to drop the tombstone -
+            // it doesn't matter whether we drop the tombstone or the base SMT does.
+            configs.put(ExtractNewRecordStateConfigDefinition.DROP_TOMBSTONES.toString(), String.valueOf(dropTombstones));
+            transformation.configure(configs);
+
+            String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false, false);
+            Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
+            startEngine(configBuilder);
+            final long rowsCount = 1;
+
+            awaitUntilConnectorIsReady();
+
+            // Insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>.
+            insertRecords(rowsCount);
+
+            // Delete rows in the table t1 where id is <some-pk>.
+            deleteRecords(rowsCount);
+
+            // Wait for 10 iterations to ensure there's nothing left to consume.
+            List<SourceRecord> records = new ArrayList<>();
+            int noMessageIterations = 0;
+            while (noMessageIterations < 10) {
+                // We should only receive 2 records: 1 insert record and 1 delete record which would be
+                // converted to tombstone.
+                int consumed = consumeAvailableRecords(records::add);
+
+                if (consumed == 0) {
+                    ++noMessageIterations;
+                    TestHelper.waitFor(Duration.ofSeconds(2));
+                } else {
+                    noMessageIterations = 0;
+                }
+            }
+
+            assertEquals(3, records.size());
+
+            // Validate that the last record is a tombstone record.
+            VerifyRecord.isValidTombstone(records.get(2));
+
+            // Record 2 will be a delete, check that it becomes a tombstone after transformation.
+            SourceRecord transformedRecord = transformation.apply(records.get(1));
+            VerifyRecord.isValidTombstone(transformedRecord);
+
+            // The actual tombstone record will be null after transformation.
+            assertNull(transformation.apply(records.get(2)));
+        }
     }
 
     @ParameterizedTest
