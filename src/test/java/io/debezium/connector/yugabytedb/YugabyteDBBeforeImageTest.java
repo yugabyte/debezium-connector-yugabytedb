@@ -28,7 +28,7 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import io.debezium.connector.yugabytedb.HelperBeforeImageModes.BeforeImageMode;
 
-public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBBeforeImageTest extends YugabytedTestBase {
   private final String formatInsertString =
       "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 12.345);";
 

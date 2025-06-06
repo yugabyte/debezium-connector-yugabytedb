@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.jupiter.api.*;
@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * 
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBSchemaEvolutionTest extends YugabytedTestBase {
   
   // Keeping the id part as a string only so that it is easier to use generate_series as well.
   private final String insertFormatString = "INSERT INTO t1 VALUES (%s, 'name_value');";

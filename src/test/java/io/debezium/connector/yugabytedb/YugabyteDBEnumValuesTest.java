@@ -24,7 +24,7 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
  * 
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBEnumValuesTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBEnumValuesTest extends YugabytedTestBase {
     
     @BeforeAll
     public static void beforeClass() throws SQLException {

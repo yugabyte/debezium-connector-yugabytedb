@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -37,7 +38,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * 
  * @author Sumukh Phalgaonkar (sumukh.phalgaonkar@yugabyte.com)
  */
-public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBPublicationReplicationTest extends YugabytedTestBase {
 
     public static String insertStatementFormatfort2 = "INSERT INTO t2 values (%d);";
     public static String insertStatementFormatfort3 = "INSERT INTO t3 values (%d);";

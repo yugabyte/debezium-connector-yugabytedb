@@ -9,6 +9,7 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -38,7 +39,7 @@ import io.debezium.config.Configuration;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 // @Disabled("Disabled in lieu of transaction ordering with logical replication")
-public class YugabyteDBStreamConsistencyTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBStreamConsistencyTest extends YugabytedTestBase {
     private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBStreamConsistencyTest.class);
     
     @BeforeAll

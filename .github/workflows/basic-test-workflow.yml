@@ -10,9 +10,9 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
+  # pull_request:
+  #   branches:
+  #     - main
 
 env:
   YB_DOCKER_IMAGE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.yb_version != '' && github.event.inputs.yb_version || secrets.YB_DOCKER_IMAGE }}
