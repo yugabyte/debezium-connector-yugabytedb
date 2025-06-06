@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
@@ -28,7 +29,7 @@ import org.junit.jupiter.api.Test;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.TestHelper;
 import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
-import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 
 @Disabled("Disabled in lieu of transaction ordering with logical replication")

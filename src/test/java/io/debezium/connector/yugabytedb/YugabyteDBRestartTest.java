@@ -9,12 +9,13 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 import org.junit.jupiter.api.AfterAll;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 
 public class YugabyteDBRestartTest extends YugabytedTestBase {

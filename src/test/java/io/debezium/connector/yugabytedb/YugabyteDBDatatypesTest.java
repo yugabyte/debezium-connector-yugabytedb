@@ -5,7 +5,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
-import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import io.debezium.junit.logging.LogInterceptor;

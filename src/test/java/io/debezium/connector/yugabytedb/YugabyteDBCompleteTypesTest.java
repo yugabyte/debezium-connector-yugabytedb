@@ -9,8 +9,8 @@ import java.util.concurrent.CompletableFuture;
 
 import io.debezium.jdbc.TemporalPrecisionMode;
 import io.debezium.relational.RelationalDatabaseConnectorConfig.DecimalHandlingMode;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import io.debezium.util.HexConverter;
-import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import org.apache.kafka.connect.source.SourceRecord;

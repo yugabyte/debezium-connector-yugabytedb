@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.jupiter.api.*;
