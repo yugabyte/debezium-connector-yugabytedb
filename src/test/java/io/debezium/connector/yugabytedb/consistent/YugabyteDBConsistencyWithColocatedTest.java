@@ -32,7 +32,7 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 
 @Disabled("Disabled in lieu of transaction ordering with logical replication")
-public class YugabyteDBConsistencyWithColocatedTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBConsistencyWithColocatedTest extends YugabytedTestBase {
     @BeforeAll
     public static void beforeClass() throws SQLException {
         setMasterFlags("enable_automatic_tablet_splitting=false");

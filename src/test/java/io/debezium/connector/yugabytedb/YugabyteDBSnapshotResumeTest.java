@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBSnapshotResumeTest extends YugabytedTestBase {
 	private final String insertStmtFormat = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
 	private static final int snapshotBatchSize = 50;
 	@BeforeAll

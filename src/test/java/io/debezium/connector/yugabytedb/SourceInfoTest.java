@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class SourceInfoTest extends YugabyteDBContainerTestBase {
+public class SourceInfoTest extends YugabytedTestBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(SourceInfoTest.class);
     private SourceInfo source;
 

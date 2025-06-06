@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * 
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBSchemaEvolutionTest extends YugabytedTestBase {
   
   // Keeping the id part as a string only so that it is easier to use generate_series as well.
   private final String insertFormatString = "INSERT INTO t1 VALUES (%s, 'name_value');";

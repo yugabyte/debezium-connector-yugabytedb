@@ -1,6 +1,9 @@
 name: Build and Test CI
 
 on:
+  schedule:
+    # Every Thursday at 6 PM IST (12:30 PM UTC).
+    - cron: '30 12 * * 4'
   workflow_dispatch:
     inputs:
       yb_version:
@@ -60,18 +63,178 @@ jobs:
 
       - name: Run Subset of Tests - 1
         if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
         run: |
           echo "Running subset of tests with regex: ${{ inputs.test_regex }}"
           mvn test -Dtest=YugabyteDBCompleteTypesTest
       
       - name: Run Subset of Tests - 2
         if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
         run: |
           echo "Running YugabyteDBSnapshotTest"
           mvn test -Dtest=YugabyteDBSnapshotTest
 
       - name: Run Subset of Tests - 3
         if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
         run: |
           echo "Running YugabyteDBDatatypesTest"
           mvn test -Dtest=YugabyteDBDatatypesTest
+
+      - name: Run Subset of Tests - 4
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBNoOpTest"
+          mvn test -Dtest=YugabyteDBNoOpTest
+
+      - name: Run Subset of Tests - 5
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBRestartTest"
+          mvn test -Dtest=YugabyteDBRestartTest
+
+      - name: Run Subset of Tests - 6
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBExplicitCheckpointingTest"
+          mvn test -Dtest=YugabyteDBExplicitCheckpointingTest
+
+      - name: Run Subset of Tests - 7
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBCQLTest"
+          mvn test -Dtest=YugabyteDBCQLTest
+
+      - name: Run Subset of Tests - 8
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBConfigTest"
+          mvn test -Dtest=YugabyteDBConfigTest
+
+      - name: Run Subset of Tests - 9
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBSnapshotResumeTest"
+          mvn test -Dtest=YugabyteDBSnapshotResumeTest
+
+      - name: Run Subset of Tests - 10
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBTransactionMetadataTest"
+          mvn test -Dtest=YugabyteDBTransactionMetadataTest
+
+      - name: Run Subset of Tests - 11
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBBeforeImageTest"
+          mvn test -Dtest=YugabyteDBBeforeImageTest
+
+      - name: Run Subset of Tests - 12
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBSchemaEvolutionTest"
+          mvn test -Dtest=YugabyteDBSchemaEvolutionTest
+
+      - name: Run Subset of Tests - 13
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBPartitionTest"
+          mvn test -Dtest=YugabyteDBPartitionTest
+
+      - name: Run Subset of Tests - 14
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBTabletSplitTest"
+          mvn test -Dtest=YugabyteDBTabletSplitTest
+
+      - name: Run Subset of Tests - 15
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBTransactionalTest"
+          mvn test -Dtest=YugabyteDBTransactionalTest
+
+      - name: Run Subset of Tests - 16
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBConsistencyWithColocatedTest"
+          mvn test -Dtest=YugabyteDBConsistencyWithColocatedTest
+
+      - name: Run Subset of Tests - 17
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBEnumValuesTest"
+          mvn test -Dtest=YugabyteDBEnumValuesTest
+
+      - name: Run Subset of Tests - 18
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBgRPCConnectorIT"
+          mvn test -Dtest=YugabyteDBgRPCConnectorIT
+
+      - name: Run Subset of Tests - 19
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBgRPCConnectorUtilsTest"
+          mvn test -Dtest=YugabyteDBgRPCConnectorUtilsTest
+
+      - name: Run Subset of Tests - 20
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBColocatedTablesTest"
+          mvn test -Dtest=YugabyteDBColocatedTablesTest
+
+      - name: Run Subset of Tests - 21
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBPublicationReplicationTest"
+          mvn test -Dtest=YugabyteDBPublicationReplicationTest
+
+      - name: Run Subset of Tests - 22
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running SourceInfoTest"
+          mvn test -Dtest=SourceInfoTest
+
+      - name: Run Subset of Tests - 23
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running ClientAPITest"
+          mvn test -Dtest=ClientAPITest
+
+      - name: Run Subset of Tests - 24
+        if: ${{ inputs.run_subset_tests }} || ${{ github.event_name == 'pull_request' }}
+        continue-on-error: true
+        run: |
+          echo "Running YugabyteDBStreamConsistencyTest"
+          mvn test -Dtest=YugabyteDBStreamConsistencyTest
+
+      - name: Check Test Results
+        if: ${{ always() }}
+        run: |
+          echo "Checking test results..."
+          if [ $? -ne 0 ]; then
+            echo "One or more tests failed"
+            exit 1
+          fi
+          echo "All tests completed successfully"

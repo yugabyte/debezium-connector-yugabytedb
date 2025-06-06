@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBConfigTest extends YugabytedTestBase {
 
     @BeforeAll
     public static void beforeClass() throws SQLException {

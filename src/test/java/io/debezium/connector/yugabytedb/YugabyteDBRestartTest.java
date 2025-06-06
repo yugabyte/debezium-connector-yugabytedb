@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 
-public class YugabyteDBRestartTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBRestartTest extends YugabytedTestBase {
     final String formatInsertString = "INSERT INTO t1 VALUES (generate_series(%d,%d), "
                                         + "'Vaibhav', 'Kushwaha', 30);";
     @BeforeAll
