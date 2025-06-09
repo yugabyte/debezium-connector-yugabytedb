@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-public class YugabyteDBNoOpTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBNoOpTest extends YugabytedTestBase {
   @BeforeAll
   public static void beforeClass() throws SQLException {
     setTserverFlags("cdc_max_stream_intent_records=10");

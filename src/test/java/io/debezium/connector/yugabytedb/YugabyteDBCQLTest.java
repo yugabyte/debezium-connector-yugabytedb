@@ -31,7 +31,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 
-public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBCQLTest extends YugabytedTestBase {
     CqlSession session;
 
     @BeforeAll

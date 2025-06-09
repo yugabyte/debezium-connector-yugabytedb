@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBPartitionTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBPartitionTest extends YugabytedTestBase {
 
   @BeforeAll
   public static void beforeClass() throws SQLException {

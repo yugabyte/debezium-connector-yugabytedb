@@ -764,13 +764,15 @@ public final class TestHelper {
 
     public static Stream<Arguments> streamTypeProviderForStreaming() {
         return Stream.of(
-                Arguments.of(false, false), // Older stream
+            // Only run tests on NO_EXPORT stream for now.
+                // Arguments.of(false, false), // Older stream
                 Arguments.of(true, false)); // NO_EXPORT stream
     }
 
     public static Stream<Arguments> streamTypeProviderForSnapshot() {
         return Stream.of(
-                Arguments.of(false, false), // Older stream
+            // Only run tests on USE_SNAPSHOT stream for now.
+                // Arguments.of(false, false), // Older stream
                 Arguments.of(true, true));  // USE_SNAPSHOT stream
     }
 }

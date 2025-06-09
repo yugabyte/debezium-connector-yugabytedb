@@ -6,14 +6,14 @@ import org.apache.kafka.common.config.ConfigDef;
 
 import io.debezium.config.Configuration;
 import io.debezium.config.Field;
-import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public class YugabyteDBgRPCConnectorIT extends YugabyteDBContainerTestBase {
+public class YugabyteDBgRPCConnectorIT extends YugabytedTestBase {
 
     private YugabyteDBgRPCConnector connector;
 
