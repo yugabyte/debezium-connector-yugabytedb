@@ -18,6 +18,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 /**
  * Unit tests to verify the streaming of ENUM values.
