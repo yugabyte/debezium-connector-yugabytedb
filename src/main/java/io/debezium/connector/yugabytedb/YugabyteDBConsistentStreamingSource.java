@@ -296,11 +296,12 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                  YbProtoReplicationMessage message) throws SQLException {
         String pgSchemaNameInRecord = m.getPgschemaName();
 
-        // This is a hack to skip tables in case of colocated tables
-        TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
-        if (!message.isTransactionalMessage()
-            && !filters.tableFilter().isIncluded(tempTid)) {
-            return;
+        if (!message.isTransactionalMessage()) {
+            // This is a hack to skip tables in case of colocated tables
+            TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+            if (!filters.tableFilter().isIncluded(tempTid)) {
+                return;
+            }
         }
 
         final OpId lsn = new OpId(record.getFromOpId().getTerm(),
