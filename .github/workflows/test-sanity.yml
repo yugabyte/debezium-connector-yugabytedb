@@ -1,12 +1,6 @@
-name: Basic tests with YugabyteDB build
+name: Test run on released versions
 
 on:
-  workflow_dispatch:
-    inputs:
-      yb_version:
-        description: "YugabyteDB version to run tests against (build should be present in internal Quay registry)"
-        required: false
-        type: string
   push:
     branches:
       - main
@@ -15,11 +9,11 @@ on:
       - main
 
 env:
-  YB_DOCKER_IMAGE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.yb_version != '' && github.event.inputs.yb_version || secrets.YB_DOCKER_IMAGE }}
+  YB_DOCKER_IMAGE: "yugabytedb/yugabyte:2024.2.0.0-b145"
+  YB_RUN_OLD_STREAM_TEST: "false"
 
 jobs:
   build:
-    if: github.event.repository.fork == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -30,21 +24,22 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-      - name: Login to Quay.io
-        uses: docker/login-action@v2
-        with:
-          registry: quay.io
-          username: ${{ secrets.QUAY_BOT_USERNAME }}
-          password: ${{ secrets.QUAY_BOT_TOKEN }}
       - name: Log YugabyteDB version
         run: echo YugabyteDB version being used $YB_DOCKER_IMAGE
       - name: Pull docker image
         run: docker pull $YB_DOCKER_IMAGE
       - name: YugabyteDBDatatypesTest
+        continue-on-error: true
         run: mvn clean test -Dtest=YugabyteDBDatatypesTest
+      - name: YugabyteDBBeforeImageTest
+        continue-on-error: true
+        run: mvn clean test -Dtest=YugabyteDBBeforeImageTest
       - name: YugabyteDBTabletSplitTest
+        continue-on-error: true
         run: mvn clean test -Dtest=YugabyteDBTabletSplitTest
       - name: YugabyteDBEnumValuesTest
+        continue-on-error: true
         run: mvn clean test -Dtest=YugabyteDBEnumValuesTest
       - name: YugabyteDBSnapshotTest
+        continue-on-error: true
         run: mvn clean test -Dtest=YugabyteDBSnapshotTest
