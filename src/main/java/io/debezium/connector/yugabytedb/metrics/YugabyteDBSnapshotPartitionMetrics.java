@@ -12,7 +12,7 @@ import io.debezium.connector.common.CdcSourceTaskContext;
 import io.debezium.pipeline.meters.SnapshotMeter;
 import io.debezium.pipeline.source.spi.EventMetadataProvider;
 import io.debezium.relational.TableId;
-import io.debezium.schema.DataCollectionId;
+import io.debezium.spi.schema.DataCollectionId;
 
 public class YugabyteDBSnapshotPartitionMetrics extends AbstractYugabyteDBPartitionMetrics
         implements YugabyteDBSnapshotPartitionMetricsMXBean {
@@ -125,5 +125,15 @@ public class YugabyteDBSnapshotPartitionMetrics extends AbstractYugabyteDBPartit
     @Override
     public void reset() {
         snapshotMeter.reset();
+    }
+
+    @Override
+    public boolean getSnapshotPaused() {
+        return snapshotMeter.getSnapshotPaused();
+    }
+
+    @Override
+    public long getSnapshotPausedDurationInSeconds() {
+        return snapshotMeter.getSnapshotPausedDurationInSeconds();
     }
 }

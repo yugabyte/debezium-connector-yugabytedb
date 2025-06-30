@@ -9,13 +9,15 @@ import io.debezium.DebeziumException;
 import io.debezium.connector.yugabytedb.connection.*;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage.Operation;
 import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoReplicationMessage;
-import io.debezium.connector.yugabytedb.spi.Snapshotter;
+// import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.connector.yugabytedb.util.YugabyteDBConnectorUtils;
 import io.debezium.heartbeat.Heartbeat;
 import io.debezium.pipeline.ErrorHandler;
 import io.debezium.pipeline.source.spi.StreamingChangeEventSource;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
+import io.debezium.snapshot.SnapshotterService;
+import io.debezium.spi.snapshot.Snapshotter;
 import io.debezium.util.Clock;
 import io.debezium.util.DelayStrategy;
 import io.debezium.util.ElapsedTimeStrategy;
@@ -80,6 +82,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     protected final YugabyteDBTaskContext taskContext;
 
     protected final Snapshotter snapshotter;
+    
     protected final DelayStrategy pauseNoMessage;
     protected final ElapsedTimeStrategy connectionProbeTimer;
 
@@ -106,7 +109,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     // and the value is tablet UUID
     protected List<Pair<String, String>> tabletPairList;
 
-    public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
+    public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, SnapshotterService snapshotterService,
                                                 YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
                                                 YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection,
                                                 ChangeEventQueue<DataChangeEvent> queue) {
@@ -116,9 +119,9 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.errorHandler = errorHandler;
         this.clock = clock;
         this.schema = schema;
-        pauseNoMessage = DelayStrategy.constant(taskContext.getConfig().getPollInterval().toMillis());
+        pauseNoMessage = DelayStrategy.constant(taskContext.getConfig().getPollInterval());
         this.taskContext = taskContext;
-        this.snapshotter = snapshotter;
+        this.snapshotter = snapshotterService.getSnapshotter();
         checkPointMap = new ConcurrentHashMap<>();
         this.connectionProbeTimer = ElapsedTimeStrategy.constant(Clock.system(), connectorConfig.statusUpdateInterval());
 
@@ -426,7 +429,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             // the assumption is that there will already be some checkpoints for the tablet in
             // the cdc_state table. Avoiding additional bootstrap call in that case will also help
             // us avoid unnecessary network calls.
-            if (snapshotter.shouldSnapshot()) {
+            if (snapshotter.shouldStreamEventsStartingFromSnapshot()) {
                 LOGGER.info("Skipping bootstrap because snapshot has been taken so streaming will resume there onwards");
             } else {
                 bootstrapTabletWithRetry(syncClient, tabletPairList, tableIdToTable);
@@ -660,7 +663,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                         if (message.getOperation() == Operation.BEGIN) {
                                             LOGGER.debug("LSN in case of BEGIN is " + lsn);
-                                            dispatcher.dispatchTransactionStartedEvent(part, message.getTransactionId(), offsetContext);
+                                            dispatcher.dispatchTransactionStartedEvent(part, message.getTransactionId(), offsetContext, message.getCommitTime());
 
                                             recordsInTransactionalBlock.put(part.getId(), 0);
                                             beginCountForTablet.merge(part.getId(), 1, Integer::sum);
@@ -668,7 +671,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             LOGGER.debug("LSN in case of COMMIT is " + lsn);
                                             offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                     String.valueOf(message.getTransactionId()), null, message.getRecordTime());
-                                            dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
+                                            dispatcher.dispatchTransactionCommittedEvent(part, offsetContext, message.getCommitTime());
 
                                             if (recordsInTransactionalBlock.containsKey(part.getId())) {
                                                 if (recordsInTransactionalBlock.get(part.getId()) == 0) {
@@ -955,7 +958,7 @@ public class YugabyteDBStreamingChangeEventSource implements
      * @param offset a map containing the {@link OpId} information for all the tablets
      */
     @Override
-    public void commitOffset(Map<String, ?> offset) {
+    public void commitOffset(Map<String, ?> partition, Map<String, ?> offset) {
         if (!taskContext.shouldEnableExplicitCheckpointing()) {
             return;
         }

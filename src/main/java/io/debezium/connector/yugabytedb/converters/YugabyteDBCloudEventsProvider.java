@@ -5,13 +5,14 @@
  */
 package io.debezium.connector.yugabytedb.converters;
 
-import org.apache.kafka.connect.data.Schema;
-import org.apache.kafka.connect.data.Struct;
+// import org.apache.kafka.connect.data.Schema;
+// import org.apache.kafka.connect.data.Struct;
 
 import io.debezium.connector.yugabytedb.Module;
+import io.debezium.converters.recordandmetadata.RecordAndMetadata;
 import io.debezium.converters.spi.CloudEventsMaker;
 import io.debezium.converters.spi.CloudEventsProvider;
-import io.debezium.converters.spi.RecordParser;
+// import io.debezium.converters.spi.RecordParser;
 import io.debezium.converters.spi.SerializerType;
 
 /**
@@ -26,12 +27,8 @@ public class YugabyteDBCloudEventsProvider implements CloudEventsProvider {
     }
 
     @Override
-    public RecordParser createParser(Schema schema, Struct record) {
-        return new YugabyteDBRecordParser(schema, record);
-    }
-
-    @Override
-    public CloudEventsMaker createMaker(RecordParser parser, SerializerType contentType, String dataSchemaUriBase) {
-        return new YugabyteDBCloudEventsMaker(parser, contentType, dataSchemaUriBase);
+    public CloudEventsMaker createMaker(RecordAndMetadata recordAndMetadata, SerializerType dataContentType, String dataSchemaUriBase,
+                                        String cloudEventsSchemaName) {
+        return new YugabyteDBCloudEventsMaker(recordAndMetadata, dataContentType, dataSchemaUriBase, cloudEventsSchemaName);
     }
 }

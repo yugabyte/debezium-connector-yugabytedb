@@ -13,7 +13,7 @@ import org.apache.kafka.connect.data.Struct;
 import io.debezium.data.Envelope;
 import io.debezium.pipeline.source.spi.EventMetadataProvider;
 import io.debezium.pipeline.spi.OffsetContext;
-import io.debezium.schema.DataCollectionId;
+import io.debezium.spi.schema.DataCollectionId;
 import io.debezium.time.Conversions;
 import io.debezium.util.Collect;
 
@@ -44,6 +44,7 @@ class YugabyteDBEventMetadataProvider implements EventMetadataProvider {
         final Struct sourceInfo = value.getStruct(Envelope.FieldName.SOURCE);
         if (source == null) {
             return null;
+            
         }
 
         Map<String, String> r = Collect.hashMapOf(

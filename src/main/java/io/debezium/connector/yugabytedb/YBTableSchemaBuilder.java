@@ -27,9 +27,9 @@ import io.debezium.relational.Key.KeyMapper;
 import io.debezium.relational.Tables.ColumnNameFilter;
 import io.debezium.relational.mapping.ColumnMapper;
 import io.debezium.relational.mapping.ColumnMappers;
-import io.debezium.schema.FieldNameSelector;
+// import io.debezium.schema.FieldNameSelector;
+import io.debezium.schema.SchemaNameAdjuster;
 import io.debezium.schema.FieldNameSelector.FieldNamer;
-import io.debezium.util.SchemaNameAdjuster;
 import io.debezium.util.Strings;
 
 /**
@@ -66,13 +66,13 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
      * @param schemaNameAdjuster the adjuster for schema names; may not be null
      */
     public YBTableSchemaBuilder(ValueConverterProvider valueConverterProvider, SchemaNameAdjuster schemaNameAdjuster, CustomConverterRegistry customConverterRegistry,
-                                Schema sourceInfoSchema, boolean sanitizeFieldNames, boolean multiPartitionMode) {
-        super(valueConverterProvider, schemaNameAdjuster, customConverterRegistry, sourceInfoSchema, sanitizeFieldNames, multiPartitionMode);
+                                Schema sourceInfoSchema, FieldNamer<Column> fieldNamer, boolean multiPartitionMode) {
+        super(valueConverterProvider, schemaNameAdjuster, customConverterRegistry, sourceInfoSchema, fieldNamer, multiPartitionMode);
         this.schemaNameAdjuster = schemaNameAdjuster;
         this.valueConverterProvider = valueConverterProvider;
         this.defaultValueConverter = null;
         this.sourceInfoSchema = sourceInfoSchema;
-        this.fieldNamer = FieldNameSelector.defaultSelector(sanitizeFieldNames);
+        this.fieldNamer = fieldNamer;
         this.customConverterRegistry = customConverterRegistry;
     }
 

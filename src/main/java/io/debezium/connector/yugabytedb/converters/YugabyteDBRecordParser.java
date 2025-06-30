@@ -11,7 +11,7 @@ import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
 
-import io.debezium.converters.spi.RecordParser;
+// import io.debezium.converters.spi.RecordParser;
 import io.debezium.data.Envelope;
 import io.debezium.util.Collect;
 
@@ -20,30 +20,30 @@ import io.debezium.util.Collect;
  *
  * @author Chris Cranford
  */
-public class YugabyteDBRecordParser extends RecordParser {
+public class YugabyteDBRecordParser {//extends RecordParser {
 
-    static final String TXID_KEY = "txId";
-    static final String XMIN_KEY = "xmin";
-    static final String LSN_KEY = "lsn";
+    // static final String TXID_KEY = "txId";
+    // static final String XMIN_KEY = "xmin";
+    // static final String LSN_KEY = "lsn";
 
-    static final Set<String> POSTGRES_SOURCE_FIELD = Collect.unmodifiableSet(
-            TXID_KEY,
-            XMIN_KEY,
-            LSN_KEY);
+    // static final Set<String> POSTGRES_SOURCE_FIELD = Collect.unmodifiableSet(
+    //         TXID_KEY,
+    //         XMIN_KEY,
+    //         LSN_KEY);
 
-    public YugabyteDBRecordParser(Schema schema, Struct record) {
-        super(schema, record, Envelope.FieldName.BEFORE, Envelope.FieldName.AFTER);
-    }
+    // public YugabyteDBRecordParser(Schema schema, Struct record) {
+    //     super(schema, record, Envelope.FieldName.BEFORE, Envelope.FieldName.AFTER);
+    // }
 
-    @Override
-    public Object getMetadata(String name) {
-        if (SOURCE_FIELDS.contains(name)) {
-            return source().get(name);
-        }
-        if (POSTGRES_SOURCE_FIELD.contains(name)) {
-            return source().get(name);
-        }
+    // @Override
+    // public Object getMetadata(String name) {
+    //     if (SOURCE_FIELDS.contains(name)) {
+    //         return source().get(name);
+    //     }
+    //     if (POSTGRES_SOURCE_FIELD.contains(name)) {
+    //         return source().get(name);
+    //     }
 
-        throw new DataException("No such field \"" + name + "\" in the \"source\" field of events from PostgreSQL connector");
-    }
+    //     throw new DataException("No such field \"" + name + "\" in the \"source\" field of events from PostgreSQL connector");
+    // }
 }

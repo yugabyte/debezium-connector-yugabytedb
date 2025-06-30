@@ -30,6 +30,7 @@ import io.debezium.config.Configuration;
 import io.debezium.connector.common.RelationalBaseSourceConnector;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
+import io.debezium.spi.schema.DataCollectionId;
 
 /**
  * A Kafka Connect source connector that creates tasks which use YugabyteDB CDC API
@@ -407,6 +408,13 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             LOGGER.warn("Exception while validating connection", e);
             throw new DebeziumException("Exception while validating connection", e);
         }
+    }
+
+    // TODO Vaibhav: Can be used to get the matching tableIDs for streaming.
+    //  We can take out some logic from validateTServerConnection and use it here.
+    @Override
+    public <T extends DataCollectionId> List<T> getMatchingCollections(Configuration config) {
+        return null;
     }
 
 }
