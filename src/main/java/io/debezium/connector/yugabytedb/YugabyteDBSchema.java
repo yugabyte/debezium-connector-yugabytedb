@@ -30,8 +30,9 @@ import io.debezium.relational.*;
 import io.debezium.relational.Tables.TableFilter;
 import io.debezium.schema.DataCollectionSchema;
 import io.debezium.schema.TopicSelector;
+import io.debezium.spi.topic.TopicNamingStrategy;
 import io.debezium.util.Collect;
-import io.debezium.util.SchemaNameAdjuster;
+import io.debezium.schema.SchemaNameAdjuster;
 
 /**
  * Component that records the schema information for the {@link YugabyteDBgRPCConnector}. The schema information contains
@@ -47,7 +48,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     protected final static String PUBLIC_SCHEMA_NAME = "public";
     private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSchema.class);
 
-    private final YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
+    // private final YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
 
     private final Map<TableId, List<String>> tableIdToToastableColumns;
     private final Map<Integer, TableId> relationIdToTableId;
@@ -61,7 +62,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     private YugabyteDBConnectorConfig config;
     private YugabyteDBValueConverter valueConverter;
     private YugabyteDBCQLValueConverter cqlValueConverter;
-    private TopicSelector<TableId> topicSelector;
+    private TopicNamingStrategy<TableId> topicNamingStrategy;
     private TableFilter tableFilter;
 
     /**
@@ -69,35 +70,36 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
      *
      * @param config the connector configuration, which is presumed to be valid
      */
-    protected YugabyteDBSchema(YugabyteDBConnectorConfig config, YugabyteDBTypeRegistry yugabyteDBTypeRegistry,
-                               TopicSelector<TableId> topicSelector, YugabyteDBValueConverter valueConverter) {
-        super(config, topicSelector, new Filters(config).tableFilter(),
+    // TODO Vaibhav: need to implement default value converter and use it here.
+    protected YugabyteDBSchema(YugabyteDBConnectorConfig config, YugabyteDBValueConverter defaultValueConverter,
+                               TopicNamingStrategy<TableId> topicNamingStrategy, YugabyteDBValueConverter valueConverter) {
+        super(config, topicNamingStrategy, new Filters(config).tableFilter(),
                 config.getColumnFilter(), getTableSchemaBuilder(config, valueConverter), false,
                 config.getKeyMapper());
 
-        this.yugabyteDBTypeRegistry = yugabyteDBTypeRegistry;
+        // this.yugabyteDBTypeRegistry = yugabyteDBTypeRegistry;
         this.tableIdToToastableColumns = new HashMap<>();
         this.relationIdToTableId = new HashMap<>();
 
         this.config = config;
         this.valueConverter = valueConverter;
         this.cqlValueConverter = null;
-        this.topicSelector = topicSelector;
+        this.topicNamingStrategy = topicNamingStrategy;
         this.tableFilter = new Filters(config).tableFilter();
     }
 
-    protected YugabyteDBSchema(YugabyteDBConnectorConfig config,TopicSelector<TableId> topicSelector, YugabyteDBCQLValueConverter cqlValueConverter) {
-        super(config, topicSelector, new Filters(config).tableFilter(),
+    protected YugabyteDBSchema(YugabyteDBConnectorConfig config,TopicNamingStrategy<TableId> topicNamingStrategy, YugabyteDBCQLValueConverter cqlValueConverter) {
+        super(config, topicNamingStrategy, new Filters(config).tableFilter(),
                 config.getColumnFilter(), getTableSchemaBuilder(config, cqlValueConverter), false,
                 config.getKeyMapper());
-        this.yugabyteDBTypeRegistry = null;
+        // this.yugabyteDBTypeRegistry = null;
         this.tableIdToToastableColumns = new HashMap<>();
         this.relationIdToTableId = new HashMap<>();
 
         this.config = config;
         this.valueConverter = null;
         this.cqlValueConverter = cqlValueConverter;
-        this.topicSelector = topicSelector;
+        this.topicNamingStrategy = topicNamingStrategy;
         this.tableFilter = config.cqlTableFilter();
     }
 
@@ -105,7 +107,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             ValueConverterProvider valueConverter) {
         return new YBTableSchemaBuilder(valueConverter, SchemaNameAdjuster.create(),
                 config.customConverterRegistry(), config.getSourceInfoStructMaker().schema(),
-                config.getSanitizeFieldNames(), false);
+                config.getFieldNamer(), false);
     }
 
     /**
@@ -198,7 +200,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             List<Column> columns = tableEntry.getValue();
             Collections.sort(columns);
             String defaultCharsetName = null; // JDBC does not expose character sets
-            tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, defaultCharsetName);
+            // tables.overwriteTable(tableId, columns, pkColumnNames, defaultCharsetName);
+            tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, defaultCharsetName, null);
         }
     }
 
@@ -489,7 +492,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
         Table table = tabletIdToTable.get(lookupKey);
 
-        TableSchema schema = schemaBuilder.create(getSchemaPrefix(config.getLogicalName()), getEnvelopeSchemaName(table), table, config.getColumnFilter(), ColumnMappers.create(config), config.getKeyMapper());
+        TableSchema schema = schemaBuilder.create(this.topicNamingStrategy, table, config.getColumnFilter(), ColumnMappers.create(config), config.getKeyMapper());
       
         if (tableFilter.isIncluded(table.id())) {
             LOGGER.debug("Updating table schema with lookup key {}", lookupKey);
@@ -504,7 +507,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     private String getEnvelopeSchemaName(Table table) {
-        return Envelope.schemaName(topicSelector.topicNameFor(table.id()));
+        return Envelope.schemaName(topicNamingStrategy.dataChangeTopic(table.id()));
     }
 
     private static String getSchemaPrefix(String serverName) {
@@ -583,7 +586,8 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     public YugabyteDBTypeRegistry getTypeRegistry() {
-        return yugabyteDBTypeRegistry;
+        return null;
+        // return new YugabyteDBTypeRegistry();
     }
 
     public List<String> getToastableColumnsForTableId(TableId tableId) {

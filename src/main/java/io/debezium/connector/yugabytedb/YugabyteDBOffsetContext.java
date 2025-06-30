@@ -16,6 +16,7 @@ import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.debezium.connector.SnapshotRecord;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.pipeline.source.snapshot.incremental.IncrementalSnapshotContext;
@@ -24,7 +25,8 @@ import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Offsets;
 import io.debezium.pipeline.txmetadata.TransactionContext;
 import io.debezium.relational.TableId;
-import io.debezium.schema.DataCollectionId;
+import io.debezium.spi.schema.DataCollectionId;
+// import io.debezium.schema.DataCollectionId;
 import io.debezium.util.Clock;
 
 /**
@@ -212,16 +214,21 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         return tabletSourceInfo.get(partition.getId());
     }
 
-    @Override
+    // @Override
     public boolean isSnapshotRunning() {
         // TODO: think about making this work
         return true;
         // return sourceInfo.isSnapshot();
     }
 
-    @Override
+    // @Override
     public void preSnapshotStart() {
         // Do nothing.
+    }
+
+    @Override
+    public void markSnapshotRecord(SnapshotRecord record) {
+        // TODO Auto-generated method stub
     }
 
     @Override
@@ -327,15 +334,15 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                 + ", tabletSourceInfo=" + tabletSourceInfo + "]";
     }
 
-    @Override
+    // @Override
     public void markLastSnapshotRecord() {
         // Do nothing.
     }
 
-    @Override
-    public void event(DataCollectionId tableId, Instant instant) {
-        // Do nothing.
-    }
+    // @Override
+    // public void event(DataCollectionId tableId, Instant instant) {
+    //     // Do nothing.
+    // }
 
     @Override
     public TransactionContext getTransactionContext() {
@@ -351,6 +358,25 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     public IncrementalSnapshotContext<?> getIncrementalSnapshotContext() {
         return incrementalSnapshotContext;
     }
+    
+    @Override
+    public void event(DataCollectionId tableId, Instant instant) {
+        // sourceInfo.update(instant, (TableId) tableId);
+    }
+
+    @Override
+    public boolean isInitialSnapshotRunning() {
+        // TODO Auto-generated method stub
+        return false;
+    }
+
+    @Override
+    public void preSnapshotStart(boolean onDemand) {
+        // TODO Auto-generated method stub
+        
+    }
+
+
 
     public static class Loader implements OffsetContext.Loader<YugabyteDBOffsetContext> {
 
