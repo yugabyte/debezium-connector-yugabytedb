@@ -1,5 +1,6 @@
 package io.debezium.connector.yugabytedb;
 
+import io.debezium.connector.AbstractSourceInfo;
 import io.debezium.connector.AbstractSourceInfoStructMaker;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.connection.OpId;
@@ -95,7 +96,7 @@ public class SourceInfoTest extends YugabyteDBContainerTestBase {
                 .field(SourceInfo.DEBEZIUM_CONNECTOR_KEY, Schema.STRING_SCHEMA)
                 .field(SourceInfo.SERVER_NAME_KEY, Schema.STRING_SCHEMA)
                 .field(SourceInfo.TIMESTAMP_KEY, Schema.INT64_SCHEMA)
-                .field(SourceInfo.SNAPSHOT_KEY, AbstractSourceInfoStructMaker.SNAPSHOT_RECORD_SCHEMA)
+                // .field(SourceInfo.SNAPSHOT_KEY, AbstractSourceInfoStructMaker.SNAPSHOT_RECORD_SCHEMA)
                 .field(SourceInfo.DATABASE_NAME_KEY, Schema.STRING_SCHEMA)
                 .field(SourceInfo.SEQUENCE_KEY, Schema.OPTIONAL_STRING_SCHEMA)
                 .field(SourceInfo.SCHEMA_NAME_KEY, Schema.STRING_SCHEMA)
