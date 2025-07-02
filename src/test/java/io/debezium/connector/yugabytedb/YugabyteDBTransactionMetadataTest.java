@@ -3,6 +3,7 @@ package io.debezium.connector.yugabytedb;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+import io.debezium.schema.SchemaTopicNamingStrategy;
 
 import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.jupiter.api.*;
@@ -60,7 +61,7 @@ public class YugabyteDBTransactionMetadataTest extends YugabyteDBContainerTestBa
 		String transactionTopicName = TestHelper.TEST_SERVER + ".transaction";
 		if (customTopicName) {
 			transactionTopicName = "custom.transaction.topic";
-			configBuilder.with(YugabyteDBConnectorConfig.TRANSACTION_TOPIC, transactionTopicName);
+			configBuilder.with(SchemaTopicNamingStrategy.TOPIC_TRANSACTION, transactionTopicName);
 		}
 
 		startEngine(configBuilder);

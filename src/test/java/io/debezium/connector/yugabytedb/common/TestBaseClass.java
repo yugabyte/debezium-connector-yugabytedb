@@ -8,7 +8,11 @@ import io.debezium.connector.yugabytedb.container.YugabyteCustomContainer;
 import io.debezium.connector.yugabytedb.rules.YugabyteDBLogTestName;
 import io.debezium.embedded.AbstractConnectorTest;
 import io.debezium.embedded.EmbeddedEngine;
+import io.debezium.embedded.TestingDebeziumEngine;
+import io.debezium.embedded.TestingEmbeddedEngine;
+import io.debezium.embedded.async.AsyncEmbeddedEngine;
 import io.debezium.engine.DebeziumEngine;
+import io.debezium.engine.DebeziumEngine.Builder;
 import io.debezium.engine.spi.OffsetCommitPolicy;
 import io.debezium.util.LoggingContext;
 import io.debezium.util.Testing;
@@ -69,7 +73,7 @@ public class TestBaseClass extends AbstractConnectorTest {
                 .pollDelay(Duration.ofSeconds(15))
                 .atMost(Duration.ofSeconds(65))
                 .until(() -> {
-                    return engine.isRunning();
+                    return isEngineRunning.get();
                 });
     }
 
@@ -175,13 +179,23 @@ public class TestBaseClass extends AbstractConnectorTest {
     startEngineWithPartialConsumptionOfLastBatch(configBuilder, snapshotRecords, (success, message, error) -> {});
   }
 
+  @Override
+  protected Builder<SourceRecord> createEngineBuilder() {
+    return new EmbeddedEngine.EngineBuilder();
+  }
+
+  @Override
+  protected TestingDebeziumEngine<SourceRecord> createEngine(Builder<SourceRecord> builder) {
+      return new TestingEmbeddedEngine((EmbeddedEngine)builder.build());
+  }
+
   public void startEngine(Configuration.Builder configBuilder,
                           DebeziumEngine.CompletionCallback callback) {
     configBuilder
-      .with(EmbeddedEngine.ENGINE_NAME, "test-connector")
-      .with(EmbeddedEngine.OFFSET_STORAGE, MemoryOffsetBackingStore.class.getName())
-      .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
-      .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class);
+      .with(AsyncEmbeddedEngine.ENGINE_NAME, "test-connector")
+      .with(AsyncEmbeddedEngine.OFFSET_STORAGE, MemoryOffsetBackingStore.class.getName())
+      .with(AsyncEmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
+      .with(AsyncEmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class);
 
     countDownLatch = new CountDownLatch(1);
     DebeziumEngine.CompletionCallback wrapperCallback = (success, msg, error) -> {
@@ -207,8 +221,9 @@ public class TestBaseClass extends AbstractConnectorTest {
       }
     };
 
-    engine = (EmbeddedEngine) EmbeddedEngine.create()
-               .using(configBuilder.build())
+    DebeziumEngine.Builder<SourceRecord> builder = createEngineBuilder();
+    builder
+               .using(configBuilder.build().asProperties())
                .using(OffsetCommitPolicy.always())
                .using(wrapperCallback)
                .using(connectorCallback)
@@ -226,6 +241,8 @@ public class TestBaseClass extends AbstractConnectorTest {
                  TestHelper.waitFor(Duration.ofMillis(callbackDelay));
                  committer.markBatchFinished();
                }).build();
+
+    engine = this.createEngine(builder);
 
     engineExecutor = Executors.newFixedThreadPool(1);
     engineExecutor.submit(() -> {
@@ -250,10 +267,10 @@ public class TestBaseClass extends AbstractConnectorTest {
    */
   public void startEngineWithPartialConsumptionOfLastBatch(Configuration.Builder configBuilder, int totalRecordsToConsume, DebeziumEngine.CompletionCallback callback) {
     configBuilder
-      .with(EmbeddedEngine.ENGINE_NAME, "test-connector")
-      .with(EmbeddedEngine.OFFSET_STORAGE, MemoryOffsetBackingStore.class.getName())
-      .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
-      .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class);
+      .with(AsyncEmbeddedEngine.ENGINE_NAME, "test-connector")
+      .with(AsyncEmbeddedEngine.OFFSET_STORAGE, MemoryOffsetBackingStore.class.getName())
+      .with(AsyncEmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
+      .with(AsyncEmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class);
 
     countDownLatch = new CountDownLatch(1);
     DebeziumEngine.CompletionCallback wrapperCallback = (success, msg, error) -> {
@@ -279,8 +296,9 @@ public class TestBaseClass extends AbstractConnectorTest {
       }
     };
 
-    engine = (EmbeddedEngine) EmbeddedEngine.create()
-               .using(configBuilder.build())
+    DebeziumEngine.Builder<SourceRecord> builder = createEngineBuilder();
+    builder
+               .using(configBuilder.build().asProperties())
                .using(OffsetCommitPolicy.always())
                .using(wrapperCallback)
                .using(connectorCallback)
@@ -300,7 +318,8 @@ public class TestBaseClass extends AbstractConnectorTest {
                  // invokes commitOffset() in the change event source classes.
                  TestHelper.waitFor(Duration.ofMillis(callbackDelay));
                   committer.markBatchFinished();
-               }).build();
+               });
+    engine = this.createEngine(builder);
 
     engineExecutor = Executors.newFixedThreadPool(1);
     engineExecutor.submit(() -> {
