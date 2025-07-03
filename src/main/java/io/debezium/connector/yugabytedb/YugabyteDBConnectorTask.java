@@ -28,6 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.DebeziumException;
+import io.debezium.bean.StandardBeanNames;
 import io.debezium.config.CommonConnectorConfig;
 import io.debezium.config.Configuration;
 import io.debezium.config.Field;
@@ -77,6 +78,7 @@ public class YugabyteDBConnectorTask
     private volatile YugabyteDBConnection heartbeatConnection;
     private volatile YugabyteDBSchema schema;
     private volatile ErrorHandler errorHandler;
+    private volatile YugabyteDBConnection beanRegistryJdbcConnection;
 
     private YugabyteDBChangeEventSourceCoordinator coordinator;
 
@@ -90,18 +92,23 @@ public class YugabyteDBConnectorTask
     @Override
     public ChangeEventSourceCoordinator<YBPartition, YugabyteDBOffsetContext> start(Configuration config) {
         final YugabyteDBConnectorConfig connectorConfig = new YugabyteDBConnectorConfig(config);
+        LOGGER.info("Before getting the topic naming strategy");
         final TopicNamingStrategy<TableId> topicNamingStrategy = connectorConfig.getTopicNamingStrategy(CommonConnectorConfig.TOPIC_NAMING_STRATEGY);
 
-        final SnapshotterService snapshotterService = connectorConfig.getServiceRegistry().tryGetService(SnapshotterService.class);
-        final Snapshotter snapshotter = snapshotterService.getSnapshotter();
+        // LOGGER.info("Before getting the snapshotter service");
+        // final SnapshotterService snapshotterService = connectorConfig.getServiceRegistry().tryGetService(SnapshotterService.class);
+        // LOGGER.info("Before getting the snapshotter from the snapshotter service");
+        // final Snapshotter snapshotter = snapshotterService.getSnapshotter();
+        LOGGER.info("Before getting the schema name adjuster");
         final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
 
+        LOGGER.info("Getting after getting the topic naming strategy and couple objects");
         LOGGER.debug("The config is " + config);
 
-        if (snapshotter == null) {
-            throw new ConnectException("Unable to load snapshotter, if using custom snapshot mode," +
-                    " double check your settings");
-        }
+        // if (snapshotter == null) {
+        //     throw new ConnectException("Unable to load snapshotter, if using custom snapshot mode," +
+        //             " double check your settings");
+        // }
 
         final String databaseCharsetName = config.getString(YugabyteDBConnectorConfig.CHAR_SET);
         final Charset databaseCharset = Charset.forName(databaseCharsetName);
@@ -117,16 +124,16 @@ public class YugabyteDBConnectorTask
                 databaseCharset,
                 typeRegistry);
 
+        LOGGER.info("Before creating the main connection factory");
         MainConnectionProvidingConnectionFactory<YugabyteDBConnection> connectionFactory = new DefaultMainConnectionProvidingConnectionFactory<>(
                 () -> new YugabyteDBConnection(connectorConfig.getJdbcConfig(), valueConverterBuilder, YugabyteDBConnection.CONNECTION_GENERAL));
 
+        Map<String, YugabyteDBType> nameToType = null;
+        Map<Integer, YugabyteDBType> oidToType = null;
         if (connectorConfig.isYSQLDbType()) {
 
             String nameToTypeStr = config.getString(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString());
             String oidToTypeStr = config.getString(YugabyteDBConnectorConfig.OID_TO_TYPE.toString());
-
-            Map<String, YugabyteDBType> nameToType = null;
-            Map<Integer, YugabyteDBType> oidToType = null;
             try {
                 nameToType = (Map<String, YugabyteDBType>) ObjectUtil
                         .deserializeObjectFromString(nameToTypeStr);
@@ -175,6 +182,31 @@ public class YugabyteDBConnectorTask
         YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(previousOffsets,
                                                                       connectorConfig);
 
+    
+        final YugabyteDBTypeRegistry yugabyteDBTypeRegistry = new YugabyteDBTypeRegistry(taskConnection, nameToType,
+                    oidToType, jdbcConnection);
+
+        // Manual Bean Registration
+        beanRegistryJdbcConnection = connectionFactory.newConnection();
+        connectorConfig.getBeanRegistry().add(StandardBeanNames.CONFIGURATION, config);
+        connectorConfig.getBeanRegistry().add(StandardBeanNames.CONNECTOR_CONFIG, connectorConfig);
+        connectorConfig.getBeanRegistry().add(StandardBeanNames.DATABASE_SCHEMA, schema);
+        connectorConfig.getBeanRegistry().add(StandardBeanNames.JDBC_CONNECTION, beanRegistryJdbcConnection);
+        connectorConfig.getBeanRegistry().add(StandardBeanNames.VALUE_CONVERTER, valueConverterBuilder.build(yugabyteDBTypeRegistry));
+        connectorConfig.getBeanRegistry().add(StandardBeanNames.OFFSETS, previousOffsets);
+
+        // Service providers
+        registerServiceProviders(connectorConfig.getServiceRegistry());
+
+        LOGGER.info("Before getting snapshotter service");
+        final SnapshotterService snapshotterService;
+        try {
+            snapshotterService = connectorConfig.getServiceRegistry().tryGetService(SnapshotterService.class);
+        } catch (RuntimeException e) {
+            throw new ConnectException("Unable to load snapshotter service, if using custom snapshot mode, double check your settings", e);
+        }
+        // final Snapshotter snapshotter = snapshotterService.getSnapshotter();
+
         LoggingContext.PreviousContext previousContext = taskContext
                 .configureLoggingContext(CONTEXT_NAME + "|" + taskId);
         try {
@@ -215,12 +247,14 @@ public class YugabyteDBConnectorTask
             //             }
             //         });
 
+            LOGGER.info("Creating signal processor");
             SignalProcessor<YBPartition, YugabyteDBOffsetContext> signalProcessor = new SignalProcessor<>(
                     YugabyteDBgRPCConnector.class, connectorConfig, Map.of(),
                     getAvailableSignalChannels(),
                     DocumentReader.defaultReader(),
                     previousOffsets);
 
+            LOGGER.info("Creating event dispatcher");
             final YugabyteDBEventDispatcher<TableId> dispatcher = new YugabyteDBEventDispatcher<>(
                     connectorConfig,
                     topicNamingStrategy,
@@ -234,6 +268,7 @@ public class YugabyteDBConnectorTask
                     signalProcessor,
                     jdbcConnection);
 
+            LOGGER.info("Creating notification service");
             NotificationService<YBPartition, YugabyteDBOffsetContext> notificationService = new NotificationService<>(getNotificationChannels(),
                     connectorConfig, SchemaFactory.get(), dispatcher::enqueueNotification);
 
@@ -259,6 +294,7 @@ public class YugabyteDBConnectorTask
                     snapshotterService,
                     signalProcessor,
                     notificationService);
+            LOGGER.info("Starting YugabyteDBChangeEventSourceCoordinator");
             this.coordinator.start(taskContext, this.queue, metadataProvider);
 
             return this.coordinator;
