@@ -267,10 +267,7 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     // Maybe use record.schema().fields().size() to verify column count
     // Verify the record count now
     List<SourceRecord> records = new ArrayList<>();
-    CompletableFuture.runAsync(() -> verifyRecordCount(records, totalExpectedRecords))
-            .exceptionally(throwable -> {
-              throw new RuntimeException(throwable);
-            }).get();
+    verifyRecordCount(records, totalExpectedRecords);
   }
 
   /**

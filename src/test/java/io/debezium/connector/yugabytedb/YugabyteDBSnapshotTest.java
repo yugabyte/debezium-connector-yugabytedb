@@ -85,10 +85,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
 
         // Only verifying the record count since the snapshot records are not ordered, so it may be
         // a little complex to verify them in the sorted order at the moment
-        CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount))
-          .exceptionally(throwable -> {
-              throw new RuntimeException(throwable);
-          }).get();
+        verifyRecordCount(recordsCount);
     }
 
     @ParameterizedTest
