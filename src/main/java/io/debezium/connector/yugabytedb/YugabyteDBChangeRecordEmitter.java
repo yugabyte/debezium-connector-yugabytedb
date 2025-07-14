@@ -316,6 +316,8 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     @Override
     protected void emitCreateRecord(Receiver<YBPartition> receiver, TableSchema tableSchema) throws InterruptedException {
         Object[] newColumnValues = getNewColumnValues();
+
+        LOGGER.info("Table schema {}", tableSchema);
         Struct newKey = tableSchema.keyFromColumnData(newColumnValues);
         Struct newValue = tableSchema.valueFromColumnData(newColumnValues);
         Struct envelope = tableSchema.getEnvelopeSchema().create(newValue, offsetContext.getSourceInfoForTablet(getPartition()), getClock().currentTimeAsInstant());

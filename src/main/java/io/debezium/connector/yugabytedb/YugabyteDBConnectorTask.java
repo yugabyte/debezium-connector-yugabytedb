@@ -160,7 +160,7 @@ public class YugabyteDBConnectorTask
                     oidToType, jdbcConnection);
 
             schema = new YugabyteDBSchema(connectorConfig, valueConverterBuilder.build(yugabyteDBTypeRegistry), topicNamingStrategy,
-                    valueConverterBuilder.build(yugabyteDBTypeRegistry));
+                    valueConverterBuilder.build(yugabyteDBTypeRegistry), yugabyteDBTypeRegistry);
 
         } else {
             final YugabyteDBCQLValueConverter cqlValueConverter = YugabyteDBCQLValueConverter.of(connectorConfig,
@@ -262,6 +262,7 @@ public class YugabyteDBConnectorTask
                     queue,
                     connectorConfig.getTableFilters().dataCollectionFilter(),
                     DataChangeEvent::new,
+                    YugabyteDBChangeRecordEmitter::updateSchema,
                     metadataProvider,
                     null /* heartbeatFactory */,
                     schemaNameAdjuster,
