@@ -93,10 +93,7 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
 
         // Only verifying the record count since the snapshot records are not ordered, so it may be
         // a little complex to verify them in the sorted order at the moment
-        CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount + 20))
-          .exceptionally(throwable -> {
-              throw new RuntimeException(throwable);
-          }).get();
+        verifyRecordCount(recordsCount + 20);
         
         TestHelper.executeInDatabase("DROP TABLE IF EXISTS \"random_test _4\";", DEFAULT_COLOCATED_DB_NAME);
         TestHelper.executeInDatabase("DROP TABLE IF EXISTS \"random_test _5\";", DEFAULT_COLOCATED_DB_NAME);

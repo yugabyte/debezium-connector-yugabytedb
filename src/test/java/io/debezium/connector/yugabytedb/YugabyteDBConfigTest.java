@@ -45,13 +45,9 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
 
     private void insertRecords(int numOfRowsToBeInserted) throws Exception {
         String formatInsertString = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
-        CompletableFuture.runAsync(() -> {
-            for (int i = 0; i < numOfRowsToBeInserted; i++) {
-                TestHelper.execute(String.format(formatInsertString, i));
-            }
-        }).exceptionally(throwable -> {
-            throw new RuntimeException(throwable);
-        }).get();
+        for (int i = 0; i < numOfRowsToBeInserted; i++) {
+            TestHelper.execute(String.format(formatInsertString, i));
+        }
     }
 
     private void verifyRecordCount(int recordsCount) {
@@ -121,11 +117,7 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
 
         int recordsCount = 10;
         insertRecords(recordsCount);
-
-        CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount))
-                .exceptionally(throwable -> {
-                    throw new RuntimeException(throwable);
-                }).get();
+        verifyRecordCount(recordsCount);
     }
 
     @Test
