@@ -48,7 +48,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     protected final static String PUBLIC_SCHEMA_NAME = "public";
     private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSchema.class);
 
-    // private final YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
+    private final YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
 
     private final Map<TableId, List<String>> tableIdToToastableColumns;
     private final Map<Integer, TableId> relationIdToTableId;
@@ -72,12 +72,13 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
      */
     // TODO Vaibhav: need to implement default value converter and use it here.
     protected YugabyteDBSchema(YugabyteDBConnectorConfig config, YugabyteDBValueConverter defaultValueConverter,
-                               TopicNamingStrategy<TableId> topicNamingStrategy, YugabyteDBValueConverter valueConverter) {
+                               TopicNamingStrategy<TableId> topicNamingStrategy, YugabyteDBValueConverter valueConverter,
+                               YugabyteDBTypeRegistry yugabyteDBTypeRegistry) {
         super(config, topicNamingStrategy, new Filters(config).tableFilter(),
                 config.getColumnFilter(), getTableSchemaBuilder(config, valueConverter), false,
                 config.getKeyMapper());
 
-        // this.yugabyteDBTypeRegistry = yugabyteDBTypeRegistry;
+        this.yugabyteDBTypeRegistry = yugabyteDBTypeRegistry;
         this.tableIdToToastableColumns = new HashMap<>();
         this.relationIdToTableId = new HashMap<>();
 
@@ -92,7 +93,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         super(config, topicNamingStrategy, new Filters(config).tableFilter(),
                 config.getColumnFilter(), getTableSchemaBuilder(config, cqlValueConverter), false,
                 config.getKeyMapper());
-        // this.yugabyteDBTypeRegistry = null;
+        this.yugabyteDBTypeRegistry = null;
         this.tableIdToToastableColumns = new HashMap<>();
         this.relationIdToTableId = new HashMap<>();
 
@@ -103,7 +104,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         this.tableFilter = config.cqlTableFilter();
     }
 
-    private static TableSchemaBuilder getTableSchemaBuilder(YugabyteDBConnectorConfig config,
+    private static YBTableSchemaBuilder getTableSchemaBuilder(YugabyteDBConnectorConfig config,
             ValueConverterProvider valueConverter) {
         return new YBTableSchemaBuilder(valueConverter, SchemaNameAdjuster.create(),
                 config.customConverterRegistry(), config.getSourceInfoStructMaker().schema(),
@@ -502,6 +503,12 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
         }
     }
 
+    @Override
+    public TableSchema schemaFor(TableId id) {
+        // TODO Auto-generated method stub
+        return super.schemaFor(id);
+    }
+
     public TableSchema schemaForTablet(TableId tableId, String tabletId) {
         return tabletIdToTableSchema.get(getLookupKey(tableId, tabletId));
     }
@@ -586,8 +593,7 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     public YugabyteDBTypeRegistry getTypeRegistry() {
-        return null;
-        // return new YugabyteDBTypeRegistry();
+        return yugabyteDBTypeRegistry;
     }
 
     public List<String> getToastableColumnsForTableId(TableId tableId) {

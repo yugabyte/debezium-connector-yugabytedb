@@ -33,6 +33,7 @@ import io.debezium.pipeline.source.spi.EventMetadataProvider;
 import io.debezium.pipeline.spi.ChangeEventCreator;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Partition;
+import io.debezium.relational.TableId;
 import io.debezium.spi.schema.DataCollectionId;
 import io.debezium.spi.topic.TopicNamingStrategy;
 
@@ -57,7 +58,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
     private final TopicNamingStrategy<T> topicNamingStrategy;
     private final DatabaseSchema<T> schema;
     private DataChangeEventListener<YBPartition> eventListener = DataChangeEventListener.NO_OP();
-    // private final InconsistentSchemaHandler<YBPartition, T> inconsistentSchemaHandler;
+    private final InconsistentSchemaHandler<YBPartition, T> inconsistentSchemaHandler;
     private final boolean neverSkip;
     // private final Heartbeat heartbeat;
     private final EnumSet<Envelope.Operation> skippedOperations;
@@ -70,7 +71,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
 
     public YugabyteDBEventDispatcher(YugabyteDBConnectorConfig connectorConfig, TopicNamingStrategy<T> topicNamingStrategy,
                                    DatabaseSchema<T> schema, ChangeEventQueue<DataChangeEvent> queue, DataCollectionFilters.DataCollectionFilter<T> filter,
-                                   ChangeEventCreator changeEventCreator,
+                                   ChangeEventCreator changeEventCreator, InconsistentSchemaHandler<YBPartition, T> inconsistentSchemaHandler,
                                    EventMetadataProvider metadataProvider, HeartbeatFactory<T> heartbeatFactory, SchemaNameAdjuster schemaNameAdjuster,
                                    SignalProcessor<YBPartition, YugabyteDBOffsetContext> signalProcessor, JdbcConnection jdbcConnection) {
         super(connectorConfig, topicNamingStrategy, schema, queue, filter, changeEventCreator, metadataProvider,
@@ -83,7 +84,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
         this.topicNamingStrategy = topicNamingStrategy;
         // this.heartbeat = heartbeatFactory.createHeartbeat();
         this.streamingReceiver = new YugabyteDBStreamingChangeRecordReceiver();
-        // this.inconsistentSchemaHandler = inconsistentSchemaHandler != null ? inconsistentSchemaHandler : this::errorOnMissingSchema;
+        this.inconsistentSchemaHandler = inconsistentSchemaHandler != null ? inconsistentSchemaHandler : this::errorOnMissingSchema;
         this.skippedOperations = connectorConfig.getSkippedOperations();
         this.emitTombstonesOnDelete = connectorConfig.isEmitTombstoneOnDelete();
         this.neverSkip = connectorConfig.supportsOperationFiltering() || this.skippedOperations.isEmpty();
@@ -118,18 +119,24 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
                 eventListener.onFilteredEvent(partition, "source = " + dataCollectionId, changeRecordEmitter.getOperation());
                 dispatchFilteredEvent(changeRecordEmitter.getPartition(), changeRecordEmitter.getOffset());
             } else {
+                LOGGER.info("Data collection ID is {}", dataCollectionId);
                 DataCollectionSchema dataCollectionSchema = schema.schemaFor(dataCollectionId);
 
+                if (dataCollectionSchema == null) {
+                    LOGGER.warn("Data collection schema is null for data collection ID: {}", dataCollectionId);
+                } else {
+                    LOGGER.info("Data collection schema found for data collection ID: {}", dataCollectionId);
+                }
+
                 // TODO handle as per inconsistent schema info option
-                // TODO Vaibhav: This is not even handled.
-                // if (dataCollectionSchema == null) {
-                //     final Optional<DataCollectionSchema> replacementSchema = inconsistentSchemaHandler.handle(partition,
-                //       dataCollectionId, changeRecordEmitter);
-                //     if (!replacementSchema.isPresent()) {
-                //         return false;
-                //     }
-                //     dataCollectionSchema = replacementSchema.get();
-                // }
+                if (dataCollectionSchema == null) {
+                    final Optional<DataCollectionSchema> replacementSchema = inconsistentSchemaHandler.handle(partition,
+                      dataCollectionId, changeRecordEmitter);
+                    if (!replacementSchema.isPresent()) {
+                        return false;
+                    }
+                    dataCollectionSchema = replacementSchema.get();
+                }
 
                 changeRecordEmitter.emitChangeRecords(dataCollectionSchema, new ChangeRecordEmitter.Receiver<YBPartition>() {
                     @Override

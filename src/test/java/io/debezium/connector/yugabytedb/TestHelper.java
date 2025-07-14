@@ -363,7 +363,8 @@ public final class TestHelper {
                 config,
                 getPostgresValueConverter(yugabyteDBTypeRegistry, config),
                 config.getTopicNamingStrategy(CommonConnectorConfig.TOPIC_NAMING_STRATEGY),
-                getPostgresValueConverter(yugabyteDBTypeRegistry, config));
+                getPostgresValueConverter(yugabyteDBTypeRegistry, config),
+                yugabyteDBTypeRegistry);
     }
 
     public static Set<String> schemaNames() throws SQLException {
