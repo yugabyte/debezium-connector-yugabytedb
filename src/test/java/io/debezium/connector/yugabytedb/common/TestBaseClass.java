@@ -13,6 +13,7 @@ import io.debezium.embedded.TestingEmbeddedEngine;
 import io.debezium.embedded.async.AsyncEmbeddedEngine;
 import io.debezium.engine.DebeziumEngine;
 import io.debezium.engine.DebeziumEngine.Builder;
+import io.debezium.engine.DebeziumEngine.ConnectorCallback;
 import io.debezium.engine.spi.OffsetCommitPolicy;
 import io.debezium.util.LoggingContext;
 import io.debezium.util.Testing;
@@ -218,6 +219,16 @@ public class TestBaseClass extends AbstractConnectorTest {
       public void taskStarted() {
         // if this is called, it means a task has been started successfully so we can continue
         countDownLatch.countDown();
+      }
+
+      @Override
+      public void connectorStarted() {
+          isEngineRunning.compareAndExchange(false, true);
+      }
+
+      @Override
+      public void connectorStopped() {
+          isEngineRunning.compareAndExchange(true, false);
       }
     };
 
