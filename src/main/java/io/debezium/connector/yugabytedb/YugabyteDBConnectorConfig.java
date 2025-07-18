@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.common.config.ConfigDef;
@@ -668,11 +669,22 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     public static final int DEFAULT_MBEAN_REGISTRATION_RETRIES = 12;
     public static final long DEFAULT_MBEAN_REGISTRATION_RETRY_DELAY_MS = 5_000;
     public static final long DEFAULT_LAST_CALLBACK_TIMEOUT_MS = 3 * 60 * 1000;
+    public static final Pattern YB_HOSTNAME_PATTERN = Pattern.compile("^[a-zA-Z0-9-_.,:]+$");
 
     @Override
     public JdbcConfiguration getJdbcConfig() {
         return super.getJdbcConfig();
     }
+
+    public static final Field HOSTNAME = Field.create(DATABASE_CONFIG_PREFIX + JdbcConfiguration.HOSTNAME)
+            .withDisplayName("Hostname")
+            .withType(Type.STRING)
+            .withGroup(Field.createGroupEntry(Field.Group.CONNECTION, 2))
+            .withWidth(Width.MEDIUM)
+            .withImportance(Importance.HIGH)
+            .required()
+            .withValidation(YugabyteDBConnectorConfig::validateYBHostname)
+            .withDescription("Resolvable hostname or IP address of the database server.");
 
     public static final Field PORT = RelationalDatabaseConnectorConfig.PORT
             .withDefault(DEFAULT_PORT);
@@ -1646,6 +1658,26 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             }
         }
         return errors;
+    }
+
+    protected static int validateYBHostname(Configuration config, Field field, Field.ValidationOutput problems) {
+        String hostName = config.getString(field);
+        int problemCount = 0;
+
+        if (!Strings.isNullOrBlank(hostName)) {
+            if (hostName.contains(",") && !hostName.contains(":")) {
+                // Basic validation for cases when a user has only specified comma separated IPs which is not the correct format.
+                problems.accept(field, hostName, hostName + " has invalid format (specify mutiple hosts in the format ip1:port1,ip2:port2,ip3:port3)");
+                ++problemCount;
+            }
+
+            if (!YB_HOSTNAME_PATTERN.asPredicate().test(hostName)) {
+                problems.accept(field, hostName, hostName + " has invalid format (only the underscore, hyphen, dot, comma, colon and alphanumeric characters are allowed)");
+                ++problemCount;
+            }
+        }
+
+        return problemCount;
     }
 
     private static int validateTruncateHandlingMode(Configuration config, Field field, Field.ValidationOutput problems) {
