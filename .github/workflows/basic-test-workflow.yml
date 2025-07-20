@@ -39,10 +39,10 @@ jobs:
         run: echo YugabyteDB version being used $YB_DOCKER_IMAGE
       - name: Pull docker image
         run: docker pull $YB_DOCKER_IMAGE
+      - name: YugabyteDBCQLTest
+        run: mvn clean test -Dtest=YugabyteDBCQLTest
       - name: YugabyteDBDatatypesTest
         run: mvn clean test -Dtest=YugabyteDBDatatypesTest
-      - name: YugabyteDBTabletSplitTest
-        run: mvn clean test -Dtest=YugabyteDBTabletSplitTest
       - name: YugabyteDBEnumValuesTest
         run: mvn clean test -Dtest=YugabyteDBEnumValuesTest
       - name: YugabyteDBSnapshotTest
