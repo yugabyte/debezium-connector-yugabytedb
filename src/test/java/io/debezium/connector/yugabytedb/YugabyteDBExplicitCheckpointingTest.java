@@ -38,7 +38,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBExplicitCheckpointingTest extends YugabytedTestBase {
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBExplicitCheckpointingTest.class);
 
     private final String CONNECTOR_NAME = "explicit-checkpointing-test-connector";
