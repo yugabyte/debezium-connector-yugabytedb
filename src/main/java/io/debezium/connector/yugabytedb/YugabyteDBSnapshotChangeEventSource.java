@@ -74,7 +74,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     private final YugabyteDBTaskContext taskContext;
     private final EventDispatcher<YBPartition,TableId> dispatcher;
     protected final Clock clock;
-    // private final Snapshotter snapshotter;
+    private final SnapshotterService snapshotterService;;
     private final YugabyteDBConnection connection;
     private final YBClient syncClient;
     private OpId lastCompletelyProcessedLsn;
@@ -108,6 +108,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.dispatcher = dispatcher;
         this.clock = clock;
         // this.snapshotter = snapshotter;
+        this.snapshotterService = snapshotterService;
         this.connection = connectionFactory.mainConnection();
         this.snapshotProgressListener = snapshotProgressListener;
 
@@ -134,26 +135,26 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.lastGetChangesTime = new HashMap<>();
     }
 
-    @Override
-    protected void readTableStructure(ChangeEventSourceContext sourceContext,
-            RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
-            YugabyteDBOffsetContext offsetContext, SnapshottingTask snapshottingTask) throws Exception {
-        // This method is not used in YugabyteDB, as we do not read the table structure directly.
-    }
+    // @Override
+    // protected void readTableStructure(ChangeEventSourceContext sourceContext,
+    //         RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
+    //         YugabyteDBOffsetContext offsetContext, SnapshottingTask snapshottingTask) throws Exception {
+    //     // This method is not used in YugabyteDB, as we do not read the table structure directly.
+    // }
 
-    @Override
-    protected void lockTablesForSchemaSnapshot(ChangeEventSourceContext sourceContext,
-            RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext) throws Exception {
-        // This is not applicable to YugabyteDB as we do not lock tables for schema snapshot.
-    }
+    // @Override
+    // protected void lockTablesForSchemaSnapshot(ChangeEventSourceContext sourceContext,
+    //         RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext) throws Exception {
+    //     // This is not applicable to YugabyteDB as we do not lock tables for schema snapshot.
+    // }
 
-    @Override
-    protected SchemaChangeEvent getCreateTableEvent(
-            RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext, Table table)
-            throws Exception {
-        // TODO Auto-generated method stub
-        return null;
-    }
+    // @Override
+    // protected SchemaChangeEvent getCreateTableEvent(
+    //         RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext, Table table)
+    //         throws Exception {
+    //     // TODO Auto-generated method stub
+    //     return null;
+    // }
 
     @Override
     public SnapshottingTask getBlockingSnapshottingTask(YBPartition partition, YugabyteDBOffsetContext previousOffset,
@@ -185,6 +186,15 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
+    
+    /**
+     * Determines which tables should be included in the snapshot by filtering the available tables
+     * based on the connector's snapshot configuration.
+     * 
+     * @param tableIdToTable Map of table UUIDs to YBTable objects representing available tables.
+     * @return Map of TableId (Debezium style) to table UUID strings for tables that should be snapshotted.
+     * @throws Exception if there's an error during table filtering or conversion.
+     */
     private Map<TableId, String> determineTablesForSnapshot(Map<String, YBTable> tableIdToTable) throws Exception {
       Map<TableId, String> res = new HashMap<>();
 
@@ -198,10 +208,12 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       dbzTableIds = res.entrySet().stream().map(entry -> entry.getKey())
                         .collect(Collectors.toSet());
 
-      // Get a list of filtered tables which are to be snapshotted
-      Set<String> filteredTables = getDataCollectionsToBeSnapshotted(dbzTableIds);
-                                        // .collect(Collectors.toSet());
+      LOGGER.info("DBZ table IDs: {}", dbzTableIds);
 
+      // Get a list of filtered tables which are to be snapshotted. This set here contains
+      // the string of tableIDs in the Debezium format i.e. databaseName.schemaName.tableName
+      Set<String> filteredTables = getDataCollectionsToBeSnapshotted(dbzTableIds);
+      
       res.keySet().removeIf(tableId -> !filteredTables.contains(tableId.identifier()));
       
       return res;
@@ -348,10 +360,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       }
     }
 
-    // @Override
-    public SnapshotResult<YugabyteDBOffsetContext> execute(ChangeEventSourceContext context, YBPartition partition, YugabyteDBOffsetContext previousOffset)
-            throws InterruptedException {
-        SnapshottingTask snapshottingTask = getSnapshottingTask(partition, previousOffset);
+    @Override
+    public SnapshotResult<YugabyteDBOffsetContext> execute(ChangeEventSourceContext context, YBPartition partition, YugabyteDBOffsetContext previousOffset,
+                                                           SnapshottingTask snapshottingTask) throws InterruptedException {
         LOGGER.debug("Dispatcher in snapshot: " + dispatcher.toString());
         if (snapshottingTask.shouldSkipSnapshot()) {
             LOGGER.debug("Skipping snapshotting");
@@ -385,7 +396,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             this.partitionRanges = YugabyteDBConnectorUtils.populatePartitionRanges(
               connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST));
 
-            return doExecute(context, partition, previousOffset, ctx, snapshottingTask);
+            return doExecute(context, previousOffset, ctx, snapshottingTask);
         }
         catch (InterruptedException e) {
             completedSuccessfully = false;
@@ -444,25 +455,26 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       }
     }
 
+    // @Override
+    // public SnapshotResult<YugabyteDBOffsetContext> doExecute(ChangeEventSourceContext context, YugabyteDBOffsetContext previousOffset,
+    //                                                          SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
+    //                                                          SnapshottingTask snapshottingTask)
+    //         throws Exception {
+    //   if (snapshottingTask.shouldSkipSnapshot()) {
+    //     LOGGER.info("Skipping snapshot");
+    //     return SnapshotResult.skipped(previousOffset);
+    //   }
+
+    //   setupSnapshotResources(context, previousOffset);
+
+
+    //   return doExecuteImpl(context,  previousOffset, snapshotContext, snapshottingTask);
+    // }
+
     @Override
-    public SnapshotResult<YugabyteDBOffsetContext> doExecute(ChangeEventSourceContext context, YugabyteDBOffsetContext previousOffset,
-                                                             SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
-                                                             SnapshottingTask snapshottingTask)
-            throws Exception {
-      if (snapshottingTask.shouldSkipSnapshot()) {
-        LOGGER.info("Skipping snapshot");
-        return SnapshotResult.skipped(previousOffset);
-      }
-
-      setupSnapshotResources(context, previousOffset);
-
-
-      return doExecuteImpl(context,  previousOffset, snapshotContext, snapshottingTask);
-    }
-
-    protected SnapshotResult<YugabyteDBOffsetContext> doExecuteImpl(ChangeEventSourceContext context, YugabyteDBOffsetContext previousOffset,
-                                                                    SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
-                                                                    SnapshottingTask snapshottingTask)
+    protected SnapshotResult<YugabyteDBOffsetContext> doExecute(ChangeEventSourceContext context, YugabyteDBOffsetContext previousOffset,
+                                                                SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
+                                                                SnapshottingTask snapshottingTask)
             throws Exception {
       LOGGER.info("Starting the snapshot process now");
       
@@ -487,6 +499,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       Set<String> snapshotCompletedPreviously = new HashSet<>();
 
       for (Pair<String, String> entry : tableToTabletIds) {
+        LOGGER.info("Entry: {}", entry);
         // We can use tableIdToTable.get(entry.getKey()).isColocated() to get actual status.
         String tableId = entry.getKey();
         String tabletId = entry.getValue();
@@ -498,6 +511,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     tabletId, resp.getTerm(), resp.getIndex(), Arrays.toString(resp.getSnapshotKey()));
 
         OpId startLsn = OpId.from(resp);
+        LOGGER.info("Filtered Table ID to UUID: {}", filteredTableIdToUuid);
         if (filteredTableIdToUuid.containsValue(tableId)) {
           // We need to take the snapshot for this table.
           tableToTabletForSnapshot.add(entry);
@@ -515,6 +529,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       + " snapshot.include.collection.list", entry.getKey(), entry.getValue());
           makeStreamActive(tableId, tabletId, true);
         }
+
+        LOGGER.info("Coming to this block");
 
         previousOffset.initSourceInfo(p, this.connectorConfig, startLsn);
         tabletToExplicitCheckpoint.put(p.getId(), startLsn.toCdcSdkCheckpoint());
@@ -1002,26 +1018,37 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         return fromOpId.equals(YugabyteDBOffsetContext.snapshotStartLsn());
     }
 
+    /**
+     * Determines which data collections should be included in the snapshot based on the connector configuration.
+     * 
+     * @param allDataCollections Set of all available TableId objects representing data collections.
+     * @return Set of strings representing the identifiers of data collections to be snapshotted.
+     *         If no snapshot.include.collection.list is specified, returns all data collections.
+     *         Otherwise, filters the collections based on the configured include patterns.
+     */
     protected Set<String> getDataCollectionsToBeSnapshotted(Set<TableId> allDataCollections) {
-      final Set<String> snapshotAllowedDataCollections = 
-          this.connectorConfig.getDataCollectionsToBeSnapshotted()
-            .stream().collect(Collectors.toSet());
-      return snapshotAllowedDataCollections;
-      // if (snapshotAllowedDataCollections.size() == 0) {
-      //     // If no snapshot.include.collection.list is specified then we should return all of it
-      //     return allDataCollections.stream();
-      // }
-      // else {
-      //     return allDataCollections.stream()
-      //             .filter(dataCollectionId -> snapshotAllowedDataCollections.stream()
-      //                 .anyMatch(s -> s.matcher(dataCollectionId.schema()+"."+dataCollectionId.table())
-      //                     .matches()));
-      // }
+      if (this.connectorConfig.getDataCollectionsToBeSnapshotted().size() == 0) {
+          // If no snapshot.include.collection.list is specified then we should return all of it.
+          return allDataCollections.stream().map(tableId -> tableId.identifier()).collect(Collectors.toSet());
+      }
+      else {
+        Set<String> filteredDataCollectionsToBeSnapshotted = new HashSet<>();
+        List<String> snapshotModeTables = this.connectorConfig.getDataCollectionsToBeSnapshotted();
+        for (TableId tableId : allDataCollections) {
+          if (snapshotModeTables.stream().anyMatch(s -> Pattern.compile(s).matcher(tableId.schema() + "." + tableId.table()).matches())) {
+            filteredDataCollectionsToBeSnapshotted.add(tableId.identifier());
+          }
+        }
+
+        LOGGER.debug("Returning collections to be snapshotted {}", filteredDataCollectionsToBeSnapshotted);
+
+        return filteredDataCollectionsToBeSnapshotted;
+      }
   }
 
     @Override
     public SnapshottingTask getSnapshottingTask(YBPartition partition, 
-                                                   YugabyteDBOffsetContext previousOffset) {
+                                                YugabyteDBOffsetContext previousOffset) {
         boolean snapshotSchema = true;
         boolean snapshotData = true;
 
@@ -1040,11 +1067,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         return new SnapshottingTask(snapshotSchema, snapshotData, dataCollectionsToBeSnapshotted, snapshotSelectOverridesByTable, false /* onDemand */);
     }
 
-    @Override
-    protected YugabyteDBOffsetContext copyOffset(
-            RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext) {
-      return new YugabyteDBOffsetContext.Loader(connectorConfig).load(snapshotContext.offset.getOffset());
-    }
+    // @Override
+    // protected YugabyteDBOffsetContext copyOffset(
+    //         RelationalSnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext) {
+    //   return new YugabyteDBOffsetContext.Loader(connectorConfig).load(snapshotContext.offset.getOffset());
+    // }
 
     @Override
     protected SnapshotContext<YBPartition, YugabyteDBOffsetContext> prepare(YBPartition partition, boolean onDemand)
