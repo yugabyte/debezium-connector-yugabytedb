@@ -208,8 +208,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       dbzTableIds = res.entrySet().stream().map(entry -> entry.getKey())
                         .collect(Collectors.toSet());
 
-      LOGGER.info("DBZ table IDs: {}", dbzTableIds);
-
       // Get a list of filtered tables which are to be snapshotted. This set here contains
       // the string of tableIDs in the Debezium format i.e. databaseName.schemaName.tableName
       Set<String> filteredTables = getDataCollectionsToBeSnapshotted(dbzTableIds);
@@ -427,22 +425,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         }
     }
 
-    protected void setupSnapshotResources(ChangeEventSourceContext context, YugabyteDBOffsetContext previousOffset) throws Exception {
-      delaySnapshotIfNeeded(context);
-
-      // TODO: We can start snapshot progress listener at this point.
-      //   which needs to be modified in order to handle a snapshot progress per task.
-      Set<YBPartition> partitions = new YBPartition.Provider(connectorConfig).getPartitions();
-
-      // For snapshot, set all partitions to use tableID as identifier.
-      partitions.forEach(YBPartition::markTableAsColocated);
-
-      LOGGER.info("Setting offsetContext/previousOffset for snapshot...");
-      previousOffset = YugabyteDBOffsetContext.initialContextForSnapshot(this.connectorConfig, connection, clock, partitions);
-
-      this.partitionRanges = YugabyteDBConnectorUtils.populatePartitionRanges(
-        connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST));
-    }
 
     public void closeYBClient(SnapshotResultStatus snapshotResultStatus) {
       if (syncClient != null) {
@@ -499,7 +481,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       Set<String> snapshotCompletedPreviously = new HashSet<>();
 
       for (Pair<String, String> entry : tableToTabletIds) {
-        LOGGER.info("Entry: {}", entry);
         // We can use tableIdToTable.get(entry.getKey()).isColocated() to get actual status.
         String tableId = entry.getKey();
         String tabletId = entry.getValue();
@@ -511,7 +492,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     tabletId, resp.getTerm(), resp.getIndex(), Arrays.toString(resp.getSnapshotKey()));
 
         OpId startLsn = OpId.from(resp);
-        LOGGER.info("Filtered Table ID to UUID: {}", filteredTableIdToUuid);
         if (filteredTableIdToUuid.containsValue(tableId)) {
           // We need to take the snapshot for this table.
           tableToTabletForSnapshot.add(entry);
