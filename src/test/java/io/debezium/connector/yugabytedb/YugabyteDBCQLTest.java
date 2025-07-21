@@ -69,7 +69,7 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
 
         session.execute("create table if not exists cdctest.test_cdc(a int primary key, b varchar, c text);");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_cdc", false, false, BeforeImageMode.CHANGE,
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_cdc", false, true, BeforeImageMode.CHANGE,
                 true, consistentSnapshot, useSnapshot);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_cdc", dbStreamId);
@@ -122,7 +122,7 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
 
         session.execute("create table if not exists cdctest.test_datatypes(a int primary key, b varchar, c text, d bigint, e boolean, f float, g date, h double, i smallint, j tinyint, k inet, l uuid, m timeuuid, n time, o timestamp, p decimal, q varint);");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_datatypes", false, false,BeforeImageMode.CHANGE, true, consistentSnapshot, useSnapshot);
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_datatypes", false, true, BeforeImageMode.CHANGE, true, consistentSnapshot, useSnapshot);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_datatypes", dbStreamId);
         startEngine(configBuilder);
@@ -145,7 +145,7 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
 
         session.execute("create table if not exists cdctest.test_counter(id int primary key, b counter);");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_counter", false, false, BeforeImageMode.CHANGE,
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_counter", false, true, BeforeImageMode.CHANGE,
                 true, consistentSnapshot, useSnapshot);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_counter", dbStreamId);
@@ -202,7 +202,7 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
 
         session.execute("create table if not exists cdctest.test_transaction(a int primary key) WITH transactions = { 'enabled' : true };");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_transaction", false, false,
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_transaction", false, true,
                 BeforeImageMode.CHANGE, true, consistentSnapshot, useSnapshot);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_transaction", dbStreamId);
@@ -224,7 +224,7 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
 
         session.execute("create table if not exists cdctest.test_big_string(a varchar primary key);");
 
-        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_big_string", false, false,
+        String dbStreamId = TestHelper.getNewDbStreamId("cdctest", "test_big_string", false, true,
                 BeforeImageMode.CHANGE, true, consistentSnapshot, useSnapshot);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderForCQL("cdctest","test_big_string", dbStreamId);
