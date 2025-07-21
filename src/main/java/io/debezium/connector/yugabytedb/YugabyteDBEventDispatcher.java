@@ -119,14 +119,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
                 eventListener.onFilteredEvent(partition, "source = " + dataCollectionId, changeRecordEmitter.getOperation());
                 dispatchFilteredEvent(changeRecordEmitter.getPartition(), changeRecordEmitter.getOffset());
             } else {
-                LOGGER.info("Data collection ID is {}", dataCollectionId);
                 DataCollectionSchema dataCollectionSchema = schema.schemaFor(dataCollectionId);
-
-                if (dataCollectionSchema == null) {
-                    LOGGER.warn("Data collection schema is null for data collection ID: {}", dataCollectionId);
-                } else {
-                    LOGGER.info("Data collection schema found for data collection ID: {}", dataCollectionId);
-                }
 
                 // TODO handle as per inconsistent schema info option
                 if (dataCollectionSchema == null) {
