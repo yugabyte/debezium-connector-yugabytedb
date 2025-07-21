@@ -36,8 +36,11 @@ import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoReplicationMes
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.notification.NotificationService;
+import io.debezium.pipeline.signal.actions.snapshotting.AdditionalCondition;
+import io.debezium.pipeline.signal.actions.snapshotting.SnapshotConfiguration;
 import io.debezium.pipeline.source.spi.SnapshotProgressListener;
 import io.debezium.pipeline.spi.SnapshotResult;
+import io.debezium.pipeline.spi.SnapshotResult.SnapshotResultStatus;
 import io.debezium.relational.RelationalSnapshotChangeEventSource;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
@@ -55,7 +58,7 @@ import javassist.Loader;
  * @author Suranjan Kumar
  */
 
-public class YugabyteDBSnapshotChangeEventSource extends RelationalSnapshotChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
+public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeEventSource<YBPartition, YugabyteDBOffsetContext> {
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSnapshotChangeEventSource.class);
 
     // Test only member variables, DO NOT try to modify in the source code.
@@ -98,7 +101,7 @@ public class YugabyteDBSnapshotChangeEventSource extends RelationalSnapshotChang
                                                YugabyteDBSchema schema, YugabyteDBEventDispatcher<TableId> dispatcher, Clock clock,
                                                SnapshotProgressListener<YBPartition> snapshotProgressListener,
                                                NotificationService<YBPartition, YugabyteDBOffsetContext> notificationService) {
-        super(connectorConfig, connectionFactory, schema, dispatcher, clock, snapshotProgressListener, notificationService, snapshotterService);
+        super(connectorConfig, snapshotProgressListener, notificationService);
         this.connectorConfig = connectorConfig;
         this.schema = schema;
         this.taskContext = taskContext;
@@ -152,71 +155,13 @@ public class YugabyteDBSnapshotChangeEventSource extends RelationalSnapshotChang
         return null;
     }
 
-    // @Override
-    public SnapshotResult<YugabyteDBOffsetContext> execute(ChangeEventSourceContext context, YBPartition partition, YugabyteDBOffsetContext previousOffset)
-            throws InterruptedException {
-        SnapshottingTask snapshottingTask = getSnapshottingTask(partition, previousOffset);
-        LOGGER.debug("Dispatcher in snapshot: " + dispatcher.toString());
-        if (snapshottingTask.shouldSkipSnapshot()) {
-            LOGGER.debug("Skipping snapshotting");
-            return SnapshotResult.skipped(previousOffset);
-        }
+    @Override
+    public SnapshottingTask getBlockingSnapshottingTask(YBPartition partition, YugabyteDBOffsetContext previousOffset,
+            SnapshotConfiguration snapshotConfiguration) {
+      Map<DataCollectionId, String> filtersByTable = snapshotConfiguration.getAdditionalConditions().stream()
+        .collect(Collectors.toMap(k -> TableId.parse(k.getDataCollection().toString()), AdditionalCondition::getFilter));
 
-        delaySnapshotIfNeeded(context);
-
-        final SnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx;
-        try {
-            ctx = prepare(partition, false /* onDemand */);
-        }
-        catch (Exception e) {
-            LOGGER.error("Failed to initialize snapshot context.", e);
-            throw new RuntimeException(e);
-        }
-
-        boolean completedSuccessfully = true;
-
-        try {
-            snapshotProgressListener.snapshotStarted(partition);
-            Set<YBPartition> partitions = new YBPartition.Provider(connectorConfig).getPartitions();
-
-            // For snapshot, set all partitions to use tableID as identifier.
-            partitions.forEach(YBPartition::markTableAsColocated);
-
-            LOGGER.info("Setting offsetContext/previousOffset for snapshot...");
-            previousOffset = YugabyteDBOffsetContext.initialContextForSnapshot(this.connectorConfig, connection, clock, partitions);
-
-            this.partitionRanges = YugabyteDBConnectorUtils.populatePartitionRanges(
-              connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST));
-
-            return doExecute(context, partition, previousOffset, ctx, snapshottingTask);
-        }
-        catch (InterruptedException e) {
-            completedSuccessfully = false;
-            LOGGER.warn("Snapshot was interrupted before completion");
-            throw e;
-        }
-        catch (Exception t) {
-            completedSuccessfully = false;
-            throw new DebeziumException(t);
-        }
-        finally {
-            LOGGER.info("Snapshot - Final stage");
-            completed(ctx);
-            if (syncClient != null) {
-                try {
-                    LOGGER.info(" Closing the client after the snapshot completed.");
-                    syncClient.close();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-            if (completedSuccessfully) {
-                snapshotProgressListener.snapshotCompleted(partition);
-            }
-            else {
-                snapshotProgressListener.snapshotAborted(partition);
-            }
-        }
+      return new SnapshottingTask(false, true, snapshotConfiguration.getDataCollections(), filtersByTable, true);
     }
 
     private Stream<TableId> toTableIds(Set<TableId> tableIds, Pattern pattern) {
@@ -264,14 +209,6 @@ public class YugabyteDBSnapshotChangeEventSource extends RelationalSnapshotChang
 
     protected boolean isSnapshotComplete() {
         return this.snapshotComplete;
-    }
-
-    @Override
-    public SnapshotResult<YugabyteDBOffsetContext> doExecute(ChangeEventSourceContext context, YugabyteDBOffsetContext previousOffset,
-                                                             SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
-                                                             SnapshottingTask snapshottingTask)
-            throws Exception {
-      return SnapshotResult.skipped(previousOffset);
     }
 
     /**
@@ -411,9 +348,121 @@ public class YugabyteDBSnapshotChangeEventSource extends RelationalSnapshotChang
       }
     }
 
-    protected SnapshotResult<YugabyteDBOffsetContext> doExecute(ChangeEventSourceContext context, YBPartition partition, YugabyteDBOffsetContext previousOffset,
-                                                                SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
-                                                                SnapshottingTask snapshottingTask)
+    // @Override
+    public SnapshotResult<YugabyteDBOffsetContext> execute(ChangeEventSourceContext context, YBPartition partition, YugabyteDBOffsetContext previousOffset)
+            throws InterruptedException {
+        SnapshottingTask snapshottingTask = getSnapshottingTask(partition, previousOffset);
+        LOGGER.debug("Dispatcher in snapshot: " + dispatcher.toString());
+        if (snapshottingTask.shouldSkipSnapshot()) {
+            LOGGER.debug("Skipping snapshotting");
+            return SnapshotResult.skipped(previousOffset);
+        }
+
+        // This is not needed.
+        delaySnapshotIfNeeded(context);
+
+        final SnapshotContext<YBPartition, YugabyteDBOffsetContext> ctx;
+        try {
+            ctx = prepare(partition, false /* onDemand */);
+        }
+        catch (Exception e) {
+            LOGGER.error("Failed to initialize snapshot context.", e);
+            throw new RuntimeException(e);
+        }
+
+        boolean completedSuccessfully = true;
+
+        try {
+            snapshotProgressListener.snapshotStarted(partition);
+            Set<YBPartition> partitions = new YBPartition.Provider(connectorConfig).getPartitions();
+
+            // For snapshot, set all partitions to use tableID as identifier.
+            partitions.forEach(YBPartition::markTableAsColocated);
+
+            LOGGER.info("Setting offsetContext/previousOffset for snapshot...");
+            previousOffset = YugabyteDBOffsetContext.initialContextForSnapshot(this.connectorConfig, connection, clock, partitions);
+
+            this.partitionRanges = YugabyteDBConnectorUtils.populatePartitionRanges(
+              connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST));
+
+            return doExecute(context, partition, previousOffset, ctx, snapshottingTask);
+        }
+        catch (InterruptedException e) {
+            completedSuccessfully = false;
+            LOGGER.warn("Snapshot was interrupted before completion");
+            throw e;
+        }
+        catch (Exception t) {
+            completedSuccessfully = false;
+            throw new DebeziumException(t);
+        }
+        finally {
+            LOGGER.info("Snapshot - Final stage");
+            completed(ctx);
+            if (syncClient != null) {
+                try {
+                    LOGGER.info(" Closing the client after the snapshot completed.");
+                    syncClient.close();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+            if (completedSuccessfully) {
+                snapshotProgressListener.snapshotCompleted(partition);
+            }
+            else {
+                snapshotProgressListener.snapshotAborted(partition);
+            }
+        }
+    }
+
+    protected void setupSnapshotResources(ChangeEventSourceContext context, YugabyteDBOffsetContext previousOffset) throws Exception {
+      delaySnapshotIfNeeded(context);
+
+      // TODO: We can start snapshot progress listener at this point.
+      //   which needs to be modified in order to handle a snapshot progress per task.
+      Set<YBPartition> partitions = new YBPartition.Provider(connectorConfig).getPartitions();
+
+      // For snapshot, set all partitions to use tableID as identifier.
+      partitions.forEach(YBPartition::markTableAsColocated);
+
+      LOGGER.info("Setting offsetContext/previousOffset for snapshot...");
+      previousOffset = YugabyteDBOffsetContext.initialContextForSnapshot(this.connectorConfig, connection, clock, partitions);
+
+      this.partitionRanges = YugabyteDBConnectorUtils.populatePartitionRanges(
+        connectorConfig.getConfig().getString(YugabyteDBConnectorConfig.HASH_RANGES_LIST));
+    }
+
+    public void closeYBClient(SnapshotResultStatus snapshotResultStatus) {
+      if (syncClient != null) {
+        try {
+          LOGGER.info("Closing YBClient after result: {}", snapshotResultStatus.name());
+          syncClient.close();
+        } catch (Exception e) {
+          e.printStackTrace();
+        }
+      }
+    }
+
+    @Override
+    public SnapshotResult<YugabyteDBOffsetContext> doExecute(ChangeEventSourceContext context, YugabyteDBOffsetContext previousOffset,
+                                                             SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
+                                                             SnapshottingTask snapshottingTask)
+            throws Exception {
+      if (snapshottingTask.shouldSkipSnapshot()) {
+        LOGGER.info("Skipping snapshot");
+        return SnapshotResult.skipped(previousOffset);
+      }
+
+      setupSnapshotResources(context, previousOffset);
+
+
+      return doExecuteImpl(context,  previousOffset, snapshotContext, snapshottingTask);
+    }
+
+    protected SnapshotResult<YugabyteDBOffsetContext> doExecuteImpl(ChangeEventSourceContext context, YugabyteDBOffsetContext previousOffset,
+                                                                    SnapshotContext<YBPartition, YugabyteDBOffsetContext> snapshotContext,
+                                                                    SnapshottingTask snapshottingTask)
             throws Exception {
       LOGGER.info("Starting the snapshot process now");
       
@@ -502,6 +551,9 @@ public class YugabyteDBSnapshotChangeEventSource extends RelationalSnapshotChang
                 if (snapshotCompletedTablets.size() == tableToTabletForSnapshot.size()) {
                     LOGGER.info("Snapshot completed for all the tablets");
                     this.snapshotComplete = true;
+
+                    closeYBClient(SnapshotResultStatus.COMPLETED);
+
                     return SnapshotResult.completed(previousOffset);
                 }
 
@@ -797,6 +849,7 @@ public class YugabyteDBSnapshotChangeEventSource extends RelationalSnapshotChang
 
       // If the flow comes at this stage then it either failed or was aborted by
       // some user interruption
+      closeYBClient(SnapshotResultStatus.ABORTED);
       return SnapshotResult.aborted();
     }
 
