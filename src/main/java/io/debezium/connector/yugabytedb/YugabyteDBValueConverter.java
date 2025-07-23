@@ -135,6 +135,8 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
     private final YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
     private final HStoreHandlingMode hStoreMode;
     private final IntervalHandlingMode intervalMode;
+    private final boolean adaptiveTimePrecisionMode;
+    private final boolean adaptiveTimeMicrosecondsPrecisionMode;
 
     /**
      * The current database's character encoding.
@@ -170,6 +172,8 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
         this.yugabyteDBTypeRegistry = yugabyteDBTypeRegistry;
         this.hStoreMode = hStoreMode;
         this.intervalMode = intervalMode;
+        this.adaptiveTimePrecisionMode = temporalPrecisionMode.equals(TemporalPrecisionMode.ADAPTIVE);
+        this.adaptiveTimeMicrosecondsPrecisionMode = temporalPrecisionMode.equals(TemporalPrecisionMode.ADAPTIVE_TIME_MICROSECONDS);
     }
 
     @Override
@@ -178,11 +182,11 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
         switch (oidValue) {
             case PgOid.INTERVAL:
                 return intervalMode == IntervalHandlingMode.STRING ? Interval.builder() : MicroDuration.builder();
-            // case PgOid.TIMESTAMP: --> why is this not needed now?
-            //     if (adaptiveTimePrecisionMode || adaptiveTimeMicrosecondsPrecisionMode) {
-            //         return MicroTimestamp.builder();
-            //     }
-            //     return io.debezium.time.Timestamp.builder();
+            case PgOid.TIMESTAMP:
+                if (adaptiveTimePrecisionMode || adaptiveTimeMicrosecondsPrecisionMode) {
+                    return MicroTimestamp.builder();
+                }
+                return io.debezium.time.Timestamp.builder();
             case PgOid.TIMESTAMPTZ:
                 // JDBC reports this as "timestamp" even though it's with tz, so we can't use the base class...
                 return ZonedTimestamp.builder();
@@ -252,11 +256,10 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
             case PgOid.BOOL_ARRAY:
                 return SchemaBuilder.array(SchemaBuilder.OPTIONAL_BOOLEAN_SCHEMA);
             case PgOid.DATE_ARRAY:
-                return SchemaBuilder.array(temporalPrecisionMode.getDateBuilder().optional().build());
-                // if (adaptiveTimePrecisionMode || adaptiveTimeMicrosecondsPrecisionMode) {
-                //     return SchemaBuilder.array(io.debezium.time.Date.builder().optional().build());
-                // }
-                // return SchemaBuilder.array(org.apache.kafka.connect.data.Date.builder().optional().build());
+                if (adaptiveTimePrecisionMode || adaptiveTimeMicrosecondsPrecisionMode) {
+                    return SchemaBuilder.array(io.debezium.time.Date.builder().optional().build());
+                }
+                return SchemaBuilder.array(org.apache.kafka.connect.data.Date.builder().optional().build());
             case PgOid.UUID_ARRAY:
                 return SchemaBuilder.array(Uuid.builder().optional().build());
             case PgOid.JSONB_ARRAY:
@@ -268,17 +271,16 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
             case PgOid.TIMETZ_ARRAY:
                 return SchemaBuilder.array(ZonedTime.builder().optional().build());
             case PgOid.TIMESTAMP_ARRAY:
-                return SchemaBuilder.array(temporalPrecisionMode.getTimestampBuilder(getTimePrecision(column)).optional().build());
-                // if (adaptiveTimePrecisionMode || adaptiveTimeMicrosecondsPrecisionMode) {
-                //     if (getTimePrecision(column) <= 3) {
-                //         return SchemaBuilder.array(io.debezium.time.Timestamp.builder().optional().build());
-                //     }
-                //     if (getTimePrecision(column) <= 6) {
-                //         return SchemaBuilder.array(MicroTimestamp.builder().optional().build());
-                //     }
-                //     return SchemaBuilder.array(NanoTime.builder().optional().build());
-                // }
-                // return SchemaBuilder.array(org.apache.kafka.connect.data.Timestamp.builder().optional().build());
+                if (adaptiveTimePrecisionMode || adaptiveTimeMicrosecondsPrecisionMode) {
+                    if (getTimePrecision(column) <= 3) {
+                        return SchemaBuilder.array(io.debezium.time.Timestamp.builder().optional().build());
+                    }
+                    if (getTimePrecision(column) <= 6) {
+                        return SchemaBuilder.array(MicroTimestamp.builder().optional().build());
+                    }
+                    return SchemaBuilder.array(NanoTime.builder().optional().build());
+                }
+                return SchemaBuilder.array(org.apache.kafka.connect.data.Timestamp.builder().optional().build());
             case PgOid.TIMESTAMPTZ_ARRAY:
                 return SchemaBuilder.array(ZonedTimestamp.builder().optional().build());
             case PgOid.OID_ARRAY:
@@ -375,11 +377,10 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
             case PgOid.TIME:
                 return data -> convertTime(column, fieldDefn, data);
             case PgOid.TIMESTAMP:
-                return ((ValueConverter) (data -> convertTimestampToLocalDateTime(column, fieldDefn, data))).and(super.converter(column, fieldDefn));
-                // if (adaptiveTimePrecisionMode || adaptiveTimeMicrosecondsPrecisionMode) {
-                //     return data -> convertTimestampToEpochMicros(column, fieldDefn, data);
-                // }
-                // return data -> convertTimestampToEpochMillis(column, fieldDefn, data);
+                if (adaptiveTimePrecisionMode || adaptiveTimeMicrosecondsPrecisionMode) {
+                    return data -> convertTimestampToEpochMicros(column, fieldDefn, data);
+                }
+                return data -> convertTimestampToEpochMillis(column, fieldDefn, data);
             case PgOid.TIMESTAMPTZ:
                 return data -> convertTimestampWithZone(column, fieldDefn, data);
             case PgOid.TIMETZ:
