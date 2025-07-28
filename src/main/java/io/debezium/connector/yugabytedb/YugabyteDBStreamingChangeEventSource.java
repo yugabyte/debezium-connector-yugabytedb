@@ -9,7 +9,6 @@ import io.debezium.DebeziumException;
 import io.debezium.connector.yugabytedb.connection.*;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage.Operation;
 import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoReplicationMessage;
-// import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.connector.yugabytedb.util.YugabyteDBConnectorUtils;
 import io.debezium.heartbeat.Heartbeat;
 import io.debezium.pipeline.ErrorHandler;

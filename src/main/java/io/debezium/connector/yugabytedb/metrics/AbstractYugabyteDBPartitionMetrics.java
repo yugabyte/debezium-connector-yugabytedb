@@ -10,7 +10,6 @@ import java.util.Map;
 import org.apache.kafka.connect.data.Struct;
 
 import io.debezium.connector.common.CdcSourceTaskContext;
-// import io.debezium.connector.yugabytedb.YugabyteDBTaskContext;
 import io.debezium.data.Envelope.Operation;
 import io.debezium.pipeline.ConnectorEvent;
 import io.debezium.pipeline.meters.CommonEventMeter;

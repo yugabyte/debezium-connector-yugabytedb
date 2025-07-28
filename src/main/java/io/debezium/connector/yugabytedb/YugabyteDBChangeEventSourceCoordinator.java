@@ -16,14 +16,9 @@ import org.apache.kafka.connect.source.SourceConnector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.yugabyte.core.Notification;
-
-import io.debezium.DebeziumException;
 import io.debezium.config.CommonConnectorConfig;
 import io.debezium.connector.common.CdcSourceTaskContext;
 import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig.SnapshotMode;
-import io.debezium.connector.yugabytedb.spi.SlotState;
-import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.pipeline.ChangeEventSourceCoordinator;
 import io.debezium.pipeline.ErrorHandler;
 import io.debezium.pipeline.EventDispatcher;
@@ -76,24 +71,8 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
                                                              YBPartition partition,
                                                              YugabyteDBOffsetContext previousOffset)
             throws InterruptedException {
-        // YB does not have catch up streaming, so we can skip this phase.
+        // YugabyteDB does not have catch up streaming, so we can skip this phase.
         return new CatchUpStreamingResult(false);
-
-        // if (previousOffset != null && !snapshotterService.getSnapshotter().shouldStreamEventsStartingFromSnapshot()) {
-        //     try {
-        //         setSnapshotStartLsn((YugabyteDBSnapshotChangeEventSource) snapshotSource,
-        //                 previousOffset);
-        //     }
-        //     catch (SQLException e) {
-        //         throw new DebeziumException("Failed to determine catch-up streaming stopping LSN");
-        //     }
-        //     LOGGER.info("Previous connector state exists and will stream events until {} then perform snapshot",
-        //             previousOffset.getStreamingStoppingLsn());
-        //     streamEvents(context, partition, previousOffset);
-        //     return new CatchUpStreamingResult(true);
-        // }
-
-        // return new CatchUpStreamingResult(false);
     }
 
     @Override

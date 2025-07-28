@@ -39,7 +39,6 @@ import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection.YugabyteDBValueConverterBuilder;
 import io.debezium.connector.yugabytedb.metrics.YugabyteDBMetricsFactory;
-// import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.document.DocumentReader;
 import io.debezium.pipeline.ChangeEventSourceCoordinator;
 import io.debezium.pipeline.DataChangeEvent;
@@ -92,23 +91,11 @@ public class YugabyteDBConnectorTask
     @Override
     public ChangeEventSourceCoordinator<YBPartition, YugabyteDBOffsetContext> start(Configuration config) {
         final YugabyteDBConnectorConfig connectorConfig = new YugabyteDBConnectorConfig(config);
-        LOGGER.info("Before getting the topic naming strategy");
         final TopicNamingStrategy<TableId> topicNamingStrategy = connectorConfig.getTopicNamingStrategy(CommonConnectorConfig.TOPIC_NAMING_STRATEGY);
 
-        // LOGGER.info("Before getting the snapshotter service");
-        // final SnapshotterService snapshotterService = connectorConfig.getServiceRegistry().tryGetService(SnapshotterService.class);
-        // LOGGER.info("Before getting the snapshotter from the snapshotter service");
-        // final Snapshotter snapshotter = snapshotterService.getSnapshotter();
-        LOGGER.info("Before getting the schema name adjuster");
         final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
 
-        LOGGER.info("Getting after getting the topic naming strategy and couple objects");
         LOGGER.debug("The config is " + config);
-
-        // if (snapshotter == null) {
-        //     throw new ConnectException("Unable to load snapshotter, if using custom snapshot mode," +
-        //             " double check your settings");
-        // }
 
         final String databaseCharsetName = config.getString(YugabyteDBConnectorConfig.CHAR_SET);
         final Charset databaseCharset = Charset.forName(databaseCharsetName);
@@ -124,7 +111,6 @@ public class YugabyteDBConnectorTask
                 databaseCharset,
                 typeRegistry);
 
-        LOGGER.info("Before creating the main connection factory");
         MainConnectionProvidingConnectionFactory<YugabyteDBConnection> connectionFactory = new DefaultMainConnectionProvidingConnectionFactory<>(
                 () -> new YugabyteDBConnection(connectorConfig.getJdbcConfig(), valueConverterBuilder, YugabyteDBConnection.CONNECTION_GENERAL));
 
@@ -198,7 +184,6 @@ public class YugabyteDBConnectorTask
         // Service providers
         registerServiceProviders(connectorConfig.getServiceRegistry());
 
-        LOGGER.info("Before getting snapshotter service");
         final SnapshotterService snapshotterService;
         try {
             snapshotterService = connectorConfig.getServiceRegistry().tryGetService(SnapshotterService.class);
@@ -224,28 +209,6 @@ public class YugabyteDBConnectorTask
             ErrorHandler errorHandler = new YugabyteDBErrorHandler(connectorConfig, queue, this.errorHandler);
 
             final YugabyteDBEventMetadataProvider metadataProvider = new YugabyteDBEventMetadataProvider();
-
-            // Configuration configuration = connectorConfig.getConfig();
-
-            // We do not have a concept of heartbeat in gRPC connector so ensure that heartbeat is not used anywhere.
-            // HeartbeatFactory heartbeatFactory = new HeartbeatFactory<>(
-            //         connectorConfig,
-            //         topicSelector,
-            //         schemaNameAdjuster,
-            //         () -> new YugabyteDBConnection(connectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL),
-            //         exception -> {
-            //             String sqlErrorId = exception.getSQLState();
-            //             switch (sqlErrorId) {
-            //                 case "57P01":
-            //                     // Postgres error admin_shutdown, see https://www.postgresql.org/docs/12/errcodes-appendix.html
-            //                     throw new DebeziumException("Could not execute heartbeat action query (Error: " + sqlErrorId + ")", exception);
-            //                 case "57P03":
-            //                     // Postgres error cannot_connect_now, see https://www.postgresql.org/docs/12/errcodes-appendix.html
-            //                     throw new RetriableException("Could not execute heartbeat action query (Error: " + sqlErrorId + ")", exception);
-            //                 default:
-            //                     break;
-            //             }
-            //         });
 
             LOGGER.info("Creating signal processor");
             SignalProcessor<YBPartition, YugabyteDBOffsetContext> signalProcessor = new SignalProcessor<>(
@@ -295,7 +258,7 @@ public class YugabyteDBConnectorTask
                     snapshotterService,
                     signalProcessor,
                     notificationService);
-            LOGGER.info("Starting YugabyteDBChangeEventSourceCoordinator");
+
             this.coordinator.start(taskContext, this.queue, metadataProvider);
 
             return this.coordinator;
