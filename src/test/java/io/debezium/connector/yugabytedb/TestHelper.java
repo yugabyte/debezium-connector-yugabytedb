@@ -78,7 +78,7 @@ public final class TestHelper {
     private static final Logger LOGGER = LoggerFactory.getLogger(TestHelper.class);
 
     // If this variable is changed, do not forget to change the name in postgres_create_tables.ddl
-    private static final String SECONDARY_DATABASE = "secondary_database";
+    public static final String SECONDARY_DATABASE = "secondary_database";
 
     public static final String CONTAINER_HOSTNAME = "yugabyte-0";
 
