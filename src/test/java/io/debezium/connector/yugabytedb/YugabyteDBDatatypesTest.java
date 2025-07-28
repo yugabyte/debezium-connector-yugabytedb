@@ -333,12 +333,17 @@ public class YugabyteDBDatatypesTest extends YugabytedTestBase {
         awaitUntilConnectorIsReady();
 
         TestHelper.executeInDatabase("INSERT INTO test (id) VALUES (1);", TestHelper.SECONDARY_DATABASE);
+        // TestHelper.executeInDatabase("INSERT INTO test (id) VALUES (generate_series(1, 1000));", TestHelper.SECONDARY_DATABASE);
 
         List<SourceRecord> records = new ArrayList<>();
         waitAndFailIfCannotConsume(records, 1);
 
         // Stop the connector and rename the database.
         stopConnector();
+
+        // Wait before renaming.
+        // TestHelper.waitFor(Duration.ofSeconds(30));
+
         TestHelper.execute("ALTER DATABASE secondary_database RENAME TO test_new;");
 
         // Change connector configuration.
@@ -349,6 +354,7 @@ public class YugabyteDBDatatypesTest extends YugabytedTestBase {
         awaitUntilConnectorIsReady();
 
         TestHelper.executeInDatabase("INSERT INTO test VALUES (2);", "test_new");
+        // TestHelper.executeInDatabase("INSERT INTO test (id) VALUES (generate_series(1001, 1500));", "test_new");
         waitAndFailIfCannotConsume(records, 2);
         
         LOGGER.info("Total records present: {}", records.size());
