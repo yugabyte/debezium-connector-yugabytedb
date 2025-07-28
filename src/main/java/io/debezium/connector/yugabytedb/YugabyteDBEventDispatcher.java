@@ -60,7 +60,6 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
     private DataChangeEventListener<YBPartition> eventListener = DataChangeEventListener.NO_OP();
     private final InconsistentSchemaHandler<YBPartition, T> inconsistentSchemaHandler;
     private final boolean neverSkip;
-    // private final Heartbeat heartbeat;
     private final EnumSet<Envelope.Operation> skippedOperations;
     private final DataCollectionFilters.DataCollectionFilter<T> filter;
     private final YugabyteDBTransactionMonitor transactionMonitor;
@@ -82,7 +81,6 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
         this.logicalDecodingMessageMonitor = new LogicalDecodingMessageMonitor(connectorConfig, this::enqueueLogicalDecodingMessage);
         this.messageFilter = connectorConfig.getMessageFilter();
         this.topicNamingStrategy = topicNamingStrategy;
-        // this.heartbeat = heartbeatFactory.createHeartbeat();
         this.streamingReceiver = new YugabyteDBStreamingChangeRecordReceiver();
         this.inconsistentSchemaHandler = inconsistentSchemaHandler != null ? inconsistentSchemaHandler : this::errorOnMissingSchema;
         this.skippedOperations = connectorConfig.getSkippedOperations();

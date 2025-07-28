@@ -201,7 +201,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
             List<Column> columns = tableEntry.getValue();
             Collections.sort(columns);
             String defaultCharsetName = null; // JDBC does not expose character sets
-            // tables.overwriteTable(tableId, columns, pkColumnNames, defaultCharsetName);
             tables.overwriteTable(tableEntry.getKey(), columns, pkColumnNames, defaultCharsetName, null);
         }
     }

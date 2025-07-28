@@ -27,7 +27,6 @@ import io.debezium.relational.Key.KeyMapper;
 import io.debezium.relational.Tables.ColumnNameFilter;
 import io.debezium.relational.mapping.ColumnMapper;
 import io.debezium.relational.mapping.ColumnMappers;
-// import io.debezium.schema.FieldNameSelector;
 import io.debezium.schema.SchemaNameAdjuster;
 import io.debezium.schema.FieldNameSelector.FieldNamer;
 import io.debezium.spi.topic.TopicNamingStrategy;
@@ -99,17 +98,15 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
     @Override
     public TableSchema create(TopicNamingStrategy topicNamingStrategy, Table table, ColumnNameFilter filter,
             ColumnMappers mappers, KeyMapper keysMapper) {
-        // if (schemaPrefix == null) {
-        //     schemaPrefix = "";
-        // }
-
         // Build the schemas ...
         final TableId tableId = table.id();
-        final String tableIdStr = tableSchemaName(tableId);
+        
         final String schemaNamePrefix = topicNamingStrategy.recordSchemaPrefix(tableId);
         final String envelopeSchemaPrefix = topicNamingStrategy.dataChangeTopic(tableId);
         final String envelopSchemaName = Envelope.schemaName(envelopeSchemaPrefix);
+        
         LOGGER.info("Mapping table '{}' to schemas under '{}'", tableId, schemaNamePrefix);
+        
         SchemaBuilder valSchemaBuilder = SchemaBuilder.struct().name(schemaNameAdjuster.adjust(schemaNamePrefix + ".Value"));
         SchemaBuilder keySchemaBuilder = SchemaBuilder.struct().name(schemaNameAdjuster.adjust(schemaNamePrefix + ".Key"));
         AtomicBoolean hasPrimaryKey = new AtomicBoolean(false);
@@ -119,6 +116,7 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
             addField(keySchemaBuilder, table, column, null);
             hasPrimaryKey.set(true);
         });
+
         if (topicNamingStrategy.keySchemaAugment().augment(keySchemaBuilder)) {
             hasPrimaryKey.set(true);
         }
@@ -187,7 +185,6 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
     protected StructGenerator createKeyGenerator(Schema schema, TableId columnSetName, List<Column> columns,
                                                 TopicNamingStrategy topicNamingStrategy) {
         if (schema != null) {
-            LOGGER.info("Coming to YB table schema key generator");
             int[] recordIndexes = indexesForColumns(columns);
             Field[] fields = fieldsForColumns(schema, columns);
             int numFields = recordIndexes.length;
@@ -219,7 +216,9 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
                         }
                     }
                 }
+
                 topicNamingStrategy.keyValueAugment().augment(columnSetName, schema, result);
+
                 return result;
             };
         }

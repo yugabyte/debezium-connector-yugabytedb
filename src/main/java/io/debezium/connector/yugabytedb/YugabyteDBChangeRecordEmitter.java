@@ -47,7 +47,6 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
 
     private boolean shouldSendBeforeImage = false;
 
-    // private final String pgSchemaName;
     private final String tabletId;
     private final YugabyteDBOffsetContext offsetContext;
 
@@ -62,8 +61,6 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         this.message = message;
         this.connectorConfig = connectorConfig;
         this.connection = connection;
-
-        // this.pgSchemaName = pgSchemaName;
 
         this.tableId = tableId;
         Objects.requireNonNull(this.tableId);

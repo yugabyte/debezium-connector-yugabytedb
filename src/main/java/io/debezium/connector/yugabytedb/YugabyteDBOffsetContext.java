@@ -26,7 +26,6 @@ import io.debezium.pipeline.spi.Offsets;
 import io.debezium.pipeline.txmetadata.TransactionContext;
 import io.debezium.relational.TableId;
 import io.debezium.spi.schema.DataCollectionId;
-// import io.debezium.schema.DataCollectionId;
 import io.debezium.util.Clock;
 
 /**
@@ -214,21 +213,17 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         return tabletSourceInfo.get(partition.getId());
     }
 
-    // @Override
+    // @Override - nobody is using this.
     public boolean isSnapshotRunning() {
         // TODO: think about making this work
         return true;
         // return sourceInfo.isSnapshot();
     }
 
-    // @Override
-    public void preSnapshotStart() {
-        // Do nothing.
-    }
 
     @Override
     public void markSnapshotRecord(SnapshotRecord record) {
-        // TODO Auto-generated method stub
+        // Do nothing.
     }
 
     @Override
@@ -339,10 +334,10 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         // Do nothing.
     }
 
-    // @Override
-    // public void event(DataCollectionId tableId, Instant instant) {
-    //     // Do nothing.
-    // }
+    @Override
+    public void event(DataCollectionId tableId, Instant instant) {
+        // Do nothing.
+    }
 
     @Override
     public TransactionContext getTransactionContext() {
@@ -357,11 +352,6 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     @Override
     public IncrementalSnapshotContext<?> getIncrementalSnapshotContext() {
         return incrementalSnapshotContext;
-    }
-    
-    @Override
-    public void event(DataCollectionId tableId, Instant instant) {
-        // sourceInfo.update(instant, (TableId) tableId);
     }
 
     @Override

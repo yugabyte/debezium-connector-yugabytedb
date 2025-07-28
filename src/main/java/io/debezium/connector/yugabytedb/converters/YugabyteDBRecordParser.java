@@ -5,22 +5,15 @@
  */
 package io.debezium.connector.yugabytedb.converters;
 
-import java.util.Set;
-
-import org.apache.kafka.connect.data.Schema;
-import org.apache.kafka.connect.data.Struct;
-import org.apache.kafka.connect.errors.DataException;
-
-// import io.debezium.converters.spi.RecordParser;
-import io.debezium.data.Envelope;
-import io.debezium.util.Collect;
 
 /**
+ * THIS CLASS IS NOT BEING USED ANYWHERE NOW.
+ * 
  * Parser for records produced by PostgreSQL connectors.
  *
  * @author Chris Cranford
  */
-public class YugabyteDBRecordParser {//extends RecordParser {
+public class YugabyteDBRecordParser {
 
     // static final String TXID_KEY = "txId";
     // static final String XMIN_KEY = "xmin";
