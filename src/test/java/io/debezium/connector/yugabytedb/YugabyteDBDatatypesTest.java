@@ -339,6 +339,10 @@ public class YugabyteDBDatatypesTest extends YugabytedTestBase {
 
         // Stop the connector and rename the database.
         stopConnector();
+
+        // Wait before renaming.
+        // TestHelper.waitFor(Duration.ofSeconds(30));
+
         TestHelper.execute("ALTER DATABASE secondary_database RENAME TO test_new;");
 
         // Change connector configuration.
