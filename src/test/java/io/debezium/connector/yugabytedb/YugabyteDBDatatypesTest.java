@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 
-public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBDatatypesTest extends YugabytedTestBase {
     private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
             "INSERT INTO s2.a (aa) VALUES (1);";
     private static final String CREATE_TABLES_STMT = "DROP SCHEMA IF EXISTS s1 CASCADE;" +
@@ -317,6 +317,46 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
                 }).get();
 
         transformation.close();
+    }
+
+    @Test
+    public void shouldWorkWithDatabaseRename() throws Exception {
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        TestHelper.execute("DROP DATABASE IF EXISTS test_new;");
+        TestHelper.executeInDatabase("CREATE TYPE enum_type AS ENUM ('ZERO', 'ONE', 'TWO');", TestHelper.SECONDARY_DATABASE);
+        TestHelper.executeInDatabase("CREATE TABLE test (id INT PRIMARY KEY, e enum_type DEFAULT 'ZERO');", TestHelper.SECONDARY_DATABASE);
+
+        String dbStreamId = TestHelper.getNewDbStreamId(TestHelper.SECONDARY_DATABASE, "test", false, false);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder(TestHelper.SECONDARY_DATABASE, "public.test", dbStreamId);
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        TestHelper.executeInDatabase("INSERT INTO test (id) VALUES (1);", TestHelper.SECONDARY_DATABASE);
+
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, 1);
+
+        // Stop the connector and rename the database.
+        stopConnector();
+        TestHelper.execute("ALTER DATABASE secondary_database RENAME TO test_new;");
+
+        // Change connector configuration.
+        configBuilder.with(YugabyteDBConnectorConfig.DATABASE_NAME, "test_new");
+
+        // Start the connector again.
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        TestHelper.executeInDatabase("INSERT INTO test VALUES (2);", "test_new");
+        waitAndFailIfCannotConsume(records, 2);
+        
+        LOGGER.info("Total records present: {}", records.size());
+
+        for (SourceRecord record : records) {
+            LOGGER.info("Record: {}", record);
+        }
+        
     }
 
     @ParameterizedTest
