@@ -213,14 +213,6 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         return tabletSourceInfo.get(partition.getId());
     }
 
-    // @Override - nobody is using this.
-    public boolean isSnapshotRunning() {
-        // TODO: think about making this work
-        return true;
-        // return sourceInfo.isSnapshot();
-    }
-
-
     @Override
     public void markSnapshotRecord(SnapshotRecord record) {
         // Do nothing.
@@ -329,11 +321,6 @@ public class YugabyteDBOffsetContext implements OffsetContext {
                 + ", tabletSourceInfo=" + tabletSourceInfo + "]";
     }
 
-    // @Override
-    public void markLastSnapshotRecord() {
-        // Do nothing.
-    }
-
     @Override
     public void event(DataCollectionId tableId, Instant instant) {
         // Do nothing.
@@ -356,17 +343,14 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     @Override
     public boolean isInitialSnapshotRunning() {
-        // TODO Auto-generated method stub
+        // TODO: Will we be required to handle this case?
         return false;
     }
 
     @Override
     public void preSnapshotStart(boolean onDemand) {
-        // TODO Auto-generated method stub
-        
+        // NoOp for now.
     }
-
-
 
     public static class Loader implements OffsetContext.Loader<YugabyteDBOffsetContext> {
 

@@ -504,7 +504,6 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
 
     @Override
     public TableSchema schemaFor(TableId id) {
-        // TODO Auto-generated method stub
         return super.schemaFor(id);
     }
 

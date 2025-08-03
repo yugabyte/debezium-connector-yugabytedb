@@ -138,29 +138,12 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
                                              OffsetContext offset,
                                              ConnectHeaders headers)
                       throws InterruptedException {
-                        // TODO Vaibhav: source signal channel is set to null explicitly in the constructor.
-                        if (isASignalEventToProcess(dataCollectionId, operation) && sourceSignalChannel != null) {
-                            sourceSignalChannel.process(value);
-
-                            if (signalProcessor != null) {
-                                // This is a synchronization point to immediately execute an eventual stop signal, just before emitting the CDC event
-                                // in this way the offset context updated by signaling will be correctly saved
-                                signalProcessor.processSourceSignal();
-                            }
-                        }
-
                         if (neverSkip || !skippedOperations.contains(operation)) {
                             transactionMonitor.dataEvent(partition, dataCollectionId, offset, key, value);
                             eventListener.onEvent(partition, dataCollectionId, offset, key, value, operation);
 
                             streamingReceiver.changeRecord(partition, schema, operation, key, value, offset, headers);
                         }
-                    }
-
-                    private boolean isASignalEventToProcess(T dataCollectionId, Operation operation) {
-                        return (operation == Operation.CREATE ||
-                                (operation == Operation.DELETE && connectorConfig.getIncrementalSnapshotWatermarkingStrategy() == WatermarkStrategy.INSERT_DELETE)) &&
-                                connectorConfig.isSignalDataCollection(dataCollectionId);
                     }
                 });
                 handled = true;

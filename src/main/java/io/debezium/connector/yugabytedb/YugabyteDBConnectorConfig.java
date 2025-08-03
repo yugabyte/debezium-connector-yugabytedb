@@ -1083,6 +1083,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     + "'exported' deprecated, use 'initial' instead; "
                     + "'custom' to specify a custom class with 'snapshot.custom_class' which will be loaded and used to determine the snapshot, see docs for more details.");
 
+    // This property is not supported by YugabyteDB and has been copied from PostgreSQL connector to keep things
+    // compilable. In the code, wherever this field has been referenced, it is purely for completeness perspective
+    // and we do not use it with YugabyteDB.
     public static final Field SNAPSHOT_LOCKING_MODE = Field.create("snapshot.locking.mode")
             .withDisplayName("Snapshot locking mode")
             .withEnum(SnapshotLockingMode.class, SnapshotLockingMode.NONE)
@@ -1340,13 +1343,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected final SnapshotLockingMode snapshotLockingMode;
 
     public YugabyteDBConnectorConfig(Configuration config) {
-        super(
-                config,
-                new SystemTablesPredicate(),
-                x -> x.schema() + "." + x.table(),
-                DEFAULT_SNAPSHOT_FETCH_SIZE,
-                ColumnFilterMode.SCHEMA,
-                false); // YBClientUtils.isYSQLStream(config) ? x -> x.schema() + "." + x.table() : x -> x.table(),);
+        // YCQL doesn't have any schema name associated with the tables so in that case we use the table name as is.
+        super(config, new SystemTablesPredicate(), YBClientUtils.isYSQLStream(config) ? x -> x.schema() + "." + x.table() : x -> x.table(),
+              DEFAULT_SNAPSHOT_FETCH_SIZE, ColumnFilterMode.SCHEMA, !YBClientUtils.isYSQLStream(config) /* useCatalogBeforeSchema */);
 
         this.isYSQL = YBClientUtils.isYSQLStream(config);
         this.truncateHandlingMode = TruncateHandlingMode.parse(config.getString(YugabyteDBConnectorConfig.TRUNCATE_HANDLING_MODE));

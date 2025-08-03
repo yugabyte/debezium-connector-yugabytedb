@@ -45,7 +45,6 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBChangeEventSourceCoordinator.class);
 
     private final SnapshotterService snapshotterService;
-    // private final SlotState slotInfo;
 
     private YugabyteDBSnapshotChangeEventSource snapshotSource;
     private YugabyteDBStreamingChangeEventSource streamingChangeEventSource;
@@ -62,7 +61,6 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
         super(previousOffsets, errorHandler, connectorType, connectorConfig, changeEventSourceFactory,
                 changeEventSourceMetricsFactory, eventDispatcher, schema, signalProcessor, notificationService, snapshotterService);
         this.snapshotterService = snapshotterService;
-        // this.slotInfo = slotInfo; TODO Vaibhav: Not used here.
     }
 
     @Override
@@ -211,17 +209,11 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
     /**
      * @return true if the connector is in snapshot phase, false otherwise
      */
-    // TODO Vaibhav: isSnapshotComplete can be integrated with the snapshotter as well.
     protected boolean isSnapshotInProgress() {
+        // TODO: isSnapshotComplete can be integrated with the snapshotter as well.
+        //       Track it as a separate ticket to be addressed later on.
         return shouldSnapshotData()
                  && (snapshotSource != null)
                  && !snapshotSource.isSnapshotComplete();
     }
-
-    private void setSnapshotStartLsn(YugabyteDBSnapshotChangeEventSource snapshotSource,
-                                     YugabyteDBOffsetContext offsetContext)
-            throws SQLException {
-        snapshotSource.updateOffsetForPreSnapshotCatchUpStreaming(offsetContext);
-    }
-
 }

@@ -12,9 +12,7 @@ import io.debezium.converters.spi.CloudEventsProvider;
 import io.debezium.converters.spi.SerializerType;
 
 /**
- * An implementation of {@link CloudEventsProvider} for PostgreSQL.
- *
- * @author Chris Cranford
+ * An implementation of {@link CloudEventsProvider} for YugabyteDB.
  */
 public class YugabyteDBCloudEventsProvider implements CloudEventsProvider {
     @Override

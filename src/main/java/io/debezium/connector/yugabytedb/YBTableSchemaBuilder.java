@@ -74,8 +74,6 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
         this.sourceInfoSchema = sourceInfoSchema;
         this.fieldNamer = fieldNamer;
         this.customConverterRegistry = customConverterRegistry;
-
-        LOGGER.info("Instantiated a YBTableSchemaBuilder");
     }
 
     /**
