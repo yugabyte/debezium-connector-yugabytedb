@@ -15,9 +15,7 @@ import io.debezium.data.Envelope;
 import io.debezium.util.Collect;
 
 /**
- * CloudEvents maker for records producer by the PostgreSQL connector.
- *
- * @author Chris Cranford
+ * CloudEvents maker for records producer by the YugabyteDB connector.
  */
 public class YugabyteDBCloudEventsMaker extends CloudEventsMaker {
     static final String TXID_KEY = "txId";
@@ -25,7 +23,7 @@ public class YugabyteDBCloudEventsMaker extends CloudEventsMaker {
     static final String LSN_KEY = "lsn";
     static final String SEQUENCE_KEY = "sequence";
 
-    static final Set<String> POSTGRES_SOURCE_FIELDS = Collect.unmodifiableSet(
+    static final Set<String> YUGABYTE_SOURCE_FIELDS = Collect.unmodifiableSet(
             TXID_KEY,
             XMIN_KEY,
             LSN_KEY,
@@ -46,6 +44,6 @@ public class YugabyteDBCloudEventsMaker extends CloudEventsMaker {
 
     @Override
     public Set<String> connectorSpecificSourceFields() {
-        return POSTGRES_SOURCE_FIELDS;
+        return YUGABYTE_SOURCE_FIELDS;
     }
 }

@@ -534,7 +534,7 @@ public class YugabyteDBConnection extends JdbcConnection {
         return yugabyteDBTypeRegistry;
     }
 
-    // TODO: Remove if this is not being used anywhere now.
+    // This method is not being used anywhere.
     public <T extends DatabaseSchema<TableId>> Object getColumnValue(ResultSet rs, int columnIndex,
                                                                      Column column,
                                                                      Table table, T schema)
@@ -592,9 +592,8 @@ public class YugabyteDBConnection extends JdbcConnection {
         }
         catch (SQLException e) {
             // not a known type
-            LOGGER.error("VKVK hitting error in unknown block which is not being used now (probably): ", e);
-            return null; // TODO Vaibhav: Return NPE so that it crashes if it ever comes to this block.
-            // return super.getColumnValue(rs, columnIndex, column, table, schema);
+            LOGGER.error("Received unknown type for column: {}", column.name());
+            throw e;
         }
     }
 

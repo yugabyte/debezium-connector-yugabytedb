@@ -190,7 +190,6 @@ public class YugabyteDBConnectorTask
         } catch (RuntimeException e) {
             throw new ConnectException("Unable to load snapshotter service, if using custom snapshot mode, double check your settings", e);
         }
-        // final Snapshotter snapshotter = snapshotterService.getSnapshotter();
 
         LoggingContext.PreviousContext previousContext = taskContext
                 .configureLoggingContext(CONTEXT_NAME + "|" + taskId);
@@ -210,14 +209,14 @@ public class YugabyteDBConnectorTask
 
             final YugabyteDBEventMetadataProvider metadataProvider = new YugabyteDBEventMetadataProvider();
 
-            LOGGER.info("Creating signal processor");
+            LOGGER.info("----- Creating signal processor -----");
             SignalProcessor<YBPartition, YugabyteDBOffsetContext> signalProcessor = new SignalProcessor<>(
                     YugabyteDBgRPCConnector.class, connectorConfig, Map.of(),
                     getAvailableSignalChannels(),
                     DocumentReader.defaultReader(),
                     previousOffsets);
 
-            LOGGER.info("Creating event dispatcher");
+            LOGGER.info("----- Creating event dispatcher -----");
             final YugabyteDBEventDispatcher<TableId> dispatcher = new YugabyteDBEventDispatcher<>(
                     connectorConfig,
                     topicNamingStrategy,
@@ -232,7 +231,7 @@ public class YugabyteDBConnectorTask
                     signalProcessor,
                     jdbcConnection);
 
-            LOGGER.info("Creating notification service");
+            LOGGER.info("----- Creating notification service -----");
             NotificationService<YBPartition, YugabyteDBOffsetContext> notificationService = new NotificationService<>(getNotificationChannels(),
                     connectorConfig, SchemaFactory.get(), dispatcher::enqueueNotification);
 
@@ -250,7 +249,7 @@ public class YugabyteDBConnectorTask
                             clock,
                             schema,
                             taskContext,
-                            null,
+                            null /* replicationConnection */,
                             queue),
                     new YugabyteDBMetricsFactory(previousOffsets.getPartitions(), connectorConfig, taskId),
                     dispatcher,
@@ -271,7 +270,6 @@ public class YugabyteDBConnectorTask
     Map<YBPartition, YugabyteDBOffsetContext> getPreviousOffsetss(
         Partition.Provider<YBPartition> provider,
         OffsetContext.Loader<YugabyteDBOffsetContext> loader) {
-        // return super.getPreviousOffsets(provider, loader);
         Set<YBPartition> partitions = provider.getPartitions();
         LOGGER.debug("The size of partitions is " + partitions.size());
         OffsetReader<YBPartition, YugabyteDBOffsetContext, OffsetContext.Loader<YugabyteDBOffsetContext>> reader = new OffsetReader<>(
@@ -489,7 +487,8 @@ public class YugabyteDBConnectorTask
                             }
                         }
 
-                        // TODO Vaibhav: Passing an empty map for now, see if this can be improved later.
+                        // TODO Vaibhav: Passing an empty map for now, if partition based handling is expected,
+                        //   then it should be handled as a separate change.
                         this.coordinator.commitOffset(Collections.emptyMap(), ybOffset);
                     }
                 }

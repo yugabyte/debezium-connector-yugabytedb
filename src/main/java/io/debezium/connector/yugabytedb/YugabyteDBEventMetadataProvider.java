@@ -44,7 +44,6 @@ class YugabyteDBEventMetadataProvider implements EventMetadataProvider {
         final Struct sourceInfo = value.getStruct(Envelope.FieldName.SOURCE);
         if (source == null) {
             return null;
-            
         }
 
         Map<String, String> r = Collect.hashMapOf(

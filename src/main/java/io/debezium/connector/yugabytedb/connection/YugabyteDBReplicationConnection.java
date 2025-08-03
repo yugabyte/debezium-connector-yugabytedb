@@ -49,6 +49,9 @@ import io.debezium.util.Clock;
 import io.debezium.util.Metronome;
 
 /**
+ * YB Note: This class is not being used in the YugabyteDB codebase anywhere. It can be removed in
+ *          future iterations.
+ * 
  * Implementation of a {@link ReplicationConnection} for Postgresql. Note that replication connections in PG cannot execute
  * regular statements but only a limited number of replication-related commands.
  *
@@ -131,7 +134,6 @@ public class YugabyteDBReplicationConnection extends JdbcConnection implements R
                 .build());
     }
 
-    // TODO Vaibhav: Remove this code.
     // private ServerInfo.ReplicationSlot getSlotInfo() throws SQLException, InterruptedException {
     // try (PostgresConnection connection = new PostgresConnection(originalConfig.getJdbcConfig())) {
     // return connection.readReplicationSlotInfo(slotName, plugin.getPostgresPluginName());

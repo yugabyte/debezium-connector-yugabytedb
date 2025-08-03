@@ -9,9 +9,6 @@ import java.util.Optional;
 
 import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
-import io.debezium.connector.yugabytedb.spi.SlotCreationResult;
-import io.debezium.connector.yugabytedb.spi.SlotState;
-import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.jdbc.MainConnectionProvidingConnectionFactory;
 import io.debezium.pipeline.ErrorHandler;
 import io.debezium.pipeline.notification.NotificationService;
@@ -30,6 +27,14 @@ import io.debezium.pipeline.DataChangeEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+/**
+ * Factory for creating YugabyteDB-specific change event sources, including snapshot and streaming sources.
+ * This class is responsible for instantiating the appropriate change event source implementations
+ * based on the connector configuration and runtime context.
+ *
+ * @author Vaibhav Kushwaha
+ */
 public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFactory<YBPartition, YugabyteDBOffsetContext> {
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBChangeEventSourceFactory.class);
 
