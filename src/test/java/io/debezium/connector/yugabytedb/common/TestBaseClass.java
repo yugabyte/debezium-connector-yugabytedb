@@ -13,7 +13,6 @@ import io.debezium.embedded.TestingEmbeddedEngine;
 import io.debezium.embedded.async.AsyncEmbeddedEngine;
 import io.debezium.engine.DebeziumEngine;
 import io.debezium.engine.DebeziumEngine.Builder;
-import io.debezium.engine.DebeziumEngine.ConnectorCallback;
 import io.debezium.engine.spi.OffsetCommitPolicy;
 import io.debezium.util.LoggingContext;
 import io.debezium.util.Testing;
@@ -27,7 +26,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.YugabyteYSQLContainer;
 
 import java.time.Duration;
 import java.util.*;
@@ -209,6 +207,7 @@ public class TestBaseClass extends AbstractConnectorTest {
         if (!success) {
           // we only unblock if there was an error; in all other cases we're unblocking when a task has been started
           countDownLatch.countDown();
+          countDownLatch.await(10, TimeUnit.SECONDS);
         }
       }
       Testing.debug("Stopped connector");
@@ -234,24 +233,24 @@ public class TestBaseClass extends AbstractConnectorTest {
 
     DebeziumEngine.Builder<SourceRecord> builder = createEngineBuilder();
     builder
-               .using(configBuilder.build().asProperties())
-               .using(OffsetCommitPolicy.always())
-               .using(wrapperCallback)
-               .using(connectorCallback)
-               .using(this.getClass().getClassLoader())
-               .notifying((records, committer) -> {
-                 for (SourceRecord record: records) {
-                   linesConsumed.add(record);
-                   committer.markProcessed(record);
+      .using(configBuilder.build().asProperties())
+      .using(OffsetCommitPolicy.always())
+      .using(wrapperCallback)
+      .using(connectorCallback)
+      .using(this.getClass().getClassLoader())
+      .notifying((records, committer) -> {
+        for (SourceRecord record: records) {
+          linesConsumed.add(record);
+          committer.markProcessed(record);
 
-                   offsetMapForRecords = record.sourceOffset();
-                 }
+          offsetMapForRecords = record.sourceOffset();
+        }
 
-                 // This method here is responsible for calling the commit() method which later
-                 // invokes commitOffset() in the change event source classes.
-                 TestHelper.waitFor(Duration.ofMillis(callbackDelay));
-                 committer.markBatchFinished();
-               }).build();
+        // This method here is responsible for calling the commit() method which later
+        // invokes commitOffset() in the change event source classes.
+        TestHelper.waitFor(Duration.ofMillis(callbackDelay));
+        committer.markBatchFinished();
+      }).build();
 
     engine = this.createEngine(builder);
 
