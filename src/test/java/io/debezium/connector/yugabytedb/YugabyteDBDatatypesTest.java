@@ -3,7 +3,6 @@ package io.debezium.connector.yugabytedb;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
@@ -31,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 
-public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBDatatypesTest extends YugabytedTestBase {
     private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
             "INSERT INTO s2.a (aa) VALUES (1);";
     private static final String CREATE_TABLES_STMT = "DROP SCHEMA IF EXISTS s1 CASCADE;" +
@@ -43,47 +42,30 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
     private void insertRecords(long numOfRowsToBeInserted) throws Exception {
         String formatInsertString = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
-        CompletableFuture.runAsync(() -> {
-            for (int i = 0; i < numOfRowsToBeInserted; i++) {
-                TestHelper.execute(String.format(formatInsertString, i));
-            }
-
-        }).exceptionally(throwable -> {
-            throw new RuntimeException(throwable);
-        }).get();
+        for (int i = 0; i < numOfRowsToBeInserted; i++) {
+            TestHelper.execute(String.format(formatInsertString, i));
+        }
     }
 
     private void updateRecords(long numOfRowsToBeUpdated) throws Exception {
         String formatUpdateString = "UPDATE t1 SET hours = 10 WHERE id = %d";
-        CompletableFuture.runAsync(() -> {
-            for (int i = 0; i < numOfRowsToBeUpdated; i++) {
-                TestHelper.execute(String.format(formatUpdateString, i));
-            }
-        }).exceptionally(throwable -> {
-            throw new RuntimeException(throwable);
-        }).get();
+        for (int i = 0; i < numOfRowsToBeUpdated; i++) {
+            TestHelper.execute(String.format(formatUpdateString, i));
+        }
     }
 
     private void deleteRecords(long numOfRowsToBeDeleted) throws Exception {
         String formatDeleteString = "DELETE FROM t1 WHERE id = %d;";
-        CompletableFuture.runAsync(() -> {
-            for (int i = 0; i < numOfRowsToBeDeleted; i++) {
-                TestHelper.execute(String.format(formatDeleteString, i));
-            }
-        }).exceptionally(throwable -> {
-            throw new RuntimeException(throwable);
-        }).get();
+        for (int i = 0; i < numOfRowsToBeDeleted; i++) {
+            TestHelper.execute(String.format(formatDeleteString, i));
+        }
     }
 
     private void insertRecordsInSchema(long numOfRowsToBeInserted) throws Exception {
         String formatInsertString = "INSERT INTO test_schema.table_in_schema VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
-        CompletableFuture.runAsync(() -> {
-            for (int i = 0; i < numOfRowsToBeInserted; i++) {
-                TestHelper.execute(String.format(formatInsertString, i));
-            }
-        }).exceptionally(throwable -> {
-            throw new RuntimeException(throwable);
-        }).get();
+        for (int i = 0; i < numOfRowsToBeInserted; i++) {
+            TestHelper.execute(String.format(formatInsertString, i));
+        }
     }
 
     private void verifyDeletedFieldPresentInValue(long recordsCount, YBExtractNewRecordState<SourceRecord> transformation) {
@@ -110,7 +92,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         for (int i = 0; i < records.size(); ++i) {
             // verify the records
-            assertValueField(records.get(i), "after/id/value", i);
+            super.assertValueField(records.get(i), "after/id/value", i);
         }
     }
 
@@ -185,15 +167,13 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         startEngine(configBuilder);
         final long recordsCount = 1;
 
-        awaitUntilConnectorIsReady();
+        // awaitUntilConnectorIsReady();
+        TestHelper.waitFor(Duration.ofSeconds(30));
 
         // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertRecords(recordsCount);
 
-        CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
-                .exceptionally(throwable -> {
-                    throw new RuntimeException(throwable);
-                }).get();
+        verifyPrimaryKeyOnly(recordsCount);
     }
 
     @ParameterizedTest
@@ -272,12 +252,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         final int recordsCount = 1;
         insertRecords(recordsCount);
-        CompletableFuture.runAsync(() -> verifyPrimaryKeyOnly(recordsCount))
-                .exceptionally(throwable -> {
-                    throw new RuntimeException(throwable);
-                }).get();
-
-        ybClient.close();
+        verifyPrimaryKeyOnly(recordsCount);
     }
 
     @ParameterizedTest
@@ -311,10 +286,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         // (rowsCount * 3) number of recrods, additionaly, with a delete record, we will see
         // a tombstone record so we will 1 record for that as well.
         final long recordsCount = 1 /* insert */ + 1 /* update */ + 1 /* delete */ + 1 /* tombstone */;
-        CompletableFuture.runAsync(() -> verifyDeletedFieldPresentInValue(recordsCount, transformation))
-                .exceptionally(throwable -> {
-                    throw new RuntimeException(throwable);
-                }).get();
+        verifyDeletedFieldPresentInValue(recordsCount, transformation);
 
         transformation.close();
     }
@@ -411,11 +383,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
 
         // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertRecords(recordsCount);
-
-        CompletableFuture.runAsync(() -> verifyValue(recordsCount))
-                .exceptionally(throwable -> {
-                    throw new RuntimeException(throwable);
-                }).get();
+        verifyValue(recordsCount);
     }
 
     @ParameterizedTest
@@ -433,10 +401,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         // insert rows in the table t1 with values <some-pk, 'Vaibhav', 'Kushwaha', 30>
         insertRecordsInSchema(recordsCount);
 
-        CompletableFuture.runAsync(() -> verifyValue(recordsCount))
-                .exceptionally(throwable -> {
-                    throw new RuntimeException(throwable);
-                }).get();
+        verifyValue(recordsCount);
     }
 
     // GitHub issue: https://github.com/yugabyte/debezium-connector-yugabytedb/issues/134

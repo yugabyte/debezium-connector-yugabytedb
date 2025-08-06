@@ -27,9 +27,9 @@ import io.debezium.relational.Key.KeyMapper;
 import io.debezium.relational.Tables.ColumnNameFilter;
 import io.debezium.relational.mapping.ColumnMapper;
 import io.debezium.relational.mapping.ColumnMappers;
-import io.debezium.schema.FieldNameSelector;
+import io.debezium.schema.SchemaNameAdjuster;
 import io.debezium.schema.FieldNameSelector.FieldNamer;
-import io.debezium.util.SchemaNameAdjuster;
+import io.debezium.spi.topic.TopicNamingStrategy;
 import io.debezium.util.Strings;
 
 /**
@@ -66,13 +66,13 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
      * @param schemaNameAdjuster the adjuster for schema names; may not be null
      */
     public YBTableSchemaBuilder(ValueConverterProvider valueConverterProvider, SchemaNameAdjuster schemaNameAdjuster, CustomConverterRegistry customConverterRegistry,
-                                Schema sourceInfoSchema, boolean sanitizeFieldNames, boolean multiPartitionMode) {
-        super(valueConverterProvider, schemaNameAdjuster, customConverterRegistry, sourceInfoSchema, sanitizeFieldNames, multiPartitionMode);
+                                Schema sourceInfoSchema, FieldNamer<Column> fieldNamer, boolean multiPartitionMode) {
+        super(valueConverterProvider, schemaNameAdjuster, customConverterRegistry, sourceInfoSchema, fieldNamer, multiPartitionMode);
         this.schemaNameAdjuster = schemaNameAdjuster;
         this.valueConverterProvider = valueConverterProvider;
         this.defaultValueConverter = null;
         this.sourceInfoSchema = sourceInfoSchema;
-        this.fieldNamer = FieldNameSelector.defaultSelector(sanitizeFieldNames);
+        this.fieldNamer = fieldNamer;
         this.customConverterRegistry = customConverterRegistry;
     }
 
@@ -93,15 +93,16 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
      * @param mappers the mapping functions for columns; may be null if none of the columns are to be mapped to different values
      * @return the table schema that can be used for sending rows of data for this table to Kafka Connect; never null
      */
-    public TableSchema create(String schemaPrefix, String envelopSchemaName, Table table, ColumnNameFilter filter, ColumnMappers mappers, KeyMapper keysMapper) {
-        if (schemaPrefix == null) {
-            schemaPrefix = "";
-        }
-
+    @Override
+    public TableSchema create(TopicNamingStrategy topicNamingStrategy, Table table, ColumnNameFilter filter,
+            ColumnMappers mappers, KeyMapper keysMapper) {
         // Build the schemas ...
         final TableId tableId = table.id();
-        final String tableIdStr = tableSchemaName(tableId);
-        final String schemaNamePrefix = schemaPrefix + tableIdStr;
+        
+        final String schemaNamePrefix = topicNamingStrategy.recordSchemaPrefix(tableId);
+        final String envelopeSchemaPrefix = topicNamingStrategy.dataChangeTopic(tableId);
+        final String envelopeSchemaName = Envelope.schemaName(envelopeSchemaPrefix);
+        
         LOGGER.info("Mapping table '{}' to schemas under '{}'", tableId, schemaNamePrefix);
         SchemaBuilder valSchemaBuilder = SchemaBuilder.struct().name(schemaNameAdjuster.adjust(schemaNamePrefix + ".Value"));
         SchemaBuilder keySchemaBuilder = SchemaBuilder.struct().name(schemaNameAdjuster.adjust(schemaNamePrefix + ".Key"));
@@ -112,6 +113,10 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
             addField(keySchemaBuilder, table, column, null);
             hasPrimaryKey.set(true);
         });
+
+        if (topicNamingStrategy.keySchemaAugment().augment(keySchemaBuilder)) {
+            hasPrimaryKey.set(true);
+        }
 
         table.columns()
                 .stream()
@@ -130,13 +135,13 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
         }
 
         Envelope envelope = Envelope.defineSchema()
-                .withName(schemaNameAdjuster.adjust(envelopSchemaName))
+                .withName(schemaNameAdjuster.adjust(envelopeSchemaName))
                 .withRecord(valSchema)
                 .withSource(sourceInfoSchema)
                 .build();
 
         // Create the generators ...
-        StructGenerator keyGenerator = createKeyGenerator(keySchema, tableId, tableKey.keyColumns());
+        StructGenerator keyGenerator = createKeyGenerator(keySchema, tableId, tableKey.keyColumns(), topicNamingStrategy);
         StructGenerator valueGenerator = createValueGenerator(valSchema, tableId, table.columns(), filter, mappers);
 
         // And the table schema ...
@@ -173,7 +178,9 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
      * @param columns the column definitions for the table that defines the row; may not be null
      * @return the key-generating function, or null if there is no key schema
      */
-    protected StructGenerator createKeyGenerator(Schema schema, TableId columnSetName, List<Column> columns) {
+    @Override
+    protected StructGenerator createKeyGenerator(Schema schema, TableId columnSetName, List<Column> columns,
+                                                 TopicNamingStrategy topicNamingStrategy) {
         if (schema != null) {
             int[] recordIndexes = indexesForColumns(columns);
             Field[] fields = fieldsForColumns(schema, columns);
@@ -206,6 +213,9 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
                         }
                     }
                 }
+
+                topicNamingStrategy.keyValueAugment().augment(columnSetName, schema, result);
+
                 return result;
             };
         }
@@ -241,6 +251,7 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
      * @param mappers the mapping functions for columns; may be null if none of the columns are to be mapped to different values
      * @return the value-generating function, or null if there is no value schema
      */
+    @Override
     protected StructGenerator createValueGenerator(Schema schema, TableId tableId, List<Column> columns,
                                                    ColumnNameFilter filter, ColumnMappers mappers) {
         if (schema != null) {

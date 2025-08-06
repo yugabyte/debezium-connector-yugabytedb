@@ -238,14 +238,9 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
 
     private void insertRecords(long numOfRowsToBeInserted) throws Exception {
         String formatInsertString = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
-        CompletableFuture.runAsync(() -> {
-            for (int i = 0; i < numOfRowsToBeInserted; i++) {
-                TestHelper.execute(String.format(formatInsertString, i));
-            }
-
-        }).exceptionally(throwable -> {
-            throw new RuntimeException(throwable);
-        }).get();
+        for (int i = 0; i < numOfRowsToBeInserted; i++) {
+            TestHelper.execute(String.format(formatInsertString, i));
+        }
     }
 
     

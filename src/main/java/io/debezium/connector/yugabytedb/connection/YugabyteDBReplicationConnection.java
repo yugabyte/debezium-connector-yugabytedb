@@ -49,6 +49,9 @@ import io.debezium.util.Clock;
 import io.debezium.util.Metronome;
 
 /**
+ * YB Note: This class is not being used in the YugabyteDB codebase anywhere. It can be removed in
+ *          future iterations.
+ * 
  * Implementation of a {@link ReplicationConnection} for Postgresql. Note that replication connections in PG cannot execute
  * regular statements but only a limited number of replication-related commands.
  *
@@ -104,7 +107,7 @@ public class YugabyteDBReplicationConnection extends JdbcConnection implements R
                                             YugabyteDBTypeRegistry yugabyteDBTypeRegistry,
                                             Properties streamParams,
                                             YugabyteDBSchema schema) {
-        super(addDefaultSettings(config.getJdbcConfig()), YugabyteDBConnection.FACTORY, null, null, "\"", "\"");
+        super(addDefaultSettings(config.getJdbcConfig()), YugabyteDBConnection.FACTORY, null, "\"", "\"");
 
         this.originalConfig = config;
         this.slotName = slotName;

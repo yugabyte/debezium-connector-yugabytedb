@@ -81,9 +81,8 @@ public class YugabyteDBConnection extends JdbcConnection {
      * @param config {@link Configuration} instance, may not be null.
      * @param valueConverterBuilder supplies a configured {@link YugabyteDBValueConverter} for a given {@link YugabyteDBTypeRegistry}
      */
-    public YugabyteDBConnection(JdbcConfiguration config, YugabyteDBValueConverterBuilder valueConverterBuilder, String connectionUsage, ConnectionFactory factory){
-        super(addDefaultSettings(config, connectionUsage), factory, YugabyteDBConnection::validateServerVersion, null,
-                "\"", "\"");
+    public YugabyteDBConnection(JdbcConfiguration config, YugabyteDBValueConverterBuilder valueConverterBuilder, String connectionUsage, ConnectionFactory factory) {
+        super(addDefaultSettings(config, connectionUsage), factory, YugabyteDBConnection::validateServerVersion, "\"", "\"");
         YugabyteDBConnection.FACTORY = factory;
         this.config = config;
         if (Objects.isNull(valueConverterBuilder)) {
@@ -119,7 +118,7 @@ public class YugabyteDBConnection extends JdbcConnection {
     public YugabyteDBConnection(YugabyteDBConnectorConfig config,
             YugabyteDBTypeRegistry yugabyteDBTypeRegistry, String connectionUsage, ConnectionFactory factory) {
         super(addDefaultSettings(config.getJdbcConfig(), connectionUsage), factory,
-                YugabyteDBConnection::validateServerVersion, null, "\"", "\"");
+                YugabyteDBConnection::validateServerVersion, "\"", "\"");
         YugabyteDBConnection.FACTORY = factory;
         this.config = config.getJdbcConfig();
         if (Objects.isNull(yugabyteDBTypeRegistry)) {
@@ -535,7 +534,7 @@ public class YugabyteDBConnection extends JdbcConnection {
         return yugabyteDBTypeRegistry;
     }
 
-    @Override
+    // This method is not being used anywhere.
     public <T extends DatabaseSchema<TableId>> Object getColumnValue(ResultSet rs, int columnIndex,
                                                                      Column column,
                                                                      Table table, T schema)
@@ -593,7 +592,8 @@ public class YugabyteDBConnection extends JdbcConnection {
         }
         catch (SQLException e) {
             // not a known type
-            return super.getColumnValue(rs, columnIndex, column, table, schema);
+            LOGGER.error("Received unknown type for column: {}", column.name());
+            throw e;
         }
     }
 

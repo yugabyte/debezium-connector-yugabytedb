@@ -6,6 +6,7 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.embedded.EmbeddedEngine;
+import io.debezium.embedded.async.AsyncEmbeddedEngine;
 import io.debezium.engine.DebeziumEngine;
 import io.debezium.engine.spi.OffsetCommitPolicy;
 import io.debezium.util.LoggingContext;
@@ -72,16 +73,17 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false /* before image */,
                 true /* explicit checkpointing */, consistentSnapshot, useSnapshot);
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId)
-                .with(EmbeddedEngine.ENGINE_NAME, CONNECTOR_NAME)
+                .with(AsyncEmbeddedEngine.ENGINE_NAME, CONNECTOR_NAME)
                 .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG, Testing.Files.createTestingFile("file-connector-offsets.txt").getAbsolutePath())
-                .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
-                .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class);
+                .with(AsyncEmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
+                .with(AsyncEmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class);
         final Configuration config = configBuilder.build();
 
         CountDownLatch firstLatch = new CountDownLatch(1);
 
-        engine = EmbeddedEngine.create()
-                .using(config)
+        DebeziumEngine.Builder<SourceRecord> builder = createEngineBuilder();
+            builder
+                .using(config.asProperties())
                 .using(OffsetCommitPolicy.always())
                 .notifying((records, committer) -> {
                     for (SourceRecord record : records) {
@@ -141,6 +143,6 @@ public class YugabyteDBExplicitCheckpointingTest extends YugabyteDBContainerTest
         ybClient.close();
 
         // Stop the engine started in this test.
-        engine.stop();
+        engine.close();;
     }
 }

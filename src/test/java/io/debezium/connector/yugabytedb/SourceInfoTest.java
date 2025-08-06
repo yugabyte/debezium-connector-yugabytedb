@@ -1,5 +1,6 @@
 package io.debezium.connector.yugabytedb;
 
+import io.debezium.connector.AbstractSourceInfo;
 import io.debezium.connector.AbstractSourceInfoStructMaker;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.connection.OpId;

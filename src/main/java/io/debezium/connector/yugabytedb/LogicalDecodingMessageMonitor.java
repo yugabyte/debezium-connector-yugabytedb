@@ -12,8 +12,8 @@ import io.debezium.data.Envelope;
 import io.debezium.function.BlockingConsumer;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Partition;
+import io.debezium.schema.SchemaNameAdjuster;
 import io.debezium.util.HexConverter;
-import io.debezium.util.SchemaNameAdjuster;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
@@ -64,7 +64,7 @@ public class LogicalDecodingMessageMonitor {
     private final Schema valueSchema;
 
     public LogicalDecodingMessageMonitor(YugabyteDBConnectorConfig connectorConfig, BlockingConsumer<SourceRecord> sender) {
-        this.schemaNameAdjuster = connectorConfig.schemaNameAdjustmentMode().createAdjuster();
+        this.schemaNameAdjuster = connectorConfig.schemaNameAdjuster();
         this.sender = sender;
         this.topicName = connectorConfig.getLogicalName() + LOGICAL_DECODING_MESSAGE_TOPIC_SUFFIX;
         this.binaryMode = connectorConfig.binaryHandlingMode();

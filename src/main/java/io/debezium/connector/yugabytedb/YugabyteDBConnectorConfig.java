@@ -17,7 +17,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.common.config.ConfigDef;
@@ -289,6 +291,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         }
     }
 
+    @Override
+    public EnumeratedValue getSnapshotMode() {
+        return this.snapshotMode;
+    }
+
     /**
      * The set of predefined SecureConnectionMode options or aliases.
      */
@@ -479,6 +486,67 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         }
     }
 
+    public enum SnapshotLockingMode implements EnumeratedValue {
+        /**
+         * This mode will lock in ACCESS SHARE MODE to avoid concurrent schema changes during the snapshot, and
+         * this does not prevent writes to the table, but prevents changes to the table's schema.
+         */
+        SHARED("shared"),
+
+        /**
+         * This mode will avoid using ANY table locks during the snapshot process.
+         * This mode should be used carefully only when no schema changes are to occur.
+         */
+        NONE("none"),
+
+        CUSTOM("custom");
+
+        private final String value;
+
+        SnapshotLockingMode(String value) {
+            this.value = value;
+        }
+
+        @Override
+        public String getValue() {
+            return value;
+        }
+
+        /**
+         * Determine if the supplied value is one of the predefined options.
+         *
+         * @param value the configuration property value; may not be {@code null}
+         * @return the matching option, or null if no match is found
+         */
+        public static SnapshotLockingMode parse(String value) {
+            if (value == null) {
+                return null;
+            }
+            value = value.trim();
+            for (SnapshotLockingMode option : SnapshotLockingMode.values()) {
+                if (option.getValue().equalsIgnoreCase(value)) {
+                    return option;
+                }
+            }
+            return null;
+        }
+
+        /**
+         * Determine if the supplied value is one of the predefined options.
+         *
+         * @param value the configuration property value; may not be {@code null}
+         * @param defaultValue the default value; may be {@code null}
+         * @return the matching option, or null if no match is found and the non-null default is invalid
+         */
+        public static SnapshotLockingMode parse(String value, String defaultValue) {
+            SnapshotLockingMode mode = parse(value);
+            if (mode == null && defaultValue != null) {
+                mode = parse(defaultValue);
+            }
+            return mode;
+        }
+    }
+
     /**
      * The set of predefined SchemaRefreshMode options or aliases.
      */
@@ -601,11 +669,22 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     public static final int DEFAULT_MBEAN_REGISTRATION_RETRIES = 12;
     public static final long DEFAULT_MBEAN_REGISTRATION_RETRY_DELAY_MS = 5_000;
     public static final long DEFAULT_LAST_CALLBACK_TIMEOUT_MS = 3 * 60 * 1000;
+    public static final Pattern YB_HOSTNAME_PATTERN = Pattern.compile("^[a-zA-Z0-9-_.,:]+$");
 
     @Override
     public JdbcConfiguration getJdbcConfig() {
         return super.getJdbcConfig();
     }
+
+    public static final Field HOSTNAME = Field.create(DATABASE_CONFIG_PREFIX + JdbcConfiguration.HOSTNAME)
+            .withDisplayName("Hostname")
+            .withType(Type.STRING)
+            .withGroup(Field.createGroupEntry(Field.Group.CONNECTION, 2))
+            .withWidth(Width.MEDIUM)
+            .withImportance(Importance.HIGH)
+            .required()
+            .withValidation(YugabyteDBConnectorConfig::validateYBHostname)
+            .withDescription("Resolvable hostname or IP address of the database server.");
 
     public static final Field PORT = RelationalDatabaseConnectorConfig.PORT
             .withDefault(DEFAULT_PORT);
@@ -1004,6 +1083,22 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     + "'exported' deprecated, use 'initial' instead; "
                     + "'custom' to specify a custom class with 'snapshot.custom_class' which will be loaded and used to determine the snapshot, see docs for more details.");
 
+    // This property is not supported by YugabyteDB and has been copied from PostgreSQL connector to keep things
+    // compilable. In the code, wherever this field has been referenced, it is purely for completeness perspective
+    // and we do not use it with YugabyteDB.
+    public static final Field SNAPSHOT_LOCKING_MODE = Field.create("snapshot.locking.mode")
+            .withDisplayName("Snapshot locking mode")
+            .withEnum(SnapshotLockingMode.class, SnapshotLockingMode.NONE)
+            .withWidth(Width.SHORT)
+            .withImportance(Importance.LOW)
+            .withGroup(Field.createGroupEntry(Field.Group.CONNECTOR_SNAPSHOT, 13))
+            .withDescription("Controls how the connector holds locks on tables while performing the schema snapshot. The 'shared' "
+                    + "which means the connector will hold a table lock that prevents exclusive table access for just the initial portion of the snapshot "
+                    + "while the database schemas and other metadata are being read. The remaining work in a snapshot involves selecting all rows from "
+                    + "each table, and this is done using a flashback query that requires no locks. However, in some cases it may be desirable to avoid "
+                    + "locks entirely which can be done by specifying 'none'. This mode is only safe to use if no schema changes are happening while the "
+                    + "snapshot is taken.");
+
     public static final Field AUTO_ADD_NEW_TABLES = Field.create("auto.add.new.tables")
             .withDisplayName("Auto add new tables")
             .withImportance(Importance.LOW)
@@ -1245,14 +1340,12 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
     private final LogicalDecodingMessageFilter logicalDecodingMessageFilter;
 
+    protected final SnapshotLockingMode snapshotLockingMode;
+
     public YugabyteDBConnectorConfig(Configuration config) {
-        super(
-                config,
-                config.getString(RelationalDatabaseConnectorConfig.SERVER_NAME),
-                new SystemTablesPredicate(),
-                YBClientUtils.isYSQLStream(config) ? x -> x.schema() + "." + x.table() : x -> x.table(),
-                DEFAULT_SNAPSHOT_FETCH_SIZE,
-                ColumnFilterMode.SCHEMA);
+        // YCQL doesn't have any schema name associated with the tables so in that case we use the table name as is.
+        super(config, new SystemTablesPredicate(), YBClientUtils.isYSQLStream(config) ? x -> x.schema() + "." + x.table() : x -> x.table(),
+              DEFAULT_SNAPSHOT_FETCH_SIZE, ColumnFilterMode.SCHEMA, !YBClientUtils.isYSQLStream(config) /* useCatalogBeforeSchema */);
 
         this.isYSQL = YBClientUtils.isYSQLStream(config);
         this.truncateHandlingMode = TruncateHandlingMode.parse(config.getString(YugabyteDBConnectorConfig.TRUNCATE_HANDLING_MODE));
@@ -1263,6 +1356,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         this.hStoreHandlingMode = HStoreHandlingMode.parse(hstoreHandlingModeStr);
         this.intervalHandlingMode = IntervalHandlingMode.parse(config.getString(YugabyteDBConnectorConfig.INTERVAL_HANDLING_MODE));
         this.snapshotMode = SnapshotMode.parse(config.getString(SNAPSHOT_MODE));
+        this.snapshotLockingMode = SnapshotLockingMode.parse(config.getString(SNAPSHOT_LOCKING_MODE), SNAPSHOT_LOCKING_MODE.defaultValueAsString());
         this.schemaRefreshMode = SchemaRefreshMode.parse(config.getString(SCHEMA_REFRESH_MODE));
 
         this.databaseFilter = new DatabasePredicate();
@@ -1488,6 +1582,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return new YugabyteDBSourceInfoStructMaker(Module.name(), Module.version(), this);
     }
 
+    @Override
+    public Optional<? extends EnumeratedValue> getSnapshotLockingMode() {
+        return Optional.of(this.snapshotLockingMode);
+    }
+
     private static final ConfigDefinition CONFIG_DEFINITION = RelationalDatabaseConnectorConfig.CONFIG_DEFINITION.edit()
             .name("YugabyteDB")
             .type(
@@ -1558,6 +1657,26 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             }
         }
         return errors;
+    }
+
+    protected static int validateYBHostname(Configuration config, Field field, Field.ValidationOutput problems) {
+        String hostName = config.getString(field);
+        int problemCount = 0;
+
+        if (!Strings.isNullOrBlank(hostName)) {
+            if (hostName.contains(",") && !hostName.contains(":")) {
+                // Basic validation for cases when a user has only specified comma separated IPs which is not the correct format.
+                problems.accept(field, hostName, hostName + " has invalid format (specify mutiple hosts in the format ip1:port1,ip2:port2,ip3:port3)");
+                ++problemCount;
+            }
+
+            if (!YB_HOSTNAME_PATTERN.asPredicate().test(hostName)) {
+                problems.accept(field, hostName, hostName + " has invalid format (only the underscore, hyphen, dot, comma, colon and alphanumeric characters are allowed)");
+                ++problemCount;
+            }
+        }
+
+        return problemCount;
     }
 
     private static int validateTruncateHandlingMode(Configuration config, Field field, Field.ValidationOutput problems) {
@@ -1855,26 +1974,30 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     }
 
     private static Set<TableId> determineCapturedTables(Configuration config) throws Exception {
-        YugabyteDBConnection ybConnection = new YugabyteDBConnection(getJdbcConfig(config),YugabyteDBConnection.CONNECTION_GENERAL);
-        Set<TableId> allTableIds = ybConnection.readTableNames(config.getString(DATABASE_NAME), null, null, null);
+        try (YugabyteDBConnection ybConnection = new YugabyteDBConnection(getJdbcConfig(config),YugabyteDBConnection.CONNECTION_GENERAL)) {
+            Set<TableId> allTableIds = ybConnection.readTableNames(config.getString(DATABASE_NAME), null, null, null);
 
-        Set<TableId> capturedTables = new HashSet<>();
-        RelationalTableFilters tableFilter = new RelationalTableFilters(config, new SystemTablesPredicate(), x -> x.schema() + "." + x.table());
+            Set<TableId> capturedTables = new HashSet<>();
+            RelationalTableFilters tableFilter = new RelationalTableFilters(config, new SystemTablesPredicate(), x -> x.schema() + "." + x.table(), false /* useCatalogBeforeSchema */);
 
-        for (TableId tableId : allTableIds) {
-            if (!tableFilter.dataCollectionFilter().isIncluded(tableId)) {
-                LOGGER.trace("Ignoring table {} as it's not included in the filter configuration", tableId);
-                continue;
+            for (TableId tableId : allTableIds) {
+                if (!tableFilter.dataCollectionFilter().isIncluded(tableId)) {
+                    LOGGER.trace("Ignoring table {} as it's not included in the filter configuration", tableId);
+                    continue;
+                }
+                
+                LOGGER.trace("Adding table {} to the list of captured tables", tableId);
+                capturedTables.add(tableId);
             }
-            
-            LOGGER.trace("Adding table {} to the list of captured tables", tableId);
-            capturedTables.add(tableId);
-        }
 
-        return capturedTables
-                .stream()
-                .sorted()
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+            return capturedTables
+                    .stream()
+                    .sorted()
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+        } catch (Exception e) {
+            LOGGER.error("Error while determining captured tables", e);
+            throw new DebeziumException(e);
+        }
     }
 
     protected static void initReplicationSlot(Configuration config) {

@@ -16,6 +16,9 @@ import java.util.stream.Collectors;
 
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.heartbeat.HeartbeatFactory;
+import io.debezium.jdbc.DefaultMainConnectionProvidingConnectionFactory;
+import io.debezium.jdbc.MainConnectionProvidingConnectionFactory;
+
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.RetriableException;
@@ -25,6 +28,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.DebeziumException;
+import io.debezium.bean.StandardBeanNames;
+import io.debezium.config.CommonConnectorConfig;
 import io.debezium.config.Configuration;
 import io.debezium.config.Field;
 import io.debezium.connector.base.ChangeEventQueue;
@@ -34,20 +39,26 @@ import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection.YugabyteDBValueConverterBuilder;
 import io.debezium.connector.yugabytedb.metrics.YugabyteDBMetricsFactory;
-import io.debezium.connector.yugabytedb.spi.Snapshotter;
+import io.debezium.document.DocumentReader;
 import io.debezium.pipeline.ChangeEventSourceCoordinator;
 import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.pipeline.ErrorHandler;
 import io.debezium.pipeline.metrics.DefaultChangeEventSourceMetricsFactory;
+import io.debezium.pipeline.notification.NotificationService;
+import io.debezium.pipeline.signal.SignalProcessor;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Offsets;
 import io.debezium.pipeline.spi.Partition;
 import io.debezium.relational.TableId;
 import io.debezium.schema.TopicSelector;
+import io.debezium.snapshot.SnapshotterService;
+import io.debezium.spi.snapshot.Snapshotter;
+import io.debezium.spi.topic.TopicNamingStrategy;
 import io.debezium.util.Clock;
 import io.debezium.util.LoggingContext;
 import io.debezium.util.Metronome;
-import io.debezium.util.SchemaNameAdjuster;
+import io.debezium.schema.SchemaFactory;
+import io.debezium.schema.SchemaNameAdjuster;
 
 /**
  * Kafka connect source task which uses YugabyteDB CDC API to process DB changes.
@@ -65,6 +76,8 @@ public class YugabyteDBConnectorTask
     private volatile YugabyteDBConnection jdbcConnection;
     private volatile YugabyteDBConnection heartbeatConnection;
     private volatile YugabyteDBSchema schema;
+    private volatile ErrorHandler errorHandler;
+    private volatile YugabyteDBConnection beanRegistryJdbcConnection;
 
     private YugabyteDBChangeEventSourceCoordinator coordinator;
 
@@ -78,16 +91,11 @@ public class YugabyteDBConnectorTask
     @Override
     public ChangeEventSourceCoordinator<YBPartition, YugabyteDBOffsetContext> start(Configuration config) {
         final YugabyteDBConnectorConfig connectorConfig = new YugabyteDBConnectorConfig(config);
-        final TopicSelector<TableId> topicSelector = YugabyteDBTopicSelector.create(connectorConfig);
-        final Snapshotter snapshotter = connectorConfig.getSnapshotter();
+        final TopicNamingStrategy<TableId> topicNamingStrategy = connectorConfig.getTopicNamingStrategy(CommonConnectorConfig.TOPIC_NAMING_STRATEGY);
+
         final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
 
         LOGGER.debug("The config is " + config);
-
-        if (snapshotter == null) {
-            throw new ConnectException("Unable to load snapshotter, if using custom snapshot mode," +
-                    " double check your settings");
-        }
 
         final String databaseCharsetName = config.getString(YugabyteDBConnectorConfig.CHAR_SET);
         final Charset databaseCharset = Charset.forName(databaseCharsetName);
@@ -103,15 +111,15 @@ public class YugabyteDBConnectorTask
                 databaseCharset,
                 typeRegistry);
 
+        MainConnectionProvidingConnectionFactory<YugabyteDBConnection> connectionFactory = new DefaultMainConnectionProvidingConnectionFactory<>(
+                () -> new YugabyteDBConnection(connectorConfig.getJdbcConfig(), valueConverterBuilder, YugabyteDBConnection.CONNECTION_GENERAL));
 
-
+        Map<String, YugabyteDBType> nameToType = null;
+        Map<Integer, YugabyteDBType> oidToType = null;
         if (connectorConfig.isYSQLDbType()) {
 
             String nameToTypeStr = config.getString(YugabyteDBConnectorConfig.NAME_TO_TYPE.toString());
             String oidToTypeStr = config.getString(YugabyteDBConnectorConfig.OID_TO_TYPE.toString());
-
-            Map<String, YugabyteDBType> nameToType = null;
-            Map<Integer, YugabyteDBType> oidToType = null;
             try {
                 nameToType = (Map<String, YugabyteDBType>) ObjectUtil
                         .deserializeObjectFromString(nameToTypeStr);
@@ -137,20 +145,20 @@ public class YugabyteDBConnectorTask
             final YugabyteDBTypeRegistry yugabyteDBTypeRegistry = new YugabyteDBTypeRegistry(taskConnection, nameToType,
                     oidToType, jdbcConnection);
 
-            schema = new YugabyteDBSchema(connectorConfig, yugabyteDBTypeRegistry, topicSelector,
-                    valueConverterBuilder.build(yugabyteDBTypeRegistry));
+            schema = new YugabyteDBSchema(connectorConfig, valueConverterBuilder.build(yugabyteDBTypeRegistry), topicNamingStrategy,
+                    valueConverterBuilder.build(yugabyteDBTypeRegistry), yugabyteDBTypeRegistry);
 
         } else {
             final YugabyteDBCQLValueConverter cqlValueConverter = YugabyteDBCQLValueConverter.of(connectorConfig,
                     databaseCharset);
-            schema = new YugabyteDBSchema(connectorConfig, topicSelector, cqlValueConverter);
+            schema = new YugabyteDBSchema(connectorConfig, topicNamingStrategy, cqlValueConverter);
         }
 
         String taskId = config.getString(YugabyteDBConnectorConfig.TASK_ID.toString());
         boolean sendBeforeImage = config.getBoolean(YugabyteDBConnectorConfig.SEND_BEFORE_IMAGE.toString());
         boolean enableExplicitCheckpointing = config.getBoolean(YugabyteDBConnectorConfig.ENABLE_EXPLICIT_CHECKPOINTING.toString());
 
-        this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicSelector, taskId, sendBeforeImage, enableExplicitCheckpointing);
+        this.taskContext = new YugabyteDBTaskContext(connectorConfig, schema, topicNamingStrategy, taskId, sendBeforeImage, enableExplicitCheckpointing);
 
         // Get the tablet ids and load the offsets
         final Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets =
@@ -159,6 +167,29 @@ public class YugabyteDBConnectorTask
 
         YugabyteDBOffsetContext context = new YugabyteDBOffsetContext(previousOffsets,
                                                                       connectorConfig);
+
+    
+        final YugabyteDBTypeRegistry yugabyteDBTypeRegistry = new YugabyteDBTypeRegistry(taskConnection, nameToType,
+                    oidToType, jdbcConnection);
+
+        // Manual Bean Registration
+        beanRegistryJdbcConnection = connectionFactory.newConnection();
+        connectorConfig.getBeanRegistry().add(StandardBeanNames.CONFIGURATION, config);
+        connectorConfig.getBeanRegistry().add(StandardBeanNames.CONNECTOR_CONFIG, connectorConfig);
+        connectorConfig.getBeanRegistry().add(StandardBeanNames.DATABASE_SCHEMA, schema);
+        connectorConfig.getBeanRegistry().add(StandardBeanNames.JDBC_CONNECTION, beanRegistryJdbcConnection);
+        connectorConfig.getBeanRegistry().add(StandardBeanNames.VALUE_CONVERTER, valueConverterBuilder.build(yugabyteDBTypeRegistry));
+        connectorConfig.getBeanRegistry().add(StandardBeanNames.OFFSETS, previousOffsets);
+
+        // Service providers
+        registerServiceProviders(connectorConfig.getServiceRegistry());
+
+        final SnapshotterService snapshotterService;
+        try {
+            snapshotterService = connectorConfig.getServiceRegistry().tryGetService(SnapshotterService.class);
+        } catch (RuntimeException e) {
+            throw new ConnectException("Unable to load snapshotter service, if using custom snapshot mode, double check your settings", e);
+        }
 
         LoggingContext.PreviousContext previousContext = taskContext
                 .configureLoggingContext(CONTEXT_NAME + "|" + taskId);
@@ -174,42 +205,35 @@ public class YugabyteDBConnectorTask
                     .loggingContextSupplier(() -> taskContext.configureLoggingContext(CONTEXT_NAME))
                     .build();
 
-            ErrorHandler errorHandler = new YugabyteDBErrorHandler(connectorConfig, queue);
+            ErrorHandler errorHandler = new YugabyteDBErrorHandler(connectorConfig, queue, this.errorHandler);
 
             final YugabyteDBEventMetadataProvider metadataProvider = new YugabyteDBEventMetadataProvider();
 
-            Configuration configuration = connectorConfig.getConfig();
-            HeartbeatFactory heartbeatFactory = new HeartbeatFactory<>(
-                    connectorConfig,
-                    topicSelector,
-                    schemaNameAdjuster,
-                    () -> new YugabyteDBConnection(connectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL),
-                    exception -> {
-                        String sqlErrorId = exception.getSQLState();
-                        switch (sqlErrorId) {
-                            case "57P01":
-                                // Postgres error admin_shutdown, see https://www.postgresql.org/docs/12/errcodes-appendix.html
-                                throw new DebeziumException("Could not execute heartbeat action query (Error: " + sqlErrorId + ")", exception);
-                            case "57P03":
-                                // Postgres error cannot_connect_now, see https://www.postgresql.org/docs/12/errcodes-appendix.html
-                                throw new RetriableException("Could not execute heartbeat action query (Error: " + sqlErrorId + ")", exception);
-                            default:
-                                break;
-                        }
-                    });
+            LOGGER.info("----- Creating signal processor -----");
+            SignalProcessor<YBPartition, YugabyteDBOffsetContext> signalProcessor = new SignalProcessor<>(
+                    YugabyteDBgRPCConnector.class, connectorConfig, Map.of(),
+                    getAvailableSignalChannels(),
+                    DocumentReader.defaultReader(),
+                    previousOffsets);
 
+            LOGGER.info("----- Creating event dispatcher -----");
             final YugabyteDBEventDispatcher<TableId> dispatcher = new YugabyteDBEventDispatcher<>(
                     connectorConfig,
-                    topicSelector,
+                    topicNamingStrategy,
                     schema,
                     queue,
                     connectorConfig.getTableFilters().dataCollectionFilter(),
                     DataChangeEvent::new,
                     YugabyteDBChangeRecordEmitter::updateSchema,
                     metadataProvider,
-                    heartbeatFactory,
+                    null /* heartbeatFactory */,
                     schemaNameAdjuster,
+                    signalProcessor,
                     jdbcConnection);
+
+            LOGGER.info("----- Creating notification service -----");
+            NotificationService<YBPartition, YugabyteDBOffsetContext> notificationService = new NotificationService<>(getNotificationChannels(),
+                    connectorConfig, SchemaFactory.get(), dispatcher::enqueueNotification);
 
             this.coordinator = new YugabyteDBChangeEventSourceCoordinator(
                     previousOffsets,
@@ -218,22 +242,21 @@ public class YugabyteDBConnectorTask
                     connectorConfig,
                     new YugabyteDBChangeEventSourceFactory(
                             connectorConfig,
-                            snapshotter,
-                            jdbcConnection,
+                            snapshotterService,
+                            connectionFactory,
                             errorHandler,
                             dispatcher,
                             clock,
                             schema,
                             taskContext,
-                            null,
-                            null/* slotCreatedInfo */,
-                            null/* slotInfo */,
+                            null /* replicationConnection */,
                             queue),
                     new YugabyteDBMetricsFactory(previousOffsets.getPartitions(), connectorConfig, taskId),
                     dispatcher,
                     schema,
-                    snapshotter,
-                    null/* slotInfo */);
+                    snapshotterService,
+                    signalProcessor,
+                    notificationService);
 
             this.coordinator.start(taskContext, this.queue, metadataProvider);
 
@@ -247,7 +270,6 @@ public class YugabyteDBConnectorTask
     Map<YBPartition, YugabyteDBOffsetContext> getPreviousOffsetss(
         Partition.Provider<YBPartition> provider,
         OffsetContext.Loader<YugabyteDBOffsetContext> loader) {
-        // return super.getPreviousOffsets(provider, loader);
         Set<YBPartition> partitions = provider.getPartitions();
         LOGGER.debug("The size of partitions is " + partitions.size());
         OffsetReader<YBPartition, YugabyteDBOffsetContext, OffsetContext.Loader<YugabyteDBOffsetContext>> reader = new OffsetReader<>(
@@ -465,7 +487,9 @@ public class YugabyteDBConnectorTask
                             }
                         }
 
-                        this.coordinator.commitOffset(ybOffset);
+                        // TODO Vaibhav: Passing an empty map for now, if partition based handling is expected,
+                        //   then it should be handled as a separate change.
+                        this.coordinator.commitOffset(Collections.emptyMap(), ybOffset);
                     }
                 }
             } finally {

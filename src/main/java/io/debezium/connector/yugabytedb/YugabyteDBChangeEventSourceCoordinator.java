@@ -16,21 +16,22 @@ import org.apache.kafka.connect.source.SourceConnector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.debezium.DebeziumException;
 import io.debezium.config.CommonConnectorConfig;
 import io.debezium.connector.common.CdcSourceTaskContext;
-import io.debezium.connector.yugabytedb.spi.SlotState;
-import io.debezium.connector.yugabytedb.spi.Snapshotter;
+import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig.SnapshotMode;
 import io.debezium.pipeline.ChangeEventSourceCoordinator;
 import io.debezium.pipeline.ErrorHandler;
 import io.debezium.pipeline.EventDispatcher;
 import io.debezium.pipeline.metrics.spi.ChangeEventSourceMetricsFactory;
+import io.debezium.pipeline.notification.NotificationService;
+import io.debezium.pipeline.signal.SignalProcessor;
 import io.debezium.pipeline.source.spi.ChangeEventSource;
 import io.debezium.pipeline.source.spi.ChangeEventSource.ChangeEventSourceContext;
 import io.debezium.pipeline.source.spi.SnapshotChangeEventSource;
 import io.debezium.pipeline.spi.Offsets;
 import io.debezium.pipeline.spi.SnapshotResult;
 import io.debezium.schema.DatabaseSchema;
+import io.debezium.snapshot.SnapshotterService;
 import io.debezium.util.LoggingContext.PreviousContext;
 
 /**
@@ -43,8 +44,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
 
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBChangeEventSourceCoordinator.class);
 
-    private final Snapshotter snapshotter;
-    private final SlotState slotInfo;
+    private final SnapshotterService snapshotterService;
 
     private YugabyteDBSnapshotChangeEventSource snapshotSource;
     private YugabyteDBStreamingChangeEventSource streamingChangeEventSource;
@@ -56,33 +56,22 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
                                                   YugabyteDBChangeEventSourceFactory changeEventSourceFactory,
                                                   ChangeEventSourceMetricsFactory changeEventSourceMetricsFactory,
                                                   EventDispatcher<YBPartition, ?> eventDispatcher, DatabaseSchema<?> schema,
-                                                  Snapshotter snapshotter, SlotState slotInfo) {
+                                                  SnapshotterService snapshotterService, SignalProcessor<YBPartition, YugabyteDBOffsetContext> signalProcessor,
+                                                  NotificationService<YBPartition, YugabyteDBOffsetContext> notificationService) {
         super(previousOffsets, errorHandler, connectorType, connectorConfig, changeEventSourceFactory,
-                changeEventSourceMetricsFactory, eventDispatcher, schema);
-        this.snapshotter = snapshotter;
-        this.slotInfo = slotInfo;
+                changeEventSourceMetricsFactory, eventDispatcher, schema, signalProcessor, notificationService, snapshotterService);
+        this.snapshotterService = snapshotterService;
     }
 
+    /**
+     * YugabyteDB does not have catch up streaming, so we can skip this phase.
+     */
     @Override
     protected CatchUpStreamingResult executeCatchUpStreaming(ChangeEventSourceContext context,
                                                              SnapshotChangeEventSource<YBPartition, YugabyteDBOffsetContext> snapshotSource,
                                                              YBPartition partition,
                                                              YugabyteDBOffsetContext previousOffset)
             throws InterruptedException {
-        if (previousOffset != null && !snapshotter.shouldStreamEventsStartingFromSnapshot() && slotInfo != null) {
-            try {
-                setSnapshotStartLsn((YugabyteDBSnapshotChangeEventSource) snapshotSource,
-                        previousOffset);
-            }
-            catch (SQLException e) {
-                throw new DebeziumException("Failed to determine catch-up streaming stopping LSN");
-            }
-            LOGGER.info("Previous connector state exists and will stream events until {} then perform snapshot",
-                    previousOffset.getStreamingStoppingLsn());
-            streamEvents(context, partition, previousOffset);
-            return new CatchUpStreamingResult(true);
-        }
-
         return new CatchUpStreamingResult(false);
     }
 
@@ -122,7 +111,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
         }
 
         // This is to handle the initial_only snapshot mode where we will not go to the streaming mode.
-        if (!snapshotter.shouldStream()) {
+        if (!snapshotterService.getSnapshotter().shouldStream()) {
             LOGGER.info("Snapshot complete for initial_only mode for task {}", taskContext.getTaskId());
             return;
         }
@@ -168,8 +157,13 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
         LOGGER.info("Finished streaming");
     }
 
+    public boolean shouldSnapshotData() {
+        return connectorConfig.getSnapshotMode().equals(SnapshotMode.INITIAL_ONLY)
+                || connectorConfig.getSnapshotMode().equals(SnapshotMode.INITIAL);
+    }
+
     @Override
-    public void commitOffset(Map<String, ?> offset) {
+    public void commitOffset(Map<String, ?> partition, Map<String, ?> offset) {
         if (this.snapshotSource == null) {
             return;
         }
@@ -178,13 +172,13 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
         // streaming source only. If snapshot is complete, even then the callback should go to the
         // streaming source as in case of a finished snapshot, we do not want to do a duplicate call
         // for commitOffset.
-        if (!commitOffsetLock.isLocked() && snapshotter.shouldSnapshot() && !this.snapshotSource.isSnapshotComplete()) {
-            snapshotSource.commitOffset(offset);
+        if (!commitOffsetLock.isLocked() && shouldSnapshotData() && !this.snapshotSource.isSnapshotComplete()) {
+            snapshotSource.commitOffset(partition, offset);
             return;
         }
 
         if (!commitOffsetLock.isLocked() && streamingSource != null && offset != null) {
-            streamingSource.commitOffset(offset);
+            streamingSource.commitOffset(partition, offset);
         }
     }
 
@@ -218,15 +212,10 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
      * @return true if the connector is in snapshot phase, false otherwise
      */
     protected boolean isSnapshotInProgress() {
-        return snapshotter.shouldSnapshot()
+        // TODO: isSnapshotComplete can be integrated with the snapshotter as well.
+        // GitHub issue: https://github.com/yugabyte/yugabyte-db/issues/28194
+        return shouldSnapshotData()
                  && (snapshotSource != null)
                  && !snapshotSource.isSnapshotComplete();
     }
-
-    private void setSnapshotStartLsn(YugabyteDBSnapshotChangeEventSource snapshotSource,
-                                     YugabyteDBOffsetContext offsetContext)
-            throws SQLException {
-        snapshotSource.updateOffsetForPreSnapshotCatchUpStreaming(offsetContext);
-    }
-
 }

@@ -11,6 +11,7 @@ import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.pipeline.ErrorHandler;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
+import io.debezium.snapshot.SnapshotterService;
 import io.debezium.util.Clock;
 import io.debezium.util.Metronome;
 import org.apache.commons.lang3.tuple.Pair;
@@ -28,7 +29,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBConsistentStreamingSource.class);
 
     public YugabyteDBConsistentStreamingSource(YugabyteDBConnectorConfig connectorConfig,
-                                               Snapshotter snapshotter,
+                                               SnapshotterService snapshotterService,
                                                YugabyteDBConnection connection,
                                                YugabyteDBEventDispatcher<TableId> dispatcher,
                                                ErrorHandler errorHandler, Clock clock,
@@ -36,7 +37,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                                YugabyteDBTaskContext taskContext,
                                                ReplicationConnection replicationConnection,
                                                ChangeEventQueue<DataChangeEvent> queue) {
-        super(connectorConfig, snapshotter, connection, dispatcher, errorHandler, clock, schema,
+        super(connectorConfig, snapshotterService, connection, dispatcher, errorHandler, clock, schema,
               taskContext, replicationConnection, queue);
     }
 
@@ -110,7 +111,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
             // the assumption is that there will already be some checkpoints for the tablet in
             // the cdc_state table. Avoiding additional bootstrap call in that case will also help
             // us avoid unnecessary network calls.
-            if (snapshotter.shouldSnapshot()) {
+            if (snapshotter.shouldStreamEventsStartingFromSnapshot()) {
                 LOGGER.info("Skipping bootstrap because snapshot has been taken so streaming will resume there onwards");
             } else {
                 bootstrapTabletWithRetry(syncClient, tabletPairList, tableIdToTable);
@@ -353,7 +354,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 if (message.getOperation() == ReplicationMessage.Operation.BEGIN) {
                     LOGGER.debug("LSN in case of BEGIN is " + lsn);
                     dispatcher.dispatchTransactionStartedEvent(part,
-                            message.getTransactionId(), offsetContext);
+                            message.getTransactionId(), offsetContext, message.getCommitTime());
 
                     recordsInTransactionalBlock.put(part.getId(), 0);
                     beginCountForTablet.merge(part.getId(), 1, Integer::sum);
@@ -361,7 +362,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                     LOGGER.debug("LSN in case of COMMIT is " + lsn);
                     offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                             String.valueOf(message.getTransactionId()), null, message.getRecordTime());
-                    dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
+                    dispatcher.dispatchTransactionCommittedEvent(part, offsetContext, message.getCommitTime());
 
                     if (recordsInTransactionalBlock.containsKey(part.getId())) {
                         if (recordsInTransactionalBlock.get(part.getId()) == 0) {
@@ -418,7 +419,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
                 boolean dispatched = message.getOperation() != ReplicationMessage.Operation.NOOP
                         && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
-                        schema, connection, tableId, message, pgSchemaNameInRecord, part.getTabletId(), taskContext.isBeforeImageEnabled()));
+                        schema, connection, tableId, message, part.getTabletId(), taskContext.isBeforeImageEnabled()));
 
                 if (recordsInTransactionalBlock.containsKey(part.getId())) {
                     recordsInTransactionalBlock.merge(part.getId(), 1, Integer::sum);

@@ -23,7 +23,7 @@ import io.debezium.data.Envelope.Operation;
 import io.debezium.pipeline.ConnectorEvent;
 import io.debezium.pipeline.metrics.ChangeEventSourceMetrics;
 import io.debezium.pipeline.spi.OffsetContext;
-import io.debezium.schema.DataCollectionId;
+import io.debezium.spi.schema.DataCollectionId;
 
 /**
  * Base implementation of task-scoped multi-partition SQL Server connector metrics.

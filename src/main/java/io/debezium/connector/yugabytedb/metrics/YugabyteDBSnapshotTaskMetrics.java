@@ -14,7 +14,7 @@ import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig;
 import io.debezium.pipeline.metrics.SnapshotChangeEventSourceMetrics;
 import io.debezium.pipeline.source.spi.EventMetadataProvider;
 import io.debezium.relational.TableId;
-import io.debezium.schema.DataCollectionId;
+import io.debezium.spi.schema.DataCollectionId;
 import io.debezium.util.Collect;
 
 /**
@@ -76,5 +76,17 @@ public class YugabyteDBSnapshotTaskMetrics extends AbstractYugabyteDBTaskMetrics
     @Override
     public void currentChunk(YBPartition partition, String chunkId, Object[] chunkFrom, Object[] chunkTo, Object[] tableTo) {
         onPartitionEvent(partition, bean -> bean.currentChunk(chunkId, chunkFrom, chunkTo, tableTo));
+    }
+
+    @Override
+    public void snapshotPaused(YBPartition partition) {
+        // No-op, as snapshot is not paused in YugabyteDB connector.
+        // This method is provided to satisfy the interface contract.
+    }
+
+    @Override
+    public void snapshotResumed(YBPartition partition) {
+        // No-op, as snapshot is not paused and hence it cannot be
+        // resumed in YugabyteDB connector.
     }
 }

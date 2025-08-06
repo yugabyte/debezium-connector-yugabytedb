@@ -7,9 +7,9 @@ package io.debezium.connector.yugabytedb;
  */
 
 import io.debezium.data.Envelope;
+import io.debezium.data.Envelope.Operation;
 import io.debezium.heartbeat.Heartbeat;
 import io.debezium.heartbeat.HeartbeatFactory;
-import io.debezium.pipeline.signal.Signal;
 import io.debezium.pipeline.source.spi.DataChangeEventListener;
 import io.debezium.pipeline.spi.ChangeRecordEmitter;
 import io.debezium.schema.*;
@@ -21,17 +21,23 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.debezium.config.CommonConnectorConfig.WatermarkStrategy;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.connector.yugabytedb.connection.LogicalDecodingMessage;
 import io.debezium.jdbc.JdbcConnection;
 import io.debezium.pipeline.DataChangeEvent;
 import io.debezium.pipeline.EventDispatcher;
+import io.debezium.pipeline.signal.SignalProcessor;
+import io.debezium.pipeline.signal.channels.SourceSignalChannel;
 import io.debezium.pipeline.source.spi.EventMetadataProvider;
 import io.debezium.pipeline.spi.ChangeEventCreator;
 import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Partition;
-import io.debezium.util.SchemaNameAdjuster;
+import io.debezium.relational.TableId;
+import io.debezium.spi.schema.DataCollectionId;
+import io.debezium.spi.topic.TopicNamingStrategy;
 
+import java.time.Instant;
 import java.util.EnumSet;
 import java.util.Objects;
 import java.util.Optional;
@@ -49,41 +55,43 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
     private final boolean emitTombstonesOnDelete;
     private final LogicalDecodingMessageMonitor logicalDecodingMessageMonitor;
     private final LogicalDecodingMessageFilter messageFilter;
-    private final TopicSelector<T> topicSelector;
+    private final TopicNamingStrategy<T> topicNamingStrategy;
     private final DatabaseSchema<T> schema;
     private DataChangeEventListener<YBPartition> eventListener = DataChangeEventListener.NO_OP();
     private final InconsistentSchemaHandler<YBPartition, T> inconsistentSchemaHandler;
-    private final Signal<YBPartition> signal;
     private final boolean neverSkip;
-    private final Heartbeat heartbeat;
     private final EnumSet<Envelope.Operation> skippedOperations;
     private final DataCollectionFilters.DataCollectionFilter<T> filter;
     private final YugabyteDBTransactionMonitor transactionMonitor;
     private final YugabyteDBStreamingChangeRecordReceiver streamingReceiver;
+    
+    protected SignalProcessor<YBPartition, YugabyteDBOffsetContext> signalProcessor;
+    protected final SourceSignalChannel sourceSignalChannel;
 
-    public YugabyteDBEventDispatcher(YugabyteDBConnectorConfig connectorConfig, TopicSelector<T> topicSelector,
+    public YugabyteDBEventDispatcher(YugabyteDBConnectorConfig connectorConfig, TopicNamingStrategy<T> topicNamingStrategy,
                                    DatabaseSchema<T> schema, ChangeEventQueue<DataChangeEvent> queue, DataCollectionFilters.DataCollectionFilter<T> filter,
                                    ChangeEventCreator changeEventCreator, InconsistentSchemaHandler<YBPartition, T> inconsistentSchemaHandler,
                                    EventMetadataProvider metadataProvider, HeartbeatFactory<T> heartbeatFactory, SchemaNameAdjuster schemaNameAdjuster,
-                                   JdbcConnection jdbcConnection) {
-        super(connectorConfig, topicSelector, schema, queue, filter, changeEventCreator, inconsistentSchemaHandler, metadataProvider,
-                heartbeatFactory, schemaNameAdjuster);
+                                   SignalProcessor<YBPartition, YugabyteDBOffsetContext> signalProcessor, JdbcConnection jdbcConnection) {
+        super(connectorConfig, topicNamingStrategy, schema, queue, filter, changeEventCreator, metadataProvider,
+                Heartbeat.DEFAULT_NOOP_HEARTBEAT, schemaNameAdjuster, signalProcessor);
         this.connectorConfig = connectorConfig;
         this.changeEventCreator = changeEventCreator;
         this.queue = queue;
         this.logicalDecodingMessageMonitor = new LogicalDecodingMessageMonitor(connectorConfig, this::enqueueLogicalDecodingMessage);
         this.messageFilter = connectorConfig.getMessageFilter();
-        this.topicSelector = topicSelector;
-        this.heartbeat = heartbeatFactory.createHeartbeat();
+        this.topicNamingStrategy = topicNamingStrategy;
         this.streamingReceiver = new YugabyteDBStreamingChangeRecordReceiver();
         this.inconsistentSchemaHandler = inconsistentSchemaHandler != null ? inconsistentSchemaHandler : this::errorOnMissingSchema;
-        this.signal = new Signal<>(connectorConfig, this);
         this.skippedOperations = connectorConfig.getSkippedOperations();
         this.emitTombstonesOnDelete = connectorConfig.isEmitTombstoneOnDelete();
         this.neverSkip = connectorConfig.supportsOperationFiltering() || this.skippedOperations.isEmpty();
         this.filter = filter;
         this.schema = schema;
-        this.transactionMonitor = new YugabyteDBTransactionMonitor(connectorConfig, metadataProvider, schemaNameAdjuster, this::enqueueTransactionMessage);
+        this.signalProcessor = signalProcessor;
+        this.transactionMonitor = new YugabyteDBTransactionMonitor(connectorConfig, metadataProvider, schemaNameAdjuster, this::enqueueTransactionMessage, topicNamingStrategy.transactionTopic());
+
+        this.sourceSignalChannel = null;
     }
 
     public void dispatchLogicalDecodingMessage(Partition partition, OffsetContext offset, Long decodeTimestamp,
@@ -130,10 +138,6 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
                                              OffsetContext offset,
                                              ConnectHeaders headers)
                       throws InterruptedException {
-                        if (operation == Envelope.Operation.CREATE && signal.isSignal(dataCollectionId)) {
-                            signal.process(partition, value, offset);
-                        }
-
                         if (neverSkip || !skippedOperations.contains(operation)) {
                             transactionMonitor.dataEvent(partition, dataCollectionId, offset, key, value);
                             eventListener.onEvent(partition, dataCollectionId, offset, key, value, operation);
@@ -162,18 +166,21 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
                   "Error while processing event at offset {}",
                   changeRecordEmitter.getOffset().getOffset());
                 break;
+            default:
+                LOGGER.debug("Error while processing event at offset {}: {}",
+                  changeRecordEmitter.getOffset().getOffset(), e.getMessage());
             }
           return false;
         }
     }
 
     @Override
-    public void dispatchTransactionStartedEvent(YBPartition partition, String transactionId, OffsetContext offset) throws InterruptedException {
-        this.transactionMonitor.transactionStartedEvent(partition, transactionId, offset);
+    public void dispatchTransactionStartedEvent(YBPartition partition, String transactionId, OffsetContext offset, Instant timestamp) throws InterruptedException {
+        this.transactionMonitor.transactionStartedEvent(partition, transactionId, offset, timestamp);
     }
 
     @Override
-    public void dispatchTransactionCommittedEvent(YBPartition partition, OffsetContext offset) throws InterruptedException {
+    public void dispatchTransactionCommittedEvent(YBPartition partition, OffsetContext offset, Instant timestamp) throws InterruptedException {
         this.transactionMonitor.transactionCommittedEventImpl(partition, (YugabyteDBOffsetContext) offset);
     }
 
@@ -200,7 +207,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
             // Truncate events must have null key schema as they are sent to table topics without keys
             Schema keySchema = (key == null && operation == Envelope.Operation.TRUNCATE) ? null
                                  : dataCollectionSchema.keySchema();
-            String topicName = topicSelector.topicNameFor((T) dataCollectionSchema.id());
+            String topicName = topicNamingStrategy.dataChangeTopic((T) dataCollectionSchema.id());
 
             SourceRecord record = new SourceRecord(partition.getSourcePartition(),
               offsetContext.getOffset(),

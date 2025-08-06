@@ -20,7 +20,7 @@ public class YugabyteDBSourceInfoStructMaker extends AbstractSourceInfoStructMak
     private final Schema schema;
 
     public YugabyteDBSourceInfoStructMaker(String connector, String version, CommonConnectorConfig connectorConfig) {
-        super(connector, version, connectorConfig);
+        super.init(connector, version, connectorConfig);
         schema = commonSchemaBuilder()
                 .name("io.debezium.connector.yugabytedb.Source")
                 .field(SourceInfo.SCHEMA_NAME_KEY, Schema.STRING_SCHEMA)
