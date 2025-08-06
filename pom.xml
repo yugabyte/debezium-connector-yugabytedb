@@ -38,7 +38,7 @@
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <!-- Enforce JDK 11 for building (handled via JBoss parent POM)-->
+        <!-- Enforce JDK 17 for building (handled via JBoss parent POM)-->
         <jdk.min.version>17</jdk.min.version>
 
         <!-- Dependency Versions -->

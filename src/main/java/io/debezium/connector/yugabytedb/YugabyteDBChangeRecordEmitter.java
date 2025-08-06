@@ -53,7 +53,7 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     public YugabyteDBChangeRecordEmitter(YBPartition partition, YugabyteDBOffsetContext offset, Clock clock,
                                          YugabyteDBConnectorConfig connectorConfig,
                                          YugabyteDBSchema schema, YugabyteDBConnection connection,
-                                         TableId tableId, ReplicationMessage message, String pgSchemaName,
+                                         TableId tableId, ReplicationMessage message,
                                          String tabletId, boolean shouldSendBeforeImage) {
         super(partition, offset, clock, connectorConfig);
 

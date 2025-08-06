@@ -63,13 +63,15 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
         this.snapshotterService = snapshotterService;
     }
 
+    /**
+     * YugabyteDB does not have catch up streaming, so we can skip this phase.
+     */
     @Override
     protected CatchUpStreamingResult executeCatchUpStreaming(ChangeEventSourceContext context,
                                                              SnapshotChangeEventSource<YBPartition, YugabyteDBOffsetContext> snapshotSource,
                                                              YBPartition partition,
                                                              YugabyteDBOffsetContext previousOffset)
             throws InterruptedException {
-        // YugabyteDB does not have catch up streaming, so we can skip this phase.
         return new CatchUpStreamingResult(false);
     }
 
@@ -171,7 +173,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
         // streaming source as in case of a finished snapshot, we do not want to do a duplicate call
         // for commitOffset.
         if (!commitOffsetLock.isLocked() && shouldSnapshotData() && !this.snapshotSource.isSnapshotComplete()) {
-            snapshotSource.commitOffset(partition,offset);
+            snapshotSource.commitOffset(partition, offset);
             return;
         }
 
@@ -211,7 +213,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
      */
     protected boolean isSnapshotInProgress() {
         // TODO: isSnapshotComplete can be integrated with the snapshotter as well.
-        //       Track it as a separate ticket to be addressed later on.
+        // GitHub issue: https://github.com/yugabyte/yugabyte-db/issues/28194
         return shouldSnapshotData()
                  && (snapshotSource != null)
                  && !snapshotSource.isSnapshotComplete();

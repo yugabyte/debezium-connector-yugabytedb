@@ -101,10 +101,9 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
         
         final String schemaNamePrefix = topicNamingStrategy.recordSchemaPrefix(tableId);
         final String envelopeSchemaPrefix = topicNamingStrategy.dataChangeTopic(tableId);
-        final String envelopSchemaName = Envelope.schemaName(envelopeSchemaPrefix);
+        final String envelopeSchemaName = Envelope.schemaName(envelopeSchemaPrefix);
         
         LOGGER.info("Mapping table '{}' to schemas under '{}'", tableId, schemaNamePrefix);
-        
         SchemaBuilder valSchemaBuilder = SchemaBuilder.struct().name(schemaNameAdjuster.adjust(schemaNamePrefix + ".Value"));
         SchemaBuilder keySchemaBuilder = SchemaBuilder.struct().name(schemaNameAdjuster.adjust(schemaNamePrefix + ".Key"));
         AtomicBoolean hasPrimaryKey = new AtomicBoolean(false);
@@ -136,7 +135,7 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
         }
 
         Envelope envelope = Envelope.defineSchema()
-                .withName(schemaNameAdjuster.adjust(envelopSchemaName))
+                .withName(schemaNameAdjuster.adjust(envelopeSchemaName))
                 .withRecord(valSchema)
                 .withSource(sourceInfoSchema)
                 .build();
@@ -181,7 +180,7 @@ public class YBTableSchemaBuilder extends TableSchemaBuilder {
      */
     @Override
     protected StructGenerator createKeyGenerator(Schema schema, TableId columnSetName, List<Column> columns,
-                                                TopicNamingStrategy topicNamingStrategy) {
+                                                 TopicNamingStrategy topicNamingStrategy) {
         if (schema != null) {
             int[] recordIndexes = indexesForColumns(columns);
             Field[] fields = fieldsForColumns(schema, columns);

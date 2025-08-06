@@ -746,8 +746,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             && dispatcher.dispatchDataChangeEvent(part, tableId,
                                                     new YugabyteDBChangeRecordEmitter(part, offsetContext, clock,
                                                             connectorConfig,
-                                                            schema, connection, tableId, message,
-                                                            connectorConfig.isYSQLDbType()? pgSchemaNameInRecord : tableId.catalog(), tabletId,
+                                                            schema, connection, tableId, message, tabletId,
                                                             taskContext.isBeforeImageEnabled()));
 
                                         if (!dispatched) {
