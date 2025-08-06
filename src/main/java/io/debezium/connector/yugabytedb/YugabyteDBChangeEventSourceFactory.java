@@ -28,7 +28,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
-/**
  * Factory for creating YugabyteDB-specific change event sources, including snapshot and streaming sources.
  * This class is responsible for instantiating the appropriate change event source implementations
  * based on the connector configuration and runtime context.

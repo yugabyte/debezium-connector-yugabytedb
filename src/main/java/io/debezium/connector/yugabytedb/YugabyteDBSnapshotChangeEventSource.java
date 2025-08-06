@@ -651,8 +651,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                           dispatcher.dispatchDataChangeEvent(part, tId,
                               new YugabyteDBChangeRecordEmitter(part, previousOffset, clock,
                                                                 this.connectorConfig, schema,
-                                                                connection, tId, message,
-                                                                connectorConfig.isYSQLDbType() ? pgSchemaName : tId.catalog(), tabletId,
+                                                                connection, tId, message, tabletId,
                                                                 taskContext.isBeforeImageEnabled()));
 
                       LOGGER.debug("Dispatched snapshot record successfully");

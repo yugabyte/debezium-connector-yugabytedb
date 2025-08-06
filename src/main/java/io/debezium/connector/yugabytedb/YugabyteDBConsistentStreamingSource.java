@@ -423,7 +423,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
                 boolean dispatched = message.getOperation() != ReplicationMessage.Operation.NOOP
                         && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
-                        schema, connection, tableId, message, pgSchemaNameInRecord, part.getTabletId(), taskContext.isBeforeImageEnabled()));
+                        schema, connection, tableId, message, part.getTabletId(), taskContext.isBeforeImageEnabled()));
 
                 if (recordsInTransactionalBlock.containsKey(part.getId())) {
                     recordsInTransactionalBlock.merge(part.getId(), 1, Integer::sum);
