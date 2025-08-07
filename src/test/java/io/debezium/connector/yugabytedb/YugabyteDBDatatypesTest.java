@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 
-public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBDatatypesTest extends YugabytedTestBase {
     private static final String INSERT_STMT = "INSERT INTO s1.a (aa) VALUES (1);" +
             "INSERT INTO s2.a (aa) VALUES (1);";
     private static final String CREATE_TABLES_STMT = "DROP SCHEMA IF EXISTS s1 CASCADE;" +
@@ -507,7 +507,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         TestHelper.execute(createTableStmt);
 
         // Create a stream and start the connector.
-        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1", true /* consistentSnapshot */, false /* useSnapshot */);
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "test_table", true /* consistentSnapshot */, false /* useSnapshot */);
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_table", dbStreamId);
         startEngine(configBuilder);
         awaitUntilConnectorIsReady();
@@ -552,7 +552,7 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
         assertEquals(totalRecords, records.allRecordsInOrder().size());
 
         // Verify that all records are from the test_table topic.
-        List<SourceRecord> testTableRecords = records.recordsForTopic("public.test_table");
+        List<SourceRecord> testTableRecords = records.recordsForTopic(TestHelper.TEST_SERVER + "." + "public.test_table");
         assertEquals(totalRecords, testTableRecords.size());
 
         // Verify that each record has the correct structure
