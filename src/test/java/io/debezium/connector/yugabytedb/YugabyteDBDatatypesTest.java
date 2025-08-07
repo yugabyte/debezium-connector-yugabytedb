@@ -499,4 +499,76 @@ public class YugabyteDBDatatypesTest extends YugabyteDBContainerTestBase {
             assertValueField(records.get(i), "after/hours/value", null);
         }
     }
+
+    @Test
+    public void shouldStreamAllRecordsWithSingleShardTransactions() throws Exception {
+        // Create a table named test_table with a primary key column named id and another text column named data.
+        String createTableStmt = "CREATE TABLE test_table (id SERIAL PRIMARY KEY, data TEXT);";
+        TestHelper.execute(createTableStmt);
+
+        // Create a stream and start the connector.
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_DB_NAME, "t1", true /* consistentSnapshot */, false /* useSnapshot */);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.test_table", dbStreamId);
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+
+        // Insert 10000 records into the table each record having a 100 bytes.
+        String dataValue = "A".repeat(100); // 100 character string
+
+        // Insert records in batches to avoid memory issues.
+        int batchSize = 1000;
+        int totalRecords = 10000;
+
+        LOGGER.info("Starting to insert {} records in batches of {}", totalRecords, batchSize);
+        for (int batch = 0; batch < totalRecords; batch += batchSize) {
+            int currentBatchSize = Math.min(batchSize, totalRecords - batch);
+            StringBuilder batchStmt = new StringBuilder();
+            batchStmt.append("set yb_disable_transactional_writes = true; INSERT INTO test_table (data) VALUES ");
+
+            for (int i = 0; i < currentBatchSize; i++) {
+                if (i > 0) {
+                    batchStmt.append(",");
+                }
+                batchStmt.append("('").append(dataValue).append("')");
+            }
+            batchStmt.append(";");
+
+            TestHelper.execute(batchStmt.toString());
+
+            // Log progress every 10 batches.
+            if ((batch / batchSize) % 10 == 0) {
+                LOGGER.info("Inserted {} records so far", batch + currentBatchSize);
+            }
+        }
+        LOGGER.info("Completed inserting all {} records", totalRecords);
+
+        // Wait for the connector to consume all the records.
+        // We expect to consume 10000 records.
+        LOGGER.info("Starting to consume {} records from the connector", totalRecords);
+        SourceRecords records = consumeByTopic(totalRecords);
+        LOGGER.info("Successfully consumed {} records from the connector", records.allRecordsInOrder().size());
+
+        // Verify that we received the expected number of records.
+        assertEquals(totalRecords, records.allRecordsInOrder().size());
+
+        // Verify that all records are from the test_table topic.
+        List<SourceRecord> testTableRecords = records.recordsForTopic("public.test_table");
+        assertEquals(totalRecords, testTableRecords.size());
+
+        // Verify that each record has the correct structure
+        for (SourceRecord record : testTableRecords) {
+            // Verify the after field exists and has the expected structure
+            Struct after = ((Struct) record.value()).getStruct("after");
+            assertNotNull(after);
+
+            // Verify the id field exists and is an integer
+            assertNotNull(after.getStruct("id").getInt32("value"));
+
+            // Verify the data field exists and is a string of 100 characters
+            String data = after.getStruct("data").getString("value");
+            assertNotNull(data);
+            assertEquals(100, data.length());
+            assertEquals(dataValue, data);
+        }
+    }
 }
