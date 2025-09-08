@@ -16,6 +16,7 @@ import org.apache.kafka.connect.data.Struct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.debezium.connector.SnapshotRecord;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.pipeline.source.snapshot.incremental.IncrementalSnapshotContext;
@@ -24,7 +25,7 @@ import io.debezium.pipeline.spi.OffsetContext;
 import io.debezium.pipeline.spi.Offsets;
 import io.debezium.pipeline.txmetadata.TransactionContext;
 import io.debezium.relational.TableId;
-import io.debezium.schema.DataCollectionId;
+import io.debezium.spi.schema.DataCollectionId;
 import io.debezium.util.Clock;
 
 /**
@@ -213,14 +214,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     }
 
     @Override
-    public boolean isSnapshotRunning() {
-        // TODO: think about making this work
-        return true;
-        // return sourceInfo.isSnapshot();
-    }
-
-    @Override
-    public void preSnapshotStart() {
+    public void markSnapshotRecord(SnapshotRecord record) {
         // Do nothing.
     }
 
@@ -328,11 +322,6 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     }
 
     @Override
-    public void markLastSnapshotRecord() {
-        // Do nothing.
-    }
-
-    @Override
     public void event(DataCollectionId tableId, Instant instant) {
         // Do nothing.
     }
@@ -350,6 +339,17 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     @Override
     public IncrementalSnapshotContext<?> getIncrementalSnapshotContext() {
         return incrementalSnapshotContext;
+    }
+
+    @Override
+    public boolean isInitialSnapshotRunning() {
+        // TODO: Will we be required to handle this case?
+        return false;
+    }
+
+    @Override
+    public void preSnapshotStart(boolean onDemand) {
+        // NoOp for now.
     }
 
     public static class Loader implements OffsetContext.Loader<YugabyteDBOffsetContext> {

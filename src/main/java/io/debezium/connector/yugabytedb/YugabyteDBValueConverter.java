@@ -135,6 +135,8 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
     private final YugabyteDBTypeRegistry yugabyteDBTypeRegistry;
     private final HStoreHandlingMode hStoreMode;
     private final IntervalHandlingMode intervalMode;
+    private final boolean adaptiveTimePrecisionMode;
+    private final boolean adaptiveTimeMicrosecondsPrecisionMode;
 
     /**
      * The current database's character encoding.
@@ -170,6 +172,8 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
         this.yugabyteDBTypeRegistry = yugabyteDBTypeRegistry;
         this.hStoreMode = hStoreMode;
         this.intervalMode = intervalMode;
+        this.adaptiveTimePrecisionMode = temporalPrecisionMode.equals(TemporalPrecisionMode.ADAPTIVE);
+        this.adaptiveTimeMicrosecondsPrecisionMode = temporalPrecisionMode.equals(TemporalPrecisionMode.ADAPTIVE_TIME_MICROSECONDS);
     }
 
     @Override

@@ -84,11 +84,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
 
     TestHelper.execute(String.format(insertFormatString, "2"));
 
-    // Consume the records now.
-    CompletableFuture.runAsync(() -> verifyRecordCount(new ArrayList<>() /* dummy list */, 5000 + 2))
-      .exceptionally(throwable -> {
-        throw new RuntimeException(throwable);
-      }).get();
+    verifyRecordCount(new ArrayList<>() /* dummy list */, 5000 + 2);
   }
 
   @ParameterizedTest
@@ -133,10 +129,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
 
     // Verify the record count now
     List<SourceRecord> records = new ArrayList<>();
-    CompletableFuture.runAsync(() -> verifyRecordCount(records, totalExpectedRecords))
-      .exceptionally(throwable -> {
-        throw new RuntimeException(throwable);
-      }).get();
+    verifyRecordCount(records, totalExpectedRecords);
   }
 
   @ParameterizedTest
@@ -182,10 +175,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
 
     // Verify the record count now
     List<SourceRecord> records = new ArrayList<>();
-    CompletableFuture.runAsync(() -> verifyRecordCount(records, totalExpectedRecords))
-      .exceptionally(throwable -> {
-        throw new RuntimeException(throwable);
-      }).get();
+    verifyRecordCount(records, totalExpectedRecords);
   }
 
   @ParameterizedTest
@@ -225,10 +215,7 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
     List<SourceRecord> records = new ArrayList<>();
 
     // Consume the records now.
-    CompletableFuture.runAsync(() -> verifyRecordCount(records, 2000 + 1 + 9))
-      .exceptionally(throwable -> {
-        throw new RuntimeException(throwable);
-      }).get();
+    verifyRecordCount(records, 2000 + 1 + 9);
 
     // Filter records which have 2 <= id and id <= 10 so as to verify that they are being published
     // with the new column name.

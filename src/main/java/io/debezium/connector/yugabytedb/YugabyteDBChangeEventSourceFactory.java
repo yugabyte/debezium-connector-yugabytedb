@@ -9,78 +9,79 @@ import java.util.Optional;
 
 import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
-import io.debezium.connector.yugabytedb.spi.SlotCreationResult;
-import io.debezium.connector.yugabytedb.spi.SlotState;
-import io.debezium.connector.yugabytedb.spi.Snapshotter;
+import io.debezium.jdbc.MainConnectionProvidingConnectionFactory;
 import io.debezium.pipeline.ErrorHandler;
+import io.debezium.pipeline.notification.NotificationService;
 import io.debezium.pipeline.source.snapshot.incremental.IncrementalSnapshotChangeEventSource;
-import io.debezium.pipeline.source.snapshot.incremental.SignalBasedIncrementalSnapshotChangeEventSource;
 import io.debezium.pipeline.source.spi.ChangeEventSourceFactory;
 import io.debezium.pipeline.source.spi.DataChangeEventListener;
 import io.debezium.pipeline.source.spi.SnapshotChangeEventSource;
 import io.debezium.pipeline.source.spi.SnapshotProgressListener;
 import io.debezium.pipeline.source.spi.StreamingChangeEventSource;
 import io.debezium.relational.TableId;
-import io.debezium.schema.DataCollectionId;
+import io.debezium.snapshot.SnapshotterService;
+import io.debezium.spi.schema.DataCollectionId;
 import io.debezium.util.Clock;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.DataChangeEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Factory for creating YugabyteDB-specific change event sources, including snapshot and streaming sources.
+ * This class is responsible for instantiating the appropriate change event source implementations
+ * based on the connector configuration and runtime context.
+ *
+ * @author Vaibhav Kushwaha
+ */
 public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFactory<YBPartition, YugabyteDBOffsetContext> {
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBChangeEventSourceFactory.class);
 
     private final YugabyteDBConnectorConfig configuration;
-    private final YugabyteDBConnection jdbcConnection;
+    private final MainConnectionProvidingConnectionFactory<YugabyteDBConnection> connectionFactory;
     private final ErrorHandler errorHandler;
     private final YugabyteDBEventDispatcher<TableId> dispatcher;
     private final Clock clock;
     private final YugabyteDBSchema schema;
     private final YugabyteDBTaskContext taskContext;
-    private final Snapshotter snapshotter;
+    private final SnapshotterService snapshotterService;
     private final ReplicationConnection replicationConnection;
-    private final SlotCreationResult slotCreatedInfo;
-    private final SlotState startingSlotInfo;
     private final ChangeEventQueue<DataChangeEvent> queue;
 
-    public YugabyteDBChangeEventSourceFactory(YugabyteDBConnectorConfig configuration,
-                                              Snapshotter snapshotter,
-                                              YugabyteDBConnection jdbcConnection,
+    public YugabyteDBChangeEventSourceFactory(YugabyteDBConnectorConfig configuration, SnapshotterService snapshotterService,
+                                              MainConnectionProvidingConnectionFactory<YugabyteDBConnection> connectionFactory,
                                               ErrorHandler errorHandler,
                                               YugabyteDBEventDispatcher<TableId> dispatcher,
                                               Clock clock, YugabyteDBSchema schema,
                                               YugabyteDBTaskContext taskContext,
                                               ReplicationConnection replicationConnection,
-                                              SlotCreationResult slotCreatedInfo,
-                                              SlotState startingSlotInfo,
                                               ChangeEventQueue<DataChangeEvent> queue) {
         this.configuration = configuration;
-        this.jdbcConnection = jdbcConnection;
+        this.snapshotterService = snapshotterService;
+        this.connectionFactory = connectionFactory;
         this.errorHandler = errorHandler;
         this.dispatcher = dispatcher;
         this.clock = clock;
         this.schema = schema;
         this.taskContext = taskContext;
-        this.snapshotter = snapshotter;
         this.replicationConnection = replicationConnection;
-        this.slotCreatedInfo = slotCreatedInfo;
-        this.startingSlotInfo = startingSlotInfo;
         this.queue = queue;
     }
 
     @Override
     public SnapshotChangeEventSource<YBPartition, YugabyteDBOffsetContext> getSnapshotChangeEventSource(
-                                                                                                                SnapshotProgressListener snapshotProgressListener) {
+                SnapshotProgressListener<YBPartition> snapshotProgressListener,
+                NotificationService<YBPartition, YugabyteDBOffsetContext> notificationService) {
         return new YugabyteDBSnapshotChangeEventSource(
                 configuration,
+                snapshotterService,
+                connectionFactory,
                 taskContext,
-                snapshotter,
-                jdbcConnection,
                 schema,
                 dispatcher,
                 clock,
-                snapshotProgressListener);
+                snapshotProgressListener,
+                notificationService);
     }
 
     @Override
@@ -90,8 +91,8 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
             LOGGER.info("Instantiating Vanilla Streaming Source");
             return new YugabyteDBStreamingChangeEventSource(
                     configuration,
-                    snapshotter,
-                    jdbcConnection,
+                    snapshotterService,
+                    connectionFactory.mainConnection(),
                     dispatcher,
                     errorHandler,
                     clock,
@@ -103,8 +104,8 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
             LOGGER.info("Instantiating CONSISTENT Streaming Source");
             return new YugabyteDBConsistentStreamingSource(
                     configuration,
-                    snapshotter,
-                    jdbcConnection,
+                    snapshotterService,
+                    connectionFactory.mainConnection(),
                     dispatcher,
                     errorHandler,
                     clock,
@@ -116,9 +117,10 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
     }
 
     @Override
-    public Optional<IncrementalSnapshotChangeEventSource<YBPartition, ? extends DataCollectionId>> getIncrementalSnapshotChangeEventSource(YugabyteDBOffsetContext offsetContext,
-                                                                                                                              SnapshotProgressListener snapshotProgressListener,
-                                                                                                                              DataChangeEventListener dataChangeEventListener) {
+    public Optional<IncrementalSnapshotChangeEventSource<YBPartition, ? extends DataCollectionId>> getIncrementalSnapshotChangeEventSource(
+            YugabyteDBOffsetContext offsetContext, SnapshotProgressListener<YBPartition> snapshotProgressListener,
+            DataChangeEventListener<YBPartition> dataChangeEventListener,
+            NotificationService<YBPartition, YugabyteDBOffsetContext> notificationService) {
         // YugabyteDB does not support incremental snapshots so when an incremental snapshot change
         // event source is requested, we can simply return an empty value so that no action can be
         // taken on this.

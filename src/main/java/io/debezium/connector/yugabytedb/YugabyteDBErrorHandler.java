@@ -5,7 +5,6 @@
  */
 package io.debezium.connector.yugabytedb;
 
-import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,8 +19,8 @@ import io.debezium.pipeline.ErrorHandler;
 public class YugabyteDBErrorHandler extends ErrorHandler {
     private final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBErrorHandler.class);
 
-    public YugabyteDBErrorHandler(YugabyteDBConnectorConfig connectorConfig, ChangeEventQueue<?> queue) {
-        super(YugabyteDBgRPCConnector.class, connectorConfig, queue);
+    public YugabyteDBErrorHandler(YugabyteDBConnectorConfig connectorConfig, ChangeEventQueue<?> queue, ErrorHandler replacedErrorHandler) {
+        super(YugabyteDBgRPCConnector.class, connectorConfig, queue, replacedErrorHandler);
     }
 
     @Override

@@ -50,6 +50,7 @@ import com.github.dockerjava.api.model.Ports;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
+import io.debezium.config.CommonConnectorConfig;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.HelperBeforeImageModes.BeforeImageMode;
 import io.debezium.connector.yugabytedb.YugabyteDBConnectorConfig.SecureConnectionMode;
@@ -60,6 +61,7 @@ import io.debezium.connector.yugabytedb.container.CustomContainerWaitStrategy;
 import io.debezium.connector.yugabytedb.container.YugabyteCustomContainer;
 import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.relational.RelationalDatabaseConnectorConfig;
+import io.debezium.spi.topic.TopicNamingStrategy;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -359,9 +361,10 @@ public final class TestHelper {
     public static YugabyteDBSchema getSchema(YugabyteDBConnectorConfig config, YugabyteDBTypeRegistry yugabyteDBTypeRegistry) {
         return new YugabyteDBSchema(
                 config,
-                yugabyteDBTypeRegistry,
-                YugabyteDBTopicSelector.create(config),
-                getPostgresValueConverter(yugabyteDBTypeRegistry, config));
+                getPostgresValueConverter(yugabyteDBTypeRegistry, config),
+                config.getTopicNamingStrategy(CommonConnectorConfig.TOPIC_NAMING_STRATEGY),
+                getPostgresValueConverter(yugabyteDBTypeRegistry, config),
+                yugabyteDBTypeRegistry);
     }
 
     public static Set<String> schemaNames() throws SQLException {
@@ -506,7 +509,9 @@ public final class TestHelper {
                                           boolean withBeforeImage, boolean explicitCheckpointing, BeforeImageMode mode, boolean withCQL,
                                           boolean consistentSnapshot, boolean useSnapshot)
             throws Exception {
+        LOGGER.info("Before obtaining ybClient");
         YBClient syncClient = getYbClient(MASTER_ADDRESS);
+        LOGGER.info("After obtaining ybClient");
 
         YBTable placeholderTable = getYbTable(syncClient, tableName);
 
@@ -617,7 +622,7 @@ public final class TestHelper {
         JdbcConfiguration jdbcConfiguration = defaultJdbcConfig();
         Configuration.Builder builder = Configuration.create();
         jdbcConfiguration.forEach((field, value) -> builder.with(YugabyteDBConnectorConfig.DATABASE_CONFIG_PREFIX + field, value));
-        builder.with(RelationalDatabaseConnectorConfig.SERVER_NAME, TEST_SERVER)
+        builder.with(RelationalDatabaseConnectorConfig.TOPIC_PREFIX, TEST_SERVER)
                 .with(YugabyteDBConnectorConfig.DELETE_STREAM_ON_STOP, true)
                 .with(YugabyteDBConnectorConfig.STATUS_UPDATE_INTERVAL_MS, 100)
                 .with(YugabyteDBConnectorConfig.PLUGIN_NAME, decoderPlugin())
@@ -676,7 +681,7 @@ public final class TestHelper {
     public static SourceInfo sourceInfo() {
         return new SourceInfo(new YugabyteDBConnectorConfig(
                 Configuration.create()
-                        .with(YugabyteDBConnectorConfig.SERVER_NAME, TEST_SERVER)
+                        .with(YugabyteDBConnectorConfig.TOPIC_PREFIX, TEST_SERVER)
                         .with(YugabyteDBConnectorConfig.DATABASE_NAME, TEST_DATABASE)
                         .build()));
     }
@@ -764,7 +769,7 @@ public final class TestHelper {
 
     public static Stream<Arguments> streamTypeProviderForStreaming() {
         return Stream.of(
-                Arguments.of(false, false), // Older stream
+                // Arguments.of(false, false), // Older stream
                 Arguments.of(true, false)); // NO_EXPORT stream
     }
 

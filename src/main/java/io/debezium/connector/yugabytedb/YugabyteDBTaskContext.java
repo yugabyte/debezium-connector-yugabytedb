@@ -13,11 +13,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.debezium.annotation.ThreadSafe;
+import io.debezium.config.CommonConnectorConfig;
 import io.debezium.connector.common.CdcSourceTaskContext;
 import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.relational.TableId;
 import io.debezium.schema.TopicSelector;
+import io.debezium.spi.topic.TopicNamingStrategy;
 
 /**
  * The context of a {@link YugabyteDBConnectorTask}. This deals with most of the brunt of reading
@@ -31,7 +33,7 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
     protected final static Logger LOGGER = LoggerFactory.getLogger(YugabyteDBTaskContext.class);
 
     private final YugabyteDBConnectorConfig config;
-    private final TopicSelector<TableId> topicSelector;
+    private final TopicNamingStrategy<TableId> topicNamingStrategy;
     private final YugabyteDBSchema schema;
 
     private final boolean sendBeforeImage;
@@ -39,19 +41,19 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
     private final boolean enableExplicitCheckpointing;
 
     protected YugabyteDBTaskContext(YugabyteDBConnectorConfig config, YugabyteDBSchema schema,
-                                    TopicSelector<TableId> topicSelector, String taskId,
+                                    TopicNamingStrategy<TableId> topicNamingStrategy, String taskId,
                                     boolean sendBeforeImage, boolean enableExplicitCheckpointing) {
-        super(config.getContextName(), config.getLogicalName(), taskId, Collections::emptySet);
+        super(config, taskId, Collections.emptyMap(), null);
         this.config = config;
-        this.topicSelector = topicSelector;
+        this.topicNamingStrategy = topicNamingStrategy;
         assert schema != null;
         this.schema = schema;
         this.sendBeforeImage = sendBeforeImage;
         this.enableExplicitCheckpointing = enableExplicitCheckpointing;
     }
 
-    protected TopicSelector<TableId> topicSelector() {
-        return topicSelector;
+    protected TopicNamingStrategy<TableId> topicNamingStrategy() {
+        return topicNamingStrategy;
     }
 
     protected YugabyteDBSchema schema() {
@@ -94,7 +96,8 @@ public class YugabyteDBTaskContext extends CdcSourceTaskContext {
                 .build();
     }
 
-    YugabyteDBConnectorConfig getConfig() {
+    @Override
+    public CommonConnectorConfig getConfig() {
         return config;
     }
 }

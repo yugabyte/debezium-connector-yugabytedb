@@ -66,10 +66,7 @@ public class YugabyteDBPartitionTest extends YugabyteDBContainerTestBase {
       TestHelper.execute(String.format(insertFormat, i));
     }
 
-    CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount))
-                .exceptionally(throwable -> {
-                    throw new RuntimeException(throwable);
-                }).get();
+    verifyRecordCount(recordsCount);
   }
 
   private void verifyRecordCount(long recordsCount) {

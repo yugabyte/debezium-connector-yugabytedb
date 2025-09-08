@@ -74,7 +74,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
       // Consume the records and verify that the records should have the relevant information.
       List<SourceRecord> records = new ArrayList<>();
-      CompletableFuture.runAsync(() -> getRecords(records, 2, 20000)).get();
+      getRecords(records, 2, 20000);
 
       // The first record is an insert record with before image as null.
       SourceRecord insertRecord = records.get(0);
@@ -107,7 +107,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
       // Consume the records and verify that the records should have the relevant information.
       List<SourceRecord> records = new ArrayList<>();
-      CompletableFuture.runAsync(() -> getRecords(records, 3, 20000)).get();
+      getRecords(records, 3, 20000);
 
       // The first record is an insert record with before image as null.
       SourceRecord insertRecord = records.get(0);
@@ -145,7 +145,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
       // Consume the records and verify that the records should have the relevant information.
       List<SourceRecord> records = new ArrayList<>();
-      CompletableFuture.runAsync(() -> getRecords(records, 4, 20000)).get();
+      getRecords(records, 4, 20000);
 
       // The first record is an insert record with before image as null.
       SourceRecord insertRecord = records.get(0);
@@ -184,7 +184,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
       // Consume the records and verify that the records should have the relevant information.
       List<SourceRecord> records = new ArrayList<>();
-      CompletableFuture.runAsync(() -> getRecords(records, 4, 20000)).get();
+      getRecords(records, 4, 20000);
 
       // The first record is an insert record with before image as null.
       SourceRecord insertRecord = records.get(0);
@@ -224,7 +224,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
       // Consume the records and verify that the records should have the relevant information.
       List<SourceRecord> records = new ArrayList<>();
-      CompletableFuture.runAsync(() -> getRecords(records, 4, 20000)).get();
+      getRecords(records, 4, 20000);
 
       // The first record is an insert record with before image as null.
       SourceRecord insertRecord = records.get(0);
@@ -262,7 +262,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
       // Consume the records and verify that the records should have the relevant information.
       List<SourceRecord> records = new ArrayList<>();
-      CompletableFuture.runAsync(() -> getRecords(records, 4, 20000)).get();
+      getRecords(records, 4, 20000);
 
       // The first record is an insert record with before image as null.
       SourceRecord insertRecord = records.get(0);
@@ -307,7 +307,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
     // Consume the records and verify that the records should have the relevant information.
     List<SourceRecord> records = new ArrayList<>();
-    CompletableFuture.runAsync(() -> getRecords(records, totalRecordsToConsume, 20000)).get();
+    getRecords(records, totalRecordsToConsume, 20000);
 
     // The first and second records will be insert records with before image as null.
     SourceRecord record0 = records.get(0);
@@ -360,7 +360,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
     // Consume the records and verify that the records should have the relevant information.
     List<SourceRecord> records = new ArrayList<>();
-    CompletableFuture.runAsync(() -> getRecords(records, 2, 20000)).get();
+    getRecords(records, 2, 20000);
 
     // The first record is an insert record with before image as null.
     SourceRecord insertRecord = records.get(0);
@@ -396,7 +396,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
     // Consume the records and verify that the records should have the relevant information.
     List<SourceRecord> records = new ArrayList<>();
-    CompletableFuture.runAsync(() -> getRecords(records, 5, 20000)).get();
+    getRecords(records, 5, 20000);
 
     // The first record is an insert record with before image as null.
     SourceRecord record0 = records.get(0);
@@ -448,7 +448,7 @@ public class YugabyteDBBeforeImageTest extends YugabyteDBContainerTestBase {
 
     // Consume the records and verify that the records should have the relevant information.
     List<SourceRecord> records = new ArrayList<>();
-    CompletableFuture.runAsync(() -> getRecords(records, 3, 20000)).get();
+    getRecords(records, 3, 20000);
 
     // The first record is an insert record with before image as null.
     SourceRecord record0 = records.get(0);

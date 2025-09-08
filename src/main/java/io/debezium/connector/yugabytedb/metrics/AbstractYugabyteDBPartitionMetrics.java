@@ -10,13 +10,12 @@ import java.util.Map;
 import org.apache.kafka.connect.data.Struct;
 
 import io.debezium.connector.common.CdcSourceTaskContext;
-import io.debezium.connector.yugabytedb.YugabyteDBTaskContext;
 import io.debezium.data.Envelope.Operation;
 import io.debezium.pipeline.ConnectorEvent;
 import io.debezium.pipeline.meters.CommonEventMeter;
 import io.debezium.pipeline.source.spi.EventMetadataProvider;
 import io.debezium.pipeline.spi.OffsetContext;
-import io.debezium.schema.DataCollectionId;
+import io.debezium.spi.schema.DataCollectionId;
 
 /**
  * Base implementation of partition-scoped multi-partition YugabyteDB connector metrics.

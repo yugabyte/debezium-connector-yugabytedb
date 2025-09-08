@@ -181,7 +181,7 @@ public class YugabyteDBCQLTest extends YugabyteDBContainerTestBase {
 
         // Consume the records and verify that the records should have the relevant information.
         List<SourceRecord> records = new ArrayList<>();
-        CompletableFuture.runAsync(() -> getRecords(records, 2, 20000)).get();
+        getRecords(records, 2, 20000);
 
         // The first record is an insert record with before image as null.
         SourceRecord insertRecord = records.get(0);

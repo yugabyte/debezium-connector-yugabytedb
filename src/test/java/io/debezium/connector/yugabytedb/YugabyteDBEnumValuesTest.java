@@ -18,13 +18,14 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 /**
  * Unit tests to verify the streaming of ENUM values.
  * 
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBEnumValuesTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBEnumValuesTest extends YugabytedTestBase {
     
     @BeforeAll
     public static void beforeClass() throws SQLException {

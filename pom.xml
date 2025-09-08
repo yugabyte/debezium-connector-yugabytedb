@@ -5,7 +5,7 @@
     <groupId>io.debezium</groupId>
     <artifactId>debezium-connector-yugabytedb</artifactId>
     <name>YugabyteDB Source Connector</name>
-    <version>dz.1.9.5.yb.grpc.2024.2-SNAPSHOT</version>
+    <version>dz.3.1.3.yb.grpc.2024.2-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <scm>
@@ -18,7 +18,7 @@
 
     <properties>
         <!-- Debezium parent -->
-        <version.debezium>1.9.5.Final</version.debezium>
+        <version.debezium>3.1.3.Final</version.debezium>
 
         <!-- Plugins -->
         <version.surefire.plugin>3.0.0-M7</version.surefire.plugin>
@@ -31,15 +31,15 @@
         <version.docker.maven.plugin>0.40.2</version.docker.maven.plugin>
         <version.protoc.maven.plugin>3.11.4</version.protoc.maven.plugin>
         <version.fabric8.plugin>0.40.2</version.fabric8.plugin>
-        <version.jackson>2.15.0-rc1</version.jackson>
+        <version.jackson>2.16.2</version.jackson>
 
         <!-- Compile -->
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.target>11</maven.compiler.target>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <!-- Enforce JDK 11 for building (handled via JBoss parent POM)-->
-        <jdk.min.version>11</jdk.min.version>
+        <!-- Enforce JDK 17 for building (handled via JBoss parent POM)-->
+        <jdk.min.version>17</jdk.min.version>
 
         <!-- Dependency Versions -->
         <version.postgresql.driver>42.7.2</version.postgresql.driver>
@@ -47,7 +47,7 @@
         <version.kafka>3.7.0</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
-        <version.ybclient>0.8.98-20250120.153122-1</version.ybclient>
+        <version.ybclient>0.8.105-SNAPSHOT</version.ybclient>
         <version.gson>2.8.9</version.gson>
 
         <!--
@@ -279,6 +279,12 @@
         <dependency>
             <groupId>org.easytesting</groupId>
             <artifactId>fest-assert</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>3.24.2</version>
             <scope>test</scope>
         </dependency>
         <dependency>
