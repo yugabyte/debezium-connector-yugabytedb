@@ -309,6 +309,10 @@ public class TestBaseClass extends AbstractConnectorTest {
     });
   }
 
+  protected boolean areThereRecordsToConsume() {
+    return !linesConsumed.isEmpty();
+  }
+
   protected int consumeAvailableRecords(Consumer<SourceRecord> recordConsumer) {
     List<SourceRecord> records = new ArrayList<>();
     linesConsumed.drainTo(records);

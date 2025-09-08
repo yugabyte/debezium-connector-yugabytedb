@@ -11,11 +11,11 @@ uuidval uuid) WITH (COLOCATION = false);
 
 CREATE TABLE numeric_type (id INT PRIMARY KEY, col_val NUMERIC(17, 8), col_val_2 numeric(102, 23));
 
-DROP DATABASE IF EXISTS secondary_database;
-CREATE DATABASE secondary_database;
+-- DROP DATABASE IF EXISTS secondary_database;
+-- CREATE DATABASE secondary_database;
 
 CREATE TYPE enum_type AS ENUM ('ZERO', 'ONE', 'TWO');
 CREATE TABLE test_enum (id INT PRIMARY KEY, enum_col enum_type);
 
-DROP DATABASE IF EXISTS colocated_database;
-CREATE DATABASE colocated_database WITH COLOCATED = true;
+-- DROP DATABASE IF EXISTS colocated_database;
+-- CREATE DATABASE colocated_database WITH COLOCATED = true;
