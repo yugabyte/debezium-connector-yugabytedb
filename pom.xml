@@ -47,7 +47,7 @@
         <version.kafka>3.7.0</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
-        <version.ybclient>0.8.98-20250120.153122-1</version.ybclient>
+        <version.ybclient>0.8.108-20250922.223142-1</version.ybclient>
         <version.gson>2.8.9</version.gson>
 
         <!--
@@ -234,6 +234,26 @@
         </dependency>
 
         <!-- Testing -->
+        <!-- Debezium Scripting for Filter Transform -->
+        <dependency>
+            <groupId>io.debezium</groupId>
+            <artifactId>debezium-scripting</artifactId>
+            <version>${version.debezium}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Groovy for JSR 223 scripting engine -->
+        <dependency>
+            <groupId>org.codehaus.groovy</groupId>
+            <artifactId>groovy</artifactId>
+            <version>3.0.9</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.codehaus.groovy</groupId>
+            <artifactId>groovy-jsr223</artifactId>
+            <version>3.0.9</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>io.debezium</groupId>
             <artifactId>debezium-embedded</artifactId>

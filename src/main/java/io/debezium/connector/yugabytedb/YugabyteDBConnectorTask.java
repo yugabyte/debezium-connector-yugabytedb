@@ -464,8 +464,9 @@ public class YugabyteDBConnectorTask
                                              taskContext.getTaskId(), entry.getValue(), entry.getKey());
                             }
                         }
-
-                        this.coordinator.commitOffset(ybOffset);
+                        if (ybOffset != null) {
+                            this.coordinator.commitOffset(ybOffset);
+                        }
                     }
                 }
             } finally {
