@@ -65,6 +65,18 @@ public class YBClientUtils {
     Set<String> tableIds = new HashSet<>();
       try {
           ListTablesResponse tablesResp = ybClient.getTablesList();
+          
+          // Retrieve the list of tables in the stream ID once, outside the loop
+          GetDBStreamInfoResponse dbStreamInfoResponse = ybClient.getDBStreamInfo(
+                                                               connectorConfig.streamId());
+          
+          // Log all tables in the stream for debugging
+          LOGGER.info("Tables in stream ID {}: {}", connectorConfig.streamId(), 
+                      dbStreamInfoResponse.getTableInfoList().size());
+          for (MasterReplicationOuterClass.GetCDCDBStreamInfoResponsePB.TableInfo streamTableInfo : 
+               dbStreamInfoResponse.getTableInfoList()) {
+              LOGGER.info("  Stream contains table UUID: {}", streamTableInfo.getTableId().toStringUtf8());
+          }
 
           for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo : 
               tablesResp.getTableInfoList()) {
@@ -101,23 +113,22 @@ public class YBClientUtils {
                                   + tableInfo.getName();
                   tableId = YugabyteDBSchema.parseWithKeyspace(fqlTableName, tableInfo.getNamespace().getName());
               }
-              // Retrieve the list of tables in the stream ID,
-              GetDBStreamInfoResponse dbStreamInfoResponse = ybClient.getDBStreamInfo(
-                                                               connectorConfig.streamId());
 
               if (connectorConfig.getTableFilters().dataCollectionFilter().isIncluded(tableId)
                       && connectorConfig.databaseFilter().isIncluded(tableId)) {
+                  String tableUuid = tableInfo.getId().toStringUtf8();
+                  LOGGER.info("Checking if table {} (UUID: {}) is in stream", tableId, tableUuid);
+                  
                   // Throw an exception if the table in the include list is not a part of stream ID
-                  if (!isTableIncludedInStreamId(dbStreamInfoResponse, 
-                                                 tableInfo.getId().toStringUtf8())) {
-                      String warningMessageFormat = "The table %s is not a part of the "
+                  if (!isTableIncludedInStreamId(dbStreamInfoResponse, tableUuid)) {
+                      String warningMessageFormat = "The table %s (UUID: %s) is not a part of the "
                                                             + "stream ID %s. Ignoring the table.";
                       if (connectorConfig.ignoreExceptions()) {
-                          LOGGER.warn(warningMessageFormat, tableId, connectorConfig.streamId());
+                          LOGGER.warn(warningMessageFormat, tableId, tableUuid, connectorConfig.streamId());
                           continue;
                       }
                       throw new DebeziumException(String.format(warningMessageFormat, tableId, 
-                                                                connectorConfig.streamId()));
+                                                                tableUuid, connectorConfig.streamId()));
                   }
 
                   LOGGER.info(String.format("Adding table %s for streaming (%s)", 
