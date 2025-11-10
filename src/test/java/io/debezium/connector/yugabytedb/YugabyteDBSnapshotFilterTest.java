@@ -104,7 +104,7 @@ public class YugabyteDBSnapshotFilterTest extends YugabyteDBContainerTestBase {
 
         // Create CDC stream and configure connector with filter
         String dbStreamId = TestHelper.getNewDbStreamId(
-            DEFAULT_COLOCATED_DB_NAME, "test_1", false, true
+            DEFAULT_COLOCATED_DB_NAME, "test_1", true, true
         );
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder(
             DEFAULT_COLOCATED_DB_NAME, "public.test_1", dbStreamId
