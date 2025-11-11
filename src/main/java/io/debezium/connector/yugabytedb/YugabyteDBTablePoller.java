@@ -112,8 +112,13 @@ public class YugabyteDBTablePoller extends Thread {
             Set<TableInfo> intersection = new HashSet<>(cachedSet);
             intersection.retainAll(responseSet);
 
-            Set<TableInfo> difference = new HashSet<>(responseSet);
-            difference.removeAll(cachedSet);
+            // Calculate NEW tables (in response but not in cache)
+            Set<TableInfo> addedTables = new HashSet<>(responseSet);
+            addedTables.removeAll(cachedSet);
+
+            // Calculate REMOVED tables (in cache but not in response)
+            Set<TableInfo> removedTables = new HashSet<>(cachedSet);
+            removedTables.removeAll(responseSet);
             
             if (LOGGER.isDebugEnabled()) {
               LOGGER.debug("Common tables between the cached table info set and the set received "
@@ -123,17 +128,34 @@ public class YugabyteDBTablePoller extends Thread {
               });
 
               LOGGER.debug("New tables as received in the GetDBStreamInfoResponse: ");
-              difference.forEach(tableInfo -> {
+              addedTables.forEach(tableInfo -> {
+                LOGGER.debug(tableInfo.getTableId().toStringUtf8());
+              });
+
+              LOGGER.debug("Removed tables as detected from the GetDBStreamInfoResponse: ");
+              removedTables.forEach(tableInfo -> {
                 LOGGER.debug(tableInfo.getTableId().toStringUtf8());
               });
             }
 
-            for (TableInfo tableInfo : difference) {
+            // Check if any NEW tables need to be streamed
+            for (TableInfo tableInfo : addedTables) {
               if (isTableIncludedForStreaming(tableInfo.getTableId().toStringUtf8())) {
                 String message = "Found {} new table(s), signalling context reconfiguration";
-                LOGGER.info(message, difference.size());
+                LOGGER.info(message, addedTables.size());
                 shouldRestart = true;
+                break;
               }
+            }
+
+            // Check if any REMOVED tables were being streamed
+            // Note: We cannot call isTableIncludedForStreaming() for removed tables as they might be dropped
+            // and openTableByUUID() would timeout or fail. Instead, if ANY table is removed from the stream,
+            // we trigger reconfiguration to be safe.
+            if (!removedTables.isEmpty()) {
+              String message = "Detected {} table(s) removed from stream, signalling context reconfiguration";
+              LOGGER.warn(message, removedTables.size());
+              shouldRestart = true;
             }
           
             // Update the cached table list.
@@ -180,22 +202,37 @@ public class YugabyteDBTablePoller extends Thread {
             Set<String> intersection = new HashSet<>(cachedSet);
             intersection.retainAll(responseSet);
 
-            Set<String> difference = new HashSet<>(responseSet);
-            difference.removeAll(cachedSet);
+            // Calculate NEW tables (in response but not in cache)
+            Set<String> addedTables = new HashSet<>(responseSet);
+            addedTables.removeAll(cachedSet);
+
+            // Calculate REMOVED tables (in cache but not in response)
+            Set<String> removedTables = new HashSet<>(cachedSet);
+            removedTables.removeAll(responseSet);
 
             if (LOGGER.isDebugEnabled()) {
               LOGGER.debug("Common tables between the cached table names set and the set received "
                           + "from pg_publication_tables: ");
               intersection.forEach(table -> LOGGER.debug(table));
 
-              LOGGER.debug("New tables as received from pg_publication_tables : ");
-              difference.forEach(table -> LOGGER.debug(table));
+              LOGGER.debug("New tables as received from pg_publication_tables: ");
+              addedTables.forEach(table -> LOGGER.debug(table));
+
+              LOGGER.debug("Removed tables as detected from pg_publication_tables: ");
+              removedTables.forEach(table -> LOGGER.debug(table));
             }
 
-            
-            String message = "Found {} new table(s), signalling context reconfiguration";
-            LOGGER.info(message, difference.size());
-            shouldRestart = true;
+            if (!addedTables.isEmpty()) {
+              String message = "Found {} new table(s), signalling context reconfiguration";
+              LOGGER.info(message, addedTables.size());
+              shouldRestart = true;
+            }
+
+            if (!removedTables.isEmpty()) {
+              String message = "Detected {} table(s) removed from publication, signalling context reconfiguration";
+              LOGGER.warn(message, removedTables.size());
+              shouldRestart = true;
+            }
               
             // Update the cached table list.
             cachedTableNameSet = tablesInPublication;
