@@ -141,7 +141,7 @@ public class YugabyteDBTablePoller extends Thread {
             // Check if any NEW tables need to be streamed
             for (TableInfo tableInfo : addedTables) {
               if (isTableIncludedForStreaming(tableInfo.getTableId().toStringUtf8())) {
-                String message = "Found {} new table(s), signalling context reconfiguration";
+                String message = "Found {} new table(s), signalling context reconfigurationm.";
                 LOGGER.info(message, addedTables.size());
                 shouldRestart = true;
                 break;
