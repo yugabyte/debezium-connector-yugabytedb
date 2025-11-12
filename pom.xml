@@ -5,7 +5,7 @@
     <groupId>io.debezium</groupId>
     <artifactId>debezium-connector-yugabytedb</artifactId>
     <name>YugabyteDB Source Connector</name>
-    <version>dz.1.9.5.yb.grpc.2024.2.3</version>
+    <version>dz.1.9.5.yb.grpc.2024.2-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <scm>
@@ -43,7 +43,7 @@
 
         <!-- Dependency Versions -->
         <version.postgresql.driver>42.7.2</version.postgresql.driver>
-        <version.com.google.protobuf>3.25.5</version.com.google.protobuf>
+        <version.com.google.protobuf>4.30.2</version.com.google.protobuf>
         <version.kafka>3.7.0</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
