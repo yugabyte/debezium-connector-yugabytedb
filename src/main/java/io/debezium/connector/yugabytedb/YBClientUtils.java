@@ -87,7 +87,8 @@ public class YBClientUtils {
                               tableInfo.getName()));
                       continue;
                   }
-                  if(!dbName.equalsIgnoreCase(tableInfo.getNamespace().getName())) {
+                  if(dbName != null && !dbName.equalsIgnoreCase(tableInfo.getNamespace().getName()))
+                  {
                     continue;
                   }
                   fqlTableName = tableInfo.getNamespace().getName() + "."
