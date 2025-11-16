@@ -91,9 +91,11 @@ public class YBClientUtils {
                   fqlTableName = tableInfo.getNamespace().getName() + "."
                                   + tableInfo.getPgschemaName() + "."
                                   + tableInfo.getName();
-                  tableId = YugabyteDBSchema.parseWithSchema(fqlTableName,
-                              tableInfo.getPgschemaName());
-
+                  // We need to pass                    
+                  tableId = new TableId(
+                    tableInfo.getNamespace().getName(),
+                    tableInfo.getPgschemaName(),
+                    tableInfo.getName());
               }
               else {
                   // Since there is no concept of schema in CQL we will be using namespaceName.tableName 

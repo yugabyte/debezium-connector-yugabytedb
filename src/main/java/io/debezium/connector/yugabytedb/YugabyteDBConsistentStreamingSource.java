@@ -298,7 +298,11 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
         if (!message.isTransactionalMessage()) {
             // This is a hack to skip tables in case of colocated tables
-            TableId tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+            TableId tempTid = new TableId(
+                null,
+                message.getPgSchemaName(),
+                message.getTable());
+
             if (!filters.tableFilter().isIncluded(tempTid)) {
                 return;
             }
@@ -388,7 +392,10 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
                 TableId tableId = null;
                 if (message.getOperation() != ReplicationMessage.Operation.NOOP) {
-                    tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                    tableId = new TableId(
+                        null,
+                        message.getPgSchemaName(),
+                        message.getTable());
                     Objects.requireNonNull(tableId);
                 }
                 // Getting the table with the help of the schema.
@@ -407,7 +414,10 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 // DML event
                 TableId tableId = null;
                 if (message.getOperation() != ReplicationMessage.Operation.NOOP) {
-                    tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                    tableId = new TableId(
+                        null,
+                        message.getPgSchemaName(),
+                        message.getTable());
                     Objects.requireNonNull(tableId);
                 }
                 // If you need to print the received record, change debug level to info

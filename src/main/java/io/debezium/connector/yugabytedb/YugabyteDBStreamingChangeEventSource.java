@@ -597,7 +597,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     TableId tempTid;
                                     if (connectorConfig.isYSQLDbType()) {
                                         // This is a hack to skip tables in case of colocated tables
-                                        tempTid = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                        tempTid = new TableId(
+                                            null,
+                                            message.getPgSchemaName(),
+                                            message.getTable());
                                     } else {
                                         tempTid = YugabyteDBSchema.parseWithKeyspace(message.getTable(),
                                                 connectorConfig.databaseName());
@@ -695,7 +698,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         TableId tableId = null;
                                         if (message.getOperation() != Operation.NOOP) {
                                             if (connectorConfig.isYSQLDbType()) {
-                                                tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                                tableId = new TableId(
+                                                    null,
+                                                    message.getPgSchemaName(),
+                                                    message.getTable());
                                             } else {
                                                 tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(),connectorConfig.databaseName());
                                             }
@@ -723,7 +729,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         TableId tableId = null;
                                         if (message.getOperation() != Operation.NOOP) {
                                             if (connectorConfig.isYSQLDbType()) {
-                                                tableId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaNameInRecord);
+                                                tableId = new TableId(
+                                                    null,
+                                                    message.getPgSchemaName(),
+                                                    message.getTable());
                                             } else {
                                                 tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
                                             }
