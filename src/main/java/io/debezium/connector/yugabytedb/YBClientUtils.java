@@ -90,8 +90,7 @@ public class YBClientUtils {
 
                   fqlTableName = tableInfo.getNamespace().getName() + "."
                                   + tableInfo.getPgschemaName() + "."
-                                  + tableInfo.getName();
-                  // We need to pass                    
+                                  + tableInfo.getName();                
                   tableId = new TableId(
                     tableInfo.getNamespace().getName(),
                     tableInfo.getPgschemaName(),

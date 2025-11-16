@@ -599,7 +599,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         // This is a hack to skip tables in case of colocated tables
                                         tempTid = new TableId(
                                             null,
-                                            message.getPgSchemaName(),
+                                            pgSchemaNameInRecord,
                                             message.getTable());
                                     } else {
                                         tempTid = YugabyteDBSchema.parseWithKeyspace(message.getTable(),
@@ -700,7 +700,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             if (connectorConfig.isYSQLDbType()) {
                                                 tableId = new TableId(
                                                     null,
-                                                    message.getPgSchemaName(),
+                                                    pgSchemaNameInRecord,
                                                     message.getTable());
                                             } else {
                                                 tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(),connectorConfig.databaseName());
@@ -731,7 +731,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             if (connectorConfig.isYSQLDbType()) {
                                                 tableId = new TableId(
                                                     null,
-                                                    message.getPgSchemaName(),
+                                                    pgSchemaNameInRecord,
                                                     message.getTable());
                                             } else {
                                                 tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());

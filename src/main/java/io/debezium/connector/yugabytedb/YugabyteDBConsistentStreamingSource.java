@@ -300,7 +300,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
             // This is a hack to skip tables in case of colocated tables
             TableId tempTid = new TableId(
                 null,
-                message.getPgSchemaName(),
+                pgSchemaNameInRecord,
                 message.getTable());
 
             if (!filters.tableFilter().isIncluded(tempTid)) {
@@ -394,7 +394,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 if (message.getOperation() != ReplicationMessage.Operation.NOOP) {
                     tableId = new TableId(
                         null,
-                        message.getPgSchemaName(),
+                        pgSchemaNameInRecord,
                         message.getTable());
                     Objects.requireNonNull(tableId);
                 }
@@ -416,7 +416,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 if (message.getOperation() != ReplicationMessage.Operation.NOOP) {
                     tableId = new TableId(
                         null,
-                        message.getPgSchemaName(),
+                        pgSchemaNameInRecord,
                         message.getTable());
                     Objects.requireNonNull(tableId);
                 }
