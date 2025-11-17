@@ -61,6 +61,7 @@ public class YBClientUtils {
   public static Set<String> fetchTableList(YBClient ybClient,
                                            YugabyteDBConnectorConfig connectorConfig) {
     LOGGER.info("Fetching all the tables from the source");
+    String dbName = connectorConfig.getJdbcConfig().getDatabase();
     
     Set<String> tableIds = new HashSet<>();
       try {
@@ -88,9 +89,13 @@ public class YBClientUtils {
                       continue;
                   }
 
+                  if (dbName != null
+                          && !dbName.equalsIgnoreCase(tableInfo.getNamespace().getName())) {
+                      continue;
+                  }
                   fqlTableName = tableInfo.getNamespace().getName() + "."
                                   + tableInfo.getPgschemaName() + "."
-                                  + tableInfo.getName();                
+                                  + tableInfo.getName();
                   tableId = new TableId(
                     tableInfo.getNamespace().getName(),
                     tableInfo.getPgschemaName(),
