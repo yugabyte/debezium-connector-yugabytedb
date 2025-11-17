@@ -126,9 +126,15 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
   public void shouldWorkWithMixOfColocatedAndNonColocatedTables(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
     createTables();
 
+    TestHelper.executeInDatabase("CREATE TABLE \"random_test _4\" (id INT PRIMARY KEY, name TEXT)", DEFAULT_COLOCATED_DB_NAME);
+    TestHelper.executeInDatabase("CREATE TABLE \"random_test _5\" (id INT PRIMARY KEY, name TEXT) WITH (COLOCATED = false);", DEFAULT_COLOCATED_DB_NAME);
+
+    final String INSERT_TEST_4 = "INSERT INTO \"random_test _4\" VALUES (%d, 'sample insert');";
+    final String INSERT_TEST_5 = "INSERT INTO \"random_test _5\" VALUES (%d, 'sample insert');";
+
     String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME,
-        "public.test_1,public.test_2,public.test_no_colocated", dbStreamId);
+        "public.test_1,public.test_2,public.test_no_colocated,public.random_test _4,public.random_test _5", dbStreamId);
 
     startEngine(configBuilder);
 
@@ -138,11 +144,13 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     TestHelper.executeBulk(INSERT_TEST_2, 10, DEFAULT_COLOCATED_DB_NAME);
     TestHelper.executeBulk(INSERT_TEST_3, 10, DEFAULT_COLOCATED_DB_NAME);
     TestHelper.executeBulk(INSERT_TEST_NO_COLOCATED, 10, DEFAULT_COLOCATED_DB_NAME);
+    TestHelper.executeBulk(INSERT_TEST_4, 10, DEFAULT_COLOCATED_DB_NAME);
+    TestHelper.executeBulk(INSERT_TEST_5, 10, DEFAULT_COLOCATED_DB_NAME);
 
     // Dummy wait for 10 seconds
     TestHelper.waitFor(Duration.ofSeconds(10));
 
-    SourceRecords records = consumeByTopic(30);
+    SourceRecords records = consumeByTopic(50);
 
     assertNotNull(records);
 
@@ -154,6 +162,11 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
 
     assertEquals(
       10, records.recordsForTopic(TestHelper.TEST_SERVER + ".public.test_no_colocated").size());
+    
+    // Note: Debezium converts spaces in table names to underscores in topic names
+    // So "random_test _4" becomes "random_test__4" (double underscore)
+    assertEquals(10, records.recordsForTopic(TestHelper.TEST_SERVER + ".public.random_test__4").size());
+    assertEquals(10, records.recordsForTopic(TestHelper.TEST_SERVER + ".public.random_test__5").size());
   }
 
   @ParameterizedTest
@@ -312,6 +325,8 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_2;", DEFAULT_COLOCATED_DB_NAME);
     TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_3;", DEFAULT_COLOCATED_DB_NAME);
     TestHelper.executeInDatabase("DROP TABLE IF EXISTS test_no_colocated;", DEFAULT_COLOCATED_DB_NAME);
+    TestHelper.executeInDatabase("DROP TABLE IF EXISTS \"random_test _4\";", DEFAULT_COLOCATED_DB_NAME);
+    TestHelper.executeInDatabase("DROP TABLE IF EXISTS \"random_test _5\";", DEFAULT_COLOCATED_DB_NAME);
   }
 
   private void verifyRecordCount(List<SourceRecord> records, long recordsCount) {
