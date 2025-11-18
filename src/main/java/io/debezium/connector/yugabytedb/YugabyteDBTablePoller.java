@@ -247,7 +247,7 @@ public class YugabyteDBTablePoller extends Thread {
                             + tableInfo.getPgschemaName() + "."
                             + tableInfo.getName();
       TableId tableId = new TableId(
-        null,
+        null,  // catalog is null since Debezium's tableFilter uses schema.table
         tableInfo.getPgschemaName(),
         tableInfo.getName());
 

@@ -576,10 +576,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       if (message.getOperation() != Operation.NOOP) {
                         if (connectorConfig.isYSQLDbType()) {
 
-                          // Use null for catalog since the tableIdMapper only uses schema.table
-                          // and Debezium's filter logic fails when catalog is set
                           tId = new TableId(
-                            null,
+                            null, // catalog is null since Debezium's tableFilter uses schema.table
                             pgSchemaName,
                             message.getTable());
                         } else {
@@ -606,10 +604,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       TableId tId = null;
                       if (message.getOperation() != Operation.NOOP) {
                         if (connectorConfig.isYSQLDbType()) {
-                          // Use null for catalog since the tableIdMapper only uses schema.table
-                          // and Debezium's filter logic fails when catalog is set
                           tId = new TableId(
-                            null,
+                            null, // catalog is null since Debezium's tableFilter uses schema.table
                             pgSchemaName,
                             message.getTable());
                         } else {

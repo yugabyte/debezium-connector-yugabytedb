@@ -295,11 +295,11 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                  CdcService.CDCSDKProtoRecordPB record, CdcService.RowMessage m,
                                  YbProtoReplicationMessage message) throws SQLException {
         String pgSchemaNameInRecord = m.getPgschemaName();
-
+ 
         if (!message.isTransactionalMessage()) {
             // This is a hack to skip tables in case of colocated tables
             TableId tempTid = new TableId(
-                null,
+                null, // catalog is null since Debezium's tableFilter uses schema.table
                 pgSchemaNameInRecord,
                 message.getTable());
 
@@ -393,7 +393,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 TableId tableId = null;
                 if (message.getOperation() != ReplicationMessage.Operation.NOOP) {
                     tableId = new TableId(
-                        null,
+                        null, // catalog is null since Debezium's tableFilter uses schema.table
                         pgSchemaNameInRecord,
                         message.getTable());
                     Objects.requireNonNull(tableId);

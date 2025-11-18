@@ -88,7 +88,9 @@ public class YBClientUtils {
                               tableInfo.getName()));
                       continue;
                   }
-
+                  
+                  // Filter out the tables that are not in the database specified in the connector 
+                  // configuration
                   if (dbName != null
                           && !dbName.equalsIgnoreCase(tableInfo.getNamespace().getName())) {
                       continue;
@@ -96,6 +98,9 @@ public class YBClientUtils {
                   fqlTableName = tableInfo.getNamespace().getName() + "."
                                   + tableInfo.getPgschemaName() + "."
                                   + tableInfo.getName();
+                                  
+                  // Include database name in the TableId for validation against table and database
+                  // filters
                   tableId = new TableId(
                     tableInfo.getNamespace().getName(),
                     tableInfo.getPgschemaName(),
