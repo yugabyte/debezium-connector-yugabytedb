@@ -415,7 +415,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 TableId tableId = null;
                 if (message.getOperation() != ReplicationMessage.Operation.NOOP) {
                     tableId = new TableId(
-                        null,
+                        null, // catalog is null since Debezium's tableFilter uses schema.table
                         pgSchemaNameInRecord,
                         message.getTable());
                     Objects.requireNonNull(tableId);
