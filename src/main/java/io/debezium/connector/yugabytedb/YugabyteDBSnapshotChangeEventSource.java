@@ -575,7 +575,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       TableId tId = null;
                       if (message.getOperation() != Operation.NOOP) {
                         if (connectorConfig.isYSQLDbType()) {
-                          tId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaName);
+
+                          tId = new TableId(
+                            null, // catalog is null since Debezium's tableFilter uses schema.table
+                            pgSchemaName,
+                            message.getTable());
                         } else {
                           tId = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
                         }
@@ -600,7 +604,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       TableId tId = null;
                       if (message.getOperation() != Operation.NOOP) {
                         if (connectorConfig.isYSQLDbType()) {
-                          tId = YugabyteDBSchema.parseWithSchema(message.getTable(), pgSchemaName);
+                          tId = new TableId(
+                            null, // catalog is null since Debezium's tableFilter uses schema.table
+                            pgSchemaName,
+                            message.getTable());
                         } else {
                           tId = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
                         }

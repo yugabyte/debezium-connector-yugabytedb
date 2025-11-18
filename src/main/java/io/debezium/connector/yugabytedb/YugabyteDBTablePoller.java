@@ -246,7 +246,10 @@ public class YugabyteDBTablePoller extends Thread {
       String fqlTableName = tableInfo.getNamespace().getName() + "."
                             + tableInfo.getPgschemaName() + "."
                             + tableInfo.getName();
-      TableId tableId = YugabyteDBSchema.parseWithSchema(fqlTableName, tableInfo.getPgschemaName());
+      TableId tableId = new TableId(
+        null,  // catalog is null since Debezium's tableFilter uses schema.table
+        tableInfo.getPgschemaName(),
+        tableInfo.getName());
 
       if (connectorConfig.getTableFilters().dataCollectionFilter().isIncluded(tableId)
             && connectorConfig.databaseFilter().isIncluded(tableId)) {

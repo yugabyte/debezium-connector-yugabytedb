@@ -61,6 +61,7 @@ public class YBClientUtils {
   public static Set<String> fetchTableList(YBClient ybClient,
                                            YugabyteDBConnectorConfig connectorConfig) {
     LOGGER.info("Fetching all the tables from the source");
+    String dbName = connectorConfig.getJdbcConfig().getDatabase();
     
     Set<String> tableIds = new HashSet<>();
       try {
@@ -87,13 +88,25 @@ public class YBClientUtils {
                               tableInfo.getName()));
                       continue;
                   }
-
+                  
+                  // Filter out the tables that are not in the database specified in the connector 
+                  // configuration
+                  // TODO(#29369): Filter out tables that don't belong to the database specified
+                  // in the connector config. This filtering should be done in YBClient itself.
+                  if (dbName != null
+                          && !dbName.equalsIgnoreCase(tableInfo.getNamespace().getName())) {
+                      continue;
+                  }
                   fqlTableName = tableInfo.getNamespace().getName() + "."
                                   + tableInfo.getPgschemaName() + "."
                                   + tableInfo.getName();
-                  tableId = YugabyteDBSchema.parseWithSchema(fqlTableName,
-                              tableInfo.getPgschemaName());
 
+                  // Include database name in the TableId for validation against table and database
+                  // filters
+                  tableId = new TableId(
+                    tableInfo.getNamespace().getName(),
+                    tableInfo.getPgschemaName(),
+                    tableInfo.getName());
               }
               else {
                   // Since there is no concept of schema in CQL we will be using namespaceName.tableName 
