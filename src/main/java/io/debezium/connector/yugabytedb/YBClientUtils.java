@@ -91,6 +91,8 @@ public class YBClientUtils {
                   
                   // Filter out the tables that are not in the database specified in the connector 
                   // configuration
+                  // TODO(#29369): Filter out tables that don't belong to the database specified
+                  // in the connector config. This filtering should be done in YBClient itself.
                   if (dbName != null
                           && !dbName.equalsIgnoreCase(tableInfo.getNamespace().getName())) {
                       continue;
@@ -98,7 +100,7 @@ public class YBClientUtils {
                   fqlTableName = tableInfo.getNamespace().getName() + "."
                                   + tableInfo.getPgschemaName() + "."
                                   + tableInfo.getName();
-                                  
+
                   // Include database name in the TableId for validation against table and database
                   // filters
                   tableId = new TableId(
