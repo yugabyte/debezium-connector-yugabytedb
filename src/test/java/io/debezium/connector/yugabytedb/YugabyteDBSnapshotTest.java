@@ -72,13 +72,21 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
     public void testSnapshotRecordConsumption(boolean consistentSnapshot, boolean useSnapshot, boolean colocation) throws Exception {
         setCommitCallbackDelay(10000);
         createTablesInColocatedDB(colocation);
+        TestHelper.executeInDatabase("CREATE TABLE \"random_test _4\" (id INT PRIMARY KEY, name TEXT)", DEFAULT_COLOCATED_DB_NAME);
+        TestHelper.executeInDatabase("CREATE TABLE \"random_test _5\" (id INT PRIMARY KEY, name TEXT) WITH (COLOCATED = false);", DEFAULT_COLOCATED_DB_NAME);
         final int recordsCount = 5000;
+        final String INSERT_TEST_4 = "INSERT INTO \"random_test _4\" VALUES (%d, 'sample insert');";
+        final String INSERT_TEST_5 = "INSERT INTO \"random_test _5\" VALUES (%d, 'sample insert');";
+
         insertBulkRecordsInColocatedDB(recordsCount, "public.test_1");
+        TestHelper.executeBulk(INSERT_TEST_4, 10, DEFAULT_COLOCATED_DB_NAME);
+        TestHelper.executeBulk(INSERT_TEST_5, 10, DEFAULT_COLOCATED_DB_NAME);
+
 
         LOGGER.info("Creating DB stream ID");
         String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1", consistentSnapshot, useSnapshot);
         Configuration.Builder configBuilder =
-          TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1", dbStreamId);
+          TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.random_test _4,public.random_test _5", dbStreamId);
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
         startEngine(configBuilder);
 
@@ -86,10 +94,13 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
 
         // Only verifying the record count since the snapshot records are not ordered, so it may be
         // a little complex to verify them in the sorted order at the moment
-        CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount))
+        CompletableFuture.runAsync(() -> verifyRecordCount(recordsCount + 20))
           .exceptionally(throwable -> {
               throw new RuntimeException(throwable);
           }).get();
+        
+        TestHelper.executeInDatabase("DROP TABLE IF EXISTS \"random_test _4\";", DEFAULT_COLOCATED_DB_NAME);
+        TestHelper.executeInDatabase("DROP TABLE IF EXISTS \"random_test _5\";", DEFAULT_COLOCATED_DB_NAME);
     }
 
     @ParameterizedTest
