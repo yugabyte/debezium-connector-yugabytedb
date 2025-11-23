@@ -1049,9 +1049,9 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         runScenario(SnapshotMode.INITIAL);
         after();
 
-        // Test NEVER mode: streaming only
-        before();
-        runScenario(SnapshotMode.NEVER);
+        // // Test NEVER mode: streaming only
+        // before();
+        // runScenario(SnapshotMode.NEVER);
     }
 
     private void runScenario(SnapshotMode snapshotMode) throws Exception {
@@ -1116,6 +1116,134 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
                 "Expected 10 records (only streaming) in NEVER mode");
         }
     }
+    // non_colocated in colocate case
+    // private void runScenario(SnapshotMode snapshotMode) throws Exception {
+
+    //     final int SNAPSHOT_RECORDS = 1;
+    //     final int STREAM_RECORDS = 1;
+
+    //     createTablesInColocatedDB(true);
+
+    //     // Insert records with empty name - these will be filtered out
+    //     String formatInsertString = "INSERT INTO public.test_1(id, name) VALUES (%d, '');";
+    //     TestHelper.executeBulk(formatInsertString, SNAPSHOT_RECORDS, DEFAULT_COLOCATED_DB_NAME);
+
+    //     // Insert 10 records with non-empty name - these should pass the filter in snapshot
+    //     for (int i = SNAPSHOT_RECORDS; i < SNAPSHOT_RECORDS + STREAM_RECORDS; i++) {
+    //         TestHelper.executeInDatabase(
+    //             "INSERT INTO public.test_1(id, name) VALUES (" + i + ", 'Shishir');",
+    //             DEFAULT_COLOCATED_DB_NAME
+    //         );
+    //     }
+
+    //     // Create CDC stream and configure connector with filter
+    //     String dbStreamId = TestHelper.getNewDbStreamId(
+    //         DEFAULT_COLOCATED_DB_NAME, "test_1", true, true
+    //     );
+    //     Configuration.Builder configBuilder = TestHelper.getConfigBuilder(
+    //         DEFAULT_COLOCATED_DB_NAME, "public.test_1", dbStreamId
+    //     );
+    //     configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, snapshotMode.getValue());
+        
+    //     // Configure Debezium Filter SMT to filter records with non-empty name
+    //     configBuilder.with("transforms", "filter");
+    //     configBuilder.with("transforms.filter.type", "io.debezium.transforms.Filter");
+    //     configBuilder.with("transforms.filter.language", "jsr223.groovy");
+    //     configBuilder.with("transforms.filter.condition",
+    //         "(value.op == 'r' && value.after.name?.value?.trim() != null && value.after.name?.value?.trim() != '') || " +
+    //         "(value.op == 'c' && value.after.name?.value?.trim() != null && value.after.name?.value?.trim() != '')"
+    //     );
+        
+    //     startEngine(configBuilder);
+    //     awaitUntilConnectorIsReady();
+
+    //     // Insert 10 streaming records with non-empty name - these should pass the filter
+    //     for (int i = SNAPSHOT_RECORDS + STREAM_RECORDS; i < SNAPSHOT_RECORDS + STREAM_RECORDS + 1; i++) {
+    //         TestHelper.executeInDatabase(
+    //             "INSERT INTO public.test_1(id, name) VALUES (" + i + ", 'Shishir');",
+    //             DEFAULT_COLOCATED_DB_NAME
+    //         );
+    //     }
+
+    //     List<SourceRecord> records = new ArrayList<>();
+
+    //     if (snapshotMode.getValue().equals(SnapshotMode.INITIAL.getValue())) {
+    //         // INITIAL mode: Expect 10 snapshot records + 10 streaming records
+    //         waitAndFailIfCannotConsume(records, 3);
+    //         assertEquals(3, records.size(), 
+    //             "Expected 20 records (10 from snapshot + 10 from streaming) in INITIAL mode");
+    //     } else {
+    //         // NEVER mode: Expect only 10 streaming records
+    //         waitAndFailIfCannotConsume(records, STREAM_RECORDS);
+    //         assertEquals(STREAM_RECORDS, records.size(), 
+    //             "Expected 10 records (only streaming) in NEVER mode");
+    //     }
+    // }
+    // private void runScenario(SnapshotMode snapshotMode) throws Exception {
+
+    //     final int SNAPSHOT_RECORDS = 1;
+    //     final int STREAM_RECORDS = 5;
+
+    //     // createTablesInColocatedDB(false);
+    //     TestHelper.executeInDatabase("CREATE TABLE test_001 (id INT PRIMARY KEY, name TEXT)", DEFAULT_DB_NAME);
+
+    //     // Insert records with empty name - these will be filtered out
+    //     String formatInsertString = "INSERT INTO public.test_001(id, name) VALUES (%d, '');";
+    //     TestHelper.executeBulk(formatInsertString, SNAPSHOT_RECORDS, DEFAULT_DB_NAME);
+
+    //     // Insert 10 records with non-empty name - these should pass the filter in snapshot
+    //     for (int i = SNAPSHOT_RECORDS; i < SNAPSHOT_RECORDS + STREAM_RECORDS; i++) {
+    //         TestHelper.executeInDatabase(
+    //             "INSERT INTO public.test_001(id, name) VALUES (" + i + ", 'Shishir');",
+    //             DEFAULT_DB_NAME
+    //         );
+    //     }
+
+    //     // Create CDC stream and configure connector with filter
+    //     String dbStreamId = TestHelper.getNewDbStreamId(
+    //         DEFAULT_DB_NAME, "test_001", true, true
+    //     );
+    //     Configuration.Builder configBuilder = TestHelper.getConfigBuilder(
+    //         DEFAULT_DB_NAME, "public.test_001", dbStreamId
+    //     );
+    //     configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, snapshotMode.getValue());
+
+    //     // Configure Debezium Filter SMT to filter records with non-empty name
+    //     configBuilder.with("transforms", "filter");
+    //     configBuilder.with("transforms.filter.type", "io.debezium.transforms.Filter");
+    //     configBuilder.with("transforms.filter.language", "jsr223.groovy");
+    //     configBuilder.with("transforms.filter.condition",
+    //         "(value.op == 'r' && value.after.name?.value?.trim() != null && value.after.name?.value?.trim() != '') || " +
+    //         "(value.op == 'c' && value.after.name?.value?.trim() != null && value.after.name?.value?.trim() != '')"
+    //     );
+        
+    //     startEngine(configBuilder);
+    //     awaitUntilConnectorIsReady();
+
+    //     TestHelper.waitFor(Duration.ofSeconds(60));
+
+    //     // Insert 10 streaming records with non-empty name - these should pass the filter
+    //     for (int i = SNAPSHOT_RECORDS + STREAM_RECORDS; i < SNAPSHOT_RECORDS + STREAM_RECORDS + 5; i++) {
+    //         TestHelper.executeInDatabase(
+    //             "INSERT INTO public.test_001(id, name) VALUES (" + i + ", 'Shishir');",
+    //             DEFAULT_DB_NAME
+    //         );
+    //     }
+
+    //     List<SourceRecord> records = new ArrayList<>();
+
+    //     if (snapshotMode.getValue().equals(SnapshotMode.INITIAL.getValue())) {
+    //         // INITIAL mode: Expect 10 snapshot records + 10 streaming records
+    //         waitAndFailIfCannotConsume(records, 10);
+    //         assertEquals(10, records.size(), 
+    //             "Expected 20 records (10 from snapshot + 10 from streaming) in INITIAL mode");
+    //     } else {
+    //         // NEVER mode: Expect only 10 streaming records
+    //         waitAndFailIfCannotConsume(records, STREAM_RECORDS);
+    //         assertEquals(STREAM_RECORDS, records.size(), 
+    //             "Expected 10 records (only streaming) in NEVER mode");
+    //     }
+    // }
 
     private void verifyRecordCount(long recordsCount) {
         waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);

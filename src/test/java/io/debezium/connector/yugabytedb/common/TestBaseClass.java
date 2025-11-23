@@ -463,7 +463,8 @@ public class TestBaseClass extends AbstractConnectorTest {
   }
 
   protected void waitAndFailIfCannotConsume(List<SourceRecord> records, long recordsCount) {
-    waitAndFailIfCannotConsume(records, recordsCount, 300 * 1000 /* 5 minutes */);
+    // TODO: SHISHIR CHANGE BACK TO 300 * 1000 AFTER TESTING
+    waitAndFailIfCannotConsume(records, recordsCount, 120 * 1000 /* 5 minutes */);
   }
 
   protected void insertBulkRecordsInColocatedDB(int numRecords, String fullTableName) {

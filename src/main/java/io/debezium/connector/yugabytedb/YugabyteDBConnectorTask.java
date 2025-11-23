@@ -465,9 +465,9 @@ public class YugabyteDBConnectorTask
                             }
                         }
                         
-                        if (ybOffset != null) {
+                        // if (ybOffset != null) {
                             this.coordinator.commitOffset(ybOffset);
-                        }
+                        // }
                     }
                 }
             } finally {
