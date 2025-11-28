@@ -5,14 +5,14 @@
     <groupId>io.debezium</groupId>
     <artifactId>debezium-connector-yugabytedb</artifactId>
     <name>YugabyteDB Source Connector</name>
-    <version>dz.1.9.5.yb.grpc.2025.1.SNAPSHOT.4</version>
+    <version>dz.1.9.5.yb.grpc.2025.1-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <scm>
         <connection>scm:git:git@github.com:yugabyte/debezium-connector-yugabytedb.git</connection>
         <developerConnection>scm:git:git@github.com:yugabyte/debezium-connector-yugabytedb.git</developerConnection>
         <url>https://github.com/yugabyte/debezium-connector-yugabytedb</url>
-        <tag>vdz.1.9.5.yb.grpc.2025.1.SNAPSHOT.4</tag>
+        <tag>vdz.1.9.5.yb.grpc.2025.1.SNAPSHOT.3</tag>
     </scm>
 
 
