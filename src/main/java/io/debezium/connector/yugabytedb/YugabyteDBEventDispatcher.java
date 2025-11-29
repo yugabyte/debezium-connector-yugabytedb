@@ -151,16 +151,20 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
         } catch (Exception e) {
           switch (connectorConfig.getEventProcessingFailureHandlingMode()) {
             case FAIL:
+               LOGGER.error("Error while processing event at offset {}", changeRecordEmitter.getOffset().getOffset(), e);
                throw new ConnectException("Error while processing event at offset " + changeRecordEmitter.getOffset().getOffset(), e);
             case WARN:
                 LOGGER.warn(
-                   "Error while processing event at offset {}",
-                   changeRecordEmitter.getOffset().getOffset());
+                   "Error while processing event at offset {}, exception: {}",
+                   changeRecordEmitter.getOffset().getOffset(), e.getMessage(), e);
                    break;
             case SKIP:
                 LOGGER.debug(
-                  "Error while processing event at offset {}",
-                  changeRecordEmitter.getOffset().getOffset());
+                  "Error while processing event at offset {}, exception: {}",
+                  changeRecordEmitter.getOffset().getOffset(), e.getMessage(), e);
+                break;
+            case IGNORE:
+                // Silently ignore the error
                 break;
             }
           return false;

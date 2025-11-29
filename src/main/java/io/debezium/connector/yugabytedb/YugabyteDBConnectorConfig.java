@@ -1722,7 +1722,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 }
             }
         } catch (Exception e) {
-            LOGGER.error("Exception while making RPC calls to server");
+            LOGGER.error("Exception while making RPC calls to server", e);
             throw new DebeziumException(e);
         }
 
