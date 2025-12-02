@@ -1029,6 +1029,81 @@ public class YugabyteDBSnapshotTest extends YugabyteDBContainerTestBase {
         assertEquals(5, streamingRecords);
     }
 
+    @ParameterizedTest
+    @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForSnapshot")
+    public void shouldStreamNewlyCreatedTableDynamically(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
+        TestHelper.dropAllSchemas();
+        
+        TestHelper.execute("CREATE TABLE shishirt1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
+        TestHelper.execute("CREATE TABLE shishirt2 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
+        
+        final int initialRecordsPerTable = 10;
+        for (int i = 0; i < initialRecordsPerTable; i++) {
+            TestHelper.execute(String.format("INSERT INTO shishirt1 VALUES (%d, 'name_%d');", i, i));
+            TestHelper.execute(String.format("INSERT INTO shishirt2 VALUES (%d, 'name_%d');", i, i));
+        }
+        
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "shishirt1", consistentSnapshot, useSnapshot);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.*", dbStreamId);
+        configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
+        configBuilder.with(YugabyteDBConnectorConfig.NEW_TABLE_POLL_INTERVAL_MS, 2000);
+        configBuilder.with(YugabyteDBConnectorConfig.AUTO_ADD_NEW_TABLES, true);
+        
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+        
+        List<SourceRecord> initialRecords = new ArrayList<>();
+        waitAndFailIfCannotConsume(initialRecords, initialRecordsPerTable * 2);
+        
+        long t1Count = initialRecords.stream()
+            .filter(r -> r.topic().equals(TestHelper.TEST_SERVER + ".public.shishirt1"))
+            .count();
+        long t2Count = initialRecords.stream()
+            .filter(r -> r.topic().equals(TestHelper.TEST_SERVER + ".public.shishirt2"))
+            .count();
+        
+        assertEquals(initialRecordsPerTable, t1Count, "Expected " + initialRecordsPerTable + " records from shishirt1");
+        assertEquals(initialRecordsPerTable, t2Count, "Expected " + initialRecordsPerTable + " records from shishirt2");
+        
+        LOGGER.info("Creating new table shishirt3 after connector has started");
+        TestHelper.execute("CREATE TABLE shishirt3 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
+        
+        final int newTableRecords = 5;
+        for (int i = 0; i < newTableRecords; i++) {
+            TestHelper.execute(String.format("INSERT INTO shishirt3 VALUES (%d, 'abc');", i));
+        }
+        
+        LOGGER.info("Waiting for table poller to detect new table shishirt3...");
+        TestHelper.waitFor(Duration.ofSeconds(5));
+        
+        // Note: In the EmbeddedEngine test environment, requestTaskReconfiguration() doesn't
+        // actually restart the connector like it would in Kafka Connect. We need to manually
+        // restart the connector to simulate the reconfiguration behavior.
+        LOGGER.info("Manually restarting connector to simulate Kafka Connect task reconfiguration...");
+        stopConnector();
+        
+        // Wait for the engine to fully stop
+        Awaitility.await()
+            .pollDelay(Duration.ofSeconds(1))
+            .atMost(Duration.ofSeconds(60))
+            .until(() -> engine == null);
+        
+        // Restart the connector - it should now pick up shishirt3
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+        
+        // The new table (shishirt3) should now be included in the connector's streaming
+        List<SourceRecord> newTableRecordsList = new ArrayList<>();
+        waitAndFailIfCannotConsume(newTableRecordsList, newTableRecords);
+        
+        long t3Count = newTableRecordsList.stream()
+            .filter(r -> r.topic().equals(TestHelper.TEST_SERVER + ".public.shishirt3"))
+            .count();
+        
+        LOGGER.info("Received {} records from newly created table shishirt3", t3Count);
+        assertEquals(newTableRecords, t3Count, "Expected " + newTableRecords + " records from newly created table shishirt3");
+    }
+
     private void verifyRecordCount(long recordsCount) {
         waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
     }

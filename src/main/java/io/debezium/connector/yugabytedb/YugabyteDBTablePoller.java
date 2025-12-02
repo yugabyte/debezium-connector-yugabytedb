@@ -243,11 +243,10 @@ public class YugabyteDBTablePoller extends Thread {
 
     for (org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo :
             resp.getTableInfoList()) {
-      String fqlTableName = tableInfo.getNamespace().getName() + "."
-                            + tableInfo.getPgschemaName() + "."
-                            + tableInfo.getName();
+      // Include database name in the TableId for validation against table and database
+      // filters (databaseFilter requires catalog to match database.name config)
       TableId tableId = new TableId(
-        null,  // catalog is null since Debezium's tableFilter uses schema.table
+        tableInfo.getNamespace().getName(),
         tableInfo.getPgschemaName(),
         tableInfo.getName());
 
