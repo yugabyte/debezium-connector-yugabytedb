@@ -243,9 +243,7 @@ public class YugabyteDBTablePoller extends Thread {
 
     for (org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo :
             resp.getTableInfoList()) {
-      // Include database name in the TableId for validation against table and database
-      // filters (databaseFilter requires catalog to match database.name config)
-      TableId tableId = new TableId(
+      TableId tableId = YugabyteDBSchema.createTableIdWithCatalog(
         tableInfo.getNamespace().getName(),
         tableInfo.getPgschemaName(),
         tableInfo.getName());

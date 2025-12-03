@@ -101,9 +101,7 @@ public class YBClientUtils {
                                   + tableInfo.getPgschemaName() + "."
                                   + tableInfo.getName();
 
-                  // Include database name in the TableId for validation against table and database
-                  // filters
-                  tableId = new TableId(
+                  tableId = YugabyteDBSchema.createTableIdWithCatalog(
                     tableInfo.getNamespace().getName(),
                     tableInfo.getPgschemaName(),
                     tableInfo.getName());

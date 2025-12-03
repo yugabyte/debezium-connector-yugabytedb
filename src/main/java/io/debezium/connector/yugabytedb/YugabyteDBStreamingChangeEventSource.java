@@ -597,12 +597,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     TableId tempTid;
                                     if (connectorConfig.isYSQLDbType()) {
                                         // This is a hack to skip tables in case of colocated tables
-                                        // catalog is set to null since Debezium's tableFilter uses
-                                        // schema.table
-                                        tempTid = new TableId(
-                                            null,
-                                            pgSchemaNameInRecord,
-                                            message.getTable());
+                                        tempTid = YugabyteDBSchema.createTableIdWithoutCatalog(
+                                            pgSchemaNameInRecord, message.getTable());
                                     } else {
                                         tempTid = YugabyteDBSchema.parseWithKeyspace(message.getTable(),
                                                 connectorConfig.databaseName());
@@ -700,12 +696,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         TableId tableId = null;
                                         if (message.getOperation() != Operation.NOOP) {
                                             if (connectorConfig.isYSQLDbType()) {
-                                                // catalog is set to null since Debezium's
-                                                // tableFilter uses schema.table
-                                                tableId = new TableId(
-                                                    null,
-                                                    pgSchemaNameInRecord,
-                                                    message.getTable());
+                                                tableId = YugabyteDBSchema.createTableIdWithoutCatalog(
+                                                    pgSchemaNameInRecord, message.getTable());
                                             } else {
                                                 tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(),connectorConfig.databaseName());
                                             }
@@ -733,12 +725,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         TableId tableId = null;
                                         if (message.getOperation() != Operation.NOOP) {
                                             if (connectorConfig.isYSQLDbType()) {
-                                                // catalog is set to null since Debezium's
-                                                // tableFilter uses schema.table
-                                                tableId = new TableId(
-                                                    null,
-                                                    pgSchemaNameInRecord,
-                                                    message.getTable());
+                                                tableId = YugabyteDBSchema.createTableIdWithoutCatalog(
+                                                    pgSchemaNameInRecord, message.getTable());
                                             } else {
                                                 tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
                                             }
