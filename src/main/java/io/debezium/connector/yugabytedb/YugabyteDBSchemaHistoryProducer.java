@@ -5,6 +5,9 @@
  */
 package io.debezium.connector.yugabytedb;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.debezium.connector.yugabytedb.metrics.YugabyteDBSchemaHistoryMetricsMXBean;
 import io.debezium.relational.Column;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
@@ -16,9 +19,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 
+import javax.management.JMException;
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
+import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +33,7 @@ import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * A standalone producer for writing schema history to a Kafka topic.
@@ -51,9 +59,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @see YugabyteDBStreamingChangeEventSource
  */
 
-public class YugabyteDBSchemaHistoryProducer {
+public class YugabyteDBSchemaHistoryProducer implements YugabyteDBSchemaHistoryMetricsMXBean {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSchemaHistoryProducer.class);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     // Singleton instances - one producer per topic (shared across all tasks)
     private static final ConcurrentHashMap<String, YugabyteDBSchemaHistoryProducer> INSTANCES = new ConcurrentHashMap<>();
@@ -73,6 +82,15 @@ public class YugabyteDBSchemaHistoryProducer {
     private KafkaProducer<String, String> producer;
     private final AtomicBoolean initialized = new AtomicBoolean(false);
     private final AtomicBoolean disabled = new AtomicBoolean(false);
+
+    // Metrics
+    private final AtomicLong schemaHistoryEventsSent = new AtomicLong(0);
+    private final AtomicLong schemaHistoryEventsFailed = new AtomicLong(0);
+    private final AtomicLong schemaHistoryEventsQueued = new AtomicLong(0);
+    private final AtomicLong lastSuccessfulSendTimestamp = new AtomicLong(0);
+    private final AtomicLong lastFailedSendTimestamp = new AtomicLong(0);
+    private volatile String lastErrorMessage = null;
+    private ObjectName mbeanName;
 
     /**
      * Gets or creates a schema history producer for the given topic.
@@ -170,6 +188,19 @@ public class YugabyteDBSchemaHistoryProducer {
         this.sslTruststorePassword = sslTruststorePassword;
         this.sslTruststoreType = sslTruststoreType;
         LOGGER.info("Schema history producer configured for topic: {}", topicName);
+
+        try {
+            String metricName = "debezium.yugabytedb:type=schema-history-producer,topic=" +
+                                org.apache.kafka.common.utils.Sanitizer.jmxSanitize(topicName);
+            this.mbeanName = new ObjectName(metricName);
+            MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
+            if (mBeanServer != null && !mBeanServer.isRegistered(mbeanName)) {
+                mBeanServer.registerMBean(this, mbeanName);
+                LOGGER.info("Registered schema history metrics MBean: {}", mbeanName);
+            }
+        } catch (Exception e) {
+            LOGGER.warn("Failed to register schema history metrics MBean: {}", e.getMessage());
+        }
     }
 
     /**
@@ -265,72 +296,57 @@ public class YugabyteDBSchemaHistoryProducer {
             
             producer.send(record, (metadata, exception) -> {
                 if (exception != null) {
+                    schemaHistoryEventsFailed.incrementAndGet();
+                    lastFailedSendTimestamp.set(System.currentTimeMillis());
+                    lastErrorMessage = exception.getMessage();
                     LOGGER.warn("Failed to send schema history record for table {}: {}", tableId, exception.getMessage());
                 } else {
-                    LOGGER.debug("Schema history record sent for table {} to partition {} offset {}", 
+                    schemaHistoryEventsSent.incrementAndGet();
+                    lastSuccessfulSendTimestamp.set(System.currentTimeMillis());
+                    LOGGER.debug("Schema history record sent for table {} to partition {} offset {}",
                             tableId, metadata.partition(), metadata.offset());
                 }
             });
-            
+
+            schemaHistoryEventsQueued.incrementAndGet();
             LOGGER.info("Schema history {} event queued for table: {}", eventType, tableId);
         } catch (Throwable t) {
             LOGGER.warn("Error recording schema change for table {}: {}", tableId, t.getMessage());
         }
     }
 
-    /**
-     * Builds a simple JSON representation of the schema change.
-     */
     private String buildSchemaJson(String tableId, String tabletId, CdcService.CDCSDKSchemaPB schema, String eventType) {
-        String checksum = calculateSchemaChecksum(schema);
+        try {
+            YugabyteDBSchemaHistoryEvent event = new YugabyteDBSchemaHistoryEvent();
+            event.setConnector(connectorName);
+            event.setTable(tableId);
+            event.setTablet(tabletId);
+            event.setEventType(eventType);
+            event.setSchemaChecksum(calculateSchemaChecksum(schema));
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("{");
-        sb.append("\"connector\":\"").append(escapeJson(connectorName)).append("\",");
-        sb.append("\"table\":\"").append(escapeJson(tableId)).append("\",");
-        sb.append("\"tablet\":\"").append(escapeJson(tabletId)).append("\",");
-        sb.append("\"eventType\":\"").append(escapeJson(eventType)).append("\",");
-        sb.append("\"timestamp\":\"").append(Instant.now().toString()).append("\",");
-        sb.append("\"schemaChecksum\":\"").append(checksum).append("\",");
-        sb.append("\"schema\":{");
+            YugabyteDBSchemaHistoryEvent.SchemaInfo schemaInfo = new YugabyteDBSchemaHistoryEvent.SchemaInfo();
+            List<YugabyteDBSchemaHistoryEvent.ColumnInfo> columns = new ArrayList<>();
 
-        sb.append("\"columns\":[");
-        for (int i = 0; i < schema.getColumnInfoCount(); i++) {
-            if (i > 0) sb.append(",");
-            CdcService.CDCSDKColumnInfoPB col = schema.getColumnInfo(i);
-            sb.append("{");
-            sb.append("\"name\":\"").append(escapeJson(col.getName())).append("\",");
-            sb.append("\"type\":\"").append(col.getType().getMain().name()).append("\",");
-            sb.append("\"isKey\":").append(col.getIsKey()).append(",");
-            sb.append("\"isHashKey\":").append(col.getIsHashKey()).append(",");
-            sb.append("\"isNullable\":").append(col.getIsNullable()).append(",");
-            sb.append("\"oid\":").append(col.getOid());
-            sb.append("}");
+            for (int i = 0; i < schema.getColumnInfoCount(); i++) {
+                CdcService.CDCSDKColumnInfoPB col = schema.getColumnInfo(i);
+                YugabyteDBSchemaHistoryEvent.ColumnInfo colInfo = new YugabyteDBSchemaHistoryEvent.ColumnInfo();
+                colInfo.setName(col.getName());
+                colInfo.setType(col.getType().getMain().name());
+                colInfo.setIsKey(col.getIsKey());
+                colInfo.setIsHashKey(col.getIsHashKey());
+                colInfo.setIsNullable(col.getIsNullable());
+                colInfo.setOid(col.getOid());
+                columns.add(colInfo);
+            }
+
+            schemaInfo.setColumns(columns);
+            event.setSchema(schemaInfo);
+
+            return OBJECT_MAPPER.writeValueAsString(event);
+        } catch (JsonProcessingException e) {
+            LOGGER.warn("Failed to serialize schema history event: {}", e.getMessage());
+            return "{}";
         }
-        sb.append("]");
-
-        sb.append("}");
-        sb.append("}");
-
-        return sb.toString();
-    }
-
-    /**
-     * Simple JSON string escaping.
-     */
-    private String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
-    }
-
-    private String cleanTypeName(String typeName) {
-        if (typeName == null) return "";
-        String cleaned = typeName.replace("main: ", "").replace("\n", "").trim();
-        return cleaned;
     }
 
     /**
@@ -450,72 +466,64 @@ public class YugabyteDBSchemaHistoryProducer {
 
             producer.send(record, (metadata, exception) -> {
                 if (exception != null) {
+                    schemaHistoryEventsFailed.incrementAndGet();
+                    lastFailedSendTimestamp.set(System.currentTimeMillis());
+                    lastErrorMessage = exception.getMessage();
                     LOGGER.warn("Failed to send schema history record for table {}: {}", tableId, exception.getMessage());
                 } else {
+                    schemaHistoryEventsSent.incrementAndGet();
+                    lastSuccessfulSendTimestamp.set(System.currentTimeMillis());
                     LOGGER.debug("Schema history record sent for table {} to partition {} offset {}",
                             tableId, metadata.partition(), metadata.offset());
                 }
             });
 
+            schemaHistoryEventsQueued.incrementAndGet();
             LOGGER.info("Schema history {} event queued for table: {}", eventType, tableId);
         } catch (Throwable t) {
             LOGGER.warn("Error recording schema change from Debezium schema for table {}: {}", tableId, t.getMessage());
         }
     }
 
-    /**
-     * Builds JSON from Debezium's Table object (proper SQL types).
-     */
     private String buildSchemaJsonFromDebeziumTable(
             String tableId,
             String tabletId,
             Table table,
             String eventType) {
-        String checksum = calculateSchemaChecksum(table);
+        try {
+            YugabyteDBSchemaHistoryEvent event = new YugabyteDBSchemaHistoryEvent();
+            event.setConnector(connectorName);
+            event.setTable(tableId);
+            event.setTablet(tabletId);
+            event.setEventType(eventType);
+            event.setSchemaChecksum(calculateSchemaChecksum(table));
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("{");
-        sb.append("\"connector\":\"").append(escapeJson(connectorName)).append("\",");
-        sb.append("\"table\":\"").append(escapeJson(tableId)).append("\",");
-        sb.append("\"tablet\":\"").append(escapeJson(tabletId)).append("\",");
-        sb.append("\"eventType\":\"").append(escapeJson(eventType)).append("\",");
-        sb.append("\"timestamp\":\"").append(Instant.now().toString()).append("\",");
-        sb.append("\"schemaChecksum\":\"").append(checksum).append("\",");
-        sb.append("\"schema\":{");
+            YugabyteDBSchemaHistoryEvent.SchemaInfo schemaInfo = new YugabyteDBSchemaHistoryEvent.SchemaInfo();
+            List<YugabyteDBSchemaHistoryEvent.ColumnInfo> columns = new ArrayList<>();
 
-        sb.append("\"columns\":[");
-        List<Column> columns = table.columns();
-        for (int i = 0; i < columns.size(); i++) {
-            if (i > 0) sb.append(",");
-            Column col = columns.get(i);
-            sb.append("{");
-            sb.append("\"name\":\"").append(escapeJson(col.name())).append("\",");
-            sb.append("\"type\":\"").append(cleanTypeName(col.typeName())).append("\",");
-            sb.append("\"isNullable\":").append(col.isOptional());
-            if (col.length() > 0) {
-                sb.append(",\"length\":").append(col.length());
+            for (Column col : table.columns()) {
+                YugabyteDBSchemaHistoryEvent.ColumnInfo colInfo = new YugabyteDBSchemaHistoryEvent.ColumnInfo();
+                colInfo.setName(col.name());
+                colInfo.setType(col.typeName());
+                colInfo.setIsNullable(col.isOptional());
+                if (col.length() > 0) {
+                    colInfo.setLength(col.length());
+                }
+                if (col.scale().isPresent()) {
+                    colInfo.setScale(col.scale().get());
+                }
+                columns.add(colInfo);
             }
-            if (col.scale().isPresent()) {
-                sb.append(",\"scale\":").append(col.scale().get());
-            }
-            sb.append("}");
+
+            schemaInfo.setColumns(columns);
+            schemaInfo.setPrimaryKey(table.primaryKeyColumnNames());
+            event.setSchema(schemaInfo);
+
+            return OBJECT_MAPPER.writeValueAsString(event);
+        } catch (JsonProcessingException e) {
+            LOGGER.warn("Failed to serialize schema history event: {}", e.getMessage());
+            return "{}";
         }
-        sb.append("]");
-
-        List<String> pkColumns = table.primaryKeyColumnNames();
-        if (!pkColumns.isEmpty()) {
-            sb.append(",\"primaryKey\":[");
-            for (int i = 0; i < pkColumns.size(); i++) {
-                if (i > 0) sb.append(",");
-                sb.append("\"").append(escapeJson(pkColumns.get(i))).append("\"");
-            }
-            sb.append("]");
-        }
-
-        sb.append("}");
-        sb.append("}");
-
-        return sb.toString();
     }
 
     /**
@@ -548,11 +556,19 @@ public class YugabyteDBSchemaHistoryProducer {
         release();
     }
 
-    /**
-     * Internal method to actually close the Kafka producer.
-     * Only called when reference count reaches zero.
-     */
     private void closeInternal() {
+        if (mbeanName != null) {
+            try {
+                MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
+                if (mBeanServer != null && mBeanServer.isRegistered(mbeanName)) {
+                    mBeanServer.unregisterMBean(mbeanName);
+                    LOGGER.info("Unregistered schema history metrics MBean: {}", mbeanName);
+                }
+            } catch (Exception e) {
+                LOGGER.warn("Failed to unregister schema history metrics MBean: {}", e.getMessage());
+            }
+        }
+
         if (producer != null) {
             try {
                 producer.flush();
@@ -564,11 +580,64 @@ public class YugabyteDBSchemaHistoryProducer {
         }
     }
 
-    /**
-     * Checks if the producer is disabled due to init failure.
-     */
     public boolean isDisabled() {
         return disabled.get();
+    }
+
+    @Override
+    public String getTopicName() {
+        return topicName;
+    }
+
+    @Override
+    public boolean isInitialized() {
+        return initialized.get();
+    }
+
+    @Override
+    public long getSchemaHistoryEventsSent() {
+        return schemaHistoryEventsSent.get();
+    }
+
+    @Override
+    public long getSchemaHistoryEventsFailed() {
+        return schemaHistoryEventsFailed.get();
+    }
+
+    @Override
+    public long getSchemaHistoryEventsQueued() {
+        return schemaHistoryEventsQueued.get();
+    }
+
+    @Override
+    public long getLastSuccessfulSendTimestamp() {
+        return lastSuccessfulSendTimestamp.get();
+    }
+
+    @Override
+    public long getLastFailedSendTimestamp() {
+        return lastFailedSendTimestamp.get();
+    }
+
+    @Override
+    public String getLastErrorMessage() {
+        return lastErrorMessage;
+    }
+
+    @Override
+    public int getReferenceCount() {
+        AtomicInteger refCount = REFERENCE_COUNTS.get(topicName);
+        return refCount != null ? refCount.get() : 0;
+    }
+
+    @Override
+    public void reset() {
+        schemaHistoryEventsSent.set(0);
+        schemaHistoryEventsFailed.set(0);
+        schemaHistoryEventsQueued.set(0);
+        lastSuccessfulSendTimestamp.set(0);
+        lastFailedSendTimestamp.set(0);
+        lastErrorMessage = null;
     }
 }
 
