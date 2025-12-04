@@ -58,11 +58,6 @@ public interface YugabyteDBSchemaHistoryMetricsMXBean {
     String getLastErrorMessage();
 
     /**
-     * @return current reference count (number of tasks using this producer)
-     */
-    int getReferenceCount();
-
-    /**
      * Resets all counters to zero.
      */
     void reset();
