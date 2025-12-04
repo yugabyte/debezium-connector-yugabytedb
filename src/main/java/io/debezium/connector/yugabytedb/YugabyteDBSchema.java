@@ -582,6 +582,40 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
                                                        tableId.catalog(), tableId.table());
     }
 
+    /**
+     * Creates a TableId without catalog to be used when the operations use Filters.tableFilter() 
+     * which matches against table.include.list using TableId.toString(). With catalog=null,
+     * toString() returns "schema.table" format matching the user's configuration.
+     * 
+     * This can also be used with DataCollectionFilter because it uses a custom tableIdMapper 
+     * (schema.table) that ignores catalog, so including the database name doesn't affect its 
+     * matching.
+     *
+     * @param schemaName the PostgreSQL schema name (e.g., "public")
+     * @param tableName the table name
+     * @return TableId with catalog=null, suitable for schema lookups and filtering
+     */
+    public static TableId createTableIdWithoutCatalog(String schemaName, String tableName) {
+        return new TableId(null, schemaName, tableName);
+    }
+
+    /**
+     * Creates a TableId with catalog (database name) to be used when databaseFilter explicitly 
+     * checks that tableId.catalog() matches the configured database.name.
+     * 
+     * This can also be used with DataCollectionFilter because it uses a custom tableIdMapper 
+     * (schema.table) that ignores catalog, so including the database name doesn't affect its 
+     * matching.
+     *
+     * @param databaseName the database/namespace name (e.g., "yugabyte")
+     * @param schemaName the PostgreSQL schema name (e.g., "public")
+     * @param tableName the table name
+     * @return TableId with catalog=databaseName, suitable for connector-level validation
+     */
+    public static TableId createTableIdWithCatalog(String databaseName, String schemaName, String tableName) {
+        return new TableId(databaseName, schemaName, tableName);
+    }
+
     public YugabyteDBTypeRegistry getTypeRegistry() {
         return yugabyteDBTypeRegistry;
     }

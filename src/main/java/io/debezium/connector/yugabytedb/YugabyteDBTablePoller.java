@@ -243,11 +243,8 @@ public class YugabyteDBTablePoller extends Thread {
 
     for (org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo :
             resp.getTableInfoList()) {
-      String fqlTableName = tableInfo.getNamespace().getName() + "."
-                            + tableInfo.getPgschemaName() + "."
-                            + tableInfo.getName();
-      TableId tableId = new TableId(
-        null,  // catalog is null since Debezium's tableFilter uses schema.table
+      TableId tableId = YugabyteDBSchema.createTableIdWithCatalog(
+        tableInfo.getNamespace().getName(),
         tableInfo.getPgschemaName(),
         tableInfo.getName());
 

@@ -298,10 +298,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
  
         if (!message.isTransactionalMessage()) {
             // This is a hack to skip tables in case of colocated tables
-            TableId tempTid = new TableId(
-                null, // catalog is null since Debezium's tableFilter uses schema.table
-                pgSchemaNameInRecord,
-                message.getTable());
+            TableId tempTid = YugabyteDBSchema.createTableIdWithoutCatalog(
+                pgSchemaNameInRecord, message.getTable());
 
             if (!filters.tableFilter().isIncluded(tempTid)) {
                 return;
@@ -392,10 +390,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
                 TableId tableId = null;
                 if (message.getOperation() != ReplicationMessage.Operation.NOOP) {
-                    tableId = new TableId(
-                        null, // catalog is null since Debezium's tableFilter uses schema.table
-                        pgSchemaNameInRecord,
-                        message.getTable());
+                    tableId = YugabyteDBSchema.createTableIdWithoutCatalog(
+                        pgSchemaNameInRecord, message.getTable());
                     Objects.requireNonNull(tableId);
                 }
                 // Getting the table with the help of the schema.
@@ -414,10 +410,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 // DML event
                 TableId tableId = null;
                 if (message.getOperation() != ReplicationMessage.Operation.NOOP) {
-                    tableId = new TableId(
-                        null, // catalog is null since Debezium's tableFilter uses schema.table
-                        pgSchemaNameInRecord,
-                        message.getTable());
+                    tableId = YugabyteDBSchema.createTableIdWithoutCatalog(
+                        pgSchemaNameInRecord, message.getTable());
                     Objects.requireNonNull(tableId);
                 }
                 // If you need to print the received record, change debug level to info
