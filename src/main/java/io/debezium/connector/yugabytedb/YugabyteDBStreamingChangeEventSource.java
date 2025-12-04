@@ -137,28 +137,14 @@ public class YugabyteDBStreamingChangeEventSource implements
             TEST_explicitCheckpoints = new ConcurrentHashMap<>();
         }
 
-        try {
-            if (connectorConfig.isSchemaHistoryEnabled()) {
-                this.schemaHistoryProducer = YugabyteDBSchemaHistoryProducer.getInstance(
-                        connectorConfig.schemaHistoryKafkaTopic(),
-                        connectorConfig.schemaHistoryBootstrapServers(),
-                        connectorConfig.getLogicalName(),
-                        connectorConfig.schemaHistoryProducerSecurityProtocol(),
-                        connectorConfig.schemaHistoryProducerSslKeystoreLocation(),
-                        connectorConfig.schemaHistoryProducerSslKeystorePassword(),
-                        connectorConfig.schemaHistoryProducerSslKeystoreType(),
-                        connectorConfig.schemaHistoryProducerSslTruststoreLocation(),
-                        connectorConfig.schemaHistoryProducerSslTruststorePassword(),
-                        connectorConfig.schemaHistoryProducerSslTruststoreType()
-                );
-                this.schemaHistoryProducer.acquire();
-                LOGGER.info("Schema history producer enabled for topic: {}", connectorConfig.schemaHistoryKafkaTopic());
-            } else {
-                LOGGER.debug("Schema history producer not configured");
-            }
-        } catch (Throwable t) {
-            LOGGER.warn("Failed to initialize schema history producer, feature disabled: {}", t.getMessage());
-            this.schemaHistoryProducer = null;
+        if (connectorConfig.isSchemaHistoryEnabled()) {
+            this.schemaHistoryProducer = new YugabyteDBSchemaHistoryProducer(
+                    connectorConfig.schemaHistoryKafkaTopic(),
+                    connectorConfig.getLogicalName()
+            );
+            LOGGER.info("Schema history producer enabled for topic: {}", connectorConfig.schemaHistoryKafkaTopic());
+        } else {
+            LOGGER.debug("Schema history producer not configured");
         }
     }
 

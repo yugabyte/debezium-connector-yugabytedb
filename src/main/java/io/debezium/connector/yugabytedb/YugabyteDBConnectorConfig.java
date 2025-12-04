@@ -761,67 +761,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withWidth(Width.MEDIUM)
             .withImportance(Importance.LOW)
             .withDescription("The name of the Kafka topic where schema changes will be written. " +
-                    "If not configured, schema history will not be recorded.");
-
-    public static final Field SCHEMA_HISTORY_BOOTSTRAP_SERVERS = Field.create("schema.history.internal.kafka.bootstrap.servers")
-            .withDisplayName("Schema History Bootstrap Servers")
-            .withType(Type.STRING)
-            .withWidth(Width.MEDIUM)
-            .withImportance(Importance.LOW)
-            .withDescription("Kafka bootstrap servers for schema history");
-
-    public static final Field SCHEMA_HISTORY_PRODUCER_SECURITY_PROTOCOL = Field.create("schema.history.internal.producer.security.protocol")
-            .withDisplayName("Schema History Producer Security Protocol")
-            .withType(Type.STRING)
-            .withWidth(Width.MEDIUM)
-            .withImportance(Importance.LOW)
-            .withDescription("Security protocol for schema history producer (e.g., SSL, PLAINTEXT)");
-
-    public static final Field SCHEMA_HISTORY_PRODUCER_SSL_KEYSTORE_LOCATION = Field.create("schema.history.internal.producer.ssl.keystore.location")
-            .withDisplayName("Schema History Producer SSL Keystore Location")
-            .withType(Type.STRING)
-            .withWidth(Width.MEDIUM)
-            .withImportance(Importance.LOW)
-            .withDefault("/ssl/kafka-client/keystore.p12")
-            .withDescription("Path to SSL keystore for schema history producer");
-
-    public static final Field SCHEMA_HISTORY_PRODUCER_SSL_KEYSTORE_PASSWORD = Field.create("schema.history.internal.producer.ssl.keystore.password")
-            .withDisplayName("Schema History Producer SSL Keystore Password")
-            .withType(Type.STRING)
-            .withWidth(Width.MEDIUM)
-            .withImportance(Importance.LOW)
-            .withDescription("Password for SSL keystore for schema history producer");
-
-    public static final Field SCHEMA_HISTORY_PRODUCER_SSL_KEYSTORE_TYPE = Field.create("schema.history.internal.producer.ssl.keystore.type")
-            .withDisplayName("Schema History Producer SSL Keystore Type")
-            .withType(Type.STRING)
-            .withWidth(Width.MEDIUM)
-            .withImportance(Importance.LOW)
-            .withDefault("PKCS12")
-            .withDescription("Type of SSL keystore for schema history producer (e.g., PKCS12, JKS)");
-
-    public static final Field SCHEMA_HISTORY_PRODUCER_SSL_TRUSTSTORE_LOCATION = Field.create("schema.history.internal.producer.ssl.truststore.location")
-            .withDisplayName("Schema History Producer SSL Truststore Location")
-            .withType(Type.STRING)
-            .withWidth(Width.MEDIUM)
-            .withImportance(Importance.LOW)
-            .withDefault("/app/ssl/truststore.p12")
-            .withDescription("Path to SSL truststore for schema history producer");
-
-    public static final Field SCHEMA_HISTORY_PRODUCER_SSL_TRUSTSTORE_PASSWORD = Field.create("schema.history.internal.producer.ssl.truststore.password")
-            .withDisplayName("Schema History Producer SSL Truststore Password")
-            .withType(Type.STRING)
-            .withWidth(Width.MEDIUM)
-            .withImportance(Importance.LOW)
-            .withDescription("Password for SSL truststore for schema history producer");
-
-    public static final Field SCHEMA_HISTORY_PRODUCER_SSL_TRUSTSTORE_TYPE = Field.create("schema.history.internal.producer.ssl.truststore.type")
-            .withDisplayName("Schema History Producer SSL Truststore Type")
-            .withType(Type.STRING)
-            .withWidth(Width.MEDIUM)
-            .withImportance(Importance.LOW)
-            .withDefault("PKCS12")
-            .withDescription("Type of SSL truststore for schema history producer (e.g., PKCS12, JKS)");
+                    "If not configured, schema history will not be recorded. " +
+                    "Bootstrap servers and SSL configuration are read from environment variables " +
+                    "(BOOTSTRAP_SERVERS, SSL_KEYSTORE_LOCATION, SSL_TRUSTSTORE_LOCATION, SSL_KEYSTORE_PASSWORD, SSL_TRUSTSTORE_PASSWORD).");
 
     public static final Field PLUGIN_NAME = Field.create("plugin.name")
             .withDisplayName("Plugin")
@@ -1602,15 +1544,8 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     TRUNCATE_HANDLING_MODE,
                     INCREMENTAL_SNAPSHOT_CHUNK_SIZE,
                     TRANSACTION_ORDERING,
-                    SCHEMA_HISTORY_KAFKA_TOPIC,
-                    SCHEMA_HISTORY_BOOTSTRAP_SERVERS,
-                    SCHEMA_HISTORY_PRODUCER_SECURITY_PROTOCOL,
-                    SCHEMA_HISTORY_PRODUCER_SSL_KEYSTORE_LOCATION,
-                    SCHEMA_HISTORY_PRODUCER_SSL_KEYSTORE_PASSWORD,
-                    SCHEMA_HISTORY_PRODUCER_SSL_KEYSTORE_TYPE,
-                    SCHEMA_HISTORY_PRODUCER_SSL_TRUSTSTORE_LOCATION,
-                    SCHEMA_HISTORY_PRODUCER_SSL_TRUSTSTORE_PASSWORD,
-                    SCHEMA_HISTORY_PRODUCER_SSL_TRUSTSTORE_TYPE)
+                    SCHEMA_HISTORY_KAFKA_TOPIC
+            )
             .excluding(INCLUDE_SCHEMA_CHANGES)
             .create();
 
@@ -2060,86 +1995,14 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     }
 
     /**
-     * Gets the Kafka bootstrap servers for schema history.
-     *
-     * @return the bootstrap servers
-     */
-    public String schemaHistoryBootstrapServers() {
-        return getConfig().getString(SCHEMA_HISTORY_BOOTSTRAP_SERVERS);
-    }
-
-    /**
-     * Gets the security protocol for schema history producer.
-     *
-     * @return the security protocol (e.g., SSL, PLAINTEXT)
-     */
-    public String schemaHistoryProducerSecurityProtocol() {
-        return getConfig().getString(SCHEMA_HISTORY_PRODUCER_SECURITY_PROTOCOL);
-    }
-
-    /**
-     * Gets the SSL keystore location for schema history producer.
-     *
-     * @return the keystore location
-     */
-    public String schemaHistoryProducerSslKeystoreLocation() {
-        return getConfig().getString(SCHEMA_HISTORY_PRODUCER_SSL_KEYSTORE_LOCATION);
-    }
-
-    /**
-     * Gets the SSL keystore password for schema history producer.
-     *
-     * @return the keystore password
-     */
-    public String schemaHistoryProducerSslKeystorePassword() {
-        return getConfig().getString(SCHEMA_HISTORY_PRODUCER_SSL_KEYSTORE_PASSWORD);
-    }
-
-    /**
-     * Gets the SSL keystore type for schema history producer.
-     *
-     * @return the keystore type
-     */
-    public String schemaHistoryProducerSslKeystoreType() {
-        return getConfig().getString(SCHEMA_HISTORY_PRODUCER_SSL_KEYSTORE_TYPE);
-    }
-
-    /**
-     * Gets the SSL truststore location for schema history producer.
-     *
-     * @return the truststore location
-     */
-    public String schemaHistoryProducerSslTruststoreLocation() {
-        return getConfig().getString(SCHEMA_HISTORY_PRODUCER_SSL_TRUSTSTORE_LOCATION);
-    }
-
-    /**
-     * Gets the SSL truststore password for schema history producer.
-     *
-     * @return the truststore password
-     */
-    public String schemaHistoryProducerSslTruststorePassword() {
-        return getConfig().getString(SCHEMA_HISTORY_PRODUCER_SSL_TRUSTSTORE_PASSWORD);
-    }
-
-    /**
-     * Gets the SSL truststore type for schema history producer.
-     *
-     * @return the truststore type
-     */
-    public String schemaHistoryProducerSslTruststoreType() {
-        return getConfig().getString(SCHEMA_HISTORY_PRODUCER_SSL_TRUSTSTORE_TYPE);
-    }
-
-    /**
      * Checks if schema history output is enabled.
+     * Configuration is read from environment variables (BOOTSTRAP_SERVERS, SSL certs, etc).
      *
-     * @return true if both topic is configured and BOOTSTRAP_SERVERS env var is set
+     * @return true if topic is configured
      */
     public boolean isSchemaHistoryEnabled() {
         String topic = schemaHistoryKafkaTopic();
-        String servers = schemaHistoryBootstrapServers();
-        return topic != null && !topic.isEmpty() && servers != null && !servers.isEmpty();
+        return topic != null && !topic.isEmpty();
     }
 
     private static class SystemTablesPredicate implements TableFilter {
