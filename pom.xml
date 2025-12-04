@@ -43,7 +43,7 @@
 
         <!-- Dependency Versions -->
         <version.postgresql.driver>42.7.2</version.postgresql.driver>
-        <version.com.google.protobuf>4.30.2</version.com.google.protobuf>
+        <version.com.google.protobuf>3.25.5</version.com.google.protobuf>
         <version.kafka>3.7.0</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
@@ -194,6 +194,7 @@
             <groupId>org.apache.kafka</groupId>
             <artifactId>connect-api</artifactId>
             <version>${version.kafka}</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.kafka</groupId>
