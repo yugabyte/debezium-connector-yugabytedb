@@ -583,17 +583,13 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     /**
-     * Creates a TableId without catalog for use with schema lookups, runtime CDC filtering, 
-     * and event dispatching.
-     * 
-     * Use this method when the TableId will be used with:
-     * - {@code filters.tableFilter().isIncluded()} - which uses TableId.toString() for matching
-     * - {@code schema.tableForTablet()} - schema lookup
-     * - {@code dispatcher.dispatchDataChangeEvent()} - event dispatching
-     * 
-     * The catalog is set to null because these operations use Filters.tableFilter() which
-     * matches against table.include.list using TableId.toString(). With catalog=null,
+     * Creates a TableId without catalog to be used when the operations use Filters.tableFilter() 
+     * which matches against table.include.list using TableId.toString(). With catalog=null,
      * toString() returns "schema.table" format matching the user's configuration.
+     * 
+     * This can also be used with DataCollectionFilter because it uses a custom tableIdMapper 
+     * (schema.table) that ignores catalog, so including the database name doesn't affect its 
+     * matching.
      *
      * @param schemaName the PostgreSQL schema name (e.g., "public")
      * @param tableName the table name
@@ -604,17 +600,12 @@ public class YugabyteDBSchema extends RelationalDatabaseSchema {
     }
 
     /**
-     * Creates a TableId with catalog (database name) for use with connector-level table 
-     * discovery and validation.
+     * Creates a TableId with catalog (database name) to be used when databaseFilter explicitly 
+     * checks that tableId.catalog() matches the configured database.name.
      * 
-     * Use this method when the TableId will be validated against BOTH:
-     * - {@code connectorConfig.getTableFilters().dataCollectionFilter()} - uses custom tableIdMapper
-     * - {@code connectorConfig.databaseFilter()} - checks tableId.catalog() == database.name
-     * 
-     * The catalog must contain the database name because databaseFilter explicitly checks
-     * that tableId.catalog() matches the configured database.name. The dataCollectionFilter
-     * uses a custom tableIdMapper (schema.table) that ignores catalog, so including the
-     * database name doesn't affect its matching.
+     * This can also be used with DataCollectionFilter because it uses a custom tableIdMapper 
+     * (schema.table) that ignores catalog, so including the database name doesn't affect its 
+     * matching.
      *
      * @param databaseName the database/namespace name (e.g., "yugabyte")
      * @param schemaName the PostgreSQL schema name (e.g., "public")
