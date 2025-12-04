@@ -140,7 +140,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         if (connectorConfig.isSchemaHistoryEnabled()) {
             this.schemaHistoryProducer = new YugabyteDBSchemaHistoryProducer(
                     connectorConfig.schemaHistoryKafkaTopic(),
-                    connectorConfig.getLogicalName(),
+                    connectorConfig.getConfig().getString("name"),
                     connectorConfig.schemaHistoryBootstrapServers(),
                     connectorConfig.schemaHistoryProducerSecurityProtocol(),
                     connectorConfig.schemaHistoryProducerSslKeystoreLocation(),
