@@ -414,6 +414,160 @@ public class YugabyteDBSchemaHistoryProducer implements YugabyteDBSchemaHistoryM
         }
     }
 
+    /**
+     * Records schema snapshot by querying the database schema directly via JDBC once.
+     * This is used on connector startup to publish initial schema snapshots
+     * without waiting for CDC events.
+     *
+     * @param connection JDBC connection to the database
+     * @param schemaName the PostgreSQL schema name (e.g., "core")
+     * @param tableName the table name (e.g., "products")
+     * @param tabletId the tablet identifier
+     * @param eventType the type of event (e.g., "SCHEMA_SNAPSHOT")
+     */
+    public void recordSchemaFromJdbc(
+            java.sql.Connection connection,
+            String schemaName,
+            String tableName,
+            String tabletId,
+            String eventType) {
+        try {
+            ensureInitialized();
+            if (producer == null) {
+                throw new IllegalStateException("Producer not initialized");
+            }
+
+            String tableIdStr = schemaName + "." + tableName;
+            String topicName = topicNameGenerator.apply(tableIdStr);
+            String key = tableIdStr;
+            String value = buildSchemaJsonFromJdbc(connection, schemaName, tableName, tabletId, eventType);
+
+            if (value == null || value.equals("{}")) {
+                LOGGER.warn("No schema found for table {}.{}", schemaName, tableName);
+                return;
+            }
+
+            ProducerRecord<String, String> record = new ProducerRecord<>(topicName, key, value);
+
+            producer.send(record, (metadata, exception) -> {
+                if (exception != null) {
+                    schemaHistoryEventsFailed.incrementAndGet();
+                    lastFailedSendTimestamp.set(System.currentTimeMillis());
+                    lastErrorMessage = exception.getMessage();
+                    LOGGER.warn("Failed to send schema history record for table {}.{} to topic {}: {}",
+                            schemaName, tableName, topicName, exception.getMessage());
+                } else {
+                    schemaHistoryEventsSent.incrementAndGet();
+                    lastSuccessfulSendTimestamp.set(System.currentTimeMillis());
+                    LOGGER.debug("Schema history record sent for table {}.{} to topic {} partition {} offset {}",
+                            schemaName, tableName, topicName, metadata.partition(), metadata.offset());
+                }
+            });
+
+            schemaHistoryEventsQueued.incrementAndGet();
+            LOGGER.info("Schema history {} event queued for table: {}.{} → topic: {}", eventType, schemaName, tableName, topicName);
+        } catch (Throwable t) {
+            LOGGER.warn("Error recording schema from JDBC for table {}.{}: {}", schemaName, tableName, t.getMessage());
+        }
+    }
+
+    private String buildSchemaJsonFromJdbc(
+            java.sql.Connection connection,
+            String schemaName,
+            String tableName,
+            String tabletId,
+            String eventType) {
+        try {
+            List<YugabyteDBSchemaHistoryEvent.ColumnInfo> columns = new ArrayList<>();
+            List<String> primaryKeyColumns = new ArrayList<>();
+
+            String columnQuery = 
+                "SELECT column_name, data_type, is_nullable, character_maximum_length, numeric_precision, numeric_scale, ordinal_position " +
+                "FROM information_schema.columns " +
+                "WHERE table_schema = ? AND table_name = ? " +
+                "ORDER BY ordinal_position";
+
+            try (java.sql.PreparedStatement stmt = connection.prepareStatement(columnQuery)) {
+                stmt.setString(1, schemaName);
+                stmt.setString(2, tableName);
+                try (java.sql.ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        YugabyteDBSchemaHistoryEvent.ColumnInfo colInfo = new YugabyteDBSchemaHistoryEvent.ColumnInfo();
+                        colInfo.setName(rs.getString("column_name"));
+                        colInfo.setType(rs.getString("data_type"));
+                        colInfo.setIsNullable("YES".equals(rs.getString("is_nullable")));
+
+                        int charMaxLength = rs.getInt("character_maximum_length");
+                        if (!rs.wasNull() && charMaxLength > 0) {
+                            colInfo.setLength(charMaxLength);
+                        }
+
+                        int numericScale = rs.getInt("numeric_scale");
+                        if (!rs.wasNull()) {
+                            colInfo.setScale(numericScale);
+                        }
+
+                        columns.add(colInfo);
+                    }
+                }
+            }
+
+            if (columns.isEmpty()) {
+                LOGGER.warn("No columns found for table {}.{}", schemaName, tableName);
+                return "{}";
+            }
+
+            String pkQuery = 
+                "SELECT a.attname " +
+                "FROM pg_index i " +
+                "JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) " +
+                "JOIN pg_class c ON c.oid = i.indrelid " +
+                "JOIN pg_namespace n ON n.oid = c.relnamespace " +
+                "WHERE i.indisprimary AND n.nspname = ? AND c.relname = ? " +
+                "ORDER BY array_position(i.indkey, a.attnum)";
+
+            try (java.sql.PreparedStatement stmt = connection.prepareStatement(pkQuery)) {
+                stmt.setString(1, schemaName);
+                stmt.setString(2, tableName);
+                try (java.sql.ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        primaryKeyColumns.add(rs.getString("attname"));
+                    }
+                }
+            }
+
+            YugabyteDBSchemaHistoryEvent event = new YugabyteDBSchemaHistoryEvent();
+            event.setConnector(connectorName);
+            event.setTable(schemaName + "." + tableName);
+            event.setTablet(tabletId);
+            event.setEventType(eventType);
+
+            StringBuilder schemaString = new StringBuilder();
+            for (YugabyteDBSchemaHistoryEvent.ColumnInfo col : columns) {
+                schemaString.append(col.getName()).append(":")
+                        .append(col.getType()).append(":")
+                        .append(col.getIsNullable()).append(";");
+            }
+            try {
+                java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+                byte[] hashBytes = digest.digest(schemaString.toString().getBytes(StandardCharsets.UTF_8));
+                event.setSchemaChecksum(bytesToHex(hashBytes));
+            } catch (Exception e) {
+                event.setSchemaChecksum("unknown");
+            }
+
+            YugabyteDBSchemaHistoryEvent.SchemaInfo schemaInfo = new YugabyteDBSchemaHistoryEvent.SchemaInfo();
+            schemaInfo.setColumns(columns);
+            schemaInfo.setPrimaryKey(primaryKeyColumns);
+            event.setSchema(schemaInfo);
+
+            return OBJECT_MAPPER.writeValueAsString(event);
+        } catch (Exception e) {
+            LOGGER.warn("Failed to build schema from JDBC for {}.{}: {}", schemaName, tableName, e.getMessage());
+            return "{}";
+        }
+    }
+
     private String buildSchemaJsonFromDebeziumTable(
             String tableId,
             String tabletId,
