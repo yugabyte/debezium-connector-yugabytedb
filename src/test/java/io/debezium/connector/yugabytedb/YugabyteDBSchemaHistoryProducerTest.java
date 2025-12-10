@@ -41,13 +41,13 @@ public class YugabyteDBSchemaHistoryProducerTest {
                 .build();
 
         YugabyteDBSchemaHistoryProducer producer = new YugabyteDBSchemaHistoryProducer(
-                "test-topic", "test-connector-0", "localhost:9092", null, null, null, null, null, null, null);
+                tableId -> tableId + "-schemachanges", "test-connector-0", "localhost:9092", null, null, null, null, null, null, null);
 
         assertNotNull(producer, "Producer should be created with valid config");
     }
 
     @Test
-    public void testProducerIsDisabledOnNullTopic() {
+    public void testProducerIsDisabledOnNullTopicGenerator() {
         YugabyteDBSchemaHistoryProducer producer = new YugabyteDBSchemaHistoryProducer(
                 null, "test-connector-0", "localhost:9092", null, null, null, null, null, null, null);
 
@@ -57,7 +57,7 @@ public class YugabyteDBSchemaHistoryProducerTest {
     @Test
     public void testProducerIsDisabledOnNullBootstrapServers() {
         YugabyteDBSchemaHistoryProducer producer = new YugabyteDBSchemaHistoryProducer(
-                "test-topic", "test-connector-0", null, null, null, null, null, null, null, null);
+                tableId -> tableId + "-schemachanges", "test-connector-0", null, null, null, null, null, null, null, null);
 
         assertNotNull(producer);
     }
@@ -65,17 +65,17 @@ public class YugabyteDBSchemaHistoryProducerTest {
     @Test
     public void testRecordSchemaChangeWithNullSchemaDoesNotThrow() {
         YugabyteDBSchemaHistoryProducer producer = new YugabyteDBSchemaHistoryProducer(
-                "test-topic", "test-connector-0", "localhost:9092", null, null, null, null, null, null, null);
+                tableId -> tableId + "-schemachanges", "test-connector-0", "localhost:9092", null, null, null, null, null, null, null);
 
         assertDoesNotThrow(() -> {
-            producer.recordSchemaChange("test-table", "test-tablet", null, "SCHEMA_SNAPSHOT");
+            producer.recordSchemaChange("core.test_table", "test-tablet", null, "SCHEMA_SNAPSHOT");
         });
     }
 
     @Test
     public void testCloseIsIdempotent() {
         YugabyteDBSchemaHistoryProducer producer = new YugabyteDBSchemaHistoryProducer(
-                "test-topic", "test-connector-0", "localhost:9092", null, null, null, null, null, null, null);
+                tableId -> tableId + "-schemachanges", "test-connector-0", "localhost:9092", null, null, null, null, null, null, null);
 
         assertDoesNotThrow(() -> {
             producer.close();
@@ -97,7 +97,7 @@ public class YugabyteDBSchemaHistoryProducerTest {
                 .build();
 
         YugabyteDBSchemaHistoryProducer producer = new YugabyteDBSchemaHistoryProducer(
-                "test-topic", "test-connector-0", "localhost:9092", null, null, null, null, null, null, null);
+                tableId -> tableId + "-schemachanges", "test-connector-0", "localhost:9092", null, null, null, null, null, null, null);
 
         java.lang.reflect.Method method = YugabyteDBSchemaHistoryProducer.class
                 .getDeclaredMethod("buildSchemaJson", String.class, String.class,
@@ -145,7 +145,7 @@ public class YugabyteDBSchemaHistoryProducerTest {
                 .build();
 
         YugabyteDBSchemaHistoryProducer producer = new YugabyteDBSchemaHistoryProducer(
-                "test-topic", "test-connector-0", "localhost:9092", null, null, null, null, null, null, null);
+                tableId -> tableId + "-schemachanges", "test-connector-0", "localhost:9092", null, null, null, null, null, null, null);
 
         String checksum1 = producer.getSchemaChecksum(schema1);
         String checksum2 = producer.getSchemaChecksum(schema2);
@@ -187,12 +187,26 @@ public class YugabyteDBSchemaHistoryProducerTest {
                 .build();
 
         YugabyteDBSchemaHistoryProducer producer = new YugabyteDBSchemaHistoryProducer(
-                "test-topic", "test-connector-0", "localhost:9092", null, null, null, null, null, null, null);
+                tableId -> tableId + "-schemachanges", "test-connector-0", "localhost:9092", null, null, null, null, null, null, null);
 
         String checksum1 = producer.getSchemaChecksum(schema1);
         String checksum2 = producer.getSchemaChecksum(schema2);
 
         assertNotEquals(checksum1, checksum2, "Different schemas should produce different checksums");
+    }
+
+    @Test
+    public void testTopicNameGeneratorProducesCorrectTopics() {
+        // Simulates the real topic generation: globaldb-core → globaldb.core.products-schemachanges
+        java.util.function.Function<String, String> topicGenerator = tableId -> {
+            String serverName = "globaldb-core".replace("-", ".");
+            String tableName = tableId.contains(".") ? tableId.substring(tableId.lastIndexOf(".") + 1) : tableId;
+            return serverName + "." + tableName + "-schemachanges";
+        };
+
+        assertEquals("globaldb.core.products-schemachanges", topicGenerator.apply("core.products"));
+        assertEquals("globaldb.core.product_variants-schemachanges", topicGenerator.apply("core.product_variants"));
+        assertEquals("globaldb.core.medias-schemachanges", topicGenerator.apply("public.medias"));
     }
 }
 

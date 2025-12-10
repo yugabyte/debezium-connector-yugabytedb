@@ -755,13 +755,16 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withWidth(ConfigDef.Width.MEDIUM)
             .withDescription("Internal task config: Oid to type map used in decoding");
 
-    public static final Field SCHEMA_HISTORY_KAFKA_TOPIC = Field.create("schema.history.kafka.topic")
-            .withDisplayName("Schema History Kafka Topic")
-            .withType(Type.STRING)
-            .withWidth(Width.MEDIUM)
+    public static final Field SCHEMA_HISTORY_ENABLED = Field.create("schema.history.enabled")
+            .withDisplayName("Schema History Enabled")
+            .withType(Type.BOOLEAN)
+            .withDefault(false)
+            .withWidth(Width.SHORT)
             .withImportance(Importance.LOW)
-            .withDescription("The name of the Kafka topic where schema changes will be written. " +
-                    "If not configured, schema history will not be recorded.");
+            .withDescription("Whether to publish schema history events to per-table Kafka topics. " +
+                    "Topics are named: {database.server.name}.{table}-schemachanges where dashes become dots " +
+                    "(e.g., database.server.name='globaldb-core', table='core.products' → 'globaldb.core.products-schemachanges'). " +
+                    "Requires schema.history.internal.kafka.bootstrap.servers to be configured.");
 
     public static final Field SCHEMA_HISTORY_BOOTSTRAP_SERVERS = Field.create("schema.history.internal.kafka.bootstrap.servers")
             .withDisplayName("Schema History Bootstrap Servers")
@@ -1602,7 +1605,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     TRUNCATE_HANDLING_MODE,
                     INCREMENTAL_SNAPSHOT_CHUNK_SIZE,
                     TRANSACTION_ORDERING,
-                    SCHEMA_HISTORY_KAFKA_TOPIC,
+                    SCHEMA_HISTORY_ENABLED,
                     SCHEMA_HISTORY_BOOTSTRAP_SERVERS,
                     SCHEMA_HISTORY_PRODUCER_SECURITY_PROTOCOL,
                     SCHEMA_HISTORY_PRODUCER_SSL_KEYSTORE_LOCATION,
@@ -2052,22 +2055,27 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
 
     /**
-     * Gets the schema history Kafka topic name.
+     * Checks if schema history output is enabled.
      *
-     * @return the topic name
+     * @return true if schema.history.enabled is true
      */
-    public String schemaHistoryKafkaTopic() {
-        return getConfig().getString(SCHEMA_HISTORY_KAFKA_TOPIC);
+    public boolean isSchemaHistoryEnabled() {
+        return getConfig().getBoolean(SCHEMA_HISTORY_ENABLED);
     }
 
     /**
-     * Checks if schema history output is enabled.
+     * Generates the schema history topic name for a given table.
+     * Format: {database.server.name}.{table}-schemachanges (dashes become dots)
      *
-     * @return true if topic is configured
+     * @param tableId the table identifier (e.g., "core.products")
+     * @return the topic name for this table's schema changes (e.g., "globaldb.core.products-schemachanges")
      */
-    public boolean isSchemaHistoryEnabled() {
-        String topic = schemaHistoryKafkaTopic();
-        return topic != null && !topic.isEmpty();
+    public String schemaHistoryTopicForTable(String tableId) {
+        // database.server.name e.g. "globaldb-core" → "globaldb.core"
+        String serverName = getLogicalName().replace("-", ".");
+        // tableId is "schema.table", extract just the table name
+        String tableName = tableId.contains(".") ? tableId.substring(tableId.lastIndexOf(".") + 1) : tableId;
+        return serverName + "." + tableName + "-schemachanges";
     }
 
     /**

@@ -64,7 +64,7 @@ public class YugabyteDBSchemaHistoryProducer implements YugabyteDBSchemaHistoryM
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBSchemaHistoryProducer.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    private final String topicName;
+    private final java.util.function.Function<String, String> topicNameGenerator;
     private final String bootstrapServers;
     private final String connectorName;
     private final String securityProtocol;
@@ -88,10 +88,10 @@ public class YugabyteDBSchemaHistoryProducer implements YugabyteDBSchemaHistoryM
     private ObjectName mbeanName;
 
     /**
-     * Creates a schema history producer for the given topic.
+     * Creates a schema history producer with per-table topic derivation.
      * Each task creates its own producer instance following MySQL connector pattern.
-     * @param topicName the Kafka topic to write schema history to
-     * @param connectorName the connector name (used as client ID prefix)
+     * @param topicNameGenerator function to derive topic name from tableId (e.g., "core.products" → "globaldb.core.products-schemachanges")
+     * @param connectorName the connector name (used as client ID prefix and in record metadata)
      * @param bootstrapServers Kafka bootstrap servers
      * @param securityProtocol Security protocol (SSL, PLAINTEXT, etc.)
      * @param sslKeystoreLocation SSL keystore location (optional)
@@ -102,7 +102,7 @@ public class YugabyteDBSchemaHistoryProducer implements YugabyteDBSchemaHistoryM
      * @param sslTruststoreType SSL truststore type (PKCS12, JKS, etc.)
      */
     public YugabyteDBSchemaHistoryProducer(
-            String topicName,
+            java.util.function.Function<String, String> topicNameGenerator,
             String connectorName,
             String bootstrapServers,
             String securityProtocol,
@@ -112,7 +112,7 @@ public class YugabyteDBSchemaHistoryProducer implements YugabyteDBSchemaHistoryM
             String sslTruststoreLocation,
             String sslTruststorePassword,
             String sslTruststoreType) {
-        this.topicName = topicName;
+        this.topicNameGenerator = topicNameGenerator;
         this.connectorName = connectorName;
         this.bootstrapServers = bootstrapServers;
         this.securityProtocol = securityProtocol;
@@ -122,11 +122,11 @@ public class YugabyteDBSchemaHistoryProducer implements YugabyteDBSchemaHistoryM
         this.sslTruststoreLocation = sslTruststoreLocation;
         this.sslTruststorePassword = sslTruststorePassword;
         this.sslTruststoreType = sslTruststoreType;
-        LOGGER.info("Schema history producer configured for topic: {}", topicName);
+        LOGGER.info("Schema history producer configured for connector: {} (per-table topics)", connectorName);
 
         try {
-            String metricName = "debezium.yugabytedb:type=schema-history-producer,topic=" +
-                                org.apache.kafka.common.utils.Sanitizer.jmxSanitize(topicName);
+            String metricName = "debezium.yugabytedb:type=schema-history-producer,connector=" +
+                                org.apache.kafka.common.utils.Sanitizer.jmxSanitize(connectorName);
             this.mbeanName = new ObjectName(metricName);
             MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
             if (mBeanServer != null && !mBeanServer.isRegistered(mbeanName)) {
@@ -197,7 +197,7 @@ public class YugabyteDBSchemaHistoryProducer implements YugabyteDBSchemaHistoryM
             
             this.producer = new KafkaProducer<>(props, keySerializer, valueSerializer);
             initialized.set(true);
-            LOGGER.info("Schema history producer initialized successfully for topic: {}", topicName);
+            LOGGER.info("Schema history producer initialized successfully for connector: {} (per-table topics)", connectorName);
         } catch (Throwable t) {
             LOGGER.error("Failed to initialize schema history producer: {}", t.getMessage(), t);
             throw new RuntimeException("Schema history producer failed to initialize - Kafka unreachable or misconfigured", t);
@@ -207,7 +207,7 @@ public class YugabyteDBSchemaHistoryProducer implements YugabyteDBSchemaHistoryM
     /**
      * Records a schema change event (DDL).
      * 
-     * @param tableId the table identifier
+     * @param tableId the table identifier (e.g., "core.products")
      * @param tabletId the tablet identifier
      * @param schema the schema protobuf
      * @param eventType the type of event (e.g., "DDL", "INITIAL")
@@ -219,7 +219,10 @@ public class YugabyteDBSchemaHistoryProducer implements YugabyteDBSchemaHistoryM
                 throw new IllegalStateException("Producer not initialized");
             }
             
-            String key = connectorName + ":" + tableId;
+            // Derive per-table topic
+            String topicName = topicNameGenerator.apply(tableId);
+            // Key is just the table name for partitioning
+            String key = tableId;
             String value = buildSchemaJson(tableId, tabletId, schema, eventType);
             
             ProducerRecord<String, String> record = new ProducerRecord<>(topicName, key, value);
@@ -229,17 +232,17 @@ public class YugabyteDBSchemaHistoryProducer implements YugabyteDBSchemaHistoryM
                     schemaHistoryEventsFailed.incrementAndGet();
                     lastFailedSendTimestamp.set(System.currentTimeMillis());
                     lastErrorMessage = exception.getMessage();
-                    LOGGER.warn("Failed to send schema history record for table {}: {}", tableId, exception.getMessage());
+                    LOGGER.warn("Failed to send schema history record for table {} to topic {}: {}", tableId, topicName, exception.getMessage());
                 } else {
                     schemaHistoryEventsSent.incrementAndGet();
                     lastSuccessfulSendTimestamp.set(System.currentTimeMillis());
-                    LOGGER.debug("Schema history record sent for table {} to partition {} offset {}",
-                            tableId, metadata.partition(), metadata.offset());
+                    LOGGER.debug("Schema history record sent for table {} to topic {} partition {} offset {}",
+                            tableId, topicName, metadata.partition(), metadata.offset());
                 }
             });
 
             schemaHistoryEventsQueued.incrementAndGet();
-            LOGGER.info("Schema history {} event queued for table: {}", eventType, tableId);
+            LOGGER.info("Schema history {} event queued for table: {} → topic: {}", eventType, tableId, topicName);
         } catch (Throwable t) {
             LOGGER.warn("Error recording schema change for table {}: {}", tableId, t.getMessage());
         }
@@ -361,7 +364,7 @@ public class YugabyteDBSchemaHistoryProducer implements YugabyteDBSchemaHistoryM
      * Records schema change from Debezium's internal schema representation.
      * This provides proper SQL types instead of protobuf types.
      *
-     * @param tableId the table identifier
+     * @param tableId the table identifier (e.g., "core.products")
      * @param tabletId the tablet identifier
      * @param schema the YugabyteDB schema object
      * @param eventType the type of event (e.g., "DDL", "INITIAL")
@@ -383,8 +386,10 @@ public class YugabyteDBSchemaHistoryProducer implements YugabyteDBSchemaHistoryM
                 return;
             }
 
-            String key = connectorName + ":" + tableId;
-            String value = buildSchemaJsonFromDebeziumTable(tableId.toString(), tabletId, table, eventType);
+            String tableIdStr = tableId.schema() + "." + tableId.table();
+            String topicName = topicNameGenerator.apply(tableIdStr);
+            String key = tableIdStr;
+            String value = buildSchemaJsonFromDebeziumTable(tableIdStr, tabletId, table, eventType);
 
             ProducerRecord<String, String> record = new ProducerRecord<>(topicName, key, value);
 
@@ -393,17 +398,17 @@ public class YugabyteDBSchemaHistoryProducer implements YugabyteDBSchemaHistoryM
                     schemaHistoryEventsFailed.incrementAndGet();
                     lastFailedSendTimestamp.set(System.currentTimeMillis());
                     lastErrorMessage = exception.getMessage();
-                    LOGGER.warn("Failed to send schema history record for table {}: {}", tableId, exception.getMessage());
+                    LOGGER.warn("Failed to send schema history record for table {} to topic {}: {}", tableId, topicName, exception.getMessage());
                 } else {
                     schemaHistoryEventsSent.incrementAndGet();
                     lastSuccessfulSendTimestamp.set(System.currentTimeMillis());
-                    LOGGER.debug("Schema history record sent for table {} to partition {} offset {}",
-                            tableId, metadata.partition(), metadata.offset());
+                    LOGGER.debug("Schema history record sent for table {} to topic {} partition {} offset {}",
+                            tableId, topicName, metadata.partition(), metadata.offset());
                 }
             });
 
             schemaHistoryEventsQueued.incrementAndGet();
-            LOGGER.info("Schema history {} event queued for table: {}", eventType, tableId);
+            LOGGER.info("Schema history {} event queued for table: {} → topic: {}", eventType, tableId, topicName);
         } catch (Throwable t) {
             LOGGER.warn("Error recording schema change from Debezium schema for table {}: {}", tableId, t.getMessage());
         }
@@ -502,7 +507,7 @@ public class YugabyteDBSchemaHistoryProducer implements YugabyteDBSchemaHistoryM
 
     @Override
     public String getTopicName() {
-        return topicName;
+        return "{server}.{table}-schemachanges";
     }
 
     @Override
