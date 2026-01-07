@@ -591,7 +591,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final long DEFAULT_SOCKET_READ_TIMEOUT_MS = 60000;
     protected static final int DEFAULT_MAX_RPC_RETRY_ATTEMPTS = 1800; // Number of retries, large enough, to last till timeout
     protected static final int DEFAULT_RPC_RETRY_SLEEP_TIME_MS = 500;
-    protected static final long DEFAULT_CDC_POLL_INTERVAL_MS = 500;
+    protected static final long DEFAULT_CDC_POLL_INTERVAL_MS = 10;
     protected static final int DEFAULT_MAX_CONNECTOR_RETRIES = 5;
     protected static final long DEFAULT_CONNECTOR_RETRY_DELAY_MS = 60000;
     protected static final boolean DEFAULT_LIMIT_ONE_POLL_PER_ITERATION = false;
