@@ -126,14 +126,22 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
             // Helper internal variable to log GetChanges request at regular intervals.
             long lastLoggedTimeForGetChanges = System.currentTimeMillis();
 
+            // Track if we received data in the last iteration for adaptive polling
+            boolean receivedDataInLastIteration = true;
+
             String curTabletId = "";
             while (context.isRunning() && retryCount <= connectorConfig.maxConnectorRetries()) {
                 try {
                     while (context.isRunning() && (offsetContext.getStreamingStoppingLsn() == null ||
                             (lastCompletelyProcessedLsn.compareTo(offsetContext.getStreamingStoppingLsn()) < 0))) {
+                        // Use adaptive polling: shorter interval when receiving data, longer when idle
+                        long pollInterval = receivedDataInLastIteration
+                                ? connectorConfig.cdcPollIntervalActiveMs()
+                                : connectorConfig.cdcPollIntervalIdleMs();
                         // Pause for the specified duration before asking for a new set of changes from the server
-                        LOGGER.debug("Pausing for {} milliseconds before polling further", connectorConfig.cdcPollIntervalms());
-                        final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
+                        LOGGER.debug("Pausing for {} milliseconds before polling further (active={})",
+                                pollInterval, receivedDataInLastIteration);
+                        final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(pollInterval), Clock.SYSTEM);
                         pollIntervalMetronome.pause();
 
                         if (this.connectorConfig.cdcLimitPollPerIteration()
@@ -195,8 +203,9 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                     }
                                 }
 
-                                LOGGER.debug("Processing {} records from getChanges call",
-                                        response.getResp().getCdcSdkProtoRecordsList().size());
+                                int recordCount = response.getResp().getCdcSdkProtoRecordsList().size();
+                                LOGGER.debug("Processing {} records from getChanges call", recordCount);
+                                receivedDataInLastIteration = (recordCount > 0);
                                 for (CdcService.CDCSDKProtoRecordPB record : response
                                         .getResp()
                                         .getCdcSdkProtoRecordsList()) {
