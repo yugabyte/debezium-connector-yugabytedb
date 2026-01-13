@@ -23,7 +23,7 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
 
     The docker image will be tagged as:
     ```
-    quay.io/yugabyte/debezium-connector:dz.1.9.5.yb.grpc.2024.2-SNAPSHOT
+    quay.io/yugabyte/debezium-connector:dz.1.9.5.yb.grpc.2025.1-SNAPSHOT
     ```
     The above mentioned image is nothing but a Kafka Connect image bundled with the Debezium Connector for YugabyteDB.
 
@@ -67,7 +67,7 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
     -e OFFSET_STORAGE_TOPIC=my_connect_offsets \
     -e STATUS_STORAGE_TOPIC=my_connect_statuses \
     --link zookeeper:zookeeper --link kafka:kafka \
-        quay.io/yugabyte/debezium-connector:dz.1.9.5.yb.grpc.2024.2-SNAPSHOT
+        quay.io/yugabyte/debezium-connector:dz.1.9.5.yb.grpc.2025.1-SNAPSHOT
   ```
 8. Deploy the configuration for the connector:
   **NOTE: Do not forget to change the `database.streamid` with the value you obtained in step 6**
