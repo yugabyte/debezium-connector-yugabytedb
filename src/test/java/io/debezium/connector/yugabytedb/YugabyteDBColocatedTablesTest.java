@@ -257,7 +257,8 @@ public class YugabyteDBColocatedTablesTest extends YugabyteDBContainerTestBase {
     String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder =
         TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2,public.test_3", dbStreamId);
-    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 5_000);
+    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_IDLE_MS, 5_000);
+    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_ACTIVE_MS, 5_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
 
     startEngine(configBuilder, (success, message, error) -> assertTrue(success));

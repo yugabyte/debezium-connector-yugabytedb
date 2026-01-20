@@ -66,7 +66,8 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
 
     String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 10_000);
+    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_IDLE_MS, 10_000);
+    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_ACTIVE_MS, 10_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
 
     startEngine(configBuilder, (success, message, error) -> {
@@ -116,7 +117,8 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
 
     String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 5_000);
+    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_IDLE_MS, 5_000);
+    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_ACTIVE_MS, 5_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
 
     startEngine(configBuilder, (success, message, error) -> {
@@ -164,7 +166,8 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
 
     String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 5_000);
+    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_IDLE_MS, 5_000);
+    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_ACTIVE_MS, 5_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
 
     startEngine(configBuilder, (success, message, error) -> {
@@ -204,7 +207,8 @@ public class YugabyteDBSchemaEvolutionTest extends YugabyteDBContainerTestBase {
 
     String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId);
-    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 10_000);
+    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_IDLE_MS, 10_000);
+    configBuilder.with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_ACTIVE_MS, 10_000);
     configBuilder.with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 10000);
 
     startEngine(configBuilder, (success, message, error) -> {

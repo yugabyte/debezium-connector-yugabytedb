@@ -591,7 +591,8 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final long DEFAULT_SOCKET_READ_TIMEOUT_MS = 60000;
     protected static final int DEFAULT_MAX_RPC_RETRY_ATTEMPTS = 1800; // Number of retries, large enough, to last till timeout
     protected static final int DEFAULT_RPC_RETRY_SLEEP_TIME_MS = 500;
-    protected static final long DEFAULT_CDC_POLL_INTERVAL_MS = 500;
+    protected static final long DEFAULT_CDC_POLL_INTERVAL_ACTIVE_MS = 10;
+    protected static final long DEFAULT_CDC_POLL_INTERVAL_IDLE_MS = 500;
     protected static final int DEFAULT_MAX_CONNECTOR_RETRIES = 5;
     protected static final long DEFAULT_CONNECTOR_RETRY_DELAY_MS = 60000;
     protected static final boolean DEFAULT_LIMIT_ONE_POLL_PER_ITERATION = false;
@@ -685,12 +686,19 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withImportance(Importance.LOW)
             .withDefault(DEFAULT_SOCKET_READ_TIMEOUT_MS);
 
-    public static final Field CDC_POLL_INTERVAL_MS = Field.create("cdc.poll.interval.ms")
-            .withDisplayName("Poll interval in milliseconds to get changes from database")
+    public static final Field CDC_POLL_INTERVAL_ACTIVE_MS = Field.create("cdc.poll.interval.active.ms")
+            .withDisplayName("Poll interval when receiving data")
             .withType(Type.LONG)
             .withImportance(Importance.LOW)
-            .withDefault(DEFAULT_CDC_POLL_INTERVAL_MS)
-            .withDescription("The poll interval in milliseconds at which the client will request for changes from the database");
+            .withDefault(DEFAULT_CDC_POLL_INTERVAL_ACTIVE_MS)
+            .withDescription("The poll interval in milliseconds when the connector is actively receiving changes from the database");
+
+    public static final Field CDC_POLL_INTERVAL_IDLE_MS = Field.create("cdc.poll.interval.idle.ms")
+            .withDisplayName("Poll interval when no data received")
+            .withType(Type.LONG)
+            .withImportance(Importance.LOW)
+            .withDefault(DEFAULT_CDC_POLL_INTERVAL_IDLE_MS)
+            .withDescription("The poll interval in milliseconds when the connector is not receiving any changes from the database");
 
     public static final Field CDC_LIMIT_POLL_PER_ITERATION = Field.create("cdc.poll.limit")
             .withDisplayName("Limit number of polls per iteration to 1")
@@ -1321,8 +1329,12 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return getConfig().getLong(SOCKET_READ_TIMEOUT_MS);
     }
 
-    public long cdcPollIntervalms() {
-        return getConfig().getLong(CDC_POLL_INTERVAL_MS);
+    public long cdcPollIntervalActiveMs() {
+        return getConfig().getLong(CDC_POLL_INTERVAL_ACTIVE_MS);
+    }
+
+    public long cdcPollIntervalIdleMs() {
+        return getConfig().getLong(CDC_POLL_INTERVAL_IDLE_MS);
     }
 
     public boolean cdcLimitPollPerIteration() {
@@ -1521,7 +1533,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     LOG_GET_CHANGES,
                     LOG_GET_CHANGES_INTERVAL_MS,
               MBEAN_REGISTRATION_RETRIES,
-                    MBEAN_REGISTRATION_RETRY_DELAY_MS)
+                    MBEAN_REGISTRATION_RETRY_DELAY_MS,
+                    CDC_POLL_INTERVAL_ACTIVE_MS,
+                    CDC_POLL_INTERVAL_IDLE_MS)
             .events(
                     INCLUDE_UNKNOWN_DATATYPES)
             .connector(

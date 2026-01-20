@@ -453,13 +453,21 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       // Helper internal variable to log GetChanges request at regular intervals.
       long lastLoggedTimeForGetChanges = System.currentTimeMillis();
 
+      // Track if we received data in the last iteration for adaptive polling
+      boolean receivedDataInLastIteration = true;
+
       while (context.isRunning() && retryCount <= this.connectorConfig.maxConnectorRetries()) {
         try {
             while (context.isRunning() && (previousOffset.getStreamingStoppingLsn() == null)) {
               for (Pair<String, String> tableIdToTabletId : tableToTabletForSnapshot) {
+                // Use adaptive polling: shorter interval when receiving data, longer when idle
+                long pollInterval = receivedDataInLastIteration
+                        ? connectorConfig.cdcPollIntervalActiveMs()
+                        : connectorConfig.cdcPollIntervalIdleMs();
                 // Pause for the specified duration before asking for a new set of snapshot records from the server
-                LOGGER.debug("Pausing for {} milliseconds before polling further", connectorConfig.cdcPollIntervalms());
-                final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.cdcPollIntervalms()), Clock.SYSTEM);
+                LOGGER.debug("Pausing for {} milliseconds before polling further (active={})",
+                        pollInterval, receivedDataInLastIteration);
+                final Metronome pollIntervalMetronome = Metronome.parker(Duration.ofMillis(pollInterval), Clock.SYSTEM);
                 pollIntervalMetronome.pause();
 
                 String tableUUID = tableIdToTabletId.getKey();
@@ -541,8 +549,12 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                         resp.getWriteId(), resp.getSnapshotTime());
                 LOGGER.debug("Final OpId for tablet {} is {}", part.getId(), finalOpId);
 
+                // Track if we received data for adaptive polling
+                int recordCount = resp.getResp().getCdcSdkProtoRecordsList().size();
+                receivedDataInLastIteration = (recordCount > 0);
+
                 // Process the response
-                for (int idx = 0; idx < resp.getResp().getCdcSdkProtoRecordsList().size(); idx++) {
+                for (int idx = 0; idx < recordCount; idx++) {
                   CdcService.CDCSDKProtoRecordPB record = resp.getResp().getCdcSdkProtoRecords(idx);
                   CdcService.RowMessage m = record.getRowMessage();
                   YbProtoReplicationMessage message =
