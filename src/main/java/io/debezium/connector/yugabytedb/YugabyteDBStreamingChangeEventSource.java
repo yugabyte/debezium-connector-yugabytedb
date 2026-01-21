@@ -106,6 +106,8 @@ public class YugabyteDBStreamingChangeEventSource implements
     // and the value is tablet UUID
     protected List<Pair<String, String>> tabletPairList;
 
+    protected YugabyteDBSchemaHistoryProducer schemaHistoryProducer;
+
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
                                                 YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
                                                 YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection,
@@ -133,6 +135,16 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         if (TEST_TRACK_EXPLICIT_CHECKPOINTS) {
             TEST_explicitCheckpoints = new ConcurrentHashMap<>();
+        }
+
+        if (connectorConfig.isSchemaHistoryEnabled()) {
+            this.schemaHistoryProducer = new YugabyteDBSchemaHistoryProducer(
+                    connectorConfig.schemaHistoryKafkaTopic(),
+                    connectorConfig.getLogicalName()
+            );
+            LOGGER.info("Schema history producer enabled for topic: {}", connectorConfig.schemaHistoryKafkaTopic());
+        } else {
+            LOGGER.debug("Schema history producer not configured");
         }
     }
 
@@ -728,6 +740,19 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                 schema.refreshSchemaWithTabletId(tableId, message.getSchema(), tableId.catalog(), tabletId);
                                             }
                                         }
+
+                                        // Publish schema history for DDL events
+                                        if (schemaHistoryProducer != null && tableId != null) {
+                                            try {
+                                                // If registering schema for first time on fresh start, publish SCHEMA_SNAPSHOT
+                                                // Otherwise publish SCHEMA_CHANGE for actual schema changes
+                                                String eventType = (t == null && !previousOffsetPresent) ? "SCHEMA_SNAPSHOT" : "SCHEMA_CHANGE";
+                                                schemaHistoryProducer.recordSchemaChange(
+                                                        tableId.toString(), tabletId, message.getSchema(), eventType);
+                                            } catch (Exception e) {
+                                                LOGGER.warn("Failed to record schema history for {}: {}", tableId, e.getMessage());
+                                            }
+                                        }
                                     }
                                     // DML event
                                     else {
@@ -741,7 +766,19 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             }
                                             Objects.requireNonNull(tableId);
                                         }
-                                        // If you need to print the received record, change debug level to info
+
+                                        if (schemaHistoryProducer != null && tableId != null && message.getSchema() != null) {
+                                            Table t = schema.tableForTablet(tableId, tabletId);
+                                            if (t == null && !previousOffsetPresent) {
+                                                try {
+                                                    schemaHistoryProducer.recordSchemaChange(
+                                                            tableId.toString(), tabletId, message.getSchema(), "SCHEMA_SNAPSHOT");
+                                                } catch (Exception e) {
+                                                    LOGGER.warn("Failed to record schema history for {}: {}", tableId, e.getMessage());
+                                                }
+                                            }
+                                        }
+
                                         LOGGER.debug("Received DML record {}", record);
 
                                         offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
