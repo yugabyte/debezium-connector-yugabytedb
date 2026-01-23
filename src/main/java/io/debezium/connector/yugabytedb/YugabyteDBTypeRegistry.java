@@ -43,6 +43,12 @@ public class YugabyteDBTypeRegistry {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBTypeRegistry.class);
 
+    /**
+     * If a catalog query is slower than this threshold, log completion at INFO. We always log the
+     * start of the query at INFO so that hangs are visible even without completion.
+     */
+    private static final long SLOW_QUERY_LOG_THRESHOLD_MS = 1000L;
+
     public static final String TYPE_NAME_GEOGRAPHY = "geography";
     public static final String TYPE_NAME_GEOMETRY = "geometry";
     public static final String TYPE_NAME_CITEXT = "citext";
@@ -385,8 +391,12 @@ public class YugabyteDBTypeRegistry {
                     this.connection = yugabyteDBConnection.connection();
                 }
                 final Statement statement = connection.createStatement();
+                final long startNs = System.nanoTime();
+                LOGGER.info("Starting YSQL catalog query for type registry prime (SQL_TYPES)");
                 final ResultSet rs = statement.executeQuery(SQL_TYPES);
+                long rowCount = 0;
                 while (rs.next()) {
+                    rowCount++;
                     YugabyteDBType.Builder builder = createTypeBuilderFromResultSet(rs);
 
                     // If the type does have have a base type, we can build/add immediately.
@@ -403,6 +413,7 @@ public class YugabyteDBTypeRegistry {
                 for (YugabyteDBType.Builder builder : delayResolvedBuilders) {
                     addType(builder.build());
                 }
+                logQueryCompletion("type registry prime (SQL_TYPES)", startNs, rowCount);
                 break;
             } catch (SQLException e) {
                 retryCount++;
@@ -454,6 +465,7 @@ public class YugabyteDBTypeRegistry {
                 }
                 final PreparedStatement statement = connection.prepareStatement(SQL_NAME_LOOKUP);
                 statement.setString(1, name);
+                LOGGER.info("Starting YSQL catalog query for type lookup by name: {}", statement);
                 return loadType(statement);
             } catch (SQLException e) {
                 retryCount++;
@@ -482,6 +494,7 @@ public class YugabyteDBTypeRegistry {
                 }
                 final PreparedStatement statement = connection.prepareStatement(SQL_OID_LOOKUP);
                 statement.setInt(1, lookupOid);
+                LOGGER.info("Starting YSQL catalog query for type lookup by OID: {}", statement);
                 return loadType(statement);
             } catch (SQLException e) {
                 retryCount++;
@@ -500,14 +513,28 @@ public class YugabyteDBTypeRegistry {
     }
 
     private YugabyteDBType loadType(PreparedStatement statement) throws SQLException {
+        final long startNs = System.nanoTime();
         try (final ResultSet rs = statement.executeQuery()) {
+            long rowCount = 0;
             while (rs.next()) {
+                rowCount++;
                 YugabyteDBType result = createTypeBuilderFromResultSet(rs).build();
                 addType(result);
+                logQueryCompletion("type lookup (prepared statement)", startNs, rowCount);
                 return result;
             }
+            logQueryCompletion("type lookup (prepared statement)", startNs, rowCount);
         }
         return null;
+    }
+
+    private static void logQueryCompletion(String label, long startNs, long rowCount) {
+        long elapsedMs = (System.nanoTime() - startNs) / 1_000_000L;
+        if (elapsedMs >= SLOW_QUERY_LOG_THRESHOLD_MS) {
+            LOGGER.info("Completed YSQL catalog query: {} in {} ms (rows={})", label, elapsedMs, rowCount);
+        } else if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Completed YSQL catalog query: {} in {} ms (rows={})", label, elapsedMs, rowCount);
+        }
     }
 
     /**
@@ -587,8 +614,12 @@ public class YugabyteDBTypeRegistry {
             Map<String, Integer> sqlTypesByPgTypeNames = new HashMap<>();
 
             try (final Statement statement = db.createStatement()) {
+                final long startNs = System.nanoTime();
+                LOGGER.info("Starting YSQL catalog query for SQL type mapping (SQL_TYPE_DETAILS)");
                 try (final ResultSet rs = statement.executeQuery(SQL_TYPE_DETAILS)) {
+                    long rowCount = 0;
                     while (rs.next()) {
+                        rowCount++;
                         int type;
                         boolean isArray = rs.getBoolean(2);
                         String typtype = rs.getString(3);
@@ -610,6 +641,7 @@ public class YugabyteDBTypeRegistry {
 
                         sqlTypesByPgTypeNames.put(rs.getString(1), type);
                     }
+                    logQueryCompletion("SQL type mapping (SQL_TYPE_DETAILS)", startNs, rowCount);
                 }
             }
 
