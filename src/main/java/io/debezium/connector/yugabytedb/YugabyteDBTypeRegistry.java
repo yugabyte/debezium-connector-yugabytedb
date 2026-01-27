@@ -49,6 +49,37 @@ public class YugabyteDBTypeRegistry {
      */
     private static final long SLOW_QUERY_LOG_THRESHOLD_MS = 1000L;
 
+    /**
+     * Thread-local stats used to profile {@link #prime()} during connector/task startup.
+     * This is intentionally thread-local so inner code paths (e.g. {@link SqlTypeMapper#getSqlType(String)})
+     * can contribute to a single prime run without adding noisy logs.
+     */
+    private static final ThreadLocal<PrimeStats> PRIME_STATS = new ThreadLocal<>();
+
+    private static final class PrimeStats {
+        long rsRowCount;
+
+        long createBuilderCalls;
+        long createBuilderNs;
+        long enumArrayReads;
+        long enumArrayReadNs;
+
+        long buildCalls;
+        long buildNs;
+
+        long registryGetCalls;
+        long registryGetMisses;
+        long resolveUnknownCalls;
+        long resolveUnknownNs;
+
+        long getSqlTypeCalls;
+        long getSqlTypeNs;
+        long getSqlTypeCoreCalls;
+        long getSqlTypeMapHits;
+        long getSqlTypeFallbackCalls;
+        long getSqlTypeFallbackNs;
+    }
+
     public static final String TYPE_NAME_GEOGRAPHY = "geography";
     public static final String TYPE_NAME_GEOMETRY = "geometry";
     public static final String TYPE_NAME_CITEXT = "citext";
@@ -252,9 +283,22 @@ public class YugabyteDBTypeRegistry {
      * @return type associated with the given OID
      */
     public YugabyteDBType get(int oid) {
+        PrimeStats ps = PRIME_STATS.get();
+        if (ps != null) {
+            ps.registryGetCalls++;
+        }
         YugabyteDBType r = oidToType.get(oid);
         if (r == null) {
-            r = resolveUnknownType(oid);
+            if (ps != null) {
+                ps.registryGetMisses++;
+                final long st = System.nanoTime();
+                ps.resolveUnknownCalls++;
+                r = resolveUnknownType(oid);
+                ps.resolveUnknownNs += (System.nanoTime() - st);
+            }
+            else {
+                r = resolveUnknownType(oid);
+            }
             if (r == null) {
                 LOGGER.warn("Unknown OID {} requested", oid);
                 r = YugabyteDBType.UNKNOWN;
@@ -386,6 +430,8 @@ public class YugabyteDBTypeRegistry {
         int retryCount = 0;
         while (retryCount <= maxConnectionRetries) {
             try {
+                final PrimeStats ps = new PrimeStats();
+                PRIME_STATS.set(ps);
                 final List<YugabyteDBType.Builder> delayResolvedBuilders = new ArrayList<>();
                 if (retryCount > 0) {
                     final long connStartNs = System.nanoTime();
@@ -402,11 +448,17 @@ public class YugabyteDBTypeRegistry {
                 long rowCount = 0;
                 while (rs.next()) {
                     rowCount++;
+                    final long cb = System.nanoTime();
                     YugabyteDBType.Builder builder = createTypeBuilderFromResultSet(rs);
+                    ps.createBuilderCalls++;
+                    ps.createBuilderNs += (System.nanoTime() - cb);
 
                     // If the type does have have a base type, we can build/add immediately.
                     if (!builder.hasParentType()) {
+                        final long b = System.nanoTime();
                         addType(builder.build());
+                        ps.buildCalls++;
+                        ps.buildNs += (System.nanoTime() - b);
                         continue;
                     }
 
@@ -416,10 +468,16 @@ public class YugabyteDBTypeRegistry {
 
                 // Resolve delayed builders
                 for (YugabyteDBType.Builder builder : delayResolvedBuilders) {
+                    final long b = System.nanoTime();
                     addType(builder.build());
+                    ps.buildCalls++;
+                    ps.buildNs += (System.nanoTime() - b);
                 }
                 logPhaseIfSlow("type registry prime: process ResultSet(SQL_TYPES)", processStartNs, rowCount);
                 logQueryCompletion("type registry prime (SQL_TYPES)", startNs, rowCount);
+
+                ps.rsRowCount = rowCount;
+                logPrimeSummaryIfSlow(ps, startNs);
                 break;
             } catch (SQLException e) {
                 retryCount++;
@@ -429,6 +487,9 @@ public class YugabyteDBTypeRegistry {
                     throw e;
                 }
                 LOGGER.warn("Error while executing query on database, will retry. Attempt {} out of {}",retryCount, maxConnectionRetries );
+            }
+            finally {
+                PRIME_STATS.remove();
             }
         }
     }
@@ -451,7 +512,13 @@ public class YugabyteDBTypeRegistry {
                 typeInfo);
 
         if (CATEGORY_ENUM.equals(category)) {
+            final PrimeStats ps = PRIME_STATS.get();
+            final long st = System.nanoTime();
             String[] enumValues = (String[]) rs.getArray("enum_values").getArray();
+            if (ps != null) {
+                ps.enumArrayReads++;
+                ps.enumArrayReadNs += (System.nanoTime() - st);
+            }
             builder = builder.enumValues(Arrays.asList(enumValues));
         }
         else if (CATEGORY_ARRAY.equals(category)) {
@@ -551,6 +618,34 @@ public class YugabyteDBTypeRegistry {
         }
     }
 
+    private static void logPrimeSummaryIfSlow(PrimeStats ps, long startNs) {
+        long totalMs = (System.nanoTime() - startNs) / 1_000_000L;
+        if (totalMs < SLOW_QUERY_LOG_THRESHOLD_MS) {
+            return;
+        }
+
+        // Convert nanos to ms for readability
+        long createBuilderMs = ps.createBuilderNs / 1_000_000L;
+        long buildMs = ps.buildNs / 1_000_000L;
+        long enumReadMs = ps.enumArrayReadNs / 1_000_000L;
+        long getSqlTypeMs = ps.getSqlTypeNs / 1_000_000L;
+        long fallbackMs = ps.getSqlTypeFallbackNs / 1_000_000L;
+        long resolveUnknownMs = ps.resolveUnknownNs / 1_000_000L;
+
+        LOGGER.info(
+                "Prime(SQL_TYPES) breakdown: total={}ms rows={} createBuilder={}ms (calls={}) build={}ms (calls={}) " +
+                        "getSqlType={}ms (calls={} coreCalls={} mapHits={} fallbacks={} fallbackMs={}) " +
+                        "registryGetCalls={} registryGetMisses={} resolveUnknownCalls={} resolveUnknownMs={} enumArrayReads={} enumArrayReadMs={}",
+                totalMs,
+                ps.rsRowCount,
+                createBuilderMs, ps.createBuilderCalls,
+                buildMs, ps.buildCalls,
+                getSqlTypeMs, ps.getSqlTypeCalls, ps.getSqlTypeCoreCalls, ps.getSqlTypeMapHits, ps.getSqlTypeFallbackCalls, fallbackMs,
+                ps.registryGetCalls, ps.registryGetMisses, ps.resolveUnknownCalls, resolveUnknownMs,
+                ps.enumArrayReads, enumReadMs
+        );
+    }
+
     /**
      * Allows to obtain the SQL type corresponding to PG types. This uses a custom statement instead of going through
      * {@link PgDatabaseMetaData#getTypeInfo()} as the latter causes N+1 SELECTs, making it very slow on installations
@@ -594,14 +689,25 @@ public class YugabyteDBTypeRegistry {
         }
 
         public int getSqlType(String typeName) throws SQLException {
+            final PrimeStats ps = PRIME_STATS.get();
+            final long st = System.nanoTime();
+            if (ps != null) {
+                ps.getSqlTypeCalls++;
+            }
             boolean isCoreType = preloadedSqlTypes.contains(typeName);
 
             // obtain core types such as bool, int2 etc. from the driver, as it correctly maps these types to the JDBC
             // type codes. Also those values are cached in TypeInfoCache.
             if (isCoreType) {
+                if (ps != null) {
+                    ps.getSqlTypeCoreCalls++;
+                }
                 return typeInfo.getSQLType(typeName);
             }
             if (typeName.endsWith("[]")) {
+                if (ps != null) {
+                    ps.getSqlTypeMapHits++; // treat as a fast path
+                }
                 return Types.ARRAY;
             }
             // get custom type mappings from the map which was built up with a single query
@@ -609,14 +715,36 @@ public class YugabyteDBTypeRegistry {
                 try {
                     final Integer pgType = sqlTypesByPgTypeNames.get(typeName);
                     if (pgType != null) {
+                        if (ps != null) {
+                            ps.getSqlTypeMapHits++;
+                        }
                         return pgType;
                     }
                     LOGGER.info("Failed to obtain SQL type information for type {} via custom statement, falling back to TypeInfo#getSQLType()", typeName);
+                    if (ps != null) {
+                        ps.getSqlTypeFallbackCalls++;
+                        final long fb = System.nanoTime();
+                        int r = typeInfo.getSQLType(typeName);
+                        ps.getSqlTypeFallbackNs += (System.nanoTime() - fb);
+                        return r;
+                    }
                     return typeInfo.getSQLType(typeName);
                 }
                 catch (Exception e) {
                     LOGGER.warn("Failed to obtain SQL type information for type {} via custom statement, falling back to TypeInfo#getSQLType()", typeName, e);
+                    if (ps != null) {
+                        ps.getSqlTypeFallbackCalls++;
+                        final long fb = System.nanoTime();
+                        int r = typeInfo.getSQLType(typeName);
+                        ps.getSqlTypeFallbackNs += (System.nanoTime() - fb);
+                        return r;
+                    }
                     return typeInfo.getSQLType(typeName);
+                }
+                finally {
+                    if (ps != null) {
+                        ps.getSqlTypeNs += (System.nanoTime() - st);
+                    }
                 }
             }
         }
