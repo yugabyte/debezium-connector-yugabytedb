@@ -464,7 +464,6 @@ public class YugabyteDBTypeRegistry {
                 }
                 final PreparedStatement statement = connection.prepareStatement(SQL_NAME_LOOKUP);
                 statement.setString(1, name);
-                LOGGER.debug("Starting YSQL catalog query for type lookup by name: {}", statement);
                 return loadType(statement);
             } catch (SQLException e) {
                 retryCount++;
@@ -493,7 +492,6 @@ public class YugabyteDBTypeRegistry {
                 }
                 final PreparedStatement statement = connection.prepareStatement(SQL_OID_LOOKUP);
                 statement.setInt(1, lookupOid);
-                LOGGER.debug("Starting YSQL catalog query for type lookup by OID: {}", statement);
                 return loadType(statement);
             } catch (SQLException e) {
                 retryCount++;
