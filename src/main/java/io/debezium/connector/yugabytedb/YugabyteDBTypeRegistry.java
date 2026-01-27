@@ -11,13 +11,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.IntFunction;
 
 import org.apache.kafka.connect.errors.ConnectException;
 import org.postgresql.core.BaseConnection;
@@ -432,7 +431,7 @@ public class YugabyteDBTypeRegistry {
             try {
                 final PrimeStats ps = new PrimeStats();
                 PRIME_STATS.set(ps);
-                final List<YugabyteDBType.Builder> delayResolvedBuilders = new ArrayList<>();
+                final Map<Integer, YugabyteDBType.Builder> buildersByOid = new HashMap<>();
                 if (retryCount > 0) {
                     final long connStartNs = System.nanoTime();
                     this.connection = yugabyteDBConnection.connection();
@@ -452,27 +451,52 @@ public class YugabyteDBTypeRegistry {
                     YugabyteDBType.Builder builder = createTypeBuilderFromResultSet(rs);
                     ps.createBuilderCalls++;
                     ps.createBuilderNs += (System.nanoTime() - cb);
+                    buildersByOid.put(builder.getOid(), builder);
+                }
 
-                    // If the type does have have a base type, we can build/add immediately.
-                    if (!builder.hasParentType()) {
-                        final long b = System.nanoTime();
-                        addType(builder.build());
+                // Second pass: build all types in-memory without triggering resolveUnknownType() JDBC lookups.
+                final Map<Integer, YugabyteDBType> builtTypes = new HashMap<>(buildersByOid.size() * 2);
+                final Map<Integer, Boolean> inProgress = new HashMap<>();
+
+                final class Resolver implements IntFunction<YugabyteDBType> {
+                    @Override
+                    public YugabyteDBType apply(int oid) {
+                        if (oid == 0) {
+                            return null;
+                        }
+                        YugabyteDBType cached = builtTypes.get(oid);
+                        if (cached != null) {
+                            return cached;
+                        }
+                        if (Boolean.TRUE.equals(inProgress.get(oid))) {
+                            // Defensive: avoid cycles; return null so caller can treat as unknown.
+                            return null;
+                        }
+                        YugabyteDBType.Builder b = buildersByOid.get(oid);
+                        if (b == null) {
+                            return null;
+                        }
+                        inProgress.put(oid, true);
+                        final long st = System.nanoTime();
+                        YugabyteDBType created = b.build(this);
                         ps.buildCalls++;
-                        ps.buildNs += (System.nanoTime() - b);
-                        continue;
+                        ps.buildNs += (System.nanoTime() - st);
+                        builtTypes.put(oid, created);
+                        inProgress.remove(oid);
+                        return created;
                     }
-
-                    // For types with base type mappings, they need to be delayed.
-                    delayResolvedBuilders.add(builder);
                 }
 
-                // Resolve delayed builders
-                for (YugabyteDBType.Builder builder : delayResolvedBuilders) {
-                    final long b = System.nanoTime();
-                    addType(builder.build());
-                    ps.buildCalls++;
-                    ps.buildNs += (System.nanoTime() - b);
+                Resolver resolver = new Resolver();
+                for (int oid : buildersByOid.keySet()) {
+                    resolver.apply(oid);
                 }
+
+                // Populate registry maps
+                for (YugabyteDBType t : builtTypes.values()) {
+                    addType(t);
+                }
+
                 logPhaseIfSlow("type registry prime: process ResultSet(SQL_TYPES)", processStartNs, rowCount);
                 logQueryCompletion("type registry prime (SQL_TYPES)", startNs, rowCount);
 
