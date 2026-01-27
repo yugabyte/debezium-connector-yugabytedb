@@ -392,7 +392,6 @@ public class YugabyteDBTypeRegistry {
                 }
                 final Statement statement = connection.createStatement();
                 final long startNs = System.nanoTime();
-                LOGGER.info("Starting YSQL catalog query for type registry prime (SQL_TYPES)");
                 final ResultSet rs = statement.executeQuery(SQL_TYPES);
                 long rowCount = 0;
                 while (rs.next()) {
@@ -465,7 +464,7 @@ public class YugabyteDBTypeRegistry {
                 }
                 final PreparedStatement statement = connection.prepareStatement(SQL_NAME_LOOKUP);
                 statement.setString(1, name);
-                LOGGER.info("Starting YSQL catalog query for type lookup by name: {}", statement);
+                LOGGER.debug("Starting YSQL catalog query for type lookup by name: {}", statement);
                 return loadType(statement);
             } catch (SQLException e) {
                 retryCount++;
@@ -494,7 +493,7 @@ public class YugabyteDBTypeRegistry {
                 }
                 final PreparedStatement statement = connection.prepareStatement(SQL_OID_LOOKUP);
                 statement.setInt(1, lookupOid);
-                LOGGER.info("Starting YSQL catalog query for type lookup by OID: {}", statement);
+                LOGGER.debug("Starting YSQL catalog query for type lookup by OID: {}", statement);
                 return loadType(statement);
             } catch (SQLException e) {
                 retryCount++;
@@ -532,8 +531,6 @@ public class YugabyteDBTypeRegistry {
         long elapsedMs = (System.nanoTime() - startNs) / 1_000_000L;
         if (elapsedMs >= SLOW_QUERY_LOG_THRESHOLD_MS) {
             LOGGER.info("Completed YSQL catalog query: {} in {} ms (rows={})", label, elapsedMs, rowCount);
-        } else if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug("Completed YSQL catalog query: {} in {} ms (rows={})", label, elapsedMs, rowCount);
         }
     }
 
@@ -615,7 +612,6 @@ public class YugabyteDBTypeRegistry {
 
             try (final Statement statement = db.createStatement()) {
                 final long startNs = System.nanoTime();
-                LOGGER.info("Starting YSQL catalog query for SQL type mapping (SQL_TYPE_DETAILS)");
                 try (final ResultSet rs = statement.executeQuery(SQL_TYPE_DETAILS)) {
                     long rowCount = 0;
                     while (rs.next()) {
