@@ -63,6 +63,12 @@ public class YugabyteDBConnectorTask
     private volatile YugabyteDBTaskContext taskContext;
     private volatile ChangeEventQueue<DataChangeEvent> queue;
     private volatile YugabyteDBConnection jdbcConnection;
+    /**
+     * Auxiliary JDBC connection used only to back {@link YugabyteDBTypeRegistry} lookups when needed.
+     * This exists to avoid re-priming the type registry (and running catalog queries) on every task startup,
+     * since the coordinator already serializes the type maps into the task config.
+     */
+    private volatile YugabyteDBConnection typeLookupConnection;
     private volatile YugabyteDBConnection heartbeatConnection;
     private volatile YugabyteDBSchema schema;
 
@@ -127,18 +133,35 @@ public class YugabyteDBConnectorTask
                 LOGGER.error("Error while deserializing object to type string", e);
             }
 
-            // Global JDBC connection used both for snapshotting and streaming.
-            // Must be able to resolve datatypes.
-            jdbcConnection = new YugabyteDBConnection(connectorConfig.getJdbcConfig(), valueConverterBuilder,
-                    YugabyteDBConnection.CONNECTION_GENERAL);
+            /**
+             * IMPORTANT: Avoid running YSQL catalog queries on every task startup.
+             *
+             * The coordinator (Connect herder thread) builds the type registry once and serializes
+             * name->type and oid->type maps into the task config. Here we reconstruct the registry
+             * from those maps, and create the main JDBC connection using the already-primed registry.
+             *
+             * This reduces startup-time YSQL query volume significantly and helps isolate whether
+             * high concurrency/volume is contributing to the intermittent ~5 minute stall.
+             */
+            typeLookupConnection = new YugabyteDBConnection(connectorConfig.getJdbcConfig(), YugabyteDBConnection.CONNECTION_GENERAL);
 
-            // CDCSDK We can just build the type registry on the co-ordinator and then send
-            // the map of Postgres Type and Oid to the Task using Config
-            final YugabyteDBTypeRegistry yugabyteDBTypeRegistry = new YugabyteDBTypeRegistry(taskConnection, nameToType,
-                    oidToType, jdbcConnection);
+            final YugabyteDBTypeRegistry yugabyteDBTypeRegistry = new YugabyteDBTypeRegistry(
+                    taskConnection,
+                    nameToType,
+                    oidToType,
+                    typeLookupConnection
+            );
 
-            schema = new YugabyteDBSchema(connectorConfig, yugabyteDBTypeRegistry, topicSelector,
-                    valueConverterBuilder.build(yugabyteDBTypeRegistry));
+            // Global JDBC connection used both for snapshotting and streaming. Uses the provided type registry
+            // and does NOT prime types again.
+            jdbcConnection = new YugabyteDBConnection(connectorConfig, yugabyteDBTypeRegistry, YugabyteDBConnection.CONNECTION_GENERAL);
+
+            schema = new YugabyteDBSchema(
+                    connectorConfig,
+                    yugabyteDBTypeRegistry,
+                    topicSelector,
+                    valueConverterBuilder.build(yugabyteDBTypeRegistry)
+            );
 
         } else {
             final YugabyteDBCQLValueConverter cqlValueConverter = YugabyteDBCQLValueConverter.of(connectorConfig,
@@ -392,6 +415,9 @@ public class YugabyteDBConnectorTask
     protected void doStop() {
         if (jdbcConnection != null) {
             jdbcConnection.close();
+        }
+        if (typeLookupConnection != null) {
+            typeLookupConnection.close();
         }
 
         if (heartbeatConnection != null) {

@@ -388,11 +388,17 @@ public class YugabyteDBTypeRegistry {
             try {
                 final List<YugabyteDBType.Builder> delayResolvedBuilders = new ArrayList<>();
                 if (retryCount > 0) {
+                    final long connStartNs = System.nanoTime();
                     this.connection = yugabyteDBConnection.connection();
+                    logPhaseIfSlow("type registry prime: refresh JDBC connection", connStartNs, -1);
                 }
                 final Statement statement = connection.createStatement();
                 final long startNs = System.nanoTime();
+                final long execStartNs = System.nanoTime();
                 final ResultSet rs = statement.executeQuery(SQL_TYPES);
+                logPhaseIfSlow("type registry prime: executeQuery(SQL_TYPES)", execStartNs, -1);
+
+                final long processStartNs = System.nanoTime();
                 long rowCount = 0;
                 while (rs.next()) {
                     rowCount++;
@@ -412,6 +418,7 @@ public class YugabyteDBTypeRegistry {
                 for (YugabyteDBType.Builder builder : delayResolvedBuilders) {
                     addType(builder.build());
                 }
+                logPhaseIfSlow("type registry prime: process ResultSet(SQL_TYPES)", processStartNs, rowCount);
                 logQueryCompletion("type registry prime (SQL_TYPES)", startNs, rowCount);
                 break;
             } catch (SQLException e) {
@@ -529,6 +536,18 @@ public class YugabyteDBTypeRegistry {
         long elapsedMs = (System.nanoTime() - startNs) / 1_000_000L;
         if (elapsedMs >= SLOW_QUERY_LOG_THRESHOLD_MS) {
             LOGGER.info("Completed YSQL catalog query: {} in {} ms (rows={})", label, elapsedMs, rowCount);
+        }
+    }
+
+    private static void logPhaseIfSlow(String label, long startNs, long rowCountOrMinus1) {
+        long elapsedMs = (System.nanoTime() - startNs) / 1_000_000L;
+        if (elapsedMs >= SLOW_QUERY_LOG_THRESHOLD_MS) {
+            if (rowCountOrMinus1 >= 0) {
+                LOGGER.info("Slow phase: {} took {} ms (rows={})", label, elapsedMs, rowCountOrMinus1);
+            }
+            else {
+                LOGGER.info("Slow phase: {} took {} ms", label, elapsedMs);
+            }
         }
     }
 
