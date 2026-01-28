@@ -11,13 +11,13 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.IntFunction;
 
 import org.apache.kafka.connect.errors.ConnectException;
 import org.postgresql.core.BaseConnection;
@@ -380,7 +380,7 @@ public class YugabyteDBTypeRegistry {
         int retryCount = 0;
         while (retryCount <= maxConnectionRetries) {
             try {
-                final List<YugabyteDBType.Builder> delayResolvedBuilders = new ArrayList<>();
+                final Map<Integer, YugabyteDBType.Builder> buildersByOid = new HashMap<>();
                 if (retryCount > 0) {
                     this.connection = yugabyteDBConnection.connection();
                 }
@@ -388,20 +388,46 @@ public class YugabyteDBTypeRegistry {
                 final ResultSet rs = statement.executeQuery(SQL_TYPES);
                 while (rs.next()) {
                     YugabyteDBType.Builder builder = createTypeBuilderFromResultSet(rs);
-
-                    // If the type does have have a base type, we can build/add immediately.
-                    if (!builder.hasParentType()) {
-                        addType(builder.build());
-                        continue;
-                    }
-
-                    // For types with base type mappings, they need to be delayed.
-                    delayResolvedBuilders.add(builder);
+                    buildersByOid.put(builder.getOid(), builder);
                 }
 
-                // Resolve delayed builders
-                for (YugabyteDBType.Builder builder : delayResolvedBuilders) {
-                    addType(builder.build());
+                // Second pass: build all types in-memory without triggering resolveUnknownType() JDBC lookups.
+                final Map<Integer, YugabyteDBType> builtTypes = new HashMap<>(buildersByOid.size() * 2);
+                final Set<Integer> inProgress = new HashSet<>();
+
+                final class Resolver implements IntFunction<YugabyteDBType> {
+                    @Override
+                    public YugabyteDBType apply(int oid) {
+                        if (oid == 0) {
+                            return null;
+                        }
+                        YugabyteDBType cached = builtTypes.get(oid);
+                        if (cached != null) {
+                            return cached;
+                        }
+                        if (!inProgress.add(oid)) {
+                            // Defensive: avoid cycles
+                            return YugabyteDBType.UNKNOWN;
+                        }
+                        YugabyteDBType.Builder builder = buildersByOid.get(oid);
+                        if (builder == null) {
+                            inProgress.remove(oid);
+                            return YugabyteDBType.UNKNOWN;
+                        }
+                        YugabyteDBType created = builder.build(this);
+                        builtTypes.put(oid, created);
+                        inProgress.remove(oid);
+                        return created;
+                    }
+                }
+
+                final Resolver resolver = new Resolver();
+                for (int oid : buildersByOid.keySet()) {
+                    resolver.apply(oid);
+                }
+
+                for (YugabyteDBType type : builtTypes.values()) {
+                    addType(type);
                 }
                 break;
             } catch (SQLException e) {

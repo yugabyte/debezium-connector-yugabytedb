@@ -8,6 +8,7 @@ package io.debezium.connector.yugabytedb;
 import java.io.Serializable;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.IntFunction;
 
 import org.postgresql.core.Oid;
 import org.postgresql.core.TypeInfo;
@@ -285,6 +286,10 @@ public class YugabyteDBType implements Serializable {
             this.typeInfo = typeInfo;
         }
 
+        public int getOid() {
+            return oid;
+        }
+
         public Builder parentType(int parentTypeOid) {
             this.parentTypeOid = parentTypeOid;
             return this;
@@ -313,6 +318,26 @@ public class YugabyteDBType implements Serializable {
             YugabyteDBType elementType = null;
             if (elementTypeOid != 0) {
                 elementType = yugabyteDBTypeRegistry.get(elementTypeOid);
+            }
+
+            return new YugabyteDBType(name, oid, jdbcId, modifiers, typeInfo, enumValues,
+                    parentType, elementType);
+        }
+
+        /**
+         * Build a {@link YugabyteDBType} using an in-memory lookup for referenced OIDs.
+         * This avoids triggering additional JDBC lookups (e.g. during type-registry priming),
+         * and is safe to call before the registry maps are fully populated.
+         */
+        public YugabyteDBType build(IntFunction<YugabyteDBType> typeByOid) {
+            YugabyteDBType parentType = null;
+            if (this.hasParentType()) {
+                parentType = typeByOid.apply(parentTypeOid);
+            }
+
+            YugabyteDBType elementType = null;
+            if (elementTypeOid != 0) {
+                elementType = typeByOid.apply(elementTypeOid);
             }
 
             return new YugabyteDBType(name, oid, jdbcId, modifiers, typeInfo, enumValues,
