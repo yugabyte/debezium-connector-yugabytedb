@@ -26,7 +26,9 @@ import io.debezium.data.Envelope.Operation;
 import io.debezium.function.Predicates;
 import io.debezium.pipeline.spi.ChangeRecordEmitter;
 import io.debezium.pipeline.spi.OffsetContext;
+import io.debezium.pipeline.spi.Partition;
 import io.debezium.relational.*;
+import io.debezium.schema.DataCollectionId;
 import io.debezium.schema.DataCollectionSchema;
 import io.debezium.util.Clock;
 import io.debezium.util.Strings;
@@ -303,9 +305,10 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
         }
     }
 
-    static Optional<DataCollectionSchema> updateSchema(YBPartition partition, TableId tableId,
+    static Optional<DataCollectionSchema> updateSchema(Partition partition, DataCollectionId dataCollectionId,
                                                        ChangeRecordEmitter changeRecordEmitter) {
-        return ((YugabyteDBChangeRecordEmitter) changeRecordEmitter).newTable(tableId);
+        // Debezium supplies a DataCollectionId; for YSQL this is expected to be a TableId.
+        return ((YugabyteDBChangeRecordEmitter) changeRecordEmitter).newTable((TableId) dataCollectionId);
     }
 
     @Override
