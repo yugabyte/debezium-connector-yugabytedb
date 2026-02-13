@@ -370,34 +370,47 @@ public class YugabyteDBStreamingChangeEventSource implements
             Map<String, Boolean> schemaNeeded = new HashMap<>();
             Map<String, Long> tabletSafeTime = new HashMap<>();
             for (Pair<String, String> entry : tabletPairList) {
-                // entry.getValue() will give the tabletId
+                
+                String tableId = entry.getKey();
+                String tabletId = entry.getValue();
+
                 OpId opId = YBClientUtils.getOpIdFromGetTabletListResponse(
-                        tabletListResponse.get(entry.getKey()), entry.getValue());
+                        tabletListResponse.get(tableId), tabletId);
 
                 if (opId == null) {
                     Set<String> tabletsForTable =
-                            tabletListResponse.get(entry.getKey()).getTabletCheckpointPairList().stream()
+                            tabletListResponse.get(tableId).getTabletCheckpointPairList().stream()
                                     .map(pair -> pair.getTabletLocations().getTabletId().toStringUtf8())
                                     .collect(Collectors.toSet());
                     LOGGER.error("No entry for tablet {} was found in the response for table {} from service, current entries {}",
-                            entry.getValue(), entry.getKey(), tabletsForTable);
+                            tabletId, tableId, tabletsForTable);
                     throw new RuntimeException(String.format("OpId for the given tablet %s was not found for table %s"
                                     + " in the response, restart the connector to try again",
-                            entry.getValue(), entry.getKey()));
+                            tabletId, tableId));
                 }
 
                 // If we are getting a term and index as -1 and -1 from the server side it means
                 // that the streaming has not yet started on that tablet ID. In that case, assign a
                 // starting OpId so that the connector can poll using proper checkpoints.
-                LOGGER.info("Checkpoint from GetTabletListToPollForCDC for tablet {} as {}", entry.getValue(), opId);
+                LOGGER.info("Checkpoint from GetTabletListToPollForCDC for tablet {} as {}", tabletId, opId);
                 if (opId.getTerm() == -1 && opId.getIndex() == -1) {
                     opId = YugabyteDBOffsetContext.streamingStartLsn();
                 }
 
                 // For streaming, we do not want any colocated information and want to process the tables
                 // based on just their tablet IDs - pass false as the 'colocated' flag to enforce the same.
-                YBPartition p = new YBPartition(entry.getKey(), entry.getValue(), false /* colocated */);
-                offsetContext.initSourceInfo(p, this.connectorConfig, opId);
+                YBPartition p = new YBPartition(tableId, tabletId, false);
+
+                OpId initOpId = opId;
+                // Prefer previously persisted offsets (from Kafka) when rebind is enabled.
+                if (connectorConfig.isEnableOffsetRebind()) {
+                    SourceInfo saved = offsetContext.getTabletSourceInfo().get(p.getId());
+                    if (saved != null && saved.lsn() != null) {
+                        initOpId = saved.lsn();
+                        LOGGER.info("Using saved offset for {} -> {}", p.getId(), initOpId.toSerString());
+                    }
+                }
+                offsetContext.initSourceInfo(p, this.connectorConfig, initOpId);
 
                 if (taskContext.shouldEnableExplicitCheckpointing()) {
                     // We can initialise the explicit checkpoint for this tablet to the value returned by
@@ -406,6 +419,26 @@ public class YugabyteDBStreamingChangeEventSource implements
                 }
 
                 schemaNeeded.put(p.getId(), Boolean.TRUE);
+
+                // When enabled, rebind server-side checkpoints from saved offsets to resume from the last streamId.
+                if (connectorConfig.isEnableOffsetRebind()) {
+                    OpId savedOpId = offsetContext.lsn(p);
+                    try {
+                        YBClientUtils.setCheckpoint(
+                                syncClient,
+                                streamId,
+                                tableId,
+                                tabletId,
+                                savedOpId.getTerm(),
+                                savedOpId.getIndex(),
+                                true,
+                                false,
+                                savedOpId.getTime());
+                        tabletSafeTime.put(p.getId(), savedOpId.getTime());
+                    } catch (Exception e) {
+                        LOGGER.warn("Failed to set checkpoint for table {} tablet {} to {}.{}; proceeding", tableId, tabletId, savedOpId.getTerm(), savedOpId.getIndex(), e);
+                    }
+                }
             }
 
             // This will contain the tablet ID mapped to the number of records it has seen
