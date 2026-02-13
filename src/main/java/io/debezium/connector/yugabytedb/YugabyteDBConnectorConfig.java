@@ -763,6 +763,16 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withWidth(ConfigDef.Width.MEDIUM)
             .withDescription("Internal task config: Oid to type map used in decoding");
 
+    public static final Field SCHEMA_HISTORY_KAFKA_TOPIC = Field.create("schema.history.kafka.topic")
+            .withDisplayName("Schema History Kafka Topic")
+            .withType(Type.STRING)
+            .withWidth(Width.MEDIUM)
+            .withImportance(Importance.LOW)
+            .withDescription("The name of the Kafka topic where schema changes will be written. " +
+                    "If not configured, schema history will not be recorded. " +
+                    "Bootstrap servers and SSL configuration are read from environment variables " +
+                    "(BOOTSTRAP_SERVERS, SSL_KEYSTORE_LOCATION, SSL_TRUSTSTORE_LOCATION, SSL_KEYSTORE_PASSWORD, SSL_TRUSTSTORE_PASSWORD).");
+
     public static final Field PLUGIN_NAME = Field.create("plugin.name")
             .withDisplayName("Plugin")
             .withGroup(Field.createGroupEntry(Field.Group.CONNECTION_ADVANCED_REPLICATION, 0))
@@ -1547,7 +1557,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     SCHEMA_REFRESH_MODE,
                     TRUNCATE_HANDLING_MODE,
                     INCREMENTAL_SNAPSHOT_CHUNK_SIZE,
-                    TRANSACTION_ORDERING)
+                    TRANSACTION_ORDERING,
+                    SCHEMA_HISTORY_KAFKA_TOPIC
+            )
             .excluding(INCLUDE_SCHEMA_CHANGES)
             .create();
 
@@ -1984,6 +1996,27 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                         org.postgresql.Driver.class.getName(),
                         YugabyteDBConnection.class.getClassLoader(),
                         JdbcConfiguration.PORT.withDefault(YugabyteDBConnectorConfig.PORT.defaultValueAsString()));
+    }
+
+
+    /**
+     * Gets the schema history Kafka topic name.
+     *
+     * @return the topic name
+     */
+    public String schemaHistoryKafkaTopic() {
+        return getConfig().getString(SCHEMA_HISTORY_KAFKA_TOPIC);
+    }
+
+    /**
+     * Checks if schema history output is enabled.
+     * Configuration is read from environment variables (BOOTSTRAP_SERVERS, SSL certs, etc).
+     *
+     * @return true if topic is configured
+     */
+    public boolean isSchemaHistoryEnabled() {
+        String topic = schemaHistoryKafkaTopic();
+        return topic != null && !topic.isEmpty();
     }
 
     private static class SystemTablesPredicate implements TableFilter {
