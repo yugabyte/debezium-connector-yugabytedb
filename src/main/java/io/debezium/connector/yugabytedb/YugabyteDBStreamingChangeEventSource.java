@@ -97,6 +97,9 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     protected final Filters filters;
 
+    //This timer is used to log the offset map periodically.
+    protected final ElapsedTimeStrategy offsetLogTimer;
+
     // This set will contain the list of partition IDs for the tablets which have been split
     // and waiting for the callback from Kafka.
     protected Set<String> splitTabletsWaitingForCallback;
@@ -121,6 +124,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.snapshotter = snapshotter;
         checkPointMap = new ConcurrentHashMap<>();
         this.connectionProbeTimer = ElapsedTimeStrategy.constant(Clock.system(), connectorConfig.statusUpdateInterval());
+        this.offsetLogTimer = ElapsedTimeStrategy.constant(Clock.system(), Duration.ofMinutes(5).toMillis());
 
         String masterAddress = connectorConfig.masterAddresses();
         yugabyteDBTypeRegistry = taskContext.schema().getTypeRegistry();
@@ -977,6 +981,13 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         try {
             LOGGER.info("{} | Committing offsets on server", taskContext.getTaskId());
+            // Log the offset map periodically. Currently set to 5 minutes.
+            if (offsetLogTimer.hasElapsed()) {
+                LOGGER.info("Offset map:");
+                for (Map.Entry<String, ?> entry : offset.entrySet()) {
+                    LOGGER.info("Tablet: {} OpId: {}", entry.getKey(), entry.getValue());
+                }
+            }
 
             for (Map.Entry<String, ?> entry : offset.entrySet()) {
                 // TODO: The transaction_id field is getting populated somewhere and see if it can
