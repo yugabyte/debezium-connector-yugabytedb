@@ -124,7 +124,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.snapshotter = snapshotter;
         checkPointMap = new ConcurrentHashMap<>();
         this.connectionProbeTimer = ElapsedTimeStrategy.constant(Clock.system(), connectorConfig.statusUpdateInterval());
-        this.offsetLogTimer = ElapsedTimeStrategy.constant(Clock.system(), Duration.ofMinutes(5).toMillis());
+        this.offsetLogTimer = ElapsedTimeStrategy.constant(Clock.system(), connectorConfig.logCommitOffsetIntervalMs());
 
         String masterAddress = connectorConfig.masterAddresses();
         yugabyteDBTypeRegistry = taskContext.schema().getTypeRegistry();
@@ -981,7 +981,8 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         try {
             LOGGER.info("{} | Committing offsets on server", taskContext.getTaskId());
-            // Log the offset map periodically. Currently set to 5 minutes.
+            // Log the offset map periodically based on the configuration. Default is 5 minutes.
+            // to change the interval, set the property "log.commit.offset.interval.ms" in the configuration.
             if (offsetLogTimer.hasElapsed()) {
                 LOGGER.info("Offset map:");
                 for (Map.Entry<String, ?> entry : offset.entrySet()) {

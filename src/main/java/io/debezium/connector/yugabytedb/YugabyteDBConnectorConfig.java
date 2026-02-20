@@ -599,6 +599,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final boolean DEFAULT_LOG_GET_CHANGES = false;
     protected static final long DEFAULT_NEW_TABLE_POLL_INTERVAL_MS = 5 * 60 * 1000L;
     protected static final long DEFAULT_LOG_GET_CHANGES_INTERVAL_MS = 5 * 60 * 1000L;
+    protected static final long DEFAULT_LOG_COMMIT_OFFSET_INTERVAL_MS = 5 * 60 * 1000L;
     public static final int DEFAULT_MBEAN_REGISTRATION_RETRIES = 12;
     public static final long DEFAULT_MBEAN_REGISTRATION_RETRY_DELAY_MS = 5_000;
     public static final long DEFAULT_LAST_CALLBACK_TIMEOUT_MS = 3 * 60 * 1000;
@@ -1043,6 +1044,13 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withDefault(DEFAULT_LOG_GET_CHANGES_INTERVAL_MS)
             .withValidation(Field::isNonNegativeLong);
 
+    public static final Field LOG_COMMIT_OFFSET_INTERVAL_MS = Field.create("log.commit.offset.interval.ms")
+            .withDisplayName("Interval to log commit offset map in milliseconds")
+            .withImportance(Importance.LOW)
+            .withType(Type.LONG)
+            .withDefault(DEFAULT_LOG_COMMIT_OFFSET_INTERVAL_MS)
+            .withValidation(Field::isNonNegativeLong);
+
     public static final Field SNAPSHOT_MODE_CLASS = Field.create("snapshot.custom.class")
             .withDisplayName("Snapshot Mode Custom Class")
             .withType(Type.STRING)
@@ -1357,6 +1365,10 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return getConfig().getLong(LOG_GET_CHANGES_INTERVAL_MS);
     }
 
+    public long logCommitOffsetIntervalMs() {
+        return getConfig().getLong(LOG_COMMIT_OFFSET_INTERVAL_MS);
+    }
+
     public String sslRootCert() {
         return getConfig().getString(SSL_ROOT_CERT);
     }
@@ -1532,6 +1544,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     NEW_TABLE_POLL_INTERVAL_MS,
                     LOG_GET_CHANGES,
                     LOG_GET_CHANGES_INTERVAL_MS,
+                    LOG_COMMIT_OFFSET_INTERVAL_MS,
               MBEAN_REGISTRATION_RETRIES,
                     MBEAN_REGISTRATION_RETRY_DELAY_MS,
                     CDC_POLL_INTERVAL_ACTIVE_MS,
