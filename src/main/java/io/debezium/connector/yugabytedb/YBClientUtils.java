@@ -344,10 +344,16 @@ public class YBClientUtils {
       return false;
     }
 
-    return (cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.ALL.name())
-           || cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES.name()))
-           || (cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.PG_FULL.name())
-           || cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.PG_CHANGE_OLD_NEW.name()));
+    String recordType = cdcStreamInfo.getOptions().get("record_type");
+    if (recordType == null) {
+      LOGGER.warn("record_type option not found in stream options");
+      return false;
+    }
+
+    return recordType.equals(CDCRecordType.ALL.name())
+           || recordType.equals(CDCRecordType.MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES.name())
+           || recordType.equals(CDCRecordType.PG_FULL.name())
+           || recordType.equals(CDCRecordType.PG_CHANGE_OLD_NEW.name());
   }
 
   /**
