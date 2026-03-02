@@ -106,6 +106,9 @@ public class YugabyteDBStreamingChangeEventSource implements
     // and the value is tablet UUID
     protected List<Pair<String, String>> tabletPairList;
 
+    // Maps table UUID to the Debezium TableId.
+    protected Map<String, TableId> tableUUIDToTableId;
+
     public YugabyteDBStreamingChangeEventSource(YugabyteDBConnectorConfig connectorConfig, Snapshotter snapshotter,
                                                 YugabyteDBConnection connection, YugabyteDBEventDispatcher<TableId> dispatcher, ErrorHandler errorHandler, Clock clock,
                                                 YugabyteDBSchema schema, YugabyteDBTaskContext taskContext, ReplicationConnection replicationConnection,
@@ -130,6 +133,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.filters = new Filters(connectorConfig);
         this.partitionRanges = new ArrayList<>();
         this.tabletPairList = new CopyOnWriteArrayList<>();
+        this.tableUUIDToTableId = new HashMap<>();
 
         if (TEST_TRACK_EXPLICIT_CHECKPOINTS) {
             TEST_explicitCheckpoints = new ConcurrentHashMap<>();
@@ -344,9 +348,26 @@ public class YugabyteDBStreamingChangeEventSource implements
             LOGGER.info("Using DB stream ID: " + streamId);
 
             Set<String> tIds = partitionRanges.stream().map(HashPartition::getTableId).collect(Collectors.toSet());
+
+            Map<String, String> uuidToPgSchemaMap = Collections.emptyMap();
+            if (connectorConfig.isYSQLDbType()) {
+                uuidToPgSchemaMap = YBClientUtils.buildTableUuidToPgSchemaMap(
+                    syncClient, connectorConfig);
+                LOGGER.info("Resolved {} UUID-to-schema mappings from ListTables", uuidToPgSchemaMap.size());
+            }
+
             for (String tId : tIds) {
                 YBTable table = syncClient.openTableByUUID(tId);
                 tableIdToTable.put(tId, table);
+
+                if (connectorConfig.isYSQLDbType()) {
+                    String pgSchemaName = uuidToPgSchemaMap.get(tId);
+                    if (pgSchemaName != null) {
+                        tableUUIDToTableId.put(tId, YugabyteDBSchema.createTableIdWithoutCatalog(pgSchemaName, table.getName()));
+                    } else {
+                        LOGGER.warn("No pgschema_name resolved for table UUID {} from ListTables", tId);
+                    }
+                }
 
                 GetTabletListToPollForCDCResponse resp =
                         YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
@@ -601,13 +622,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     continue;
                                 }
 
-                                String pgSchemaNameInRecord = m.getPgschemaName();
+                                // This is a hack to skip tables in case of colocated tables
                                 if (!message.isTransactionalMessage()) {
                                     TableId tempTid;
                                     if (connectorConfig.isYSQLDbType()) {
-                                        // This is a hack to skip tables in case of colocated tables
-                                        tempTid = YugabyteDBSchema.createTableIdWithoutCatalog(
-                                            pgSchemaNameInRecord, message.getTable());
+                                        tempTid = resolveTableIdForYSQL(
+                                            entry.getKey(), message.getTable(), syncClient);
                                     } else {
                                         tempTid = YugabyteDBSchema.parseWithKeyspace(message.getTable(),
                                                 connectorConfig.databaseName());
@@ -702,11 +722,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         // If a DDL message is received for a tablet, we do not need its schema again
                                         schemaNeeded.put(part.getId(), Boolean.FALSE);
 
+                                        refreshPgSchemaCache(syncClient);
+
                                         TableId tableId = null;
                                         if (message.getOperation() != Operation.NOOP) {
                                             if (connectorConfig.isYSQLDbType()) {
-                                                tableId = YugabyteDBSchema.createTableIdWithoutCatalog(
-                                                    pgSchemaNameInRecord, message.getTable());
+                                                tableId = resolveTableIdForYSQL(
+                                                    entry.getKey(), message.getTable(), syncClient);
                                             } else {
                                                 tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(),connectorConfig.databaseName());
                                             }
@@ -723,7 +745,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                 LOGGER.info("Refreshing the schema for table {} tablet {} because of mismatch in cached schema and received schema", entry.getKey(), tabletId);
                                             }
                                             if (connectorConfig.isYSQLDbType()) {
-                                                schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
+                                                schema.refreshSchemaWithTabletId(tableId, message.getSchema(), tableId.schema(), tabletId);
                                             } else {
                                                 schema.refreshSchemaWithTabletId(tableId, message.getSchema(), tableId.catalog(), tabletId);
                                             }
@@ -734,8 +756,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         TableId tableId = null;
                                         if (message.getOperation() != Operation.NOOP) {
                                             if (connectorConfig.isYSQLDbType()) {
-                                                tableId = YugabyteDBSchema.createTableIdWithoutCatalog(
-                                                    pgSchemaNameInRecord, message.getTable());
+                                                tableId = resolveTableIdForYSQL(
+                                                    entry.getKey(), message.getTable(), syncClient);
                                             } else {
                                                 tableId = YugabyteDBSchema.parseWithKeyspace(message.getTable(), connectorConfig.databaseName());
                                             }
@@ -756,8 +778,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             && dispatcher.dispatchDataChangeEvent(part, tableId,
                                                     new YugabyteDBChangeRecordEmitter(part, offsetContext, clock,
                                                             connectorConfig,
-                                                            schema, connection, tableId, message,
-                                                            connectorConfig.isYSQLDbType()? pgSchemaNameInRecord : tableId.catalog(), tabletId,
+                                                            schema, connection, tableId, message, tabletId,
                                                             taskContext.isBeforeImageEnabled()));
 
                                         if (!dispatched) {
@@ -1234,5 +1255,69 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         // In ideal scenarios, this should NEVER be returned from this function.
         return null;
+    }
+
+    /**
+     * Refresh the {@link #tableUUIDToTableId} cache by re-querying the YB master's
+     * {@code ListTables} RPC. Called when a DDL message is received, since DDL changes
+     * (e.g. {@code ALTER TABLE SET SCHEMA}) may change the PG schema name for a table.
+     *
+     * @param syncClient the {@link YBClient} to use for the RPC
+     * @return the fresh UUID-to-schema map from ListTables, or an empty map on failure
+     */
+    protected Map<String, String> refreshPgSchemaCache(YBClient syncClient) {
+        if (!connectorConfig.isYSQLDbType()) {
+            return Collections.emptyMap();
+        }
+        try {
+            Map<String, String> refreshedUuidToSchemaMap = YBClientUtils.buildTableUuidToPgSchemaMap(
+                syncClient, connectorConfig);
+            for (Map.Entry<String, String> entry : refreshedUuidToSchemaMap.entrySet()) {
+                TableId cachedTableId = tableUUIDToTableId.get(entry.getKey());
+                if (cachedTableId != null) {
+                    tableUUIDToTableId.put(entry.getKey(),
+                        YugabyteDBSchema.createTableIdWithoutCatalog(entry.getValue(), cachedTableId.table()));
+                }
+            }
+            LOGGER.debug("Refreshed UUID-to-schema cache with {} entries on DDL", refreshedUuidToSchemaMap.size());
+            return refreshedUuidToSchemaMap;
+        } catch (Exception e) {
+            LOGGER.warn("Failed to refresh schema cache on DDL", e);
+            return Collections.emptyMap();
+        }
+    }
+
+    /**
+     * Resolve a {@link TableId} for a YSQL table using the PG-catalog-based
+     * {@link #tableUUIDToTableId} map built at startup and refreshed on DDL events.
+     * If the UUID is not found in the map, refreshes the cache once and retries.
+     * For genuinely new tables (not in the cache at all), the fresh ListTables response
+     * is used to construct the TableId directly using the provided tableName.
+     */
+    protected TableId resolveTableIdForYSQL(String tableUUID, String tableName,
+                                            YBClient syncClient) {
+        TableId resolved = tableUUIDToTableId.get(tableUUID);
+        if (resolved != null) {
+            return resolved;
+        }
+
+        LOGGER.info("Table UUID {} not found in schema cache, refreshing from ListTables", tableUUID);
+        Map<String, String> refreshedUuidToSchemaMap = refreshPgSchemaCache(syncClient);
+
+        resolved = tableUUIDToTableId.get(tableUUID);
+        if (resolved != null) {
+            return resolved;
+        }
+
+        String pgSchemaName = refreshedUuidToSchemaMap.get(tableUUID);
+        if (pgSchemaName != null) {
+            resolved = YugabyteDBSchema.createTableIdWithoutCatalog(pgSchemaName, tableName);
+            tableUUIDToTableId.put(tableUUID, resolved);
+            LOGGER.info("Added new table UUID {} to schema cache as {}", tableUUID, resolved);
+            return resolved;
+        }
+
+        throw new DebeziumException("No cached PG schema name for table UUID " + tableUUID
+            + " (table: " + tableName + ") even after refreshing the cache.");
     }
 }
