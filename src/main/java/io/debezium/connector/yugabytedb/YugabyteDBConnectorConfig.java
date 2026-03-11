@@ -599,7 +599,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final boolean DEFAULT_LOG_GET_CHANGES = false;
     protected static final long DEFAULT_NEW_TABLE_POLL_INTERVAL_MS = 5 * 60 * 1000L;
     protected static final long DEFAULT_LOG_GET_CHANGES_INTERVAL_MS = 5 * 60 * 1000L;
-    protected static final long DEFAULT_LOG_COMMIT_OFFSET_INTERVAL_MS = 5 * 60 * 1000L;
+    protected static final long DEFAULT_LOG_COMMIT_OFFSET_INTERVAL_MS = 10 * 60 * 1000L;
     public static final int DEFAULT_MBEAN_REGISTRATION_RETRIES = 12;
     public static final long DEFAULT_MBEAN_REGISTRATION_RETRY_DELAY_MS = 5_000;
     public static final long DEFAULT_LAST_CALLBACK_TIMEOUT_MS = 3 * 60 * 1000;
@@ -1049,7 +1049,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withImportance(Importance.LOW)
             .withType(Type.LONG)
             .withDefault(DEFAULT_LOG_COMMIT_OFFSET_INTERVAL_MS)
-            .withValidation(Field::isNonNegativeLong);
+            .withDescription("Interval at which the connector logs the commit offset map. Set to -1 to disable.");
 
     public static final Field SNAPSHOT_MODE_CLASS = Field.create("snapshot.custom.class")
             .withDisplayName("Snapshot Mode Custom Class")

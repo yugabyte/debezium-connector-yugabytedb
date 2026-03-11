@@ -97,7 +97,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     protected final Filters filters;
 
-    //This timer is used to log the offset map periodically.
+    // This timer is used to log the offset map periodically.
     protected final ElapsedTimeStrategy offsetLogTimer;
 
     // This set will contain the list of partition IDs for the tablets which have been split
@@ -124,7 +124,9 @@ public class YugabyteDBStreamingChangeEventSource implements
         this.snapshotter = snapshotter;
         checkPointMap = new ConcurrentHashMap<>();
         this.connectionProbeTimer = ElapsedTimeStrategy.constant(Clock.system(), connectorConfig.statusUpdateInterval());
-        this.offsetLogTimer = ElapsedTimeStrategy.constant(Clock.system(), connectorConfig.logCommitOffsetIntervalMs());
+        this.offsetLogTimer = connectorConfig.logCommitOffsetIntervalMs() > 0
+                ? ElapsedTimeStrategy.constant(Clock.system(), connectorConfig.logCommitOffsetIntervalMs())
+                : null;
 
         String masterAddress = connectorConfig.masterAddresses();
         yugabyteDBTypeRegistry = taskContext.schema().getTypeRegistry();
@@ -981,12 +983,15 @@ public class YugabyteDBStreamingChangeEventSource implements
 
         try {
             LOGGER.info("{} | Committing offsets on server", taskContext.getTaskId());
-            // Log the offset map periodically based on the configuration. Default is 5 minutes.
-            // to change the interval, set the property "log.commit.offset.interval.ms" in the configuration.
-            if (offsetLogTimer.hasElapsed()) {
-                LOGGER.info("Offset map:");
+            // Log the offset map periodically based on the configuration. Default is 10 minutes.
+            // To change the interval, set the property "log.commit.offset.interval.ms" in the configuration.
+            // Set to -1 to disable.
+            if (offsetLogTimer != null && offsetLogTimer.hasElapsed()) {
+                LOGGER.info("{} | Offset map:", taskContext.getTaskId());
                 for (Map.Entry<String, ?> entry : offset.entrySet()) {
-                    LOGGER.info("Tablet: {} OpId: {}", entry.getKey(), entry.getValue());
+                    if (!entry.getKey().equals("transaction_id")) {
+                        LOGGER.info("{} | Tablet: {} OpId: {}", taskContext.getTaskId(), entry.getKey(), entry.getValue());
+                    }
                 }
             }
 
