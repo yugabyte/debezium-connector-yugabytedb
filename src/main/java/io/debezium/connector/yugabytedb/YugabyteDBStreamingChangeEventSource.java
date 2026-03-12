@@ -986,7 +986,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             // Log the offset map periodically based on the configuration. Default is 10 minutes.
             // To change the interval, set the property "log.commit.offset.interval.ms" in the configuration.
             // Set to -1 to disable.
-            if (offsetLogTimer != null && offsetLogTimer.hasElapsed()) {
+            if (!LOGGER.isDebugEnabled() && offsetLogTimer != null && offsetLogTimer.hasElapsed()) {
                 LOGGER.info("{} | Offset map:", taskContext.getTaskId());
                 for (Map.Entry<String, ?> entry : offset.entrySet()) {
                     if (!entry.getKey().equals("transaction_id")) {
