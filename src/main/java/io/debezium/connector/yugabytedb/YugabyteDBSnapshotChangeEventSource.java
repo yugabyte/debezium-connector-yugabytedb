@@ -38,6 +38,7 @@ import io.debezium.relational.RelationalSnapshotChangeEventSource;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
 import io.debezium.util.Clock;
+import io.debezium.util.ElapsedTimeStrategy;
 import io.debezium.util.Metronome;
 import io.debezium.util.Strings;
 
@@ -84,6 +85,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     private Map<String, Long> lastGetChangesTime;
     private final String LAST_SNAPSHOT_RECORD_KEY = "LAST_SNAPSHOT_RECORD";
 
+    // This timer is used to log the offset map periodically.
+    private final ElapsedTimeStrategy offsetLogTimer;
+
     public YugabyteDBSnapshotChangeEventSource(YugabyteDBConnectorConfig connectorConfig,
                                                YugabyteDBTaskContext taskContext,
                                                Snapshotter snapshotter, YugabyteDBConnection connection,
@@ -120,6 +124,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.tabletsWaitingForCallback = new HashSet<>();
         this.partitionRanges = new ArrayList<>();
         this.lastGetChangesTime = new HashMap<>();
+        this.offsetLogTimer = connectorConfig.logCommitOffsetIntervalMs() > 0
+                ? ElapsedTimeStrategy.constant(Clock.system(), connectorConfig.logCommitOffsetIntervalMs())
+                : null;
     }
 
     @Override
@@ -886,6 +893,18 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
         try {
             LOGGER.info("{} | Committing offsets on server for snapshot", taskContext.getTaskId());
+
+            // Log the offset map periodically based on the configuration. Default is 10 minutes.
+            // To change the interval, set the property "log.commit.offset.interval.ms" in the configuration.
+            // Set to -1 to disable.
+            if (offsetLogTimer != null && offsetLogTimer.hasElapsed()) {
+                LOGGER.info("{} | Offset map:", taskContext.getTaskId());
+                for (Map.Entry<String, ?> entry : offset.entrySet()) {
+                    if (!entry.getKey().equals("transaction_id")) {
+                        LOGGER.info("{} | Tablet: {} OpId: {}", taskContext.getTaskId(), entry.getKey(), entry.getValue());
+                    }
+                }
+            }
 
             for (Map.Entry<String, ?> entry : offset.entrySet()) {
                 // TODO: The transaction_id field is getting populated somewhere and see if it can
