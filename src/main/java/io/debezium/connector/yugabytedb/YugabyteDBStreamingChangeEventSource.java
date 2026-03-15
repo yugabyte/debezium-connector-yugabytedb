@@ -55,6 +55,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     public static boolean TEST_PAUSE_GET_CHANGES_CALLS = false;
     public static boolean TEST_STOP_ADVANCING_CHECKPOINTS = false;
     public static boolean TEST_FAIL_WHILE_PROCESSING_BATCH = false;
+    public static Set<String> TEST_TABLETS_TO_SKIP_POLLING = null;
     public static Map<String, CdcSdkCheckpoint> TEST_explicitCheckpoints;
 
     protected static final String KEEP_ALIVE_THREAD_NAME = "keep-alive";
@@ -508,6 +509,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                             // If enabled, this will cause the connector to skip GetChanges calls for all the tablets.
                             if (TEST_PAUSE_GET_CHANGES_CALLS) {
                                 LOGGER.info("[Test only] Skipping over the GetChanges call for tablet {}", tabletId);
+                                continue;
+                            }
+
+                            if (TEST_TABLETS_TO_SKIP_POLLING != null && TEST_TABLETS_TO_SKIP_POLLING.contains(tabletId)) {
+                                LOGGER.info("[Test only] Skipping GetChanges for tablet {} (in skip set)", tabletId);
                                 continue;
                             }
 

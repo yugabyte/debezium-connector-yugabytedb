@@ -179,6 +179,11 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                 LOGGER.debug("Requesting schema for tablet: {}", tabletId);
                             }
 
+                            if (TEST_TABLETS_TO_SKIP_POLLING != null && TEST_TABLETS_TO_SKIP_POLLING.contains(tabletId)) {
+                                LOGGER.info("[Test only] Skipping GetChanges for tablet {} (in skip set)", tabletId);
+                                continue;
+                            }
+
                             if (merger.isSlotEmpty(tabletId)) {
                                 try {
                                     response = syncClient.getChangesCDCSDK(
