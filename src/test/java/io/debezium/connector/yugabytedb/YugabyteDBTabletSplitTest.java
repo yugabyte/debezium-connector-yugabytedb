@@ -34,7 +34,7 @@ import org.yb.cdc.CdcService.TabletCheckpointPair;
  * 
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
 
   private static String masterAddresses;
 
