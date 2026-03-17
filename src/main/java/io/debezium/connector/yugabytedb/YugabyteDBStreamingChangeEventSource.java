@@ -999,7 +999,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // TODO: The transaction_id field is getting populated somewhere and see if it can
                 // be removed or blocked from getting added to this map.
                 if (!entry.getKey().equals("transaction_id")) {
-                    LOGGER.debug("Tablet: {} OpId: {}", entry.getKey(), entry.getValue());
+                    LOGGER.debug("{} | Tablet: {} OpId: {}", taskContext.getTaskId(), entry.getKey(), entry.getValue());
 
                     // Parse the string to get the OpId object.
                     OpId tempOpId = OpId.valueOf((String) entry.getValue());
