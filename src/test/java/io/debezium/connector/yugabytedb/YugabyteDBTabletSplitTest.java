@@ -26,6 +26,7 @@ import org.yb.client.YBTable;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import org.yb.cdc.CdcService.TabletCheckpointPair;
 
