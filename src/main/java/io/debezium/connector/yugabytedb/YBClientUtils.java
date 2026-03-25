@@ -346,8 +346,10 @@ public class YBClientUtils {
 
     String recordType = cdcStreamInfo.getOptions().get("record_type");
     if (recordType == null) {
-      LOGGER.warn("record_type option not found in stream options");
-      return false;
+      // If the record_type option is not found, it means that the stream is configured with a slot + publication path.
+      // In this case, we return true to indicate that before image is enabled.
+      LOGGER.warn("record_type option not found in stream options.");
+      return true;
     }
 
     return recordType.equals(CDCRecordType.ALL.name())
