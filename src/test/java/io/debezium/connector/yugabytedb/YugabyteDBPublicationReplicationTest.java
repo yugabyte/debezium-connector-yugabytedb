@@ -11,7 +11,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
+import org.awaitility.core.ConditionTimeoutException;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
@@ -41,11 +43,16 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
 
     public static String insertStatementFormatfort2 = "INSERT INTO t2 values (%d);";
     public static String insertStatementFormatfort3 = "INSERT INTO t3 values (%d);";
+    private final String formatInsertString =
+        "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 12.345);";
+
+    private static final String PUB_NAME = "pub";
+    private static final String SLOT_NAME = "test_replication_slot";
 
     @BeforeAll
     public static void beforeClass() throws SQLException {
-        setMasterFlags("ysql_yb_enable_replication_commands=true");
-        setTserverFlags("ysql_yb_enable_replication_commands=true");
+        setMasterFlags("ysql_yb_enable_replication_commands=true,ysql_cdc_active_replication_slot_window_ms=0");
+        setTserverFlags("ysql_yb_enable_replication_commands=true,ysql_cdc_active_replication_slot_window_ms=0");
         initializeYBContainer( );
         TestHelper.dropAllSchemas();
     }
@@ -53,12 +60,14 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
     @BeforeEach
     public void before() throws Exception {
         initializeConnectorTestFramework();
+        dropReplicationSlot();
         TestHelper.executeDDL("yugabyte_create_tables.ddl");
     }
 
     @AfterEach
     public void after() throws Exception {
         stopConnector();
+        Thread.sleep(10000);
         Awaitility.await()
             .atMost(Duration.ofSeconds(65))
             .until(() -> {
@@ -98,12 +107,13 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
 
     @Test
     public void testPublicationReplicationSnapshotConsumption() throws Exception {
-        String insertStatement = "INSERT INTO t2 values (%d);";
+        TestHelper.execute("CREATE TABLE IF NOT EXISTS t2_snapshot (id int primary key);");
+        TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, "pub", "t2_snapshot"));
+        TestHelper.execute(TestHelper.createReplicationSlotStatement);
+
+        String insertStatement = "INSERT INTO t2_snapshot values (%d);";
         final int recordsCount = 1000;
         TestHelper.executeBulk(insertStatement, recordsCount);
-
-        TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, "pub", "t2"));
-        TestHelper.execute(TestHelper.createReplicationSlotStatement);
 
         Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot"); 
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
@@ -112,6 +122,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
         awaitUntilConnectorIsReady();
 
         verifyRecordCount(recordsCount);
+        // TestHelper.execute("DROP TABLE IF EXISTS t2_snapshot;");
     }
 
     @Test
@@ -159,8 +170,8 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
 
     @Test
     public void oldConfigStreamIDShouldNotBePartOfReplicationSlot() throws Exception {
-        TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, "pub", "t1"));
         TestHelper.execute(TestHelper.createReplicationSlotStatement);
+        TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, "pub", "t1"));
         String streamId = TestHelper.getStreamIdFromSlot("test_replication_slot");
 
         LOGGER.info("Using stream ID =  " + streamId);
@@ -174,6 +185,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
          "Stream ID %s is associated with replication slot %s. Please use slot name in the config instead of Stream ID.",
                 streamId, "test_replication_slot");
         assertTrue(exception.getMessage().contains(errorMessage));
+
     }
 
     @Test
@@ -236,6 +248,184 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
 
     }
 
+    @Test
+    public void testReplicaIdentityFull() throws Exception {
+        TestHelper.initDB("yugabyte_create_tables.ddl");
+
+        TestHelper.execute("ALTER TABLE t1 REPLICA IDENTITY FULL;");
+        TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, PUB_NAME, "t1"));
+        TestHelper.execute(TestHelper.createReplicationSlotStatement);
+
+        startEngine(getPublicationConfig());
+        awaitUntilConnectorIsReady();
+
+        TestHelper.execute(String.format(formatInsertString, 1));
+        TestHelper.execute("UPDATE t1 SET first_name='VKVK', hours=56.78 WHERE id = 1;");
+        TestHelper.execute("DELETE FROM t1 WHERE id = 1;");
+
+        List<SourceRecord> records = new ArrayList<>();
+        CompletableFuture.runAsync(() -> getRecords(records, 4, 20000)).get();
+
+        // INSERT: no before image
+        SourceRecord insertRecord = records.get(0);
+        assertValueField(insertRecord, "before", null);
+        assertAfterImage(insertRecord, 1, "Vaibhav", "Kushwaha", 12.345);
+
+        // UPDATE: full before image with all columns
+        SourceRecord updateRecord = records.get(1);
+        assertBeforeImage(updateRecord, 1, "Vaibhav", "Kushwaha", 12.345);
+        assertAfterImage(updateRecord, 1, "VKVK", "Kushwaha", 56.78);
+
+        // DELETE: full before image, null after
+        SourceRecord deleteRecord = records.get(2);
+        assertBeforeImage(deleteRecord, 1, "VKVK", "Kushwaha", 56.78);
+        assertValueField(deleteRecord, "after", null);
+
+        assertTombstone(records.get(3));
+    }
+
+    /**
+     * REPLICA IDENTITY DEFAULT: before image is null for UPDATE and
+     *  contains only the primary key columns for DELETE.
+     */
+    @Test
+    public void testReplicaIdentityDefault() throws Exception {
+        TestHelper.initDB("yugabyte_create_tables.ddl");
+
+        TestHelper.execute("ALTER TABLE t1 REPLICA IDENTITY DEFAULT;");
+        TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, PUB_NAME, "t1"));
+        TestHelper.execute(TestHelper.createReplicationSlotStatement);
+
+        startEngine(getPublicationConfig());
+        awaitUntilConnectorIsReady();
+
+        TestHelper.execute(String.format(formatInsertString, 1));
+        TestHelper.execute("UPDATE t1 SET first_name='VKVK', hours=56.78 WHERE id = 1;");
+        TestHelper.execute("DELETE FROM t1 WHERE id = 1;");
+
+        List<SourceRecord> records = new ArrayList<>();
+        CompletableFuture.runAsync(() -> getRecords(records, 4, 20000)).get();
+
+        // INSERT: no before image
+        SourceRecord insertRecord = records.get(0);
+        assertValueField(insertRecord, "before", null);
+        assertAfterImage(insertRecord, 1, "Vaibhav", "Kushwaha", 12.345);
+
+        // UPDATE: before image is null
+        SourceRecord updateRecord = records.get(1);
+        assertValueField(insertRecord, "before", null);
+        assertAfterImage(updateRecord, 1, "VKVK", "Kushwaha", 56.78);
+
+        // DELETE: before image has only the PK, null after
+        SourceRecord deleteRecord = records.get(2);
+        assertValueField(deleteRecord, "before/id/value", 1);
+        assertValueField(deleteRecord, "after", null);
+
+        assertTombstone(records.get(3));
+    }
+
+    /**
+     * REPLICA IDENTITY NOTHING: UPDATE and DELETE are disallowed by the database
+     * because the table has no replica identity and publishes updates/deletes.
+     */
+    @Test
+    public void testReplicaIdentityNothing() throws Exception {
+        TestHelper.initDB("yugabyte_create_tables.ddl");
+
+        TestHelper.execute("ALTER TABLE t1 REPLICA IDENTITY NOTHING;");
+        TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, PUB_NAME, "t1"));
+        TestHelper.execute(TestHelper.createReplicationSlotStatement);
+
+        startEngine(getPublicationConfig());
+        awaitUntilConnectorIsReady();
+
+        TestHelper.execute(String.format(formatInsertString, 1));
+
+        RuntimeException updateEx = assertThrows(RuntimeException.class,
+            () -> TestHelper.execute("UPDATE t1 SET first_name='VKVK', hours=56.78 WHERE id = 1;"));
+        assertTrue(updateEx.getMessage().contains(
+            "cannot update table \"t1\" because it does not have a replica identity and publishes updates"));
+
+        RuntimeException deleteEx = assertThrows(RuntimeException.class,
+            () -> TestHelper.execute("DELETE FROM t1 WHERE id = 1;"));
+        assertTrue(deleteEx.getMessage().contains(
+            "cannot delete from table \"t1\" because it does not have a replica identity and publishes deletes"));
+
+        List<SourceRecord> records = new ArrayList<>();
+        CompletableFuture.runAsync(() -> getRecords(records, 1, 20000)).get();
+
+        // INSERT: no before image
+        SourceRecord insertRecord = records.get(0);
+        assertValueField(insertRecord, "before", null);
+        assertAfterImage(insertRecord, 1, "Vaibhav", "Kushwaha", 12.345);
+    }
+
+    /**
+     * REPLICA IDENTITY CHANGE:
+     * - INSERT: before=null, after=full new row
+     * - UPDATE: before=null, after=PK + changed columns
+     * - DELETE: before=PK only, after=null
+     */
+    @Test
+    public void testReplicaIdentityChange() throws Exception {
+        TestHelper.initDB("yugabyte_create_tables.ddl");
+
+        TestHelper.execute("ALTER TABLE t1 REPLICA IDENTITY CHANGE;");
+        TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, PUB_NAME, "t1"));
+        TestHelper.execute(TestHelper.createReplicationSlotStatement);
+
+        startEngine(getPublicationConfig());
+        awaitUntilConnectorIsReady();
+
+        TestHelper.execute(String.format(formatInsertString, 1));
+        TestHelper.execute("UPDATE t1 SET last_name='KK', hours=56.78 WHERE id = 1;");
+        TestHelper.execute("DELETE FROM t1 WHERE id = 1;");
+
+        List<SourceRecord> records = new ArrayList<>();
+        CompletableFuture.runAsync(() -> getRecords(records, 4, 20000)).get();
+
+        // INSERT: no before image, full new row in after
+        SourceRecord insertRecord = records.get(0);
+        assertValueField(insertRecord, "before", null);
+        assertAfterImage(insertRecord, 1, "Vaibhav", "Kushwaha", 12.345);
+
+        // UPDATE: no before image, after has PK + changed columns
+        SourceRecord updateRecord = records.get(1);
+        assertValueField(updateRecord, "before", null);
+        assertValueField(updateRecord, "after/id/value", 1);
+        assertValueField(updateRecord, "after/last_name/value", "KK");
+        assertValueField(updateRecord, "after/hours/value", 56.78);
+
+        // DELETE: before has PK only, null after
+        SourceRecord deleteRecord = records.get(2);
+        assertValueField(deleteRecord, "before/id/value", 1);
+        assertValueField(deleteRecord, "after", null);
+
+        assertTombstone(records.get(3));
+    }
+
+    // ---- Helpers ----
+
+    private Configuration.Builder getPublicationConfig() throws Exception {
+        return TestHelper.getConfigBuilderWithPublication("yugabyte", PUB_NAME, SLOT_NAME);
+    }
+
+    private void assertBeforeImage(SourceRecord record, Integer id, String firstName,
+                                   String lastName, Double hours) {
+        assertValueField(record, "before/id/value", id);
+        assertValueField(record, "before/first_name/value", firstName);
+        assertValueField(record, "before/last_name/value", lastName);
+        assertValueField(record, "before/hours/value", hours);
+    }
+
+    private void assertAfterImage(SourceRecord record, Integer id, String firstName,
+                                  String lastName, Double hours) {
+        assertValueField(record, "after/id/value", id);
+        assertValueField(record, "after/first_name/value", firstName);
+        assertValueField(record, "after/last_name/value", lastName);
+        assertValueField(record, "after/hours/value", hours);
+    }
+
     private void insertRecords(long numOfRowsToBeInserted) throws Exception {
         String formatInsertString = "INSERT INTO t1 VALUES (%d, 'Vaibhav', 'Kushwaha', 30);";
         CompletableFuture.runAsync(() -> {
@@ -264,8 +454,18 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
         try (YugabyteDBConnection ybConnection = TestHelper.create();
              Connection connection = ybConnection.connection()) {
             final Statement statement = connection.createStatement();
-            final ResultSet rs = statement.executeQuery(TestHelper.dropReplicationSlotStatement);
-            return rs.next();
+
+            ResultSet check = statement.executeQuery(
+                "SELECT 1 FROM pg_replication_slots WHERE slot_name = 'test_replication_slot';");
+            if (!check.next()) {
+                return true;
+            }
+
+            statement.execute(TestHelper.dropReplicationSlotStatement);
+
+            ResultSet verify = statement.executeQuery(
+                "SELECT 1 FROM pg_replication_slots WHERE slot_name = 'test_replication_slot';");
+            return !verify.next();
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
@@ -275,6 +475,33 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
 
     private void verifyRecordCount(long recordsCount) {
         waitAndFailIfCannotConsume(new ArrayList<>(), recordsCount);
+    }
+
+    private void getRecords(List<SourceRecord> records, long totalRecordsToConsume,
+                            long milliSecondsToWait) {
+        AtomicLong totalConsumedRecords = new AtomicLong();
+        long seconds = milliSecondsToWait / 1000;
+        try {
+            Awaitility.await()
+                .atMost(Duration.ofSeconds(seconds))
+                .until(() -> {
+                    int consumed = consumeAvailableRecords(record -> {
+                        LOGGER.debug("The record being consumed is " + record);
+                        records.add(record);
+                    });
+                    if (consumed > 0) {
+                        totalConsumedRecords.addAndGet(consumed);
+                        LOGGER.debug("Consumed " + totalConsumedRecords + " records");
+                    }
+
+                    return totalConsumedRecords.get() == totalRecordsToConsume;
+                });
+        } catch (ConditionTimeoutException exception) {
+            fail("Failed to consume " + totalRecordsToConsume + " records in " + seconds
+                 + " seconds", exception);
+        }
+
+        assertEquals(totalRecordsToConsume, totalConsumedRecords.get());
     }
 
 }
