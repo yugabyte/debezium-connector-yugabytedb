@@ -348,7 +348,8 @@ public class YBClientUtils {
     if (recordType == null) {
       // If the record_type option is not found, it means that the stream is configured with a slot + publication path.
       // In this case, we return true to indicate that before image is enabled.
-      LOGGER.warn("record_type option not found in stream options.");
+      LOGGER.info("record_type option not found in stream options, the stream is likely configured"
+          + " via slot + publication path; returning before_image as enabled (true)");
       return true;
     }
 

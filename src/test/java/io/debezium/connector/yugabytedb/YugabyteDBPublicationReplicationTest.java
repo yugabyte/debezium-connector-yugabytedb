@@ -79,6 +79,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
             });
         TestHelper.execute(TestHelper.dropPublicationStatement);
         TestHelper.executeDDL("drop_tables_and_databases.ddl");
+        TestHelper.execute("DROP TABLE IF EXISTS ri_full, ri_default, ri_nothing, ri_change;");
     }
 
     @AfterAll
@@ -402,6 +403,133 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
         assertValueField(deleteRecord, "after", null);
 
         assertTombstone(records.get(3));
+    }
+
+    /**
+     * Combined test with 4 tables, each having a different REPLICA IDENTITY
+     * (FULL, DEFAULT, NOTHING, CHANGE), all part of the same publication
+     * and replication slot.
+     */
+    @Test
+    public void testMixedReplicaIdentitiesInSameStream() throws Exception {
+        String createTableFmt =
+            "CREATE TABLE IF NOT EXISTS %s (id INT PRIMARY KEY, first_name TEXT NOT NULL, last_name VARCHAR(40), hours DOUBLE PRECISION);";
+        TestHelper.execute(String.format(createTableFmt, "ri_full"));
+        TestHelper.execute(String.format(createTableFmt, "ri_default"));
+        TestHelper.execute(String.format(createTableFmt, "ri_nothing"));
+        TestHelper.execute(String.format(createTableFmt, "ri_change"));
+
+        TestHelper.execute("ALTER TABLE ri_full REPLICA IDENTITY FULL;");
+        TestHelper.execute("ALTER TABLE ri_default REPLICA IDENTITY DEFAULT;");
+        TestHelper.execute("ALTER TABLE ri_nothing REPLICA IDENTITY NOTHING;");
+        TestHelper.execute("ALTER TABLE ri_change REPLICA IDENTITY CHANGE;");
+
+        TestHelper.execute(String.format(
+            "CREATE PUBLICATION %s FOR TABLE ri_full, ri_default, ri_nothing, ri_change;", PUB_NAME));
+        TestHelper.execute(TestHelper.createReplicationSlotStatement);
+
+        startEngine(getPublicationConfig());
+        awaitUntilConnectorIsReady();
+
+        String insertFmt = "INSERT INTO %s VALUES (1, 'Vaibhav', 'Kushwaha', 12.345);";
+        String updateFmt = "UPDATE %s SET first_name='VKVK', hours=56.78 WHERE id = 1;";
+        String deleteFmt = "DELETE FROM %s WHERE id = 1;";
+
+        // ri_full: INSERT, UPDATE, DELETE
+        TestHelper.execute(String.format(insertFmt, "ri_full"));
+        TestHelper.execute(String.format(updateFmt, "ri_full"));
+        TestHelper.execute(String.format(deleteFmt, "ri_full"));
+
+        // ri_default: INSERT, UPDATE, DELETE
+        TestHelper.execute(String.format(insertFmt, "ri_default"));
+        TestHelper.execute(String.format(updateFmt, "ri_default"));
+        TestHelper.execute(String.format(deleteFmt, "ri_default"));
+
+        // ri_nothing: only INSERT is allowed
+        TestHelper.execute(String.format(insertFmt, "ri_nothing"));
+
+        RuntimeException updateEx = assertThrows(RuntimeException.class,
+            () -> TestHelper.execute(String.format(updateFmt, "ri_nothing")));
+        assertTrue(updateEx.getMessage().contains(
+            "cannot update table \"ri_nothing\" because it does not have a replica identity and publishes updates"));
+
+        RuntimeException deleteEx = assertThrows(RuntimeException.class,
+            () -> TestHelper.execute(String.format(deleteFmt, "ri_nothing")));
+        assertTrue(deleteEx.getMessage().contains(
+            "cannot delete from table \"ri_nothing\" because it does not have a replica identity and publishes deletes"));
+
+        // ri_change: INSERT, UPDATE, DELETE
+        TestHelper.execute(String.format(insertFmt, "ri_change"));
+        TestHelper.execute("UPDATE ri_change SET last_name='KK', hours=56.78 WHERE id = 1;");
+        TestHelper.execute(String.format(deleteFmt, "ri_change"));
+
+        // Expect: ri_full(4) + ri_default(4) + ri_nothing(1) + ri_change(4) = 13 records
+        List<SourceRecord> allRecords = new ArrayList<>();
+        CompletableFuture.runAsync(() -> getRecords(allRecords, 13, 30000)).get();
+
+        String topicPrefix = TestHelper.TEST_SERVER + ".public.";
+        Map<String, List<SourceRecord>> byTopic = new HashMap<>();
+        for (SourceRecord r : allRecords) {
+            byTopic.computeIfAbsent(r.topic(), k -> new ArrayList<>()).add(r);
+        }
+
+        // --- ri_full: FULL before image on UPDATE and DELETE ---
+        List<SourceRecord> fullRecords = byTopic.get(topicPrefix + "ri_full");
+        assertNotNull(fullRecords, "Expected records for ri_full");
+        assertEquals(4, fullRecords.size());
+
+        assertValueField(fullRecords.get(0), "before", null);
+        assertAfterImage(fullRecords.get(0), 1, "Vaibhav", "Kushwaha", 12.345);
+
+        assertBeforeImage(fullRecords.get(1), 1, "Vaibhav", "Kushwaha", 12.345);
+        assertAfterImage(fullRecords.get(1), 1, "VKVK", "Kushwaha", 56.78);
+
+        assertBeforeImage(fullRecords.get(2), 1, "VKVK", "Kushwaha", 56.78);
+        assertValueField(fullRecords.get(2), "after", null);
+
+        assertTombstone(fullRecords.get(3));
+
+        // --- ri_default: null before on UPDATE, PK-only before on DELETE ---
+        List<SourceRecord> defaultRecords = byTopic.get(topicPrefix + "ri_default");
+        assertNotNull(defaultRecords, "Expected records for ri_default");
+        assertEquals(4, defaultRecords.size());
+
+        assertValueField(defaultRecords.get(0), "before", null);
+        assertAfterImage(defaultRecords.get(0), 1, "Vaibhav", "Kushwaha", 12.345);
+
+        assertValueField(defaultRecords.get(1), "before", null);
+        assertAfterImage(defaultRecords.get(1), 1, "VKVK", "Kushwaha", 56.78);
+
+        assertValueField(defaultRecords.get(2), "before/id/value", 1);
+        assertValueField(defaultRecords.get(2), "after", null);
+
+        assertTombstone(defaultRecords.get(3));
+
+        // --- ri_nothing: only INSERT ---
+        List<SourceRecord> nothingRecords = byTopic.get(topicPrefix + "ri_nothing");
+        assertNotNull(nothingRecords, "Expected records for ri_nothing");
+        assertEquals(1, nothingRecords.size());
+
+        assertValueField(nothingRecords.get(0), "before", null);
+        assertAfterImage(nothingRecords.get(0), 1, "Vaibhav", "Kushwaha", 12.345);
+
+        // --- ri_change: null before on UPDATE (after has PK + changed cols), PK-only before on DELETE ---
+        List<SourceRecord> changeRecords = byTopic.get(topicPrefix + "ri_change");
+        assertNotNull(changeRecords, "Expected records for ri_change");
+        assertEquals(4, changeRecords.size());
+
+        assertValueField(changeRecords.get(0), "before", null);
+        assertAfterImage(changeRecords.get(0), 1, "Vaibhav", "Kushwaha", 12.345);
+
+        assertValueField(changeRecords.get(1), "before", null);
+        assertValueField(changeRecords.get(1), "after/id/value", 1);
+        assertValueField(changeRecords.get(1), "after/last_name/value", "KK");
+        assertValueField(changeRecords.get(1), "after/hours/value", 56.78);
+
+        assertValueField(changeRecords.get(2), "before/id/value", 1);
+        assertValueField(changeRecords.get(2), "after", null);
+
+        assertTombstone(changeRecords.get(3));
     }
 
     // ---- Helpers ----
