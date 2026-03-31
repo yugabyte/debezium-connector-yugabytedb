@@ -490,13 +490,19 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
                                 OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
 
+                                LOGGER.info("Wait-list check for tablet {}: explicitCheckpoint={}, lastRecordCheckpoint={}, from_op_id={}",
+                                        part.getTabletId(),
+                                        explicitCheckpoint != null ? (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex() + ":" + explicitCheckpoint.getTime()) : "null",
+                                        lastRecordCheckpoint != null ? lastRecordCheckpoint.toSerString() : "null",
+                                        cp.toSerString());
+
                                 if (explicitCheckpoint != null && (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint))) {
                                     // At this position, we know we have received a callback for split tablet
                                     // handle tablet split and delete the tablet from the waiting list.
 
                                     // Call getChanges to make sure checkpoint is set on the cdc_state table.
-                                    LOGGER.info("Setting explicit checkpoint for tablet {} to {}.{}", part.getTabletId(),
-                                                explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex());
+                                    LOGGER.info("Setting explicit checkpoint for tablet {} to {}.{}:{}", part.getTabletId(),
+                                                explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), explicitCheckpoint.getTime());
                                     setCheckpointWithGetChanges(syncClient, tableIdToTable.get(part.getTableId()), part,
                                             cp, explicitCheckpoint, schemaNeeded.get(part.getId()),
                                             tabletSafeTime.get(part.getId()), offsetContext.getWalSegmentIndex(part));
@@ -504,10 +510,16 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     LOGGER.info("Handling tablet split for enqueued tablet {} as we have now received the commit callback",
                                             part.getTabletId());
                                     handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
+                                    LOGGER.info("Removing tablet {} from wait-list after successful split handling", part.getTabletId());
                                     splitTabletsWaitingForCallback.remove(part.getId());
                                     // Break out of the loop so that processing can happen on the modified list.
                                     break;
                                 } else {
+                                    LOGGER.info("Tablet {} still waiting in wait-list: explicitCheckpoint={}, lastRecordCheckpoint={}, isLesserThanOrEqualTo={}",
+                                            part.getTabletId(),
+                                            explicitCheckpoint != null ? (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex() + ":" + explicitCheckpoint.getTime()) : "null",
+                                            lastRecordCheckpoint != null ? lastRecordCheckpoint.toSerString() : "null",
+                                            lastRecordCheckpoint != null && explicitCheckpoint != null ? lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint) : "N/A");
                                     continue;
                                 }
                             }
@@ -569,21 +581,30 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                     if (taskContext.shouldEnableExplicitCheckpointing()) {
                                         OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
+                                        OpId sourceInfoLsn = offsetContext.getSourceInfo(part).lsn();
 
-                                        // If explicit checkpointing is enabled then we should check if we have the explicit checkpoint
-                                        // the same as from_op_id, if yes then handle tablet split directly, if not, add the partition ID
-                                        // (table.tablet) to be processed later.
+                                        LOGGER.info("Tablet split decision for tablet {}: explicitCheckpoint={}, lastRecordCheckpoint={}, sourceInfo.lsn={}, from_op_id={}",
+                                                tabletId,
+                                                explicitCheckpoint != null ? (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex() + ":" + explicitCheckpoint.getTime()) : "null",
+                                                lastRecordCheckpoint != null ? lastRecordCheckpoint.toSerString() : "null",
+                                                sourceInfoLsn != null ? sourceInfoLsn.toSerString() : "null",
+                                                cp.toSerString());
+
                                         if (explicitCheckpoint != null && (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint))) {
-                                            LOGGER.info("Explicit checkpoint same as last seen record's checkpoint, handling tablet split immediately for partition {}, explicit checkpoint {}:{}:{} lastRecordCheckpoint: {}.{}.{}",
-                                                    part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), explicitCheckpoint.getTime(), lastRecordCheckpoint.getTerm(), lastRecordCheckpoint.getIndex(), lastRecordCheckpoint.getTime());
+                                            LOGGER.info("Handling tablet split immediately for tablet {}: explicitCheckpoint={}:{}:{} lastRecordCheckpoint={}.{}.{}, isLesserThanOrEqualTo=true",
+                                                    tabletId, explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), explicitCheckpoint.getTime(),
+                                                    lastRecordCheckpoint != null ? lastRecordCheckpoint.getTerm() : "null",
+                                                    lastRecordCheckpoint != null ? lastRecordCheckpoint.getIndex() : "null",
+                                                    lastRecordCheckpoint != null ? lastRecordCheckpoint.getTime() : "null");
 
                                             handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
                                         } else {
-                                            // Add the tablet for being processed later, this will mark the tablet as locked. There is a chance that explicit checkpoint may
-                                            // be null, in that case, just to avoid NullPointerException in the log, simply log a null value.
                                             final String explicitString = (explicitCheckpoint == null) ? null : (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex() + ":" + explicitCheckpoint.getTime());
-                                            LOGGER.info("Adding partition {} to wait-list since the explicit checkpoint ({}) and last seen record's checkpoint ({}.{}.{}) are not the same",
-                                                    part.getId(), explicitString, lastRecordCheckpoint.getTerm(), lastRecordCheckpoint.getIndex(), lastRecordCheckpoint.getTime());
+                                            LOGGER.info("Adding tablet {} to wait-list: explicitCheckpoint=({}), lastRecordCheckpoint=({}.{}.{}), sourceInfo.lsn={}, timeDiff={}",
+                                                    tabletId, explicitString,
+                                                    lastRecordCheckpoint.getTerm(), lastRecordCheckpoint.getIndex(), lastRecordCheckpoint.getTime(),
+                                                    sourceInfoLsn != null ? sourceInfoLsn.toSerString() : "null",
+                                                    explicitCheckpoint != null ? (lastRecordCheckpoint.getTime() - explicitCheckpoint.getTime()) : "N/A");
                                             splitTabletsWaitingForCallback.add(part.getId());
                                         }
                                     } else {
@@ -599,7 +620,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                             }
 
                             int recordCount = response.getResp().getCdcSdkProtoRecordsList().size();
-                            LOGGER.debug("Processing {} records from getChanges call", recordCount);
+                            LOGGER.info("Processing {} records from getChanges for tablet {}, response checkpoint: term={} index={} safeHybridTime={}",
+                                    recordCount, tabletId, response.getTerm(), response.getIndex(), response.getResp().getSafeHybridTime());
                             receivedDataInLastIteration = (recordCount > 0);
                             for (CdcService.CDCSDKProtoRecordPB record : response
                                     .getResp()
@@ -651,13 +673,18 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             // Don't skip on BEGIN message as it would flush LSN for the whole transaction
                                             // too early
                                             if (message.getOperation() == Operation.BEGIN) {
-                                                LOGGER.debug("LSN in case of BEGIN is " + lsn);
+                                                LOGGER.info("BEGIN record for tablet {} txn {}: lsn={} (term={} index={} time={})",
+                                                        part.getTabletId(), message.getTransactionId(), lsn.toSerString(),
+                                                        lsn.getTerm(), lsn.getIndex(), lsn.getTime());
 
                                                 recordsInTransactionalBlock.put(part.getId(), 0);
                                                 beginCountForTablet.merge(part.getId(), 1, Integer::sum);
                                             }
                                             if (message.getOperation() == Operation.COMMIT) {
-                                                LOGGER.debug("LSN in case of COMMIT is " + lsn);
+                                                LOGGER.info("COMMIT record for tablet {} txn {}: lsn={} (term={} index={} time={}), commitTime={}, updating lastRecordCheckpoint (no SourceRecord dispatch)",
+                                                        part.getTabletId(), message.getTransactionId(), lsn.toSerString(),
+                                                        lsn.getTerm(), lsn.getIndex(), lsn.getTime(),
+                                                        record.getRowMessage().getCommitTime());
                                                 offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                         String.valueOf(message.getTransactionId()), null, message.getRecordTime(), message.getXreplOriginId());
 
@@ -753,8 +780,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             }
                                             Objects.requireNonNull(tableId);
                                         }
-                                        // If you need to print the received record, change debug level to info
-                                        LOGGER.debug("Received DML record {}", record);
+                                        LOGGER.info("DML record for tablet {} txn {} op {}: lsn={} (term={} index={} time={}), commitTime={}",
+                                                part.getTabletId(), message.getTransactionId(), message.getOperation(),
+                                                lsn.toSerString(), lsn.getTerm(), lsn.getIndex(), lsn.getTime(),
+                                                record.getRowMessage().getCommitTime());
 
                                         offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                 String.valueOf(message.getTransactionId()), tableId, message.getRecordTime(), message.getXreplOriginId());
@@ -815,12 +844,26 @@ public class YugabyteDBStreamingChangeEventSource implements
                             // we will resume from an older point than necessary.
                             if (taskContext.shouldEnableExplicitCheckpointing() && !TEST_STOP_ADVANCING_CHECKPOINTS) {
                                 OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
-                                if (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint)) {
+                                boolean shouldAdvance = lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint);
+                                if (shouldAdvance) {
+                                    CdcSdkCheckpoint oldCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
                                     tabletToExplicitCheckpoint.put(part.getId(), finalOpid.toCdcSdkCheckpoint());
+                                    LOGGER.info("Advanced explicit checkpoint for tablet {} via finalOpid: old={}, new={}:{}.{}, lastRecordCheckpoint={}, explicitCheckpointUsed={}",
+                                            part.getTabletId(),
+                                            oldCheckpoint != null ? (oldCheckpoint.getTerm() + "." + oldCheckpoint.getIndex() + ":" + oldCheckpoint.getTime()) : "null",
+                                            finalOpid.getTerm(), finalOpid.getIndex(), finalOpid.getTime(),
+                                            lastRecordCheckpoint != null ? lastRecordCheckpoint.toSerString() : "null",
+                                            explicitCheckpoint != null ? (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex() + ":" + explicitCheckpoint.getTime()) : "null");
+                                } else {
+                                    LOGGER.info("Did NOT advance explicit checkpoint for tablet {} via finalOpid: finalOpid={}:{}.{}, lastRecordCheckpoint={}, explicitCheckpoint={}, isLesserThanOrEqualTo=false",
+                                            part.getTabletId(),
+                                            finalOpid.getTerm(), finalOpid.getIndex(), finalOpid.getTime(),
+                                            lastRecordCheckpoint.toSerString(),
+                                            explicitCheckpoint != null ? (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex() + ":" + explicitCheckpoint.getTime()) : "null");
                                 }
                             }
 
-                            LOGGER.debug("The final opid for tablet {} is {}", part.getId(), finalOpid);
+                            LOGGER.info("Final opid for tablet {}: {} (safeHybridTime={})", part.getTabletId(), finalOpid.toSerString(), response.getResp().getSafeHybridTime());
                         }
                         // Reset the retry count, because if flow reached at this point, it means that the connection
                         // has succeeded
@@ -867,11 +910,18 @@ public class YugabyteDBStreamingChangeEventSource implements
         CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(partition.getId());
 
         if (fromOpId.isLesserThanOrEqualTo(explicitCheckpoint)) {
-            LOGGER.debug("Request OpId for partition {} ({}) is less than or equal to explicit checkpoint ({})",
-                         partition.getId(), fromOpId.toSerString(), explicitCheckpoint);
+            LOGGER.info("getExplicitCheckpoint: using fromOpId for tablet {} because fromOpId ({}) <= explicitCheckpoint ({}:{}:{})",
+                         partition.getTabletId(), fromOpId.toSerString(),
+                         explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), explicitCheckpoint.getTime());
             return fromOpId.toCdcSdkCheckpoint();
         }
 
+        LOGGER.info("getExplicitCheckpoint: using map value for tablet {}: explicitCheckpoint={}:{}:{}, fromOpId={}",
+                     partition.getTabletId(),
+                     explicitCheckpoint != null ? explicitCheckpoint.getTerm() : "null",
+                     explicitCheckpoint != null ? explicitCheckpoint.getIndex() : "null",
+                     explicitCheckpoint != null ? explicitCheckpoint.getTime() : "null",
+                     fromOpId.toSerString());
         return explicitCheckpoint;
     }
 
@@ -1005,23 +1055,27 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // TODO: The transaction_id field is getting populated somewhere and see if it can
                 // be removed or blocked from getting added to this map.
                 if (!entry.getKey().equals("transaction_id")) {
-                    LOGGER.debug("{} | Tablet: {} OpId: {}", taskContext.getTaskId(), entry.getKey(), entry.getValue());
-
                     // Parse the string to get the OpId object.
                     OpId tempOpId = OpId.valueOf((String) entry.getValue());
+                    CdcSdkCheckpoint existingCheckpoint = this.tabletToExplicitCheckpoint.get(entry.getKey());
+
                     // We should check if the received OpId is less than the checkpoint already present
                     // in the map. If this is so, then we don't update the checkpoint. Updating to a lesser value
                     // than one already present would throw the error: CDCSDK: Trying to fetch already GCed intents
-                    if (this.tabletToExplicitCheckpoint.get(entry.getKey()) != null &&
-                            tempOpId.getIndex() < this.tabletToExplicitCheckpoint.get(entry.getKey()).getIndex()) {
-                        LOGGER.debug("The received OpId {} is less than the older checkpoint {} for tablet {}",
-                                    tempOpId.getIndex(), this.tabletToExplicitCheckpoint.get(entry.getKey()).getIndex(), entry.getKey());
+                    if (existingCheckpoint != null && tempOpId.getIndex() < existingCheckpoint.getIndex()) {
+                        LOGGER.info("{} | commitOffset SKIPPED for tablet {}: received index {} < existing index {} (received={}, existing={}.{}:{})",
+                                    taskContext.getTaskId(), entry.getKey(),
+                                    tempOpId.getIndex(), existingCheckpoint.getIndex(),
+                                    tempOpId.toSerString(),
+                                    existingCheckpoint.getTerm(), existingCheckpoint.getIndex(), existingCheckpoint.getTime());
                         continue;
                     }
                     this.tabletToExplicitCheckpoint.put(entry.getKey(), tempOpId.toCdcSdkCheckpoint());
 
-                    LOGGER.debug("Committed checkpoint on server for stream ID {} tablet {} with term {} index {}",
-                                this.connectorConfig.streamId(), entry.getKey(), tempOpId.getTerm(), tempOpId.getIndex());
+                    LOGGER.info("{} | commitOffset UPDATED tablet {}: old={}, new={} (term={} index={} time={})",
+                                taskContext.getTaskId(), entry.getKey(),
+                                existingCheckpoint != null ? (existingCheckpoint.getTerm() + "." + existingCheckpoint.getIndex() + ":" + existingCheckpoint.getTime()) : "null",
+                                tempOpId.toSerString(), tempOpId.getTerm(), tempOpId.getIndex(), tempOpId.getTime());
                 }
             }
         } catch (Exception e) {

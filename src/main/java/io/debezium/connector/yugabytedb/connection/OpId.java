@@ -182,15 +182,20 @@ public class OpId implements Comparable<OpId> {
             return false;
         }
 
-        LOGGER.debug("this: {} checkpoint: {}", this.toSerString(), checkpoint);
+        LOGGER.info("isLesserThanOrEqualTo: this={} (term={} index={} time={} writeId={}), checkpoint (term={} index={} time={} writeId={})",
+                this.toSerString(), this.term, this.index, this.time, this.write_id,
+                checkpoint.getTerm(), checkpoint.getIndex(), checkpoint.getTime(), checkpoint.getWriteId());
         if (this.term < checkpoint.getTerm() || this.index < checkpoint.getIndex() || this.time < checkpoint.getTime()) {
+            LOGGER.info("isLesserThanOrEqualTo=true: termLess={}, indexLess={}, timeLess={}",
+                    this.term < checkpoint.getTerm(), this.index < checkpoint.getIndex(), this.time < checkpoint.getTime());
             return true;
         } else if (this.term == checkpoint.getTerm() && this.index == checkpoint.getIndex() && this.time == checkpoint.getTime()) {
-            LOGGER.debug("Evaluating equality for a large transaction case");
-            return this.write_id <= checkpoint.getWriteId();
+            boolean result = this.write_id <= checkpoint.getWriteId();
+            LOGGER.info("isLesserThanOrEqualTo equality case: writeId {} <= {} = {}", this.write_id, checkpoint.getWriteId(), result);
+            return result;
         }
 
-        LOGGER.debug("Current OpId is greater than the passed checkpoint");
+        LOGGER.info("isLesserThanOrEqualTo=false: this OpId is greater than checkpoint");
         return false;
     }
 
