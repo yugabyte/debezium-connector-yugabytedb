@@ -73,6 +73,8 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
         LOGGER.debug("Props " + props);
         Configuration config = Configuration.from(this.props);
 
+        YugabyteDBConnectorConfig.assertStreamIdAndSlotNameMutuallyExclusive(config);
+
         String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
         String tableIncludeList = config.getString(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST);
         
@@ -259,6 +261,10 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
     protected void validateConnection(Map<String, ConfigValue> configValues, Configuration config) {
         final ConfigValue databaseValue = configValues.get(RelationalDatabaseConnectorConfig.DATABASE_NAME.name());
         if (!databaseValue.errorMessages().isEmpty()) {
+            return;
+        }
+
+        if (YugabyteDBConnectorConfig.hasStreamIdAndSlotNameConflict(config)) {
             return;
         }
 

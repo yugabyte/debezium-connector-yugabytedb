@@ -626,6 +626,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withGroup(Field.createGroupEntry(Field.Group.CONNECTION, 9))
             .withWidth(Width.MEDIUM)
             .withImportance(Importance.HIGH)
+            .withValidation(YugabyteDBConnectorConfig::validateStreamIdAndSlotNameMutuallyExclusive)
             .withDescription("ID of the Stream created in YugabyteDB");
 
     protected static final Field TASK_ID = Field.create("yugabytedb.task.id")
@@ -1571,6 +1572,42 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
     public static ConfigDef configDef() {
         return CONFIG_DEFINITION.configDef();
+    }
+
+    /**
+     * Returns {@code true} when both {@code database.streamid} and a non-default {@code slot.name}
+     * are configured. The two options represent mutually exclusive CDC paths.
+     */
+    public static boolean hasStreamIdAndSlotNameConflict(Configuration config) {
+        String streamId = config.getString(STREAM_ID);
+        String slotName = config.getString(SLOT_NAME);
+        return streamId != null && !streamId.isBlank()
+                && slotName != null && !slotName.equals(ReplicationConnection.Builder.DEFAULT_SLOT_NAME);
+    }
+
+    private static final String STREAM_ID_SLOT_CONFLICT_MSG =
+            "Cannot set both %s and a non-default %s. "
+                    + "Use slot.name (and publication.name) without a stream ID, "
+                    + "or use a stream ID and leave slot.name at its default (%s).";
+
+    private static int validateStreamIdAndSlotNameMutuallyExclusive(Configuration config, Field field, Field.ValidationOutput problems) {
+        if (hasStreamIdAndSlotNameConflict(config)) {
+            problems.accept(field, config.getString(field),
+                    String.format(STREAM_ID_SLOT_CONFLICT_MSG,
+                            STREAM_ID.name(), SLOT_NAME.name(),
+                            ReplicationConnection.Builder.DEFAULT_SLOT_NAME));
+            return 1;
+        }
+        return 0;
+    }
+
+    public static void assertStreamIdAndSlotNameMutuallyExclusive(Configuration config) {
+        if (hasStreamIdAndSlotNameConflict(config)) {
+            throw new DebeziumException(
+                    String.format(STREAM_ID_SLOT_CONFLICT_MSG,
+                            STREAM_ID.name(), SLOT_NAME.name(),
+                            ReplicationConnection.Builder.DEFAULT_SLOT_NAME));
+        }
     }
 
     // Source of the validation rules - https://doxygen.postgresql.org/slot_8c.html#afac399f07320b9adfd2c599cf822aaa3
