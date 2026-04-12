@@ -626,7 +626,6 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withGroup(Field.createGroupEntry(Field.Group.CONNECTION, 9))
             .withWidth(Width.MEDIUM)
             .withImportance(Importance.HIGH)
-            .withValidation(YugabyteDBConnectorConfig::validateStreamIdAndSlotNameMutuallyExclusive)
             .withDescription("ID of the Stream created in YugabyteDB");
 
     protected static final Field TASK_ID = Field.create("yugabytedb.task.id")
@@ -1589,17 +1588,6 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             "Cannot set both %s and a non-default %s. "
                     + "Use slot.name (and publication.name) without a stream ID, "
                     + "or use a stream ID and leave slot.name at its default (%s).";
-
-    private static int validateStreamIdAndSlotNameMutuallyExclusive(Configuration config, Field field, Field.ValidationOutput problems) {
-        if (hasStreamIdAndSlotNameConflict(config)) {
-            problems.accept(field, config.getString(field),
-                    String.format(STREAM_ID_SLOT_CONFLICT_MSG,
-                            STREAM_ID.name(), SLOT_NAME.name(),
-                            ReplicationConnection.Builder.DEFAULT_SLOT_NAME));
-            return 1;
-        }
-        return 0;
-    }
 
     public static void assertStreamIdAndSlotNameMutuallyExclusive(Configuration config) {
         if (hasStreamIdAndSlotNameConflict(config)) {
