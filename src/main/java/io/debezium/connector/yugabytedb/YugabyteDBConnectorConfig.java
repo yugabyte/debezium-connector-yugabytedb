@@ -600,6 +600,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final long DEFAULT_NEW_TABLE_POLL_INTERVAL_MS = 5 * 60 * 1000L;
     protected static final long DEFAULT_LOG_GET_CHANGES_INTERVAL_MS = 5 * 60 * 1000L;
     protected static final long DEFAULT_LOG_COMMIT_OFFSET_INTERVAL_MS = 10 * 60 * 1000L;
+    // Matches the YugabyteDB tserver default for cdc_stream_records_threshold_size_bytes (4 MB).
+    // A null value means the field is omitted from the request and the tserver flag governs.
+    protected static final Long DEFAULT_GETCHANGES_RESP_MAX_SIZE_BYTES = null;
     public static final int DEFAULT_MBEAN_REGISTRATION_RETRIES = 12;
     public static final long DEFAULT_MBEAN_REGISTRATION_RETRY_DELAY_MS = 5_000;
     public static final long DEFAULT_LAST_CALLBACK_TIMEOUT_MS = 3 * 60 * 1000;
@@ -745,6 +748,18 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
               .withType(Type.BOOLEAN)
               .withImportance(Importance.LOW)
               .withDefault(false);
+
+    public static final Field GETCHANGES_RESP_MAX_SIZE_BYTES =
+            Field.create("cdc.getchanges.resp.max.size.bytes")
+                    .withDisplayName("GetChanges response max size bytes")
+                    .withType(Type.LONG)
+                    .withImportance(Importance.LOW)
+                    .withDescription(
+                            "When set, overrides the tserver flag cdc_stream_records_threshold_size_bytes "
+                            + "for every GetChanges RPC issued by this connector, allowing per-connector "
+                            + "control over the maximum response payload size. Requires the tserver flag "
+                            + "enable_cdcsdk_setting_get_changes_response_byte_limit to be true (the default). "
+                            + "When unset (the default), the tserver flag value is used.");
 
     public static final Field CHAR_SET = Field.create(TASK_CONFIG_PREFIX + "charset")
             .withDisplayName("YugabyteDB charset")
@@ -1369,6 +1384,17 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return getConfig().getLong(LOG_COMMIT_OFFSET_INTERVAL_MS);
     }
 
+    /**
+     * Returns the value to send in the {@code getchanges_resp_max_size_bytes} proto field of every
+     * GetChanges RPC, or {@code null} if the field should be omitted (leaving the tserver flag
+     * {@code cdc_stream_records_threshold_size_bytes} in control).
+     */
+    public Long getchangesRespMaxSizeBytes() {
+        return getConfig().hasKey(GETCHANGES_RESP_MAX_SIZE_BYTES.name())
+                ? getConfig().getLong(GETCHANGES_RESP_MAX_SIZE_BYTES)
+                : DEFAULT_GETCHANGES_RESP_MAX_SIZE_BYTES;
+    }
+
     public String sslRootCert() {
         return getConfig().getString(SSL_ROOT_CERT);
     }
@@ -1545,10 +1571,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     LOG_GET_CHANGES,
                     LOG_GET_CHANGES_INTERVAL_MS,
                     LOG_COMMIT_OFFSET_INTERVAL_MS,
-              MBEAN_REGISTRATION_RETRIES,
+                    MBEAN_REGISTRATION_RETRIES,
                     MBEAN_REGISTRATION_RETRY_DELAY_MS,
                     CDC_POLL_INTERVAL_ACTIVE_MS,
-                    CDC_POLL_INTERVAL_IDLE_MS)
+                    CDC_POLL_INTERVAL_IDLE_MS,
+                    GETCHANGES_RESP_MAX_SIZE_BYTES)
             .events(
                     INCLUDE_UNKNOWN_DATATYPES)
             .connector(

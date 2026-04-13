@@ -552,7 +552,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                                         cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
                                         explicitCheckpoint,
-                                        tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part));
+                                        tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part),
+                                        connectorConfig.getchangesRespMaxSizeBytes());
 
                                 // Test only.
                                 if (TEST_TRACK_EXPLICIT_CHECKPOINTS) {
@@ -898,7 +899,8 @@ public class YugabyteDBStreamingChangeEventSource implements
             GetChangesResponse resp = syncClient.getChangesCDCSDK(
               ybTable, connectorConfig.streamId(), partition.getTabletId(), fromOpId.getTerm(),
               fromOpId.getIndex(), fromOpId.getKey(), fromOpId.getWrite_id(), fromOpId.getTime(),
-              schemaNeeded, explicitCheckpoint, tabletSafeTime, walSegmentIndex);
+              schemaNeeded, explicitCheckpoint, tabletSafeTime, walSegmentIndex,
+              connectorConfig.getchangesRespMaxSizeBytes());
 
             // We do not update the tablet safetime we get from the response at this
             // point because the previous GetChanges call is supposed to throw

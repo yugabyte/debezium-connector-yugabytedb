@@ -47,7 +47,7 @@
         <version.kafka>3.7.0</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.4.0</version.logback>
-        <version.ybclient>0.8.111-20260312.173733-1</version.ybclient>
+        <version.ybclient>0.8.112-20260323.131233-1</version.ybclient>
         <version.gson>2.8.9</version.gson>
 
         <!--
