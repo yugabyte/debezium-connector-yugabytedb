@@ -532,6 +532,59 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
         assertTombstone(changeRecords.get(3));
     }
 
+    @Test
+    public void testHistoryRetentionBarrierMovesForward() throws Exception {
+        TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, PUB_NAME, "t1"));
+        TestHelper.execute(TestHelper.createReplicationSlotStatement);
+
+        startEngine(getPublicationConfig());
+        final long recordsCount = 10;
+
+        awaitUntilConnectorIsReady();
+
+        Thread.sleep(30000);
+
+        insertRecords(recordsCount);
+
+        List<SourceRecord> records = new ArrayList<>();
+        waitAndFailIfCannotConsume(records, recordsCount);
+
+        Struct value = (Struct) records.get(records.size() - 1).value();
+        Struct source = value.getStruct("source");
+        long lastCommitTime = source.getInt64("commit_time");
+        long commitMicros = lastCommitTime >> SourceInfo.HT_BITS_FOR_LOGICAL_COMPONENT;
+
+        try {
+            Awaitility.await()
+                .atMost(Duration.ofSeconds(30))
+                .pollInterval(Duration.ofSeconds(5))
+                .until(() -> {
+                    try (YugabyteDBConnection conn = TestHelper.create();
+                         Connection connection = conn.connection();
+                         Statement stmt = connection.createStatement()) {
+                        ResultSet rs = stmt.executeQuery(
+                            "SELECT yb_restart_time FROM pg_replication_slots "
+                            + "WHERE slot_name = 'test_replication_slot';");
+                        if (rs.next()) {
+                            java.sql.Timestamp ts = rs.getTimestamp("yb_restart_time");
+                            if (ts == null) {
+                                return false;
+                            }
+                            java.time.Instant restartInstant = ts.toInstant();
+                            long restartMicros = restartInstant.getEpochSecond() * 1_000_000
+                                + restartInstant.getNano() / 1_000;
+                            LOGGER.info("yb_restart_time micros: {} commitMicros: {}",
+                                restartMicros, commitMicros);
+                            return restartMicros >= commitMicros;
+                        }
+                        return false;
+                    }
+                });
+        } catch (ConditionTimeoutException e) {
+            fail("History retention barrier did not advance to the last commit time within 30 seconds", e);
+        }
+    }
+
     // ---- Helpers ----
 
     private Configuration.Builder getPublicationConfig() throws Exception {
