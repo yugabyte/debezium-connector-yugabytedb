@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
@@ -41,6 +42,12 @@ import org.yb.master.MasterTypes.NamespaceIdentifierPB;
 public class YBClientUtils {
   private final static Logger LOGGER = LoggerFactory.getLogger(YBClientUtils.class);
 
+  /**
+   * Cache for {@link #isYSQLStream(Configuration)} results, keyed by stream ID. A stream's query
+   * language never changes, so this is safe to cache indefinitely for the connector's lifetime.
+   */
+  private static final ConcurrentHashMap<String, Boolean> isYSQLCache = new ConcurrentHashMap<>();
+
   public static boolean isTableIncludedInStreamId(GetDBStreamInfoResponse resp, String tableId) {
     for (MasterReplicationOuterClass.GetCDCDBStreamInfoResponsePB.TableInfo tableInfo : resp.getTableInfoList()) {
         if (Objects.equals(tableId, tableInfo.getTableId().toStringUtf8())) {
@@ -53,13 +60,43 @@ public class YBClientUtils {
   }
 
   /**
-   * Get the list of all the table UUIDs to be included for streaming
+   * Get the list of all the table UUIDs to be included for streaming.
+   * <p>
+   * This overload fetches the DB stream info once, up front, and then delegates to
+   * {@link #fetchTableList(YBClient, YugabyteDBConnectorConfig, GetDBStreamInfoResponse)}.
+   * Prefer that overload directly when the caller already holds a {@link GetDBStreamInfoResponse},
+   * to avoid the extra RPC.
    * @param ybClient the {@link YBClient} instance
    * @param connectorConfig connector configuration for the connector
    * @return a Set of the tableIDs
    */
   public static Set<String> fetchTableList(YBClient ybClient,
                                            YugabyteDBConnectorConfig connectorConfig) {
+    try {
+      GetDBStreamInfoResponse streamInfoResponse =
+              ybClient.getDBStreamInfo(connectorConfig.streamId());
+      return fetchTableList(ybClient, connectorConfig, streamInfoResponse);
+    }
+    catch (Exception e) {
+      // We are ultimately throwing this exception since this will be thrown while initializing
+      // the connector and at this point if this exception is thrown, we should not proceed
+      // forward with the connector.
+      throw new DebeziumException(e);
+    }
+  }
+
+  /**
+   * Get the list of all the table UUIDs to be included for streaming, using a pre-fetched
+   * {@link GetDBStreamInfoResponse} for the stream-membership checks. This avoids re-fetching
+   * the DB stream info once per table, which is a significant cost on streams with many tables.
+   * @param ybClient the {@link YBClient} instance
+   * @param connectorConfig connector configuration for the connector
+   * @param streamInfoResponse pre-fetched DB stream info response used for stream-membership checks
+   * @return a Set of the tableIDs
+   */
+  public static Set<String> fetchTableList(YBClient ybClient,
+                                           YugabyteDBConnectorConfig connectorConfig,
+                                           GetDBStreamInfoResponse streamInfoResponse) {
     LOGGER.info("Fetching all the tables from the source");
     String dbName = connectorConfig.getJdbcConfig().getDatabase();
     
@@ -112,14 +149,10 @@ public class YBClientUtils {
                                   + tableInfo.getName();
                   tableId = YugabyteDBSchema.parseWithKeyspace(fqlTableName, tableInfo.getNamespace().getName());
               }
-              // Retrieve the list of tables in the stream ID,
-              GetDBStreamInfoResponse dbStreamInfoResponse = ybClient.getDBStreamInfo(
-                                                               connectorConfig.streamId());
-
               if (connectorConfig.getTableFilters().dataCollectionFilter().isIncluded(tableId)
                       && connectorConfig.databaseFilter().isIncluded(tableId)) {
                   // Throw an exception if the table in the include list is not a part of stream ID
-                  if (!isTableIncludedInStreamId(dbStreamInfoResponse, 
+                  if (!isTableIncludedInStreamId(streamInfoResponse, 
                                                  tableInfo.getId().toStringUtf8())) {
                       String warningMessageFormat = "The table %s is not a part of the "
                                                             + "stream ID %s. Ignoring the table.";
@@ -327,16 +360,24 @@ public class YBClientUtils {
 
   /**
    * Check whether the passed stream ID in the connector configuration has before image enabled.
-   * Make sure this function is not called often since this involves multiple RPC calls which
-   * will end up slowing down the connector operations.
+   * This overload fetches the stream info internally (an RPC). Prefer
+   * {@link #isBeforeImageEnabled(CDCStreamInfo)} when the caller already holds a
+   * {@link CDCStreamInfo}, so the stream info is fetched only once.
    * @param connectorConfig the configuration properties for the connector
    * @return true if before image is enabled, false otherwise
    * @throws Exception if API cannot get the DB stream Info or if it cannot list the CDC streams.
    */
   public static boolean isBeforeImageEnabled(YugabyteDBConnectorConfig connectorConfig)
       throws Exception {
-    CDCStreamInfo cdcStreamInfo = getStreamInfo(connectorConfig);
+    return isBeforeImageEnabled(getStreamInfo(connectorConfig));
+  }
 
+  /**
+   * Check whether the given CDC stream has before image enabled.
+   * @param cdcStreamInfo the pre-fetched stream info (may be null)
+   * @return true if before image is enabled, false otherwise
+   */
+  public static boolean isBeforeImageEnabled(CDCStreamInfo cdcStreamInfo) {
     // If streamInfo is null, it would mean that either there are no tables configured with the
     // given stream ID.
     if (cdcStreamInfo == null) {
@@ -361,13 +402,24 @@ public class YBClientUtils {
 
   /**
    * Check whether the stream has EXPLICIT checkpointing enabled.
+   * This overload fetches the stream info internally (an RPC). Prefer
+   * {@link #isExplicitCheckpointingEnabled(CDCStreamInfo)} when the caller already holds a
+   * {@link CDCStreamInfo}, so the stream info is fetched only once.
    * @param connectorConfig the connector configuration
    * @return true if stream has EXPLICIT checkpointing enabled, false otherwise
    * @throws Exception
    */
   public static boolean isExplicitCheckpointingEnabled(YugabyteDBConnectorConfig connectorConfig)
           throws Exception {
-      CDCStreamInfo cdcStreamInfo = getStreamInfo(connectorConfig);
+      return isExplicitCheckpointingEnabled(getStreamInfo(connectorConfig));
+  }
+
+  /**
+   * Check whether the given CDC stream has EXPLICIT checkpointing enabled.
+   * @param cdcStreamInfo the pre-fetched stream info
+   * @return true if stream has EXPLICIT checkpointing enabled, false otherwise
+   */
+  public static boolean isExplicitCheckpointingEnabled(CDCStreamInfo cdcStreamInfo) {
       Objects.requireNonNull(cdcStreamInfo);
 
       return cdcStreamInfo.getOptions().get("checkpoint_type")
@@ -375,9 +427,24 @@ public class YBClientUtils {
   }
 
   public static Boolean isYSQLStream(Configuration configuration) {
+    final String streamId = configuration.getString(YugabyteDBConnectorConfig.STREAM_ID);
+
+    // A null or empty stream ID is a legitimate config shape (e.g. slot + publication path, see
+    // shouldUsePublication()). ConcurrentHashMap forbids null keys, so don't attempt to cache it;
+    // fall through to the RPC path, which preserves the original diagnostics
+    // ("Could not get Stream info for null ...") instead of surfacing a bare NPE from the map.
+    if (streamId == null || streamId.isEmpty()) {
+      return computeIsYSQLStream(configuration, streamId);
+    }
+
+    // A stream's query language never changes, so cache the result keyed by stream ID.
+    // computeIfAbsent ensures that concurrent task startups don't each issue the RPC.
+    return isYSQLCache.computeIfAbsent(streamId, id -> computeIsYSQLStream(configuration, id));
+  }
+
+  private static Boolean computeIsYSQLStream(Configuration configuration, String streamId) {
     GetDBStreamInfoResponse cdcStreamInfo = null;
     ListNamespacesResponse resp = null;
-    final String streamId = configuration.getString(YugabyteDBConnectorConfig.STREAM_ID);
 
     try (YBClient ybClient = getYbClient(configuration)) {
       cdcStreamInfo = ybClient.getDBStreamInfo(streamId);
@@ -410,7 +477,15 @@ public class YBClientUtils {
   }
 
   /**
-   * Call getTabletListToPollForCDC rpc with retries
+   * Call getTabletListToPollForCDC rpc with retries, creating a fresh {@link YBClient} for each
+   * attempt.
+   * <p>
+   * The per-attempt client is deliberate for the long-lived streaming and snapshot sources: a
+   * fresh client re-resolves the master leader and re-establishes the connection, so the retry
+   * loop can recover from a dead connection or a master leader change. Callers that are already
+   * holding a healthy, short-lived client (e.g. bootstrap validation) should prefer
+   * {@link #getTabletListToPollForCDCWithRetry(YBClient, YBTable, String, YugabyteDBConnectorConfig)}
+   * to avoid a TLS handshake per table.
    * @param table the {@link YBTable} instance of the table
    * @param tableId the UUID of the table for which we need the tablets to poll for
    * @param connectorConfig the configs used by the connector
@@ -458,6 +533,66 @@ public class YBClientUtils {
      }
      
      return resp;
+  }
+
+  /**
+   * Call getTabletListToPollForCDC rpc with retries, reusing an existing {@link YBClient}.
+   * <p>
+   * Unlike {@link #getTabletListToPollForCDCWithRetry(YBTable, String, YugabyteDBConnectorConfig)},
+   * this overload does not create a client per attempt; it reuses the caller-provided client
+   * (whose lifecycle the caller manages) to avoid a TLS handshake per table. This is intended for
+   * short-lived bootstrap validation, where the caller already holds a healthy client and the
+   * retries are best-effort. It does not re-resolve the master leader between attempts, so it is
+   * not a substitute for the fresh-client overload used by the streaming and snapshot sources.
+   * @param ybClient an existing client to reuse (caller manages its lifecycle)
+   * @param table the {@link YBTable} instance of the table
+   * @param tableId the UUID of the table for which we need the tablets to poll for
+   * @param connectorConfig the configs used by the connector
+   * @return an RPC response containing the list of tablets to poll for
+   * @throws Exception when there are error after trying {@link YugabyteDBConnectorConfig#maxConnectorRetries()} times
+   */
+  public static GetTabletListToPollForCDCResponse getTabletListToPollForCDCWithRetry(
+      YBClient ybClient, YBTable table, String tableId,
+      YugabyteDBConnectorConfig connectorConfig) throws Exception {
+    int retryCount = 0;
+    Exception exception = null;
+    GetTabletListToPollForCDCResponse resp = null;
+
+    while (retryCount <= connectorConfig.maxConnectorRetries()) {
+      try {
+        resp = ybClient.getTabletListToPollForCdc(table, connectorConfig.streamId(), tableId);
+
+        if (resp.getTabletCheckpointPairListSize() == 0) {
+          throw new RuntimeException("Received an empty tablet list for table " + tableId);
+        }
+
+        return resp;
+      } catch (Exception e) {
+        retryCount++;
+        exception = e;
+        if (retryCount > connectorConfig.maxConnectorRetries()) {
+          LOGGER.error("Too many errors while trying to get the tablet list to poll, all the {} retries failed ", connectorConfig.maxConnectorRetries());
+          throw e;
+        }
+
+        LOGGER.warn("Error while trying to get the tablet list to poll for CDC; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
+                             retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e);
+
+        try {
+          final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+          retryMetronome.pause();
+        } catch (InterruptedException ie) {
+          LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
+          Thread.currentThread().interrupt();
+        }
+      }
+    }
+
+    if (exception != null) {
+      throw exception;
+    }
+
+    return resp;
   }
 
   /**
