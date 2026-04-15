@@ -533,7 +533,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
     }
 
     @Test
-    public void testHistoryRetentionBarrierMovesForward() throws Exception {
+    public void testSlotRestartTimeMovesForward() throws Exception {
         TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, PUB_NAME, "t1"));
         TestHelper.execute(TestHelper.createReplicationSlotStatement);
 
