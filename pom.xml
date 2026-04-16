@@ -33,9 +33,10 @@
         <version.fabric8.plugin>0.48.1</version.fabric8.plugin>
         <version.jackson>2.19.0</version.jackson>
 
-        <!-- Compile -->
+        <!-- Compile: build requires JDK 21, output targets Java 17 -->
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Enforce JDK 21 for building -->
