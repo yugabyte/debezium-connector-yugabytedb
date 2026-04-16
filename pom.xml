@@ -21,34 +21,34 @@
         <version.debezium>1.9.5.Final</version.debezium>
 
         <!-- Plugins -->
-        <version.surefire.plugin>3.0.0-M7</version.surefire.plugin>
+        <version.surefire.plugin>3.5.5</version.surefire.plugin>
         <version.failsafe.plugin>${version.surefire.plugin}</version.failsafe.plugin>
-        <version.compiler.plugin>3.8.1</version.compiler.plugin>
+        <version.compiler.plugin>3.13.0</version.compiler.plugin>
         <version.shade.plugin>3.6.0</version.shade.plugin>
         <version.release.plugin>3.0.0-M5</version.release.plugin>
         <version.site.plugin>3.7.1</version.site.plugin>
         <version.resources.plugin>3.1.0</version.resources.plugin>
-        <version.docker.maven.plugin>0.40.2</version.docker.maven.plugin>
+        <version.docker.maven.plugin>0.48.1</version.docker.maven.plugin>
         <version.protoc.maven.plugin>3.11.4</version.protoc.maven.plugin>
-        <version.fabric8.plugin>0.40.2</version.fabric8.plugin>
+        <version.fabric8.plugin>0.48.1</version.fabric8.plugin>
         <version.jackson>2.19.0</version.jackson>
 
         <!-- Compile -->
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.target>11</maven.compiler.target>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <!-- Enforce JDK 11 for building (handled via JBoss parent POM)-->
-        <jdk.min.version>11</jdk.min.version>
+        <!-- Enforce JDK 21 for building -->
+        <jdk.min.version>21</jdk.min.version>
 
         <!-- Dependency Versions -->
-        <version.postgresql.driver>42.7.2</version.postgresql.driver>
+        <version.postgresql.driver>42.7.7</version.postgresql.driver>
         <version.com.google.protobuf>4.30.2</version.com.google.protobuf>
-        <version.kafka>3.7.0</version.kafka>
+        <version.kafka>3.9.2</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
-        <version.logback>1.4.0</version.logback>
+        <version.logback>1.2.13</version.logback>
         <version.ybclient>0.8.111-20260312.173733-1</version.ybclient>
-        <version.gson>2.8.9</version.gson>
+        <version.gson>2.13.2</version.gson>
 
         <!--
           Specify the properties that will be used for setting up the integration tests' Docker container.
@@ -59,7 +59,7 @@
         <protobuf.output.directory>${project.basedir}/generated-sources</protobuf.output.directory>
 
         <!-- Test -->
-        <version.junit>5.9.2</version.junit>
+        <version.junit>6.0.3</version.junit>
 
         <!-- Deploy -->
         <version.s3.wagon>0.1.3</version.s3.wagon>
@@ -210,7 +210,7 @@
         <dependency>
             <groupId>com.zaxxer</groupId>
             <artifactId>HikariCP</artifactId>
-            <version>5.0.1</version>
+            <version>7.0.2</version>
         </dependency>
 
 		<!-- Building -->
@@ -257,6 +257,7 @@
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
+            <version>${version.logback}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -274,6 +275,7 @@
         <dependency>
             <groupId>org.awaitility</groupId>
             <artifactId>awaitility</artifactId>
+            <version>4.3.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -284,6 +286,7 @@
         <dependency>
             <groupId>io.confluent</groupId>
             <artifactId>kafka-connect-avro-converter</artifactId>
+            <version>7.0.16</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -314,14 +317,14 @@
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
-            <version>3.12.0</version>
+            <version>3.20.0</version>
             <scope>compile</scope>
         </dependency>
         <!-- https://mvnrepository.com/artifact/io.netty/netty-all -->
         <dependency>
             <groupId>io.netty</groupId>
             <artifactId>netty-all</artifactId>
-            <version>4.1.115.Final</version>
+            <version>4.1.128.Final</version>
         </dependency>
         <!-- https://mvnrepository.com/artifact/com.stumbleupon/async -->
         <dependency>
@@ -333,12 +336,12 @@
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcprov-jdk18on</artifactId>
-            <version>1.79</version>
+            <version>1.82</version>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>RELEASE</version>
+            <version>${version.junit}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
