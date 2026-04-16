@@ -581,7 +581,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
                     }
                 });
         } catch (ConditionTimeoutException e) {
-            fail("History retention barrier did not advance to the last commit time within 30 seconds", e);
+            fail("Slot restart time did not advance to the last commit time within 30 seconds", e);
         }
     }
 
