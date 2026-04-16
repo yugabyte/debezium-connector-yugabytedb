@@ -168,7 +168,7 @@ public class Message implements Comparable<Message> {
 
     /**
      * Return a BigInteger equal to the unsigned value of the argument.
-     * Code taken from <a href="https://github.com/AdoptOpenJDK/openjdk-jdk11/blob/master/src/java.base/share/classes/java/lang/Long.java#L241">Long.java</a>
+     * Code taken from <a href="https://github.com/openjdk/jdk21/blob/master/src/java.base/share/classes/java/lang/Long.java#L241">Long.java</a>
      */
     protected static BigInteger toUnsignedBigInteger(long i) {
         if (i >= 0L)

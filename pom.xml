@@ -545,6 +545,21 @@
                         <artifactId>junit-jupiter-engine</artifactId>
                         <version>${version.junit}</version>
                     </dependency>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-launcher</artifactId>
+                        <version>${version.junit}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-engine</artifactId>
+                        <version>${version.junit}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-commons</artifactId>
+                        <version>${version.junit}</version>
+                    </dependency>
                 </dependencies>
             </plugin>
             <!--
@@ -556,6 +571,28 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <version>${version.failsafe.plugin}</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.junit.jupiter</groupId>
+                        <artifactId>junit-jupiter-engine</artifactId>
+                        <version>${version.junit}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-launcher</artifactId>
+                        <version>${version.junit}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-engine</artifactId>
+                        <version>${version.junit}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.junit.platform</groupId>
+                        <artifactId>junit-platform-commons</artifactId>
+                        <version>${version.junit}</version>
+                    </dependency>
+                </dependencies>
                 <executions>
                     <execution>
                         <id>integration-test</id>
