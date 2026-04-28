@@ -115,6 +115,14 @@
 
 	<dependencyManagement>
 		<dependencies>
+			<!-- Override Netty modules pinned to 4.1.73 by debezium-bom:1.9.5 -->
+			<dependency>
+				<groupId>io.netty</groupId>
+				<artifactId>netty-bom</artifactId>
+				<version>4.1.128.Final</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
 			<dependency>
             	<groupId>io.debezium</groupId>
             	<artifactId>debezium-bom</artifactId>
