@@ -1,10 +1,60 @@
+# =============================================================================
 # YugabyteDB Debezium Connect Base Image
+# =============================================================================
 #
-# Provides a Kafka Connect runtime with Confluent serialization libraries.
-# Based on Rapid Fort hardened Azul Zulu JDK 21 on Ubuntu 22.04 (Jammy).
+# Purpose
+# -------
+# Provides a Kafka Connect runtime with Confluent serialization libraries,
+# replacing the upstream `debezium/connect:1.9.5.Final` image. Rolling our
+# own base lets us pin JDK 21, Kafka 3.9.2, Ubuntu 22.04 (Jammy), and a
+# non-root `kafka` user (UID 1001), and patch CVEs on our own cadence.
 #
-# Build (from repo root):
-#   docker build -f base_source_image/Dockerfile -t yugabyte/debezium-connect-base:latest .
+# Image contents
+# --------------
+#   - Eclipse Temurin JDK 21 (JRE) on Ubuntu 22.04
+#   - Apache Kafka ${KAFKA_VERSION} (Scala ${SCALA_VERSION})
+#   - Confluent serialization libs ${CONFLUENT_VERSION}
+#     (avro-converter, avro-data, avro-serializer, schema-serializer,
+#      schema-converter, schema-registry-client, common-config, common-utils)
+#   - Avro, Guava, logredactor, and the transitive deps Confluent requires
+#     (commons-codec, commons-compress, re2j, minimal-json, snakeyaml, etc.)
+#   - Debezium 1.9 kafka-connect-start.sh fetched at build time from the
+#     upstream debezium/container-images repo
+#
+# Where this image fits
+# ---------------------
+#   eclipse-temurin:21-jre-jammy            (public base)
+#         |
+#         v
+#   quay.io/yugabyte/debezium-connect-base  (this Dockerfile)
+#         |
+#         v
+#   quay.io/yugabyte/debezium-connector     (top-level Dockerfile, layers
+#                                            the YugabyteDB connector jar)
+#
+# When to rebuild
+# ---------------
+# Rebuild and push this image only when its contents change, e.g.:
+#   - Kafka, Confluent, JDK, or Ubuntu version bump
+#   - New jar added to $KAFKA_HOME/libs
+#   - System package change (apt-get line)
+#   - Security patch
+# The connector jar itself does NOT require rebuilding the base — the
+# top-level Dockerfile only COPYs the connector jar on top.
+#
+# Build and push (from repo root)
+# -------------------------------
+#   docker build -f base_source_image/Dockerfile \
+#       -t quay.io/yugabyte/debezium-connect-base:latest .
+#   docker push quay.io/yugabyte/debezium-connect-base:latest
+#
+# Local smoke test
+# --------------------------------------------------------
+#   docker run --rm --entrypoint sh \
+#       quay.io/yugabyte/debezium-connect-base:latest \
+#       -c 'ls $KAFKA_HOME/libs | grep -E "kafka-connect-avro|avro-|guava-"'
+#
+# =============================================================================
 
 FROM eclipse-temurin:21-jre-jammy
 
@@ -94,7 +144,9 @@ RUN cd $KAFKA_HOME/libs && \
     curl -sfLO "https://repo1.maven.org/maven2/com/google/re2j/re2j/1.6/re2j-1.6.jar" && \
     curl -sfLO "https://repo1.maven.org/maven2/org/yaml/snakeyaml/2.0/snakeyaml-2.0.jar" && \
     curl -sfLO "https://repo1.maven.org/maven2/io/confluent/logredactor/1.0.12/logredactor-1.0.12.jar" && \
-    curl -sfLO "https://repo1.maven.org/maven2/io/confluent/logredactor-metrics/1.0.12/logredactor-metrics-1.0.12.jar"
+    curl -sfLO "https://repo1.maven.org/maven2/io/confluent/logredactor-metrics/1.0.12/logredactor-metrics-1.0.12.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/commons-codec/commons-codec/1.16.1/commons-codec-1.16.1.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/org/apache/commons/commons-compress/1.26.1/commons-compress-1.26.1.jar"
 
 #
 # Download the kafka-connect start script from upstream (handles CONNECT_* env var

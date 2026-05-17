@@ -1,7 +1,7 @@
 # On your terminal, run the following to build the image:
 # mvn clean package -Dquick
 
-FROM yugabyte/debezium-connect-base:latest
+FROM quay.io/yugabyte/debezium-connect-base:latest
 
 # Create the directories for the connectors to be placed into
 ENV KAFKA_CONNECT_YB_DIR=$KAFKA_CONNECT_PLUGINS_DIR/debezium-connector-yugabytedb
