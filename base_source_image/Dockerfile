@@ -64,10 +64,9 @@ RUN mkdir -p /tmp/kafka-download && \
 #
 # Create connector plugin directories:
 #   - KAFKA_CONNECT_PLUGINS_DIR: where Kafka Connect discovers plugins at runtime
-#   - KAFKA_CONNECT_PLUGINS: staging volume; entrypoint copies from here into connector-plugins
-#   - connector-plugins: actual plugin path set in connect-distributed.properties
+#   - KAFKA_CONNECT_PLUGINS: staging volume; entrypoint copies from here into KAFKA_CONNECT_PLUGINS_DIR
 #
-RUN mkdir -p "$KAFKA_CONNECT_PLUGINS_DIR" "$KAFKA_CONNECT_PLUGINS" "$KAFKA_HOME/connector-plugins" "$KAFKA_DATA"
+RUN mkdir -p "$KAFKA_CONNECT_PLUGINS_DIR" "$KAFKA_CONNECT_PLUGINS" "$KAFKA_DATA"
 
 #
 # Confluent serialization libraries (for Avro / Schema Registry support)
@@ -81,11 +80,21 @@ RUN cd $KAFKA_HOME/libs && \
     curl -sfLO "https://packages.confluent.io/maven/io/confluent/kafka-connect-avro-data/${CONFLUENT_VERSION}/kafka-connect-avro-data-${CONFLUENT_VERSION}.jar" && \
     curl -sfLO "https://packages.confluent.io/maven/io/confluent/kafka-avro-serializer/${CONFLUENT_VERSION}/kafka-avro-serializer-${CONFLUENT_VERSION}.jar" && \
     curl -sfLO "https://packages.confluent.io/maven/io/confluent/kafka-schema-serializer/${CONFLUENT_VERSION}/kafka-schema-serializer-${CONFLUENT_VERSION}.jar" && \
+    curl -sfLO "https://packages.confluent.io/maven/io/confluent/kafka-schema-converter/${CONFLUENT_VERSION}/kafka-schema-converter-${CONFLUENT_VERSION}.jar" && \
     curl -sfLO "https://packages.confluent.io/maven/io/confluent/kafka-schema-registry-client/${CONFLUENT_VERSION}/kafka-schema-registry-client-${CONFLUENT_VERSION}.jar" && \
     curl -sfLO "https://packages.confluent.io/maven/io/confluent/common-config/${CONFLUENT_VERSION}/common-config-${CONFLUENT_VERSION}.jar" && \
     curl -sfLO "https://packages.confluent.io/maven/io/confluent/common-utils/${CONFLUENT_VERSION}/common-utils-${CONFLUENT_VERSION}.jar" && \
     curl -sfLO "https://repo1.maven.org/maven2/org/apache/avro/avro/${AVRO_VERSION}/avro-${AVRO_VERSION}.jar" && \
-    curl -sfLO "https://repo1.maven.org/maven2/com/google/guava/guava/33.4.0-jre/guava-33.4.0-jre.jar"
+    curl -sfLO "https://repo1.maven.org/maven2/com/google/guava/guava/33.4.0-jre/guava-33.4.0-jre.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/com/google/guava/failureaccess/1.0.2/failureaccess-1.0.2.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/org/checkerframework/checker-qual/3.43.0/checker-qual-3.43.0.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/com/google/j2objc/j2objc-annotations/3.0.0/j2objc-annotations-3.0.0.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/com/eclipsesource/minimal-json/minimal-json/0.9.5/minimal-json-0.9.5.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/com/google/re2j/re2j/1.6/re2j-1.6.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/org/yaml/snakeyaml/2.0/snakeyaml-2.0.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/io/confluent/logredactor/1.0.12/logredactor-1.0.12.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/io/confluent/logredactor-metrics/1.0.12/logredactor-metrics-1.0.12.jar"
 
 #
 # Download the kafka-connect start script from upstream (handles CONNECT_* env var
@@ -113,7 +122,11 @@ RUN chmod -R g+w,o+w $KAFKA_HOME && \
 WORKDIR $KAFKA_HOME
 
 EXPOSE 8083
-VOLUME ["${KAFKA_HOME}/config", "${KAFKA_CONNECT_PLUGINS_DIR}"]
+# NOTE: $KAFKA_CONNECT_PLUGINS_DIR is intentionally NOT declared as a VOLUME here.
+# The classic Docker builder discards modifications to VOLUME paths made by RUN
+# commands in child images, which broke fabric8 docker-maven-plugin builds that
+# curl additional connector jars into the plugin dir.
+VOLUME ["${KAFKA_HOME}/config"]
 
 #
 # Copy entrypoint script and switch user

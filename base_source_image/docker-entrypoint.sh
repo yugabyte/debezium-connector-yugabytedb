@@ -30,15 +30,14 @@ case $1 in
     kafka-connect)
         shift
         # Set the directory with debezium connectors in config file
-        echo "plugin.path=$KAFKA_HOME/connector-plugins" >> $KAFKA_HOME/config/connect-distributed.properties
+        echo "plugin.path=$KAFKA_CONNECT_PLUGINS_DIR" >> $KAFKA_HOME/config/connect-distributed.properties
 
         # If volume with plugins is not empty then use the contents of volume with plugins as connector plugins. Otherwise use default set of plugins
         if find $KAFKA_CONNECT_PLUGINS -mindepth 1 -maxdepth 1 | read; then
-            rm -rf $KAFKA_HOME/connector-plugins/*;
             ls ${KAFKA_CONNECT_PLUGINS}
-            cp -R ${KAFKA_CONNECT_PLUGINS}/* $KAFKA_HOME/connector-plugins/
+            cp -R ${KAFKA_CONNECT_PLUGINS}/* $KAFKA_CONNECT_PLUGINS_DIR/
         fi
-        export CONNECT_PLUGIN_PATH=$KAFKA_HOME/connector-plugins
+        export CONNECT_PLUGIN_PATH=$KAFKA_CONNECT_PLUGINS_DIR
         if [ -z "$1" ]; then
             exec /scripts/kafka-connect-start.sh start
         else

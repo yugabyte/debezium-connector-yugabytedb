@@ -13,14 +13,14 @@ COPY --chown=kafka:kafka target/debezium-connector-yugabytedb-*.jar $KAFKA_CONNE
 # Set the TLS version to be used by Kafka processes
 ENV KAFKA_OPTS="-Djdk.tls.client.protocols=TLSv1.2"
 
-# Add the required jar files to be packaged with the base connector
-RUN cd $KAFKA_CONNECT_YB_DIR && curl -sLo kafka-connect-jdbc-10.6.5.jar https://github.com/yugabyte/kafka-connect-jdbc/releases/download/10.6.5-CUSTOM/kafka-connect-jdbc-10.6.5.jar
-RUN cd $KAFKA_CONNECT_YB_DIR && curl -sLo jdbc-yugabytedb-42.3.5-yb-1.jar https://repo1.maven.org/maven2/com/yugabyte/jdbc-yugabytedb/42.3.5-yb-1/jdbc-yugabytedb-42.3.5-yb-1.jar
-RUN cd $KAFKA_CONNECT_YB_DIR && curl -sLo mysql-connector-j-9.2.0.jar https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/9.2.0/mysql-connector-j-9.2.0.jar
-RUN cd $KAFKA_CONNECT_YB_DIR && curl -sLo postgresql-42.7.7.jar https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.7/postgresql-42.7.7.jar
+# Add the required jar files to be packaged with the base connector.
+RUN cd $KAFKA_CONNECT_YB_DIR && curl -sfLo kafka-connect-jdbc-10.6.5.jar https://github.com/yugabyte/kafka-connect-jdbc/releases/download/10.6.5-CUSTOM/kafka-connect-jdbc-10.6.5.jar
+RUN cd $KAFKA_CONNECT_YB_DIR && curl -sfLo jdbc-yugabytedb-42.3.5-yb-1.jar https://repo1.maven.org/maven2/com/yugabyte/jdbc-yugabytedb/42.3.5-yb-1/jdbc-yugabytedb-42.3.5-yb-1.jar
+RUN cd $KAFKA_CONNECT_YB_DIR && curl -sfLo mysql-connector-j-9.2.0.jar https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/9.2.0/mysql-connector-j-9.2.0.jar
+RUN cd $KAFKA_CONNECT_YB_DIR && curl -sfLo postgresql-42.7.7.jar https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.7/postgresql-42.7.7.jar
 
 # Add JMX Prometheus agent and metrics pattern file to expose metrics
-RUN mkdir -p $KAFKA_HOME/etc && cd $KAFKA_HOME/etc && curl -so jmx_prometheus_javaagent-1.3.3.jar https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/1.3.3/jmx_prometheus_javaagent-1.3.3.jar
+RUN mkdir -p $KAFKA_HOME/etc && cd $KAFKA_HOME/etc && curl -sfo jmx_prometheus_javaagent-1.0.1.jar https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/1.0.1/jmx_prometheus_javaagent-1.0.1.jar
 
 ADD metrics.yml /etc/jmx-exporter/
 
