@@ -264,17 +264,13 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             return;
         }
 
-        if (YugabyteDBConnectorConfig.hasStreamIdAndSlotNameConflict(config)) {
-            String msg = String.format(
-                    "Cannot set both %s and a non-default %s. "
-                        + "Use slot.name (and publication.name) without a stream ID, "
-                        + "or use a stream ID and leave slot.name at its default. "
-                        + "Note: Publication is not supported with stream ID.",
-                    YugabyteDBConnectorConfig.STREAM_ID.name(),
-                    YugabyteDBConnectorConfig.SLOT_NAME.name());
+        try {
+            YugabyteDBConnectorConfig.assertStreamIdAndSlotNameMutuallyExclusive(
+                    config, "Note: Publication is not supported with stream ID.");
+        } catch (DebeziumException e) {
             ConfigValue streamIdConfig = configValues.get(YugabyteDBConnectorConfig.STREAM_ID.name());
             if (streamIdConfig != null) {
-                streamIdConfig.addErrorMessage(msg);
+                streamIdConfig.addErrorMessage(e.getMessage());
             }
             return;
         }

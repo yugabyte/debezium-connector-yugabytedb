@@ -1580,21 +1580,34 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     public static boolean hasStreamIdAndSlotNameConflict(Configuration config) {
         String streamId = config.getString(STREAM_ID);
         String slotName = config.getString(SLOT_NAME);
-        return streamId != null && !streamId.isBlank()
+        return streamId != null && !streamId.isEmpty()
                 && slotName != null && !slotName.equals(ReplicationConnection.Builder.DEFAULT_SLOT_NAME);
     }
 
     private static final String STREAM_ID_SLOT_CONFLICT_MSG =
-            "Cannot set both %s and a non-default %s. "
-                    + "Use slot.name (and publication.name) without a stream ID, "
-                    + "or use a stream ID and leave slot.name at its default (%s).";
+            "Cannot set both stream id: %s and a non-default slot name: %s. "
+            + "Use slot.name (and publication.name) without a stream ID, "
+            + "or use a stream ID and leave slot.name at its default (%s).";
+
+    public static String buildStreamIdAndSlotNameConflictMessage(Configuration config, String additionalMessage) {
+        String streamId = config.getString(STREAM_ID);
+        String slotName = config.getString(SLOT_NAME);
+        String msg = String.format(STREAM_ID_SLOT_CONFLICT_MSG,
+                streamId, slotName,
+                ReplicationConnection.Builder.DEFAULT_SLOT_NAME);
+        if (additionalMessage != null && !additionalMessage.isEmpty()) {
+            msg = msg + " " + additionalMessage;
+        }
+        return msg;
+    }
 
     public static void assertStreamIdAndSlotNameMutuallyExclusive(Configuration config) {
+        assertStreamIdAndSlotNameMutuallyExclusive(config, null);
+    }
+
+    public static void assertStreamIdAndSlotNameMutuallyExclusive(Configuration config, String additionalMessage) {
         if (hasStreamIdAndSlotNameConflict(config)) {
-            throw new DebeziumException(
-                    String.format(STREAM_ID_SLOT_CONFLICT_MSG,
-                            STREAM_ID.name(), SLOT_NAME.name(),
-                            ReplicationConnection.Builder.DEFAULT_SLOT_NAME));
+            throw new DebeziumException(buildStreamIdAndSlotNameConflictMessage(config, additionalMessage));
         }
     }
 
