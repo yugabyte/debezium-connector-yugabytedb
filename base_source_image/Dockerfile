@@ -19,7 +19,7 @@
 #   - Avro, Guava, logredactor, and the transitive deps Confluent requires
 #     (commons-codec, commons-compress, re2j, minimal-json, snakeyaml, etc.)
 #   - Debezium 1.9 kafka-connect-start.sh fetched at build time from the
-#     upstream debezium/container-images repo
+#     upstream debezium/container-images repo.
 #
 # Where this image fits
 # ---------------------
