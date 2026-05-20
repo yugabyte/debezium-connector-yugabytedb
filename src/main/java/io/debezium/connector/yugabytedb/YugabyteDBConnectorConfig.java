@@ -1573,6 +1573,44 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return CONFIG_DEFINITION.configDef();
     }
 
+    /**
+     * Returns {@code true} when both {@code database.streamid} and a non-default {@code slot.name}
+     * are configured. The two options represent mutually exclusive CDC paths.
+     */
+    private static boolean hasStreamIdAndSlotNameConflict(Configuration config) {
+        String streamId = config.getString(STREAM_ID);
+        String slotName = config.getString(SLOT_NAME);
+        return streamId != null && !streamId.isEmpty()
+                && slotName != null && !slotName.equals(ReplicationConnection.Builder.DEFAULT_SLOT_NAME);
+    }
+
+    private static final String STREAM_ID_SLOT_CONFLICT_MSG =
+            "Cannot set both stream id: %s and a non-default slot name: %s. "
+            + "Use slot.name (and publication.name) without a stream ID, "
+            + "or use a stream ID and leave slot.name at its default (%s).";
+
+    private static String buildStreamIdAndSlotNameConflictMessage(Configuration config, String additionalMessage) {
+        String streamId = config.getString(STREAM_ID);
+        String slotName = config.getString(SLOT_NAME);
+        String msg = String.format(STREAM_ID_SLOT_CONFLICT_MSG,
+                streamId, slotName,
+                ReplicationConnection.Builder.DEFAULT_SLOT_NAME);
+        if (additionalMessage != null && !additionalMessage.isEmpty()) {
+            msg = msg + " " + additionalMessage;
+        }
+        return msg;
+    }
+
+    public static void assertStreamIdAndSlotNameMutuallyExclusive(Configuration config) {
+        assertStreamIdAndSlotNameMutuallyExclusive(config, null);
+    }
+
+    public static void assertStreamIdAndSlotNameMutuallyExclusive(Configuration config, String additionalMessage) {
+        if (hasStreamIdAndSlotNameConflict(config)) {
+            throw new DebeziumException(buildStreamIdAndSlotNameConflictMessage(config, additionalMessage));
+        }
+    }
+
     // Source of the validation rules - https://doxygen.postgresql.org/slot_8c.html#afac399f07320b9adfd2c599cf822aaa3
     private static int validateReplicationSlotName(Configuration config, Field field, Field.ValidationOutput problems) {
         final String name = config.getString(field);

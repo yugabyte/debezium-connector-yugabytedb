@@ -11,6 +11,7 @@ import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -65,6 +66,35 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
             }
         }
         assertEquals(recordsCount, totalConsumedRecords);
+    }
+
+    @Test
+    public void shouldRejectStreamIdWithNonDefaultSlotName() {
+        Configuration config = TestHelper.defaultConfig()
+                .with(YugabyteDBConnectorConfig.STREAM_ID, "any-stream-id")
+                .with(YugabyteDBConnectorConfig.SLOT_NAME, "custom_slot")
+                .build();
+        DebeziumException ex = assertThrows(DebeziumException.class,
+                () -> YugabyteDBConnectorConfig.assertStreamIdAndSlotNameMutuallyExclusive(config));
+        assertTrue(ex.getMessage().contains("Cannot set both"));
+    }
+
+    @Test
+    public void shouldAllowStreamIdWithDefaultSlotName() {
+        Configuration config = TestHelper.defaultConfig()
+                .with(YugabyteDBConnectorConfig.STREAM_ID, "any-stream-id")
+                .with(YugabyteDBConnectorConfig.SLOT_NAME, ReplicationConnection.Builder.DEFAULT_SLOT_NAME)
+                .build();
+        assertDoesNotThrow(() -> YugabyteDBConnectorConfig.assertStreamIdAndSlotNameMutuallyExclusive(config));
+    }
+
+    @Test
+    public void shouldAllowCustomSlotNameWithoutStreamId() {
+        Configuration config = TestHelper.defaultConfig()
+                .with(YugabyteDBConnectorConfig.STREAM_ID, "")
+                .with(YugabyteDBConnectorConfig.SLOT_NAME, "custom_slot")
+                .build();
+        assertDoesNotThrow(() -> YugabyteDBConnectorConfig.assertStreamIdAndSlotNameMutuallyExclusive(config));
     }
 
     // This verifies that the connector should not be running if a wrong table.include.list is provided
