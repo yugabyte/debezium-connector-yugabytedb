@@ -12,6 +12,10 @@ Kafka Connect can also be run standalone as a single process, although doing so 
 
 The YugabyteDB connector can also be used as a library without Kafka or Kafka Connect, enabling applications and services to directly connect to a YugabyteDB database and obtain the ordered change events. This approach requires the application to record the progress of the connector so that upon restart the connect can continue where it left off. Therefore, this may be a useful approach for less critical use cases. For production use cases, we highly recommend using this connector with Kafka and Kafka Connect.
 
+## Prerequisites
+
+- **JDK 21** is required to build the project. The compiled bytecode targets Java 17.
+
 ## Building the connector jar
 
 1. Navigate inside the repository.

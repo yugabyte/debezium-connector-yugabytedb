@@ -17,8 +17,8 @@ set -exo pipefail
 . /etc/os-release
 
 if [[ "${ID_LIKE:-}" == *rhel* ]]; then
-  sudo yum -y -q install java-11-openjdk-devel
-  sudo alternatives --set java java-11-openjdk.x86_64
+  sudo yum -y -q install java-21-openjdk-devel
+  sudo alternatives --set java java-21-openjdk.x86_64
 else
   echo "OS not supported"
   exit 1

@@ -37,11 +37,11 @@ jobs:
       - name: Checkout Action
         uses: actions/checkout@v4
       
-      - name: Set up Java 11
+      - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: 11
+          java-version: 21
 
       - name: Clean targets
         run: mvn release:clean
