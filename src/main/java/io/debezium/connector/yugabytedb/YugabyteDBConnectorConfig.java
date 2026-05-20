@@ -1577,7 +1577,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
      * Returns {@code true} when both {@code database.streamid} and a non-default {@code slot.name}
      * are configured. The two options represent mutually exclusive CDC paths.
      */
-    public static boolean hasStreamIdAndSlotNameConflict(Configuration config) {
+    private static boolean hasStreamIdAndSlotNameConflict(Configuration config) {
         String streamId = config.getString(STREAM_ID);
         String slotName = config.getString(SLOT_NAME);
         return streamId != null && !streamId.isEmpty()
@@ -1589,7 +1589,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             + "Use slot.name (and publication.name) without a stream ID, "
             + "or use a stream ID and leave slot.name at its default (%s).";
 
-    public static String buildStreamIdAndSlotNameConflictMessage(Configuration config, String additionalMessage) {
+    private static String buildStreamIdAndSlotNameConflictMessage(Configuration config, String additionalMessage) {
         String streamId = config.getString(STREAM_ID);
         String slotName = config.getString(SLOT_NAME);
         String msg = String.format(STREAM_ID_SLOT_CONFLICT_MSG,
