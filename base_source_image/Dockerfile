@@ -148,12 +148,13 @@ RUN cd $KAFKA_HOME/libs && \
     curl -sfLO "https://repo1.maven.org/maven2/commons-codec/commons-codec/1.16.1/commons-codec-1.16.1.jar" && \
     curl -sfLO "https://repo1.maven.org/maven2/org/apache/commons/commons-compress/1.26.1/commons-compress-1.26.1.jar"
 
-#
-# Debezium 3.x SMTs placed on the system classpath so they're discoverable by Kafka Connect
-# across all plugins.
-#
+# Debezium 3.x SMTs in their own plugin dir (isolated PluginClassLoader). SMTs are
+# still globally discoverable (Connect's transform lookup spans plugins), and the
+# isolation prevents CloudEventsConverter's ServiceLoader scan from colliding with
+# the YB connector's shaded 1.9.5 CloudEventsProvider SPI.
 ARG DEBEZIUM_SMT_VERSION=3.5.1.Final
-RUN cd $KAFKA_HOME/libs && \
+RUN mkdir -p $KAFKA_CONNECT_PLUGINS_DIR/debezium-smts && \
+    cd $KAFKA_CONNECT_PLUGINS_DIR/debezium-smts && \
     curl -sfLO "https://repo1.maven.org/maven2/io/debezium/debezium-connect-plugins/${DEBEZIUM_SMT_VERSION}/debezium-connect-plugins-${DEBEZIUM_SMT_VERSION}.jar" && \
     curl -sfLO "https://repo1.maven.org/maven2/io/debezium/debezium-connector-common/${DEBEZIUM_SMT_VERSION}/debezium-connector-common-${DEBEZIUM_SMT_VERSION}.jar" && \
     curl -sfLO "https://repo1.maven.org/maven2/io/debezium/debezium-config/${DEBEZIUM_SMT_VERSION}/debezium-config-${DEBEZIUM_SMT_VERSION}.jar" && \
