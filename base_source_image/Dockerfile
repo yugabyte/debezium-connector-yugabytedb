@@ -148,6 +148,19 @@ RUN cd $KAFKA_HOME/libs && \
     curl -sfLO "https://repo1.maven.org/maven2/commons-codec/commons-codec/1.16.1/commons-codec-1.16.1.jar" && \
     curl -sfLO "https://repo1.maven.org/maven2/org/apache/commons/commons-compress/1.26.1/commons-compress-1.26.1.jar"
 
+# Debezium 3.x SMTs in their own plugin dir (isolated PluginClassLoader). SMTs are
+# still globally discoverable (Connect's transform lookup spans plugins), and the
+# isolation prevents CloudEventsConverter's ServiceLoader scan from colliding with
+# the YB connector's shaded 1.9.5 CloudEventsProvider SPI.
+ARG DEBEZIUM_SMT_VERSION=3.5.1.Final
+RUN mkdir -p $KAFKA_CONNECT_PLUGINS_DIR/debezium-smts && \
+    cd $KAFKA_CONNECT_PLUGINS_DIR/debezium-smts && \
+    curl -sfLO "https://repo1.maven.org/maven2/io/debezium/debezium-connect-plugins/${DEBEZIUM_SMT_VERSION}/debezium-connect-plugins-${DEBEZIUM_SMT_VERSION}.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/io/debezium/debezium-connector-common/${DEBEZIUM_SMT_VERSION}/debezium-connector-common-${DEBEZIUM_SMT_VERSION}.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/io/debezium/debezium-config/${DEBEZIUM_SMT_VERSION}/debezium-config-${DEBEZIUM_SMT_VERSION}.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/io/debezium/debezium-util/${DEBEZIUM_SMT_VERSION}/debezium-util-${DEBEZIUM_SMT_VERSION}.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/io/debezium/debezium-api/${DEBEZIUM_SMT_VERSION}/debezium-api-${DEBEZIUM_SMT_VERSION}.jar"
+
 #
 # Download the kafka-connect start script from upstream (handles CONNECT_* env var
 # mapping, JMX setup, and launches connect-distributed.sh)
@@ -161,6 +174,15 @@ RUN curl -fsSL https://raw.githubusercontent.com/debezium/container-images/main/
 RUN mkdir $KAFKA_HOME/config.orig && \
     mv $KAFKA_HOME/config/* $KAFKA_HOME/config.orig && \
     chown -R 1001:kafka $KAFKA_HOME/config.orig
+
+# Pin stdout appender threshold to INFO (matches upstream debezium/connect).
+# Stops PUT /admin/loggers->DEBUG from flooding stdout and stalling the connector,
+# while still letting WARN/ERROR through.
+RUN for f in $KAFKA_HOME/config.orig/log4j.properties $KAFKA_HOME/config.orig/connect-log4j.properties; do \
+        if [ -f "$f" ] && ! grep -q '^log4j.appender.stdout.threshold' "$f"; then \
+            sed -i '/^log4j.appender.stdout=org.apache.log4j.ConsoleAppender/a log4j.appender.stdout.threshold=INFO' "$f"; \
+        fi; \
+    done
 
 # Remove unnecessary files (sources, javadoc, scaladoc JARs)
 RUN rm -f $KAFKA_HOME/libs/*-{sources,javadoc,scaladoc}.jar*
