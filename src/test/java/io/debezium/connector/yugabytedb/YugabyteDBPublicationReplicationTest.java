@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Unit tests to verify that connector works well with Publication and Replication slots.
  * The minimum service version required for these tests to work is 2.20.2
- * 
+ *
  * @author Sumukh Phalgaonkar (sumukh.phalgaonkar@yugabyte.com)
  */
 public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTestBase {
@@ -92,7 +92,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
         TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, "pub", "t1"));
         TestHelper.execute(TestHelper.createReplicationSlotStatement);
 
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot"); 
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot");
         startEngine(configBuilder);
         final long recordsCount = 1;
 
@@ -107,6 +107,26 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
     }
 
     @Test
+    public void testYbGrpcPluginReplicationStreamingConsumption() throws Exception {
+      TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, PUB_NAME, "t1"));
+      TestHelper.execute("SELECT pg_create_logical_replication_slot('" + SLOT_NAME + "', 'yb_grpc');");
+
+      Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", PUB_NAME, SLOT_NAME);
+      configBuilder.with(YugabyteDBConnectorConfig.PLUGIN_NAME, YugabyteDBConnectorConfig.LogicalDecoder.YB_GRPC.getValue());
+      startEngine(configBuilder);
+      final long recordsCount = 1;
+
+      awaitUntilConnectorIsReady();
+
+      // Introducing sleep to ensure that we insert the records after bootstrap is completed.
+      Thread.sleep(30000);
+
+      insertRecords(recordsCount);
+
+      verifyPrimaryKeyOnly(recordsCount);
+    }
+
+    @Test
     public void testPublicationReplicationSnapshotConsumption() throws Exception {
         TestHelper.execute("CREATE TABLE IF NOT EXISTS t2_snapshot (id int primary key);");
         TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, "pub", "t2_snapshot"));
@@ -116,7 +136,8 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
         final int recordsCount = 1000;
         TestHelper.executeBulk(insertStatement, recordsCount);
 
-        Configuration.Builder configBuilder = TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot"); 
+        Configuration.Builder configBuilder =
+            TestHelper.getConfigBuilderWithPublication("yugabyte", "pub", "test_replication_slot");
         configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
         startEngine(configBuilder);
 
@@ -566,8 +587,6 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
         }).get();
     }
 
-    
-
     private void verifyPrimaryKeyOnly(long recordsCount) {
         List<SourceRecord> records = new ArrayList<>();
         waitAndFailIfCannotConsume(records, recordsCount);
@@ -577,7 +596,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
             assertValueField(records.get(i), "after/id/value", i);
         }
     }
-    
+
     private boolean dropReplicationSlot() throws Exception {
         try (YugabyteDBConnection ybConnection = TestHelper.create();
              Connection connection = ybConnection.connection()) {
