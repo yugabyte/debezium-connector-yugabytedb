@@ -687,6 +687,14 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withImportance(Importance.LOW)
             .withDefault(DEFAULT_SOCKET_READ_TIMEOUT_MS);
 
+    public static final Field CDC_POLL_INTERVAL_MS = Field.create("cdc.poll.interval.ms")
+            .withDisplayName("Poll interval in milliseconds to get changes from database (deprecated)")
+            .withType(Type.LONG)
+            .withImportance(Importance.LOW)
+            .withDescription("Deprecated, use 'cdc.poll.interval.active.ms' and 'cdc.poll.interval.idle.ms' instead. "
+                    + "If set, this value is used as the poll interval for both the active and idle states and the values "
+                    + "of 'cdc.poll.interval.active.ms' and 'cdc.poll.interval.idle.ms' are ignored");
+
     public static final Field CDC_POLL_INTERVAL_ACTIVE_MS = Field.create("cdc.poll.interval.active.ms")
             .withDisplayName("Poll interval when receiving data")
             .withType(Type.LONG)
@@ -1261,6 +1269,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
     private final LogicalDecodingMessageFilter logicalDecodingMessageFilter;
 
+    private final long cdcPollIntervalActiveMs;
+    private final long cdcPollIntervalIdleMs;
+
     public YugabyteDBConnectorConfig(Configuration config) {
         super(
                 config,
@@ -1283,6 +1294,34 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
 
         this.databaseFilter = new DatabasePredicate();
         this.cqlTableFilter = new CQLTablesPredicate();
+
+        long[] cdcPollIntervals = resolveCdcPollIntervals(config);
+        this.cdcPollIntervalActiveMs = cdcPollIntervals[0];
+        this.cdcPollIntervalIdleMs = cdcPollIntervals[1];
+    }
+
+    /**
+     * Resolves the effective active and idle CDC poll intervals. The deprecated
+     * {@code cdc.poll.interval.ms} property, when set, is used for both and overrides
+     * any user provided values of {@code cdc.poll.interval.active.ms} and
+     * {@code cdc.poll.interval.idle.ms}.
+     *
+     * @return a two element array holding the active and idle poll intervals in milliseconds
+     */
+    static long[] resolveCdcPollIntervals(Configuration config) {
+        if (config.hasKey(CDC_POLL_INTERVAL_MS.name())) {
+            long legacyCdcPollIntervalMs = config.getLong(CDC_POLL_INTERVAL_MS);
+            if (config.hasKey(CDC_POLL_INTERVAL_ACTIVE_MS.name()) || config.hasKey(CDC_POLL_INTERVAL_IDLE_MS.name())) {
+                LOGGER.warn("Configuration property '{}' is deprecated, ignoring the values of '{}' and '{}' and using {} ms for both",
+                        CDC_POLL_INTERVAL_MS.name(), CDC_POLL_INTERVAL_ACTIVE_MS.name(), CDC_POLL_INTERVAL_IDLE_MS.name(), legacyCdcPollIntervalMs);
+            }
+            else {
+                LOGGER.warn("Configuration property '{}' is deprecated, use '{}' and '{}' instead; using {} ms for both",
+                        CDC_POLL_INTERVAL_MS.name(), CDC_POLL_INTERVAL_ACTIVE_MS.name(), CDC_POLL_INTERVAL_IDLE_MS.name(), legacyCdcPollIntervalMs);
+            }
+            return new long[]{ legacyCdcPollIntervalMs, legacyCdcPollIntervalMs };
+        }
+        return new long[]{ config.getLong(CDC_POLL_INTERVAL_ACTIVE_MS), config.getLong(CDC_POLL_INTERVAL_IDLE_MS) };
     }
 
     protected String hostname() {
@@ -1338,11 +1377,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     }
 
     public long cdcPollIntervalActiveMs() {
-        return getConfig().getLong(CDC_POLL_INTERVAL_ACTIVE_MS);
+        return cdcPollIntervalActiveMs;
     }
 
     public long cdcPollIntervalIdleMs() {
-        return getConfig().getLong(CDC_POLL_INTERVAL_IDLE_MS);
+        return cdcPollIntervalIdleMs;
     }
 
     public boolean cdcLimitPollPerIteration() {
@@ -1547,6 +1586,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     LOG_COMMIT_OFFSET_INTERVAL_MS,
               MBEAN_REGISTRATION_RETRIES,
                     MBEAN_REGISTRATION_RETRY_DELAY_MS,
+                    CDC_POLL_INTERVAL_MS,
                     CDC_POLL_INTERVAL_ACTIVE_MS,
                     CDC_POLL_INTERVAL_IDLE_MS)
             .events(
