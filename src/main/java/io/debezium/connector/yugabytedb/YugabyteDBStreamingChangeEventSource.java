@@ -96,6 +96,10 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     protected Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
 
+    // Per-tablet last heartbeat emit time (ms), to pace per-tablet heartbeats.
+    protected final Map<String, Long> tabletToLastHeartbeatMs = new ConcurrentHashMap<>();
+    protected final long heartbeatIntervalMs;
+
     protected final Filters filters;
 
     // This timer is used to log the offset map periodically.
@@ -133,6 +137,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         yugabyteDBTypeRegistry = taskContext.schema().getTypeRegistry();
         this.queue = queue;
         this.tabletToExplicitCheckpoint = new ConcurrentHashMap<>();
+        this.heartbeatIntervalMs = connectorConfig.getHeartbeatInterval().toMillis();
         this.splitTabletsWaitingForCallback = new HashSet<>();
         this.filters = new Filters(connectorConfig);
         this.partitionRanges = new ArrayList<>();
@@ -820,6 +825,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 }
                             }
 
+                            maybeEmitTabletHeartbeat(part, offsetContext);
+
                             LOGGER.debug("The final opid for tablet {} is {}", part.getId(), finalOpid);
                         }
                         // Reset the retry count, because if flow reached at this point, it means that the connection
@@ -873,6 +880,24 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
 
         return explicitCheckpoint;
+    }
+
+    private void maybeEmitTabletHeartbeat(YBPartition part, YugabyteDBOffsetContext offsetContext) {
+        if (!dispatcher.heartbeatsEnabled()) {
+            return;
+        }
+        long currentTimeMs = clock.currentTimeInMillis();
+        Long lastHeartbeatMs = tabletToLastHeartbeatMs.putIfAbsent(part.getId(), currentTimeMs);
+        if (lastHeartbeatMs == null || currentTimeMs - lastHeartbeatMs < heartbeatIntervalMs) {
+            return;
+        }
+        try {
+            dispatcher.dispatchHeartbeatEvent(part, offsetContext.getOffset());
+            tabletToLastHeartbeatMs.put(part.getId(), currentTimeMs);
+        }
+        catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**
