@@ -173,4 +173,66 @@ public class YugabyteDBHeartbeatTest extends YugabyteDBContainerTestBase {
 
         engine.stop();
     }
+
+    private static Set<String> distinctTablets(List<SourceRecord> records) {
+        Set<String> tablets = new HashSet<>();
+        for (SourceRecord r : records) {
+            Map<String, ?> offset = r.sourceOffset();
+            if (offset == null) {
+                continue;
+            }
+            for (String key : offset.keySet()) {
+                if ("transaction_id".equals(key)) {
+                    continue;
+                }
+                int dot = key.lastIndexOf('.');
+                tablets.add(dot < 0 ? key : key.substring(dot + 1));
+            }
+        }
+        return tablets;
+    }
+
+    @Test
+    public void snapshotCompletionEmitsHeartbeatPerTablet() throws Exception {
+        TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 3 TABLETS;");
+        for (int i = 1; i <= 30; ++i) {
+            TestHelper.execute("INSERT INTO t1 VALUES (" + i + ", 'snap" + i + "');");
+        }
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false /* before image */,
+                true /* explicit checkpointing */, false, false);
+        Configuration config = TestHelper.getConfigBuilder("public.t1", dbStreamId)
+                .with(EmbeddedEngine.ENGINE_NAME, "heartbeat-snapshot-test")
+                .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG,
+                        Testing.Files.createTestingFile("heartbeat-snapshot-offsets.txt").getAbsolutePath())
+                .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
+                .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class)
+                .with("heartbeat.interval.ms", 600000)
+                .with("snapshot.mode", "initial")
+                .build();
+
+        runEngine(config);
+        awaitUntilConnectorIsReady();
+
+        // All 30 pre-inserted rows are delivered by the snapshot.
+        Awaitility.await().atMost(Duration.ofSeconds(60)).until(() -> snapshotOf(".t1").size() >= 30);
+        long lastSnapshotIndex = snapshotOf(".t1").stream()
+                .mapToLong(YugabyteDBHeartbeatTest::tabletMaxIndex).max().orElse(-1);
+        assertTrue(lastSnapshotIndex > 0, "expected snapshot offsets to be captured");
+
+        int tabletCount = distinctTablets(new ArrayList<>(captured)).size();
+        Awaitility.await().atMost(Duration.ofSeconds(60)).until(() -> heartbeats().size() >= tabletCount);
+
+        List<SourceRecord> hbs = heartbeats();
+        LOGGER.info("snapshot-completion heartbeats={} tabletCount={}", hbs.size(), tabletCount);
+        assertEquals(tabletCount, hbs.size(),
+                "expected exactly one snapshot-completion heartbeat per tablet (" + tabletCount
+                        + " tablets), got " + hbs.size());
+
+        long maxHeartbeatIndex = hbs.stream().mapToLong(YugabyteDBHeartbeatTest::tabletMaxIndex).max().orElse(-1);
+        assertTrue(maxHeartbeatIndex >= lastSnapshotIndex,
+                "snapshot-completion heartbeat checkpoint index " + maxHeartbeatIndex
+                        + " should be at least the last snapshot record index " + lastSnapshotIndex);
+
+        engine.stop();
+    }
 }
