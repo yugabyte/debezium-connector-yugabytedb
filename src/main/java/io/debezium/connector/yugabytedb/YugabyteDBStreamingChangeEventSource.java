@@ -892,7 +892,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             return;
         }
         try {
-            dispatcher.dispatchHeartbeatEvent(part, offsetContext.getOffset());
+            dispatcher.dispatchHeartbeatEvent(part, offsetContext.getOffset(part));
             tabletToLastHeartbeatMs.put(part.getId(), currentTimeMs);
         }
         catch (InterruptedException e) {
