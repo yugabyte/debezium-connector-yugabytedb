@@ -203,7 +203,7 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
             String topicName = topicSelector.topicNameFor((T) dataCollectionSchema.id());
 
             SourceRecord record = new SourceRecord(partition.getSourcePartition(),
-              offsetContext.getOffset(),
+              ((YugabyteDBOffsetContext) offsetContext).getOffset(partition),
               topicName, null,
               keySchema, key,
               dataCollectionSchema.getEnvelopeSchema().schema(),
