@@ -487,6 +487,14 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 if (snapshotCompletedTablets.size() == tableToTabletForSnapshot.size()) {
                     LOGGER.info("Snapshot completed for all the tablets");
                     this.snapshotComplete = true;
+                    // Emit one heartbeat per tablet at snapshot completion so each tablet's checkpoint is
+                    // flushed at the snapshot boundary.
+                    if (dispatcher.heartbeatsEnabled()) {
+                        for (Pair<String, String> tablet : tableToTabletForSnapshot) {
+                            YBPartition hbPartition = new YBPartition(tablet.getKey(), tablet.getValue(), true);
+                            dispatcher.alwaysDispatchHeartbeatEvent(hbPartition, previousOffset);
+                        }
+                    }
                     return SnapshotResult.completed(previousOffset);
                 }
 
