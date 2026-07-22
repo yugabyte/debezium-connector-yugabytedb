@@ -150,7 +150,7 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 		value.put(DEBEZIUM_TRANSACTION_ID_KEY, transactionContext.getTransactionId(partition));
 		value.put(PARTITION_ID_KEY, partition.getFullPartitionName());
 
-		sender.accept(new SourceRecord(partition.getSourcePartition(), offsetContext.getOffset(),
+		sender.accept(new SourceRecord(partition.getSourcePartition(), ((YugabyteDBOffsetContext) offsetContext).getOffset(partition),
 			topicName, null, key.schema(), key, value.schema(), value));
 	}
 
@@ -166,7 +166,7 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 
 		// TODO: Process and add per table event count here if required.
 
-		sender.accept(new SourceRecord(partition.getSourcePartition(), offsetContext.getOffset(),
+		sender.accept(new SourceRecord(partition.getSourcePartition(), ((YugabyteDBOffsetContext) offsetContext).getOffset(partition),
 			topicName, null, key.schema(), key, value.schema(), value));
 	}
 }
