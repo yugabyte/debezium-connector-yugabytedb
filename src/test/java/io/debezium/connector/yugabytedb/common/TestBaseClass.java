@@ -524,10 +524,10 @@ public class TestBaseClass extends AbstractConnectorTest {
      * Get the records on the given topic.
      *
      * @param topicName the name of the topic.
-     * @return the records for the topic; possibly null if there were no records produced on the topic
+     * @return the records for the topic; empty if there were no records produced on the topic
      */
     public List<SourceRecord> recordsForTopic(String topicName) {
-      return recordsByTopic.get(topicName);
+      return recordsByTopic.getOrDefault(topicName, new ArrayList<>());
     }
 
     /**
