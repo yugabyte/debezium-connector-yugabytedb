@@ -1770,27 +1770,6 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             return true;
         }
 
-        try (YBClient ybClient = YBClientUtils.getYbClient(config)) {
-            GetDBStreamInfoResponse getDBStreamInfoResponse = ybClient.getDBStreamInfo(streamId);
-            ListCDCStreamsResponse resp = ybClient.listCDCStreams(null, getDBStreamInfoResponse.getNamespaceId(), null);
-            for (CDCStreamInfo stream : resp.getStreams()) {
-                if (stream.getStreamId().equals(streamId)) {
-                    String slotName = stream.getCdcsdkYsqlReplicationSlotName();
-                    if (slotName == null || slotName.isEmpty()) {
-                        return false;
-                    } else {
-                        String errorFormat = "Stream ID %s is associated with replication slot %s. Please use slot name in the config instead of Stream ID.";
-                        String errorMessage = String.format(errorFormat, streamId, slotName);
-                        LOGGER.error(errorMessage);
-                        throw new DebeziumException(errorMessage);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.error("Exception while making RPC calls to server");
-            throw new DebeziumException(e);
-        }
-
         return false;
     }
 
