@@ -687,6 +687,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withImportance(Importance.LOW)
             .withDefault(DEFAULT_SOCKET_READ_TIMEOUT_MS);
 
+    @Deprecated
     public static final Field CDC_POLL_INTERVAL_MS = Field.create("cdc.poll.interval.ms")
             .withDisplayName("Poll interval in milliseconds to get changes from database (deprecated)")
             .withType(Type.LONG)
