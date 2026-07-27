@@ -403,6 +403,23 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             public boolean supportsTruncate() {
                 return false;
             }
+        },
+        // Plugin name for gRPC CDC streams created via the PostgreSQL replication-slot syntax.
+        YB_GRPC("yb_grpc") {
+            @Override
+            public MessageDecoder messageDecoder(MessageDecoderContext config) {
+                return new YbProtoMessageDecoder();
+            }
+
+            @Override
+            public String getPostgresPluginName() {
+                return getValue();
+            }
+
+            @Override
+            public boolean supportsTruncate() {
+                return false;
+            }
         };
 
         private final String decoderName;
@@ -782,7 +799,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withDefault(DEFAULT_PLUGIN_NAME)
             .withDescription("The name of the Postgres logical decoding plugin installed on the server. " +
                     "Supported values are '" + LogicalDecoder.YBOUTPUT.getValue()
-                    + "'. " +
+                    + "' and '" + LogicalDecoder.YB_GRPC.getValue() + "'. " +
                     "Defaults to '" + LogicalDecoder.YBOUTPUT.getValue() + "'.");
 
     public static final Field SLOT_NAME = Field.create("slot.name")
@@ -795,7 +812,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withValidation(YugabyteDBConnectorConfig::validateReplicationSlotName)
             .withDescription("The name of the YSQL logical decoding slot created for streaming changes from a plugin." +
                     "Defaults to 'debezium");
-    
+
     public static final Field DROP_SLOT_ON_STOP = Field.create("slot.drop.on.stop")
             .withDisplayName("Drop slot on stop")
             .withType(Type.BOOLEAN)
@@ -1954,7 +1971,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 LOGGER.warn(
                         String.format("Error while trying to %s filtered publication. Will retry, attempt %d out of %d",
                                 isUpdate ? "update" : "create", retryCount, maxAttempts));
-                    
+
                 pauseBetweenRetries(config.getLong(RETRY_DELAY_MS));
             }
         }
@@ -1972,7 +1989,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                 LOGGER.trace("Ignoring table {} as it's not included in the filter configuration", tableId);
                 continue;
             }
-            
+
             LOGGER.trace("Adding table {} to the list of captured tables", tableId);
             capturedTables.add(tableId);
         }
