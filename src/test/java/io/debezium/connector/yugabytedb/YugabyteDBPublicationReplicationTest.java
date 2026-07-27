@@ -26,7 +26,6 @@ import org.junit.jupiter.api.*;
 import org.yb.client.GetDBStreamInfoResponse;
 import org.yb.client.YBClient;
 
-import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState;
 import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
@@ -191,7 +190,7 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
     }
 
     @Test
-    public void oldConfigStreamIDShouldNotBePartOfReplicationSlot() throws Exception {
+    public void testConfigWithStreamIdShouldNotUsePublication() throws Exception {
         TestHelper.execute(TestHelper.createReplicationSlotStatement);
         TestHelper.execute(String.format(TestHelper.createPublicationForTableStatement, "pub", "t1"));
         String streamId = TestHelper.getStreamIdFromSlot("test_replication_slot");
@@ -201,13 +200,9 @@ public class YugabyteDBPublicationReplicationTest extends YugabyteDBContainerTes
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("yugabyte", "public.t1", streamId);
         Configuration config = configBuilder.build();
 
-        DebeziumException exception = assertThrows(DebeziumException.class, ()->YugabyteDBConnectorConfig.shouldUsePublication(config));
-
-        String errorMessage = String.format(
-         "Stream ID %s is associated with replication slot %s. Please use slot name in the config instead of Stream ID.",
-                streamId, "test_replication_slot");
-        assertTrue(exception.getMessage().contains(errorMessage));
-
+        // Even if the stream ID is associated with a replication slot, a config specifying the
+        // stream ID directly should keep the old behaviour and not use the publication path.
+        assertFalse(YugabyteDBConnectorConfig.shouldUsePublication(config));
     }
 
     @Test

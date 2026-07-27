@@ -28,10 +28,6 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.common.config.ConfigValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.CDCStreamInfo;
-import org.yb.client.GetDBStreamInfoResponse;
-import org.yb.client.ListCDCStreamsResponse;
-import org.yb.client.YBClient;
 
 import io.debezium.DebeziumException;
 import io.debezium.config.ConfigDefinition;
@@ -1824,32 +1820,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
 
         // For CQL tables as well as for the config not using Publication/Replication streamId will be non null
-        if (streamId == null || streamId.isEmpty()) {
-            return true;
-        }
-
-        try (YBClient ybClient = YBClientUtils.getYbClient(config)) {
-            GetDBStreamInfoResponse getDBStreamInfoResponse = ybClient.getDBStreamInfo(streamId);
-            ListCDCStreamsResponse resp = ybClient.listCDCStreams(null, getDBStreamInfoResponse.getNamespaceId(), null);
-            for (CDCStreamInfo stream : resp.getStreams()) {
-                if (stream.getStreamId().equals(streamId)) {
-                    String slotName = stream.getCdcsdkYsqlReplicationSlotName();
-                    if (slotName == null || slotName.isEmpty()) {
-                        return false;
-                    } else {
-                        String errorFormat = "Stream ID %s is associated with replication slot %s. Please use slot name in the config instead of Stream ID.";
-                        String errorMessage = String.format(errorFormat, streamId, slotName);
-                        LOGGER.error(errorMessage);
-                        throw new DebeziumException(errorMessage);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.error("Exception while making RPC calls to server");
-            throw new DebeziumException(e);
-        }
-
-        return false;
+        return Strings.isNullOrEmpty(streamId);
     }
 
     /**
