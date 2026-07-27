@@ -28,10 +28,6 @@ import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.common.config.ConfigValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.CDCStreamInfo;
-import org.yb.client.GetDBStreamInfoResponse;
-import org.yb.client.ListCDCStreamsResponse;
-import org.yb.client.YBClient;
 
 import io.debezium.DebeziumException;
 import io.debezium.config.ConfigDefinition;
@@ -1766,11 +1762,7 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
 
         // For CQL tables as well as for the config not using Publication/Replication streamId will be non null
-        if (streamId == null || streamId.isEmpty()) {
-            return true;
-        }
-
-        return false;
+        return Strings.isNullOrEmpty(streamId);
     }
 
     /**
