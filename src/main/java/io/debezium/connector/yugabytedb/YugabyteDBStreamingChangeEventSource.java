@@ -453,6 +453,17 @@ public class YugabyteDBStreamingChangeEventSource implements
             if (snapshotter.shouldSnapshot()) {
                 LOGGER.info("Skipping bootstrap because snapshot has been taken so streaming will resume there onwards");
             } else {
+                {
+                    StringBuilder diagList = new StringBuilder();
+                    for (Pair<String, String> diagEntry : tabletPairList) {
+                        if (diagList.length() > 0) {
+                            diagList.append(", ");
+                        }
+                        diagList.append(diagEntry.getValue());
+                    }
+                    LOGGER.info("[DIAG-BOOTSTRAP] task {} starting streaming with {} tablets: [{}]",
+                            taskContext.getTaskId(), tabletPairList.size(), diagList);
+                }
                 bootstrapTabletWithRetry(syncClient, tabletPairList, tableIdToTable);
             }
 
@@ -576,9 +587,11 @@ public class YugabyteDBStreamingChangeEventSource implements
                             }
 
                             if (diagShouldLog("req:" + part.getId())) {
-                                LOGGER.info("[DIAG-REQ] tablet {} from_op_id={} explicit_checkpoint={} walSegmentIndex={}",
+                                OpId diagLastRecord = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
+                                LOGGER.info("[DIAG-REQ] tablet {} from_op_id={} explicit_checkpoint={} lastRecordCheckpoint={} walSegmentIndex={}",
                                         part.getId(), cp.toSerString(),
                                         explicitCheckpoint == null ? "null" : (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex() + ":" + explicitCheckpoint.getTime()),
+                                        diagLastRecord == null ? "null" : diagLastRecord.toSerString(),
                                         offsetContext.getWalSegmentIndex(part));
                             }
 
@@ -1105,6 +1118,29 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                     LOGGER.debug("Committed checkpoint on server for stream ID {} tablet {} with term {} index {}",
                                 this.connectorConfig.streamId(), entry.getKey(), tempOpId.getTerm(), tempOpId.getIndex());
+                }
+            }
+
+            if (diagShouldLog("ackmissing")) {
+                java.util.List<String> diagMissing = new java.util.ArrayList<>();
+                for (Pair<String, String> diagEntry : tabletPairList) {
+                    String diagTabletId = diagEntry.getValue();
+                    boolean diagPresent = offset.containsKey(diagTabletId);
+                    if (!diagPresent) {
+                        for (String diagKey : offset.keySet()) {
+                            if (diagKey.endsWith("." + diagTabletId)) {
+                                diagPresent = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!diagPresent) {
+                        diagMissing.add(diagTabletId);
+                    }
+                }
+                if (!diagMissing.isEmpty()) {
+                    LOGGER.info("[DIAG-ACK-MISSING] task {} {} of {} polled tablets have NO offset-topic entry: {}",
+                            taskContext.getTaskId(), diagMissing.size(), tabletPairList.size(), diagMissing);
                 }
             }
         } catch (Exception e) {
