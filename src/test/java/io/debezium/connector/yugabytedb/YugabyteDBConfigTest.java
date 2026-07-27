@@ -97,6 +97,55 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
         assertDoesNotThrow(() -> YugabyteDBConnectorConfig.assertStreamIdAndSlotNameMutuallyExclusive(config));
     }
 
+    @Test
+    public void shouldUseDefaultPollIntervalsWhenNothingIsConfigured() {
+        Configuration config = TestHelper.defaultConfig().build();
+
+        long[] intervals = YugabyteDBConnectorConfig.resolveCdcPollIntervals(config);
+
+        assertEquals(YugabyteDBConnectorConfig.DEFAULT_CDC_POLL_INTERVAL_ACTIVE_MS, intervals[0]);
+        assertEquals(YugabyteDBConnectorConfig.DEFAULT_CDC_POLL_INTERVAL_IDLE_MS, intervals[1]);
+    }
+
+    @Test
+    public void shouldUseActiveAndIdlePollIntervalsWhenDeprecatedPropertyIsNotSet() {
+        Configuration config = TestHelper.defaultConfig()
+                .with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_ACTIVE_MS, 25)
+                .with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_IDLE_MS, 750)
+                .build();
+
+        long[] intervals = YugabyteDBConnectorConfig.resolveCdcPollIntervals(config);
+
+        assertEquals(25, intervals[0]);
+        assertEquals(750, intervals[1]);
+    }
+
+    @Test
+    public void shouldUseDeprecatedPollIntervalForBothIntervalsWhenSet() {
+        Configuration config = TestHelper.defaultConfig()
+                .with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 300)
+                .build();
+
+        long[] intervals = YugabyteDBConnectorConfig.resolveCdcPollIntervals(config);
+
+        assertEquals(300, intervals[0]);
+        assertEquals(300, intervals[1]);
+    }
+
+    @Test
+    public void shouldIgnoreActiveAndIdlePollIntervalsWhenDeprecatedPropertyIsSet() {
+        Configuration config = TestHelper.defaultConfig()
+                .with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_MS, 300)
+                .with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_ACTIVE_MS, 25)
+                .with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_IDLE_MS, 750)
+                .build();
+
+        long[] intervals = YugabyteDBConnectorConfig.resolveCdcPollIntervals(config);
+
+        assertEquals(300, intervals[0]);
+        assertEquals(300, intervals[1]);
+    }
+
     // This verifies that the connector should not be running if a wrong table.include.list is provided
     @ParameterizedTest
     @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
