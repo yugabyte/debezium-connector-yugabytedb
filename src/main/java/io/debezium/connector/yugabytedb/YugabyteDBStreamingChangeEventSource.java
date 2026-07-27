@@ -104,6 +104,23 @@ public class YugabyteDBStreamingChangeEventSource implements
     // This set will contain the list of partition IDs for the tablets which have been split
     // and waiting for the callback from Kafka.
     protected Set<String> splitTabletsWaitingForCallback;
+
+    // Diagnostic logging ([DIAG-*]): INFO level, rate limited per key so the log stays readable
+    // under load. High-frequency sites log at most once per DIAG_LOG_INTERVAL_MS per tablet;
+    // rare, decisive events (park, release, split handling) always log.
+    private static final long DIAG_LOG_INTERVAL_MS = 5_000;
+    private final ConcurrentHashMap<String, Long> diagLastLogMs = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> diagParkedSinceMs = new ConcurrentHashMap<>();
+
+    private boolean diagShouldLog(String key) {
+        long now = System.currentTimeMillis();
+        Long prev = diagLastLogMs.get(key);
+        if (prev == null || now - prev >= DIAG_LOG_INTERVAL_MS) {
+            diagLastLogMs.put(key, now);
+            return true;
+        }
+        return false;
+    }
     protected List<HashPartition> partitionRanges;
 
     // This tabletPairList has Pair<String, String> objects wherein the key is the table UUID
@@ -470,7 +487,17 @@ public class YugabyteDBStreamingChangeEventSource implements
                         if (this.connectorConfig.cdcLimitPollPerIteration()
                                 && queue.remainingCapacity() < queue.totalCapacity()) {
                             LOGGER.debug("Queue has {} items. Skipping", queue.totalCapacity() - queue.remainingCapacity());
+                            if (diagShouldLog("queuefull")) {
+                                LOGGER.info("[DIAG-QUEUE-FULL] task {} skipping polls, queue has {} items",
+                                        taskContext.getTaskId(), queue.totalCapacity() - queue.remainingCapacity());
+                            }
                             continue;
+                        }
+
+                        if (diagShouldLog("loop")) {
+                            LOGGER.info("[DIAG-LOOP] task {} polling {} tablets, {} parked{}",
+                                    taskContext.getTaskId(), tabletPairList.size(), splitTabletsWaitingForCallback.size(),
+                                    splitTabletsWaitingForCallback.isEmpty() ? "" : (" parkedIds=" + splitTabletsWaitingForCallback));
                         }
 
                         for (Pair<String, String> entry : tabletPairList) {
@@ -505,9 +532,22 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             part.getTabletId());
                                     handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
                                     splitTabletsWaitingForCallback.remove(part.getId());
+                                    Long diagSince = diagParkedSinceMs.remove(part.getId());
+                                    LOGGER.info("[DIAG-RELEASED] tablet {} released from wait-list after {} ms, explicitCheckpoint={}.{}:{}",
+                                            part.getId(), diagSince == null ? -1 : (System.currentTimeMillis() - diagSince),
+                                            explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), explicitCheckpoint.getTime());
                                     // Break out of the loop so that processing can happen on the modified list.
                                     break;
                                 } else {
+                                    if (diagShouldLog("parked:" + part.getId())) {
+                                        Long since = diagParkedSinceMs.get(part.getId());
+                                        LOGGER.info("[DIAG-PARKED] tablet {} still on wait-list ({} ms), explicitCheckpoint={} lastRecordCheckpoint={} fromOpId={}",
+                                                part.getId(),
+                                                since == null ? -1 : (System.currentTimeMillis() - since),
+                                                explicitCheckpoint == null ? "null" : (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex() + ":" + explicitCheckpoint.getTime()),
+                                                lastRecordCheckpoint == null ? "null" : lastRecordCheckpoint.toSerString(),
+                                                cp.toSerString());
+                                    }
                                     continue;
                                 }
                             }
@@ -533,6 +573,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                                   table.getName(), part.getId(), explicitCheckpoint, cp.toSerString());
 
                                 lastLoggedTimeForGetChanges = System.currentTimeMillis();
+                            }
+
+                            if (diagShouldLog("req:" + part.getId())) {
+                                LOGGER.info("[DIAG-REQ] tablet {} from_op_id={} explicit_checkpoint={} walSegmentIndex={}",
+                                        part.getId(), cp.toSerString(),
+                                        explicitCheckpoint == null ? "null" : (explicitCheckpoint.getTerm() + "." + explicitCheckpoint.getIndex() + ":" + explicitCheckpoint.getTime()),
+                                        offsetContext.getWalSegmentIndex(part));
                             }
 
                             // Check again if the thread has been interrupted.
@@ -585,6 +632,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             LOGGER.info("Adding partition {} to wait-list since the explicit checkpoint ({}) and last seen record's checkpoint ({}.{}.{}) are not the same",
                                                     part.getId(), explicitString, lastRecordCheckpoint.getTerm(), lastRecordCheckpoint.getIndex(), lastRecordCheckpoint.getTime());
                                             splitTabletsWaitingForCallback.add(part.getId());
+                                            diagParkedSinceMs.put(part.getId(), System.currentTimeMillis());
+                                            LOGGER.info("[DIAG-PARK-ADD] tablet {} parked; lastRecordCheckpoint={} explicitCheckpoint={} fromOpId={}",
+                                                    part.getId(), lastRecordCheckpoint.toSerString(), explicitString, cp.toSerString());
                                         }
                                     } else {
                                         handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
@@ -600,6 +650,11 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                             int recordCount = response.getResp().getCdcSdkProtoRecordsList().size();
                             LOGGER.debug("Processing {} records from getChanges call", recordCount);
+                            if (diagShouldLog("resp:" + part.getId())) {
+                                LOGGER.info("[DIAG-RESP] tablet {} records={} responseCheckpoint={}:{} safeHybridTime={} walSegmentIndex={}",
+                                        part.getId(), recordCount, response.getTerm(), response.getIndex(),
+                                        response.getResp().getSafeHybridTime(), response.getResp().getWalSegmentIndex());
+                            }
                             receivedDataInLastIteration = (recordCount > 0);
                             for (CdcService.CDCSDKProtoRecordPB record : response
                                     .getResp()
@@ -665,6 +720,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                     if (recordsInTransactionalBlock.get(part.getId()) == 0) {
                                                         LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                                                 message.getTransactionId(), lsn, part.getId());
+                                                        if (diagShouldLog("emptytxn:" + part.getId())) {
+                                                            LOGGER.info("[DIAG-EMPTY-TXN] tablet {} empty transaction COMMIT (0 records for this tablet) txn={} lsn={}",
+                                                                    part.getId(), message.getTransactionId(), lsn);
+                                                        }
                                                     } else {
                                                         LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
                                                                 message.getTransactionId(), lsn, part.getId(), recordsInTransactionalBlock.get(part.getId()));
@@ -695,6 +754,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                 if (recordsInTransactionalBlock.get(part.getId()) == 0) {
                                                     LOGGER.debug("Records in the transactional block of transaction: {}, with LSN: {}, for tablet {} are 0",
                                                             message.getTransactionId(), lsn, part.getId());
+                                                    if (diagShouldLog("emptytxn:" + part.getId())) {
+                                                        LOGGER.info("[DIAG-EMPTY-TXN] tablet {} empty transaction COMMIT (0 records for this tablet) txn={} lsn={}",
+                                                                part.getId(), message.getTransactionId(), lsn);
+                                                    }
                                                 } else {
                                                     LOGGER.debug("Records in the transactional block transaction: {}, with LSN: {}, for tablet {}: {}",
                                                             message.getTransactionId(), lsn, part.getId(), recordsInTransactionalBlock.get(part.getId()));
@@ -816,7 +879,15 @@ public class YugabyteDBStreamingChangeEventSource implements
                             if (taskContext.shouldEnableExplicitCheckpointing() && !TEST_STOP_ADVANCING_CHECKPOINTS) {
                                 OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
                                 if (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint)) {
+                                    CdcSdkCheckpoint diagPrev = tabletToExplicitCheckpoint.get(part.getId());
                                     tabletToExplicitCheckpoint.put(part.getId(), finalOpid.toCdcSdkCheckpoint());
+                                    if (diagShouldLog("selfadv:" + part.getId())) {
+                                        LOGGER.info("[DIAG-SELF-ADVANCE] tablet {} explicit cache {} -> {} (lastRecordCheckpoint={}, no Kafka ack involved)",
+                                                part.getId(),
+                                                diagPrev == null ? "null" : (diagPrev.getTerm() + "." + diagPrev.getIndex() + ":" + diagPrev.getTime()),
+                                                finalOpid.toSerString(),
+                                                lastRecordCheckpoint == null ? "null" : lastRecordCheckpoint.toSerString());
+                                    }
                                 }
                             }
 
@@ -1012,13 +1083,25 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // We should check if the received OpId is less than the checkpoint already present
                     // in the map. If this is so, then we don't update the checkpoint. Updating to a lesser value
                     // than one already present would throw the error: CDCSDK: Trying to fetch already GCed intents
-                    if (this.tabletToExplicitCheckpoint.get(entry.getKey()) != null &&
-                            tempOpId.getIndex() < this.tabletToExplicitCheckpoint.get(entry.getKey()).getIndex()) {
+                    CdcSdkCheckpoint diagCached = this.tabletToExplicitCheckpoint.get(entry.getKey());
+                    if (diagCached != null && tempOpId.getIndex() < diagCached.getIndex()) {
                         LOGGER.debug("The received OpId {} is less than the older checkpoint {} for tablet {}",
-                                    tempOpId.getIndex(), this.tabletToExplicitCheckpoint.get(entry.getKey()).getIndex(), entry.getKey());
+                                    tempOpId.getIndex(), diagCached.getIndex(), entry.getKey());
+                        if (diagShouldLog("ackrej:" + entry.getKey())) {
+                            LOGGER.info("[DIAG-ACK-REJECTED] tablet {} Kafka ack {} rejected by index-only guard, cached explicit {}.{}:{}",
+                                    entry.getKey(), tempOpId.toSerString(), diagCached.getTerm(), diagCached.getIndex(), diagCached.getTime());
+                        }
                         continue;
                     }
+                    boolean diagAdvanced = diagCached == null || diagCached.getIndex() != tempOpId.getIndex()
+                            || diagCached.getTime() != tempOpId.getTime();
                     this.tabletToExplicitCheckpoint.put(entry.getKey(), tempOpId.toCdcSdkCheckpoint());
+                    if (diagAdvanced && diagShouldLog("ackadv:" + entry.getKey())) {
+                        LOGGER.info("[DIAG-ACK-ADVANCE] tablet {} explicit cache {} -> {} via Kafka ack",
+                                entry.getKey(),
+                                diagCached == null ? "null" : (diagCached.getTerm() + "." + diagCached.getIndex() + ":" + diagCached.getTime()),
+                                tempOpId.toSerString());
+                    }
 
                     LOGGER.debug("Committed checkpoint on server for stream ID {} tablet {} with term {} index {}",
                                 this.connectorConfig.streamId(), entry.getKey(), tempOpId.getTerm(), tempOpId.getIndex());
