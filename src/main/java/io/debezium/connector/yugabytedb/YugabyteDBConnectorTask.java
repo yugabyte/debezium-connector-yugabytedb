@@ -458,14 +458,20 @@ public class YugabyteDBConnectorTask
                               this.ybOffset.putAll(getHigherOffsets(lastOffset));
                           });
 
-                        if (LOGGER.isDebugEnabled()) {
-                            for (Map.Entry<String, ?> entry : ybOffset.entrySet()) {
-                                LOGGER.debug("{} | Committing offset {} for partition {}",
-                                             taskContext.getTaskId(), entry.getValue(), entry.getKey());
-                            }
+                        if (this.ybOffset == null) {
+                            LOGGER.debug("{} | Skipping commit, no offset stored for any partition of this task yet",
+                                         taskContext.getTaskId());
                         }
+                        else {
+                            if (LOGGER.isDebugEnabled()) {
+                                for (Map.Entry<String, ?> entry : ybOffset.entrySet()) {
+                                    LOGGER.debug("{} | Committing offset {} for partition {}",
+                                                 taskContext.getTaskId(), entry.getValue(), entry.getKey());
+                                }
+                            }
 
-                        this.coordinator.commitOffset(ybOffset);
+                            this.coordinator.commitOffset(ybOffset);
+                        }
                     }
                 }
             } finally {

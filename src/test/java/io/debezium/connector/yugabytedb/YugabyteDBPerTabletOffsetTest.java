@@ -23,6 +23,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
+import org.yb.client.GetCheckpointResponse;
+import org.yb.client.YBClient;
+import org.yb.client.YBTable;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -229,9 +233,161 @@ public class YugabyteDBPerTabletOffsetTest extends YugabyteDBContainerTestBase {
         assertTrue(advanced(baseline.get(activeTablet), activeAfter),
                 "active tablet explicit checkpoint should move forward: "
                         + Arrays.toString(baseline.get(activeTablet)) + " -> " + Arrays.toString(activeAfter));
-        assertFalse(advanced(baseline.get(filteredTablet), filteredAfter),
-                "filtered sibling checkpoint must NOT be dragged forward by the active tablet: "
-                        + Arrays.toString(baseline.get(filteredTablet)) + " -> " + Arrays.toString(filteredAfter));
+        // The sibling had 40 updates filtered away, so nothing of its own could be acknowledged. Being
+        // dragged by the active tablet would confirm it past all 40, while the empty-poll self advance
+        // can only nudge it by the handful of entries it saw before the filtering began.
+        long filteredGain = filteredAfter[1] - baseline.get(filteredTablet)[1];
+        assertTrue(filteredGain < 20,
+                "filtered sibling must not be confirmed past its filtered updates, gained " + filteredGain
+                        + ": " + Arrays.toString(baseline.get(filteredTablet)) + " -> "
+                        + Arrays.toString(filteredAfter));
+
+        engine.stop();
+    }
+
+    private static long serverCheckpointIndex(YBClient client, YBTable table, String streamId, String tabletId)
+            throws Exception {
+        GetCheckpointResponse response = client.getCheckpoint(table, streamId, tabletId);
+        return response.getIndex();
+    }
+
+    private Set<String> tabletsInRecordOffsets() {
+        return dataRecords().stream()
+                .flatMap(r -> r.sourceOffset().keySet().stream())
+                .filter(k -> !k.equals("transaction_id"))
+                .map(YugabyteDBPerTabletOffsetTest::tabletOf)
+                .collect(Collectors.toSet());
+    }
+
+    @Test
+    public void everyTabletAdvancesItsOwnCheckpointOnServer() throws Exception {
+        TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 3 TABLETS;");
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false /* before image */,
+                true /* explicit checkpointing */, false, false);
+        Configuration config = TestHelper.getConfigBuilder("public.t1", dbStreamId)
+                .with(EmbeddedEngine.ENGINE_NAME, "per-tablet-checkpoint-test")
+                .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG,
+                        Testing.Files.createTestingFile("per-tablet-checkpoint.txt").getAbsolutePath())
+                .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
+                .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class)
+                .build();
+
+        runEngine(config);
+        awaitUntilConnectorIsReady();
+
+        for (int i = 0; i < 400; ++i) {
+            TestHelper.execute("INSERT INTO t1 VALUES (" + i + ", " + i + "::text);");
+        }
+        Awaitility.await().atMost(Duration.ofSeconds(60)).until(() -> dataRecords().size() >= 300);
+
+        YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
+        try {
+            YBTable table = TestHelper.getYbTable(ybClient, "t1");
+            Set<String> tablets = ybClient.getTabletUUIDs(table);
+
+            // With per-tablet offsets a tablet's checkpoint can only be moved by its own
+            // acknowledgements, so every tablet has to end up past the stream's starting position.
+            Awaitility.await().atMost(Duration.ofSeconds(60)).until(() -> {
+                for (String tabletId : tablets) {
+                    if (serverCheckpointIndex(ybClient, table, dbStreamId, tabletId) <= 0) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+        }
+        finally {
+            ybClient.close();
+        }
+
+        engine.stop();
+    }
+
+    @Test
+    public void checkpointAdvancesForTabletThatProducedNoRecords() throws Exception {
+        // Range sharded with an explicit split point so all writes can be confined to one tablet,
+        // leaving the other with nothing to stream.
+        TestHelper.execute("CREATE TABLE t1 (id INT, name TEXT, PRIMARY KEY (id ASC)) SPLIT AT VALUES ((5000));");
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false /* before image */,
+                true /* explicit checkpointing */, false, false);
+        Configuration config = TestHelper.getConfigBuilder("public.t1", dbStreamId)
+                .with(EmbeddedEngine.ENGINE_NAME, "idle-tablet-checkpoint-test")
+                .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG,
+                        Testing.Files.createTestingFile("idle-tablet-checkpoint.txt").getAbsolutePath())
+                .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
+                .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class)
+                .build();
+
+        runEngine(config);
+        awaitUntilConnectorIsReady();
+
+        for (int i = 0; i < 200; ++i) {
+            TestHelper.execute("INSERT INTO t1 VALUES (" + i + ", 'below-split');");
+        }
+        Awaitility.await().atMost(Duration.ofSeconds(60)).until(() -> dataRecords().size() >= 150);
+
+        // Only the tablet holding keys below the split point produced anything.
+        assertEquals(1, tabletsInRecordOffsets().size(),
+                "expected records from a single tablet, saw: " + tabletsInRecordOffsets());
+
+        YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
+        try {
+            YBTable table = TestHelper.getYbTable(ybClient, "t1");
+            Set<String> tablets = ybClient.getTabletUUIDs(table);
+            assertEquals(2, tablets.size(), "expected the split point to produce two tablets");
+
+            // The silent tablet has no records of its own to acknowledge and, with per-tablet
+            // offsets, no sibling can carry its position, so only the empty-poll self advance can
+            // move it. It still has to move, otherwise its WAL would be pinned forever.
+            Awaitility.await().atMost(Duration.ofSeconds(60)).until(() -> {
+                for (String tabletId : tablets) {
+                    if (serverCheckpointIndex(ybClient, table, dbStreamId, tabletId) <= 0) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+        }
+        finally {
+            ybClient.close();
+        }
+
+        engine.stop();
+    }
+
+    @Test
+    public void recordOffsetNeverCarriesASiblingTabletUnderTransactionMetadata() throws Exception {
+        TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 3 TABLETS;");
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false /* before image */,
+                true /* explicit checkpointing */, false, false);
+        Configuration config = TestHelper.getConfigBuilder("public.t1", dbStreamId)
+                .with(EmbeddedEngine.ENGINE_NAME, "per-tablet-txn-metadata-test")
+                .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG,
+                        Testing.Files.createTestingFile("per-tablet-txn-metadata.txt").getAbsolutePath())
+                .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
+                .with("provide.transaction.metadata", true)
+                .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class)
+                .build();
+
+        runEngine(config);
+        awaitUntilConnectorIsReady();
+
+        for (int i = 0; i < 200; ++i) {
+            TestHelper.execute("INSERT INTO t1 VALUES (" + i + ", " + i + "::text);");
+        }
+        Awaitility.await().atMost(Duration.ofSeconds(60)).until(() -> dataRecords().size() >= 150);
+
+        // Transaction metadata records are emitted through a different path than data records;
+        // they must respect the same single-tablet offset rule.
+        for (SourceRecord record : new ArrayList<>(captured)) {
+            Set<String> tablets = record.sourceOffset().keySet().stream()
+                    .filter(k -> !k.equals("transaction_id"))
+                    .map(YugabyteDBPerTabletOffsetTest::tabletOf)
+                    .collect(Collectors.toSet());
+            assertTrue(tablets.size() <= 1,
+                    "record on topic " + record.topic() + " referenced multiple tablets: "
+                            + record.sourceOffset());
+        }
 
         engine.stop();
     }
