@@ -882,7 +882,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         return explicitCheckpoint;
     }
 
-    private void maybeEmitTabletHeartbeat(YBPartition part, YugabyteDBOffsetContext offsetContext) {
+    protected void maybeEmitTabletHeartbeat(YBPartition part, YugabyteDBOffsetContext offsetContext) {
         if (!dispatcher.heartbeatsEnabled()) {
             return;
         }
