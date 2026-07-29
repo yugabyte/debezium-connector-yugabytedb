@@ -56,10 +56,28 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
             Set<String> tIds =
                     partitionRanges.stream().map(HashPartition::getTableId).collect(Collectors.toSet());
+
+            Map<String, String> uuidToPgSchemaMap = Collections.emptyMap();
+            if (connectorConfig.isYSQLDbType()) {
+                uuidToPgSchemaMap = YBClientUtils.buildTableUuidToPgSchemaMap(
+                    syncClient, connectorConfig);
+                LOGGER.info("Resolved {} UUID-to-schema mappings from ListTables", uuidToPgSchemaMap.size());
+            }
+
             for (String tId : tIds) {
                 LOGGER.debug("Table UUID: " + tIds);
                 YBTable table = syncClient.openTableByUUID(tId);
                 tableIdToTable.put(tId, table);
+
+                if (connectorConfig.isYSQLDbType()) {
+                    String pgSchemaName = uuidToPgSchemaMap.get(tId);
+                    if (pgSchemaName != null) {
+                        tableUUIDToTableId.put(tId,
+                            YugabyteDBSchema.createTableIdWithoutCatalog(pgSchemaName, table.getName()));
+                    } else {
+                        LOGGER.warn("No pgschema_name resolved for table UUID {} from ListTables", tId);
+                    }
+                }
 
                 GetTabletListToPollForCDCResponse resp =
                         YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
@@ -220,7 +238,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                         YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(record.getRowMessage(), this.yugabyteDBTypeRegistry);
                                         dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
                                                 beginCountForTablet, tabletId, part,
-                                                response.getSnapshotTime(), record, record.getRowMessage(), ybMessage);
+                                                response.getSnapshotTime(), record, record.getRowMessage(), ybMessage, syncClient);
                                     } else {
                                         merger.addMessage(new Message.Builder()
                                                 .setRecord(record)
@@ -262,7 +280,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                     m, this.yugabyteDBTypeRegistry);
                             dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
                                     beginCountForTablet, message.tablet, new YBPartition(message.tableId, message.tablet, false),
-                                    message.snapShotTime.longValue(), message.record, m, ybMessage);
+                                    message.snapShotTime.longValue(), message.record, m, ybMessage, syncClient);
 
                             pollMessage = merger.poll();
                         }
@@ -307,13 +325,11 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                  Map<String, Integer> beginCountForTablet,
                                  String tabletId, YBPartition part, long snapshotTime,
                                  CdcService.CDCSDKProtoRecordPB record, CdcService.RowMessage m,
-                                 YbProtoReplicationMessage message) throws SQLException {
-        String pgSchemaNameInRecord = m.getPgschemaName();
- 
+                                 YbProtoReplicationMessage message, YBClient syncClient) throws SQLException {
         if (!message.isTransactionalMessage()) {
             // This is a hack to skip tables in case of colocated tables
-            TableId tempTid = YugabyteDBSchema.createTableIdWithoutCatalog(
-                pgSchemaNameInRecord, message.getTable());
+            TableId tempTid = resolveTableIdForYSQL(
+                part.getTableId(), message.getTable(), syncClient);
 
             if (!filters.tableFilter().isIncluded(tempTid)) {
                 return;
@@ -402,10 +418,12 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 // If a DDL message is received for a tablet, we do not need its schema again
                 schemaNeeded.put(part.getId(), Boolean.FALSE);
 
+                refreshPgSchemaCache(syncClient);
+
                 TableId tableId = null;
                 if (message.getOperation() != ReplicationMessage.Operation.NOOP) {
-                    tableId = YugabyteDBSchema.createTableIdWithoutCatalog(
-                        pgSchemaNameInRecord, message.getTable());
+                    tableId = resolveTableIdForYSQL(
+                        part.getTableId(), message.getTable(), syncClient);
                     Objects.requireNonNull(tableId);
                 }
                 // Getting the table with the help of the schema.
@@ -418,14 +436,14 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                     } else {
                         LOGGER.info("Refreshing the schema for tablet {} because of mismatch in cached schema and received schema", tabletId);
                     }
-                    schema.refreshSchemaWithTabletId(tableId, message.getSchema(), pgSchemaNameInRecord, tabletId);
+                    schema.refreshSchemaWithTabletId(tableId, message.getSchema(), tableId.schema(), tabletId);
                 }
             } else {
                 // DML event
                 TableId tableId = null;
                 if (message.getOperation() != ReplicationMessage.Operation.NOOP) {
-                    tableId = YugabyteDBSchema.createTableIdWithoutCatalog(
-                        pgSchemaNameInRecord, message.getTable());
+                    tableId = resolveTableIdForYSQL(
+                        part.getTableId(), message.getTable(), syncClient);
                     Objects.requireNonNull(tableId);
                 }
                 // If you need to print the received record, change debug level to info
@@ -436,7 +454,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
                 boolean dispatched = message.getOperation() != ReplicationMessage.Operation.NOOP
                         && dispatcher.dispatchDataChangeEvent(part, tableId, new YugabyteDBChangeRecordEmitter(part, offsetContext, clock, connectorConfig,
-                        schema, connection, tableId, message, pgSchemaNameInRecord, part.getTabletId(), taskContext.isBeforeImageEnabled()));
+                        schema, connection, tableId, message, part.getTabletId(), taskContext.isBeforeImageEnabled()));
 
                 if (recordsInTransactionalBlock.containsKey(part.getId())) {
                     recordsInTransactionalBlock.merge(part.getId(), 1, Integer::sum);
