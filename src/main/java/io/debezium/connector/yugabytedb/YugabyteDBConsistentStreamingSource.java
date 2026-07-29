@@ -240,6 +240,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
 
                                     tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
 
+                                    maybeEmitTabletHeartbeat(part, offsetContext);
+
                                     LOGGER.debug("The final opid for tablet {} is {}", part.getTabletId(), finalOpid);
                                 }
                             }

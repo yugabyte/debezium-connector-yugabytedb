@@ -21,6 +21,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
+import org.yb.client.GetCheckpointResponse;
+import org.yb.client.YBClient;
+import org.yb.client.YBTable;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -85,6 +89,10 @@ public class YugabyteDBHeartbeatTest extends YugabyteDBContainerTestBase {
         return new ArrayList<>(captured).stream()
                 .filter(r -> r.topic() != null && r.topic().endsWith(suffix))
                 .collect(Collectors.toList());
+    }
+
+    private List<SourceRecord> dataRecords() {
+        return snapshotOf(".t1");
     }
 
     private List<SourceRecord> heartbeats() {
@@ -232,6 +240,155 @@ public class YugabyteDBHeartbeatTest extends YugabyteDBContainerTestBase {
         assertTrue(maxHeartbeatIndex >= lastSnapshotIndex,
                 "snapshot-completion heartbeat checkpoint index " + maxHeartbeatIndex
                         + " should be at least the last snapshot record index " + lastSnapshotIndex);
+
+        engine.stop();
+    }
+
+    private static long serverCheckpointIndex(YBClient client, YBTable table, String streamId, String tabletId)
+            throws Exception {
+        GetCheckpointResponse response = client.getCheckpoint(table, streamId, tabletId);
+        return response.getIndex();
+    }
+
+    @Test
+    public void heartbeatsAdvanceExplicitCheckpointOnServerWhileRecordsAreFiltered() throws Exception {
+        TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 2 TABLETS;");
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false /* before image */,
+                true /* explicit checkpointing */, false, false);
+        Configuration config = TestHelper.getConfigBuilder("public.t1", dbStreamId)
+                .with(EmbeddedEngine.ENGINE_NAME, "heartbeat-server-checkpoint-test")
+                .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG,
+                        Testing.Files.createTestingFile("heartbeat-server-checkpoint.txt").getAbsolutePath())
+                .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
+                .with("heartbeat.interval.ms", 5000)
+                .with("skipped.operations", "u")
+                .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class)
+                .build();
+
+        runEngine(config);
+        awaitUntilConnectorIsReady();
+
+        for (int i = 0; i < 50; ++i) {
+            TestHelper.execute("INSERT INTO t1 VALUES (" + i + ", 'inserted');");
+        }
+        Awaitility.await().atMost(Duration.ofSeconds(60)).until(() -> dataRecords().size() >= 40);
+
+        YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
+        try {
+            YBTable table = TestHelper.getYbTable(ybClient, "t1");
+            Set<String> tablets = ybClient.getTabletUUIDs(table);
+
+            Map<String, Long> before = new HashMap<>();
+            for (String tabletId : tablets) {
+                before.put(tabletId, serverCheckpointIndex(ybClient, table, dbStreamId, tabletId));
+            }
+
+            // Every further change is an update, which the filter drops before it can be produced,
+            // so nothing but a heartbeat can carry these tablets' checkpoints forward.
+            for (int round = 0; round < 5; ++round) {
+                TestHelper.execute("UPDATE t1 SET name = 'filtered-" + round + "';");
+                TestHelper.waitFor(Duration.ofSeconds(3));
+            }
+
+            Awaitility.await().atMost(Duration.ofSeconds(90)).until(() -> {
+                for (String tabletId : tablets) {
+                    if (serverCheckpointIndex(ybClient, table, dbStreamId, tabletId) <= before.get(tabletId)) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+        }
+        finally {
+            ybClient.close();
+        }
+
+        engine.stop();
+    }
+
+    @Test
+    public void heartbeatsFlowForATabletWhoseEveryRecordIsFiltered() throws Exception {
+        // Range sharded with a split point so all writes land in one tablet; the other tablet never
+        // has a record of its own, and the written tablet has all of its changes filtered away.
+        TestHelper.execute("CREATE TABLE t1 (id INT, name TEXT, PRIMARY KEY (id ASC)) SPLIT AT VALUES ((5000));");
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false /* before image */,
+                true /* explicit checkpointing */, false, false);
+        Configuration config = TestHelper.getConfigBuilder("public.t1", dbStreamId)
+                .with(EmbeddedEngine.ENGINE_NAME, "heartbeat-filtered-tablet-test")
+                .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG,
+                        Testing.Files.createTestingFile("heartbeat-filtered-tablet.txt").getAbsolutePath())
+                .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
+                .with("heartbeat.interval.ms", 5000)
+                .with("skipped.operations", "u")
+                .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class)
+                .build();
+
+        runEngine(config);
+        awaitUntilConnectorIsReady();
+
+        for (int i = 0; i < 30; ++i) {
+            TestHelper.execute("INSERT INTO t1 VALUES (" + i + ", 'below-split');");
+        }
+        Awaitility.await().atMost(Duration.ofSeconds(60)).until(() -> dataRecords().size() >= 20);
+
+        long heartbeatsBefore = heartbeats().size();
+        for (int round = 0; round < 5; ++round) {
+            TestHelper.execute("UPDATE t1 SET name = 'filtered-" + round + "' WHERE id < 5000;");
+            TestHelper.waitFor(Duration.ofSeconds(3));
+        }
+
+        // Heartbeats must keep flowing for both tablets: the one whose records were all filtered and
+        // the one that never had any.
+        Awaitility.await().atMost(Duration.ofSeconds(90))
+                .until(() -> heartbeats().size() - heartbeatsBefore >= 2);
+        Set<String> heartbeatTablets = distinctTablets(heartbeats());
+        assertEquals(2, heartbeatTablets.size(),
+                "expected heartbeats for both tablets, saw: " + heartbeatTablets);
+
+        engine.stop();
+    }
+
+    @Test
+    public void heartbeatsFlowWhenEverySnapshotRecordIsFiltered() throws Exception {
+        TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 3 TABLETS;");
+        for (int i = 0; i < 60; ++i) {
+            TestHelper.execute("INSERT INTO t1 VALUES (" + i + ", 'pre-existing');");
+        }
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false /* before image */,
+                true /* explicit checkpointing */, true, true);
+        Configuration config = TestHelper.getConfigBuilder("public.t1", dbStreamId)
+                .with(EmbeddedEngine.ENGINE_NAME, "heartbeat-filtered-snapshot-test")
+                .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG,
+                        Testing.Files.createTestingFile("heartbeat-filtered-snapshot.txt").getAbsolutePath())
+                .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
+                .with("heartbeat.interval.ms", 5000)
+                .with("snapshot.mode", "initial")
+                // Snapshot rows are read events, so filtering them leaves the snapshot with nothing
+                // to produce for any tablet.
+                .with("skipped.operations", "r")
+                .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class)
+                .build();
+
+        runEngine(config);
+        awaitUntilConnectorIsReady();
+
+        YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
+        try {
+            YBTable table = TestHelper.getYbTable(ybClient, "t1");
+            Set<String> tablets = ybClient.getTabletUUIDs(table);
+
+            // No snapshot record reaches Kafka, so only heartbeats can report progress; one per
+            // tablet has to arrive by the time the snapshot boundary is crossed.
+            Awaitility.await().atMost(Duration.ofSeconds(120))
+                    .until(() -> distinctTablets(heartbeats()).size() >= tablets.size());
+
+            assertTrue(dataRecords().isEmpty(),
+                    "expected every snapshot record to be filtered, saw " + dataRecords().size());
+        }
+        finally {
+            ybClient.close();
+        }
 
         engine.stop();
     }
