@@ -155,6 +155,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                             curTabletId = entry.getValue();
                             YBPartition part = new YBPartition(entry.getKey(), tabletId, false);
 
+                            maybeEmitTabletHeartbeat(part, offsetContext);
+
                             OpId cp = offsetContext.lsn(part);
 
                             YBTable table = tableIdToTable.get(entry.getKey());
@@ -239,8 +241,6 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                     offsetContext.updateWalSegmentIndex(part, response.getWalSegmentIndex());
 
                                     tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
-
-                                    maybeEmitTabletHeartbeat(part, offsetContext);
 
                                     LOGGER.debug("The final opid for tablet {} is {}", part.getTabletId(), finalOpid);
                                 }

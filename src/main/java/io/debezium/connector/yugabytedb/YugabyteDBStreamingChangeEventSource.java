@@ -483,6 +483,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                             curTabletId = entry.getValue();
                             YBPartition part = new YBPartition(entry.getKey() /* tableId */, tabletId, false /* colocated */);
 
+                            // Give every tablet its chance to beat before anything can skip it. A tablet
+                            // waiting on a split callback, or one whose GetChanges keeps failing, is never
+                            // reached later in this pass and would otherwise go silent exactly when its
+                            // checkpoint needs to keep moving.
+                            maybeEmitTabletHeartbeat(part, offsetContext);
+
                             OpId cp = offsetContext.lsn(part);
 
                             if (taskContext.shouldEnableExplicitCheckpointing()
@@ -824,8 +830,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     tabletToExplicitCheckpoint.put(part.getId(), finalOpid.toCdcSdkCheckpoint());
                                 }
                             }
-
-                            maybeEmitTabletHeartbeat(part, offsetContext);
 
                             LOGGER.debug("The final opid for tablet {} is {}", part.getId(), finalOpid);
                         }
