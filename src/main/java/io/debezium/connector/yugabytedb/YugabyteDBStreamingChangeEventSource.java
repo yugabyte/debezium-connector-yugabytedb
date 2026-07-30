@@ -658,12 +658,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             }
                                             if (message.getOperation() == Operation.COMMIT) {
                                                 LOGGER.debug("LSN in case of COMMIT is " + lsn);
-                                                // A transactional block with no records for this tablet has nothing that can be
-                                                // produced and therefore nothing that can ever be acknowledged, so its position
-                                                // must not become the last seen record's checkpoint.
-                                                boolean emptyTransactionalBlock = recordsInTransactionalBlock.containsKey(part.getId())
-                                                        && recordsInTransactionalBlock.get(part.getId()) == 0;
-                                                if (!emptyTransactionalBlock) {
+                                                Integer recordsInBlock = recordsInTransactionalBlock.get(part.getId());
+                                                if (recordsInBlock == null || recordsInBlock != 0) {
                                                     offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                             String.valueOf(message.getTransactionId()), null, message.getRecordTime(), message.getXreplOriginId());
                                                 }
@@ -694,9 +690,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             beginCountForTablet.merge(part.getId(), 1, Integer::sum);
                                         } else if (message.getOperation() == Operation.COMMIT) {
                                             LOGGER.debug("LSN in case of COMMIT is " + lsn);
-                                            boolean emptyTransactionalBlock = recordsInTransactionalBlock.containsKey(part.getId())
-                                                    && recordsInTransactionalBlock.get(part.getId()) == 0;
-                                            if (!emptyTransactionalBlock) {
+                                            Integer recordsInBlock = recordsInTransactionalBlock.get(part.getId());
+                                            if (recordsInBlock == null || recordsInBlock != 0) {
                                                 offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                         String.valueOf(message.getTransactionId()), null, message.getRecordTime(), message.getXreplOriginId());
                                             }

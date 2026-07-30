@@ -237,12 +237,6 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
 
     @Override
     public void stop() {
-        if (tableMonitorThread == null) {
-            // start() never initialized the poller (e.g. the connector failed validation);
-            // dereferencing here would mask the original failure with an NPE.
-            LOGGER.info("Table monitoring thread was never started, nothing to stop");
-            return;
-        }
         LOGGER.info("Stopping table monitoring thread");
         tableMonitorThread.shutdown();
         try {
