@@ -137,7 +137,7 @@ public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
   @MethodSource("io.debezium.connector.yugabytedb.TestHelper#streamTypeProviderForStreaming")
   public void reproduceSplitWhileTransactionIsNotFinishedWithAutomaticSplitting(boolean consistentSnapshot, boolean useSnapshot) throws Exception {
     // Stop, if ybContainer already running.
-    if (ybContainer.isRunning()) {
+    if (ybContainer != null && ybContainer.isRunning()) {
       ybContainer.stop();
       // Wait till the container stops
       Awaitility.await().atMost(Duration.ofSeconds(30)).until(() -> {
