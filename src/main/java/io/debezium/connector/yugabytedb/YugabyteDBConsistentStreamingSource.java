@@ -155,6 +155,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                             curTabletId = entry.getValue();
                             YBPartition part = new YBPartition(entry.getKey(), tabletId, false);
 
+                            maybeEmitTabletHeartbeat(part, offsetContext);
+
                             OpId cp = offsetContext.lsn(part);
 
                             YBTable table = tableIdToTable.get(entry.getKey());
