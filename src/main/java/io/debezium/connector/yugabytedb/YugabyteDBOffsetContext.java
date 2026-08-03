@@ -169,6 +169,18 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         return result;
     }
 
+    public Map<String, ?> getOffset(YBPartition partition) {
+        Map<String, Object> result = new HashMap<>();
+        String tabletId = partition.getTabletId();
+        for (Map.Entry<String, SourceInfo> entry : this.tabletSourceInfo.entrySet()) {
+            String key = entry.getKey();
+            if (key.equals(tabletId) || key.endsWith("." + tabletId)) {
+                result.put(key, entry.getValue().lsn().toSerString());
+            }
+        }
+        return result;
+    }
+
     public Struct getSourceInfoForTablet(YBPartition partition) {
         return this.tabletSourceInfo.get(partition.getId()).struct();
     }

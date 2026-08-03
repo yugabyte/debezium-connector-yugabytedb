@@ -62,7 +62,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     private final YugabyteDBSchema schema;
     private final SnapshotProgressListener snapshotProgressListener;
     private final YugabyteDBTaskContext taskContext;
-    private final EventDispatcher<YBPartition,TableId> dispatcher;
+    private final YugabyteDBEventDispatcher<TableId> dispatcher;
     protected final Clock clock;
     private final Snapshotter snapshotter;
     private final YugabyteDBConnection connection;
@@ -394,10 +394,8 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     }
 
     /**
-     * Emit a heartbeat for the given tablet if the heartbeat interval has elapsed since its last one.
-     * A snapshot can run for a long time and a single heartbeat at completion would be lost if the
-     * task died before it was flushed, so tablets are paced through the snapshot the same way they
-     * are while streaming.
+     * Emit a heartbeat for the tablet if its interval has elapsed. A snapshot can run for a long time
+     * and a single beat at completion would be lost if the task died before it was flushed.
      */
     private void maybeEmitSnapshotHeartbeat(YBPartition part, YugabyteDBOffsetContext offsetContext) {
         if (!dispatcher.heartbeatsEnabled()) {
@@ -411,7 +409,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         }
 
         try {
-            dispatcher.alwaysDispatchHeartbeatEvent(part, offsetContext);
+            dispatcher.dispatchHeartbeatEvent(part, offsetContext.getOffset(part));
             tabletToLastSnapshotHeartbeatMs.put(part.getId(), currentTimeMs);
         }
         catch (InterruptedException e) {
@@ -525,7 +523,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                     if (dispatcher.heartbeatsEnabled()) {
                         for (Pair<String, String> tablet : tableToTabletForSnapshot) {
                             YBPartition hbPartition = new YBPartition(tablet.getKey(), tablet.getValue(), true);
-                            dispatcher.alwaysDispatchHeartbeatEvent(hbPartition, previousOffset);
+                            dispatcher.dispatchHeartbeatEvent(hbPartition, previousOffset.getOffset(hbPartition));
                         }
                     }
                     return SnapshotResult.completed(previousOffset);
