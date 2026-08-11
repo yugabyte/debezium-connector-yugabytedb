@@ -344,11 +344,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                         beginCountForTablet.merge(part.getId(), 1, Integer::sum);
                     } else if (message.getOperation() == ReplicationMessage.Operation.COMMIT) {
                         LOGGER.debug("LSN in case of COMMIT is " + lsn);
-                        Integer recordsInBlock = recordsInTransactionalBlock.get(part.getId());
-                        if (recordsInBlock == null || recordsInBlock != 0) {
-                            offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                                    String.valueOf(message.getTransactionId()), null, message.getRecordTime(), message.getXreplOriginId());
-                        }
+                        offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                                String.valueOf(message.getTransactionId()), null, message.getRecordTime(), message.getXreplOriginId());
 
                         if (recordsInTransactionalBlock.containsKey(part.getId())) {
                             if (recordsInTransactionalBlock.get(part.getId()) == 0) {
@@ -378,11 +375,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                     beginCountForTablet.merge(part.getId(), 1, Integer::sum);
                 } else if (message.getOperation() == ReplicationMessage.Operation.COMMIT) {
                     LOGGER.debug("LSN in case of COMMIT is " + lsn);
-                    Integer recordsInBlock = recordsInTransactionalBlock.get(part.getId());
-                    if (recordsInBlock == null || recordsInBlock != 0) {
-                        offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
-                                String.valueOf(message.getTransactionId()), null, message.getRecordTime(), message.getXreplOriginId());
-                    }
+                    offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                            String.valueOf(message.getTransactionId()), null, message.getRecordTime(), message.getXreplOriginId());
                     dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);
 
                     if (recordsInTransactionalBlock.containsKey(part.getId())) {
