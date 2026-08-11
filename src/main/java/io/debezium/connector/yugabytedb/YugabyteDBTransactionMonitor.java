@@ -150,11 +150,11 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 		value.put(DEBEZIUM_TRANSACTION_ID_KEY, transactionContext.getTransactionId(partition));
 		value.put(PARTITION_ID_KEY, partition.getFullPartitionName());
 
-		sender.accept(new SourceRecord(partition.getSourcePartition(), ((YugabyteDBOffsetContext) offsetContext).getOffset(partition),
+		sender.accept(new SourceRecord(partition.getSourcePartition(), offsetContext.getOffset(partition),
 			topicName, null, key.schema(), key, value.schema(), value));
 	}
 
-	private void endTransaction(YBPartition partition, OffsetContext offsetContext) throws InterruptedException {
+	private void endTransaction(YBPartition partition, YugabyteDBOffsetContext offsetContext) throws InterruptedException {
 		YugabyteDBTransactionContext transactionContext = (YugabyteDBTransactionContext) offsetContext.getTransactionContext();
 		final Struct key = new Struct(transactionKeySchema);
 		key.put(DEBEZIUM_TRANSACTION_ID_KEY, transactionContext.getTransactionId(partition));
@@ -166,7 +166,7 @@ public class YugabyteDBTransactionMonitor extends TransactionMonitor {
 
 		// TODO: Process and add per table event count here if required.
 
-		sender.accept(new SourceRecord(partition.getSourcePartition(), ((YugabyteDBOffsetContext) offsetContext).getOffset(partition),
+		sender.accept(new SourceRecord(partition.getSourcePartition(), offsetContext.getOffset(partition),
 			topicName, null, key.schema(), key, value.schema(), value));
 	}
 }
