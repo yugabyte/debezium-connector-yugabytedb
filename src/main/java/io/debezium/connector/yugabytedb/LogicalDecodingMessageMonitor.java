@@ -110,7 +110,7 @@ public class LogicalDecodingMessageMonitor {
         value.put(DEBEZIUM_LOGICAL_DECODING_MESSAGE_KEY, logicalMsgStruct);
         value.put(Envelope.FieldName.SOURCE, offsetContext.getSourceInfo());
 
-        sender.accept(new SourceRecord(partition.getSourcePartition(), offsetContext.getOffset(), topicName,
+        sender.accept(new SourceRecord(partition.getSourcePartition(), ((YugabyteDBOffsetContext) offsetContext).getOffset((YBPartition) partition), topicName,
                 keySchema, key, value.schema(), value));
 
         if (message.isLastEventForLsn()) {
