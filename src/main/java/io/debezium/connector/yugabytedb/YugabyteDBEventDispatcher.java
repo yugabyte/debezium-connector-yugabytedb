@@ -33,6 +33,7 @@ import io.debezium.pipeline.spi.Partition;
 import io.debezium.util.SchemaNameAdjuster;
 
 import java.util.EnumSet;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -179,6 +180,24 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
 
     private void enqueueTransactionMessage(SourceRecord record) throws InterruptedException {
         queue.enqueue(new DataChangeEvent(record));
+    }
+
+    public void dispatchHeartbeatEvent(YBPartition partition, Map<String, ?> offset) throws InterruptedException {
+        heartbeat.forcedBeat(partition.getSourcePartition(), offset, this::enqueueHeartbeat);
+    }
+
+    private void enqueueHeartbeat(SourceRecord record) throws InterruptedException {
+        queue.enqueue(new DataChangeEvent(record));
+    }
+
+    @Override
+    public void close() {
+        try {
+            heartbeat.close();
+        }
+        finally {
+            super.close();
+        }
     }
 
     private void enqueueLogicalDecodingMessage(SourceRecord record) throws InterruptedException {

@@ -96,6 +96,10 @@ public class YugabyteDBStreamingChangeEventSource implements
 
     protected Map<String, CdcSdkCheckpoint> tabletToExplicitCheckpoint;
 
+    // Per-tablet last heartbeat emit time (ms), to pace per-tablet heartbeats.
+    protected final Map<String, Long> tabletToLastHeartbeatMs = new ConcurrentHashMap<>();
+    protected final long heartbeatIntervalMs;
+
     protected final Filters filters;
 
     // This timer is used to log the offset map periodically.
@@ -133,6 +137,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         yugabyteDBTypeRegistry = taskContext.schema().getTypeRegistry();
         this.queue = queue;
         this.tabletToExplicitCheckpoint = new ConcurrentHashMap<>();
+        this.heartbeatIntervalMs = connectorConfig.getHeartbeatInterval().toMillis();
         this.splitTabletsWaitingForCallback = new HashSet<>();
         this.filters = new Filters(connectorConfig);
         this.partitionRanges = new ArrayList<>();
@@ -477,6 +482,12 @@ public class YugabyteDBStreamingChangeEventSource implements
                             final String tabletId = entry.getValue();
                             curTabletId = entry.getValue();
                             YBPartition part = new YBPartition(entry.getKey() /* tableId */, tabletId, false /* colocated */);
+
+                            // Give every tablet its chance to beat before anything can skip it. A tablet
+                            // waiting on a split callback, or one whose GetChanges keeps failing, is never
+                            // reached later in this pass and would otherwise go silent exactly when its
+                            // checkpoint needs to keep moving.
+                            maybeEmitTabletHeartbeat(part, offsetContext);
 
                             OpId cp = offsetContext.lsn(part);
 
@@ -873,6 +884,24 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
 
         return explicitCheckpoint;
+    }
+
+    protected void maybeEmitTabletHeartbeat(YBPartition part, YugabyteDBOffsetContext offsetContext) {
+        if (!dispatcher.heartbeatsEnabled()) {
+            return;
+        }
+        long currentTimeMs = clock.currentTimeInMillis();
+        Long lastHeartbeatMs = tabletToLastHeartbeatMs.putIfAbsent(part.getId(), currentTimeMs);
+        if (lastHeartbeatMs == null || currentTimeMs - lastHeartbeatMs < heartbeatIntervalMs) {
+            return;
+        }
+        try {
+            dispatcher.dispatchHeartbeatEvent(part, offsetContext.getOffset(part));
+            tabletToLastHeartbeatMs.put(part.getId(), currentTimeMs);
+        }
+        catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**
