@@ -280,6 +280,14 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                     // The connector should ideally be stopped if this kind of state is reached.
                     throw new DebeziumException(ae);
                 } catch (Exception e) {
+                    // A checkpoint below the WAL retention floor can never be served, no matter
+                    // how often the request is retried - fail the task immediately instead of
+                    // masking the permanent failure behind the retry loop.
+                    if (isCheckpointTooOldFailure(e)) {
+                        LOGGER.error("WAL on the server has been garbage collected past the checkpoint for tablet {}; retries cannot succeed, failing the task", curTabletId, e);
+                        throw e;
+                    }
+
                     ++retryCount;
                     // If the retry limit is exceeded, log an error with a description and throw the exception.
                     if (retryCount > connectorConfig.maxConnectorRetries()) {
