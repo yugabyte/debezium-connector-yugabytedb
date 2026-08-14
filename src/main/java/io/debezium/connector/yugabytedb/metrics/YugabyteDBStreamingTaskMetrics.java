@@ -6,6 +6,7 @@
 package io.debezium.connector.yugabytedb.metrics;
 
 import java.util.Collection;
+import java.util.Map;
 
 import io.debezium.connector.base.ChangeEventQueueMetrics;
 import io.debezium.connector.common.CdcSourceTaskContext;
@@ -31,13 +32,15 @@ public class YugabyteDBStreamingTaskMetrics extends AbstractYugabyteDBTaskMetric
                                           YugabyteDBConnectorConfig connectorConfig,
                                           String taskId) {
         super(taskContext, "streaming", changeEventQueueMetrics, partitions,
-                (YBPartition partition) -> new YugabyteDBStreamingPartitionMetrics(taskContext,
-                    Collect.linkMapOf(
-                        "server", taskContext.getConnectorName(),
-                        "task", taskId,
-                        "context", "streaming",
-                        "partition", partition.getFullPartitionName()),
-                    metadataProvider), connectorConfig, taskId);
+                (YBPartition partition) -> {
+                    Map<String, String> tags = Collect.linkMapOf(
+                            "server", taskContext.getConnectorName(),
+                            "task", taskId,
+                            "context", "streaming",
+                            "partition", partition.getFullPartitionName());
+                    tags.putAll(connectorConfig.getConnectorMetricTags());
+                    return new YugabyteDBStreamingPartitionMetrics(taskContext, tags, metadataProvider);
+                }, connectorConfig, taskId);
         connectionMeter = new ConnectionMeter();
     }
 

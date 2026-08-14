@@ -1,8 +1,16 @@
 package io.debezium.connector.yugabytedb;
 
+import java.lang.management.ManagementFactory;
 import java.sql.SQLException;
+import java.time.Duration;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
+
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -12,6 +20,7 @@ import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 import io.debezium.connector.yugabytedb.connection.ReplicationConnection;
+import io.debezium.util.Collect;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -144,6 +153,54 @@ public class YugabyteDBConfigTest extends YugabyteDBContainerTestBase {
 
         assertEquals(300, intervals[0]);
         assertEquals(300, intervals[1]);
+    }
+
+    @Test
+    public void shouldTagMetricsWithTheConnectorNameAfterTheExistingTags() {
+        Configuration config = TestHelper.defaultConfig().with("name", "globaldb-core-collections").build();
+
+        Map<String, String> tags = Collect.linkMapOf(
+                "server", "globaldb",
+                "task", "0",
+                "context", "streaming",
+                "partition", "000043000000300080000000000308a1.9e0f2c4b");
+        tags.putAll(YugabyteDBConnectorConfig.resolveConnectorMetricTags(config));
+
+        assertEquals("server, task, context, partition, connector", String.join(", ", tags.keySet()));
+        assertEquals("globaldb-core-collections", tags.get("connector"));
+    }
+
+    @Test
+    public void shouldNotTagMetricsWhenKafkaConnectSuppliedNoName() {
+        Configuration config = TestHelper.defaultConfig().build();
+
+        assertTrue(YugabyteDBConnectorConfig.resolveConnectorMetricTags(config).isEmpty());
+    }
+
+    @Test
+    public void shouldRegisterMBeansTaggedWithTheConnectorName() throws Exception {
+        TestHelper.dropAllSchemas();
+
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1");
+
+        startEngine(TestHelper.getConfigBuilder("public.t1", dbStreamId));
+
+        awaitUntilConnectorIsReady();
+
+        MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
+        ObjectName pattern = new ObjectName("debezium.yugabytedb:type=connector-metrics,*");
+
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(30))
+                .until(() -> !mBeanServer.queryNames(pattern, null).isEmpty());
+
+        Set<ObjectName> registeredBeans = mBeanServer.queryNames(pattern, null);
+        for (ObjectName registeredBean : registeredBeans) {
+            assertTrue(registeredBean.getKeyPropertyListString().endsWith(",connector=test-connector"),
+                    "MBean is not tagged with the connector name: " + registeredBean);
+        }
     }
 
     // This verifies that the connector should not be running if a wrong table.include.list is provided
