@@ -936,7 +936,8 @@ public class YugabyteDBValueConverter extends JdbcValueConverters {
                     r.deliver(converted);
                 }
                 catch (SQLException e) {
-                    throw new ConnectException("Failed to read value of array " + column.name());
+                    throw new ConnectException("Failed to read value of array column " + column.name()
+                            + " (type " + column.typeName() + ")", e);
                 }
             }
         });

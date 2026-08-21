@@ -571,7 +571,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 }
                             } catch (CDCErrorException cdcException) {
                                 // Check if exception indicates a tablet split.
-                                LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
+                                LOGGER.info("Code received in CDCErrorException: {}",
+                                  cdcException.getCDCError().getCode(), cdcException);
                                 if (cdcException.getCDCError().getCode() == Code.TABLET_SPLIT || cdcException.getCDCError().getCode() == Code.INVALID_REQUEST) {
                                     LOGGER.info("Encountered a tablet split on tablet {}, handling it gracefully", tabletId);
                                     if (LOGGER.isDebugEnabled()) {
@@ -604,7 +605,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     // Break out of the loop so that the iteration can start afresh on the modified list.
                                     break;
                                 } else {
-                                    LOGGER.warn("Throwing error with code: {}", cdcException.getCDCError().getCode());
+                                    LOGGER.warn("Throwing unhandled CDC error with code {} for tablet {}",
+                                      cdcException.getCDCError().getCode(), tabletId, cdcException);
                                     throw cdcException;
                                 }
                             }
@@ -684,7 +686,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                                 message.getTransactionId(), lsn, part.getId(), recordsInTransactionalBlock.get(part.getId()));
                                                     }
                                                 } else if (beginCountForTablet.get(part.getId()).intValue() == 0) {
-                                                    throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");
+                                                    throw new DebeziumException(commitWithoutBeginMessage(
+                                                            part.getId(), message.getTransactionId(), lsn,
+                                                            message.getRawCommitTime(), false));
                                                 }
 
                                                 recordsInTransactionalBlock.remove(part.getId());
@@ -717,7 +721,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                             message.getTransactionId(), lsn, part.getId(), recordsInTransactionalBlock.get(part.getId()));
                                                 }
                                             } else if (beginCountForTablet.get(part.getId()).intValue() == 0) {
-                                                throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");
+                                                throw new DebeziumException(commitWithoutBeginMessage(
+                                                        part.getId(), message.getTransactionId(), lsn,
+                                                        message.getRawCommitTime(), true));
                                             }
 
                                             recordsInTransactionalBlock.remove(part.getId());
@@ -890,6 +896,30 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
 
         return explicitCheckpoint;
+    }
+
+    /**
+     * Build the message for a COMMIT record that arrives without a preceding BEGIN record. This
+     * indicates that the stream is not delivering well-formed transaction boundaries, so the
+     * message needs to carry enough identifiers to locate the offending transaction on the server.
+     * <p>
+     * Kept as a single helper so that all the call sites (transaction metadata enabled and
+     * disabled, in both the streaming and the consistent-streaming source) stay in sync.
+     *
+     * @param partitionId the ID of the {@link YBPartition} the COMMIT was received for
+     * @param transactionId the transaction ID carried by the COMMIT record
+     * @param lsn the checkpoint of the COMMIT record
+     * @param commitTime the raw commit time of the COMMIT record
+     * @param transactionMetadataEnabled whether transaction metadata is being provided
+     * @return the message to use for the thrown exception
+     */
+    static String commitWithoutBeginMessage(String partitionId, String transactionId, OpId lsn,
+                                            long commitTime, boolean transactionMetadataEnabled) {
+        return String.format(
+                "COMMIT record encountered without a preceding BEGIN record for partition %s "
+                        + "(transaction %s, LSN %s, commit time %s); transaction metadata is %s",
+                partitionId, transactionId, lsn, commitTime,
+                transactionMetadataEnabled ? "enabled" : "disabled");
     }
 
     protected void maybeEmitTabletHeartbeat(YBPartition part, YugabyteDBOffsetContext offsetContext) {

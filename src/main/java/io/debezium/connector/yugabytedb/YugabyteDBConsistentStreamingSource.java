@@ -361,7 +361,9 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                         message.getTransactionId(), lsn, tabletId, recordsInTransactionalBlock.get(tabletId));
                             }
                         } else if (beginCountForTablet.get(part.getId()).intValue() == 0) {
-                            throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");
+                            throw new DebeziumException(commitWithoutBeginMessage(
+                                    part.getId(), message.getTransactionId(), lsn,
+                                    message.getRawCommitTime(), false));
                         }
 
                         recordsInTransactionalBlock.remove(part.getId());
@@ -396,7 +398,9 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                     message.getTransactionId(), lsn, part.getTabletId(), recordsInTransactionalBlock.get(part.getId()));
                         }
                     } else if (beginCountForTablet.get(part.getId()).intValue() == 0) {
-                        throw new DebeziumException("COMMIT record encountered without a preceding BEGIN record");
+                        throw new DebeziumException(commitWithoutBeginMessage(
+                                part.getId(), message.getTransactionId(), lsn,
+                                message.getRawCommitTime(), true));
                     }
 
                     recordsInTransactionalBlock.remove(part.getId());
