@@ -510,7 +510,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                 explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex());
                                     setCheckpointWithGetChanges(syncClient, tableIdToTable.get(part.getTableId()), part,
                                             cp, explicitCheckpoint, schemaNeeded.get(part.getId()),
-                                            tabletSafeTime.get(part.getId()), offsetContext.getWalSegmentIndex(part));
+                                            tabletSafeTime.get(part.getId()), offsetContext.getWalSegmentIndex(part),
+                                            offsetContext.getMaxIndexInSortWindow(part));
 
                                     LOGGER.info("Handling tablet split for enqueued tablet {} as we have now received the commit callback",
                                             part.getTabletId());
@@ -563,7 +564,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                                         cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
                                         explicitCheckpoint,
-                                        tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part));
+                                        tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part),
+                                        null /* getchangesRespMaxSizeBytes */, offsetContext.getMaxIndexInSortWindow(part));
 
                                 // Test only.
                                 if (TEST_TRACK_EXPLICIT_CHECKPOINTS) {
@@ -823,6 +825,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     response.getResp().getSafeHybridTime());
                             offsetContext.updateWalPosition(part, finalOpid);
                             offsetContext.updateWalSegmentIndex(part, response.getResp().getWalSegmentIndex());
+                            offsetContext.updateMaxIndexInSortWindow(part, response.getResp().getMaxIndexInSortWindow());
 
                             tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
 
@@ -920,20 +923,22 @@ public class YugabyteDBStreamingChangeEventSource implements
      * @param schemaNeeded whether we need schema in the response
      * @param tabletSafeTime
      * @param walSegmentIndex
+     * @param maxIndexInSortWindow
      * @throws Exception if we receive any other error than the one for tablet split upon calling
      * GetChanges
      */
     protected void setCheckpointWithGetChanges(YBClient syncClient, YBTable ybTable, YBPartition partition,
                                                OpId fromOpId, CdcSdkCheckpoint explicitCheckpoint,
                                                boolean schemaNeeded, long tabletSafeTime,
-                                               int walSegmentIndex) throws Exception {
+                                               int walSegmentIndex, long maxIndexInSortWindow) throws Exception {
         try {
             // This will throw an error saying tablet split detected as we are calling GetChanges again on the
             // same checkpoint - handle the error and move ahead.
             GetChangesResponse resp = syncClient.getChangesCDCSDK(
               ybTable, connectorConfig.streamId(), partition.getTabletId(), fromOpId.getTerm(),
               fromOpId.getIndex(), fromOpId.getKey(), fromOpId.getWrite_id(), fromOpId.getTime(),
-              schemaNeeded, explicitCheckpoint, tabletSafeTime, walSegmentIndex);
+              schemaNeeded, explicitCheckpoint, tabletSafeTime, walSegmentIndex,
+              null /* getchangesRespMaxSizeBytes */, maxIndexInSortWindow);
 
             // We do not update the tablet safetime we get from the response at this
             // point because the previous GetChanges call is supposed to throw

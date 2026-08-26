@@ -50,6 +50,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     private IncrementalSnapshotContext<TableId> incrementalSnapshotContext;
     private YugabyteDBConnectorConfig connectorConfig;
     private final Map<String, Integer> tabletWalSegmentIndex;
+    private final Map<String, Long> tabletMaxIndexInSortWindow;
 
     private YugabyteDBOffsetContext(YugabyteDBConnectorConfig connectorConfig,
                                     YugabyteDBTransactionContext transactionContext,
@@ -60,6 +61,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         this.incrementalSnapshotContext = incrementalSnapshotContext;
         this.connectorConfig = connectorConfig;
         this.tabletWalSegmentIndex = new ConcurrentHashMap<>();
+        this.tabletMaxIndexInSortWindow = new ConcurrentHashMap<>();
     }
 
     public YugabyteDBOffsetContext(Offsets<YBPartition, YugabyteDBOffsetContext> previousOffsets,
@@ -80,6 +82,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         this.incrementalSnapshotContext = new SignalBasedIncrementalSnapshotContext<>();
         this.connectorConfig = config;
         this.tabletWalSegmentIndex = new ConcurrentHashMap<>();
+        this.tabletMaxIndexInSortWindow = new ConcurrentHashMap<>();
     }
 
     /**
@@ -91,6 +94,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         this.tabletSourceInfo = sourceInfoMap;
         this.fromLsn = new ConcurrentHashMap<>();
         this.tabletWalSegmentIndex = new ConcurrentHashMap<>();
+        this.tabletMaxIndexInSortWindow = new ConcurrentHashMap<>();
         this.transactionContext = new YugabyteDBTransactionContext();
     }
 
@@ -193,6 +197,14 @@ public class YugabyteDBOffsetContext implements OffsetContext {
 
     public Integer getWalSegmentIndex(YBPartition partition) {
         return this.tabletWalSegmentIndex.getOrDefault(partition.getId(), 0);
+    }
+
+    public void updateMaxIndexInSortWindow(YBPartition partition, long maxIndexInSortWindow) {
+        this.tabletMaxIndexInSortWindow.put(partition.getId(), maxIndexInSortWindow);
+    }
+
+    public Long getMaxIndexInSortWindow(YBPartition partition) {
+        return this.tabletMaxIndexInSortWindow.getOrDefault(partition.getId(), 0L);
     }
 
     /**
