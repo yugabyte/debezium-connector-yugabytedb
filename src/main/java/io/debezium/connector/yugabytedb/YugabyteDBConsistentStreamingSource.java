@@ -44,7 +44,9 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
     protected void getChanges2(ChangeEventSourceContext context, YBPartition ybPartition,
                                YugabyteDBOffsetContext offsetContext,
                                boolean previousOffsetPresent) throws Exception {
-        LOGGER.debug("The offset is " + offsetContext.getOffset());
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("The offset is {}", offsetContext.getOffset());
+        }
         LOGGER.info("Processing consistent messages");
 
         try (YBClient syncClient = YBClientUtils.getYbClient(this.connectorConfig)) {
@@ -57,7 +59,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
             Set<String> tIds =
                     partitionRanges.stream().map(HashPartition::getTableId).collect(Collectors.toSet());
             for (String tId : tIds) {
-                LOGGER.debug("Table UUID: " + tIds);
+                LOGGER.debug("Table UUID: {}", tIds);
                 YBTable table = syncClient.openTableByUUID(tId);
                 tableIdToTable.put(tId, table);
 
@@ -67,7 +69,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 tabletListResponse.put(tId, resp);
             }
 
-            LOGGER.debug("The init tabletSourceInfo before updating is " + offsetContext.getTabletSourceInfo());
+            LOGGER.debug("The init tabletSourceInfo before updating is {}", offsetContext.getTabletSourceInfo());
 
             // Initialize the offsetContext and other supporting flags
             Map<String, Boolean> schemaNeeded = new HashMap<>();
@@ -104,7 +106,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
             // in the stream as well.
             Map<String, Integer> beginCountForTablet = new HashMap<>();
 
-            LOGGER.debug("The init tabletSourceInfo after updating is " + offsetContext.getTabletSourceInfo());
+            LOGGER.debug("The init tabletSourceInfo after updating is {}", offsetContext.getTabletSourceInfo());
 
             // Only bootstrap if no snapshot has been enabled - if snapshot is enabled then
             // the assumption is that there will already be some checkpoints for the tablet in
@@ -342,12 +344,12 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                     // Don't skip on BEGIN message as it would flush LSN for the whole transaction
                     // too early
                     if (message.getOperation() == ReplicationMessage.Operation.BEGIN) {
-                        LOGGER.debug("LSN in case of BEGIN is " + lsn);
+                        LOGGER.debug("LSN in case of BEGIN is {}", lsn);
 
                         recordsInTransactionalBlock.put(part.getId(), 0);
                         beginCountForTablet.merge(part.getId(), 1, Integer::sum);
                     } else if (message.getOperation() == ReplicationMessage.Operation.COMMIT) {
-                        LOGGER.debug("LSN in case of COMMIT is " + lsn);
+                        LOGGER.debug("LSN in case of COMMIT is {}", lsn);
                         Integer recordsInBlock = recordsInTransactionalBlock.get(part.getId());
                         if (recordsInBlock == null || recordsInBlock != 0) {
                             offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
@@ -374,14 +376,14 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 }
 
                 if (message.getOperation() == ReplicationMessage.Operation.BEGIN) {
-                    LOGGER.debug("LSN in case of BEGIN is " + lsn);
+                    LOGGER.debug("LSN in case of BEGIN is {}", lsn);
                     dispatcher.dispatchTransactionStartedEvent(part,
                             message.getTransactionId(), offsetContext);
 
                     recordsInTransactionalBlock.put(part.getId(), 0);
                     beginCountForTablet.merge(part.getId(), 1, Integer::sum);
                 } else if (message.getOperation() == ReplicationMessage.Operation.COMMIT) {
-                    LOGGER.debug("LSN in case of COMMIT is " + lsn);
+                    LOGGER.debug("LSN in case of COMMIT is {}", lsn);
                     Integer recordsInBlock = recordsInTransactionalBlock.get(part.getId());
                     if (recordsInBlock == null || recordsInBlock != 0) {
                         offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
@@ -406,8 +408,8 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                 }
                 maybeWarnAboutGrowingWalBacklog(true);
             } else if (message.isDDLMessage()) {
-                LOGGER.debug("Received DDL message {}", message.getSchema().toString()
-                        + " the table is " + message.getTable());
+                LOGGER.debug("Received DDL message {} the table is {}",
+                        message.getSchema(), message.getTable());
 
                 // If a DDL message is received for a tablet, we do not need its schema again
                 schemaNeeded.put(part.getId(), Boolean.FALSE);
