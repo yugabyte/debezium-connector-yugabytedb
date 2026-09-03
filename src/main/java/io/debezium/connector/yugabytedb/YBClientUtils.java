@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
@@ -41,6 +42,12 @@ import org.yb.master.MasterTypes.NamespaceIdentifierPB;
 public class YBClientUtils {
   private final static Logger LOGGER = LoggerFactory.getLogger(YBClientUtils.class);
 
+  /**
+   * Cache for isYSQLStream results keyed by stream ID. Since a stream's query language
+   * never changes, this is safe to cache indefinitely.
+   */
+  private static final ConcurrentHashMap<String, Boolean> isYSQLCache = new ConcurrentHashMap<>();
+
   public static boolean isTableIncludedInStreamId(GetDBStreamInfoResponse resp, String tableId) {
     for (MasterReplicationOuterClass.GetCDCDBStreamInfoResponsePB.TableInfo tableInfo : resp.getTableInfoList()) {
         if (Objects.equals(tableId, tableInfo.getTableId().toStringUtf8())) {
@@ -53,15 +60,35 @@ public class YBClientUtils {
   }
 
   /**
-   * Get the list of all the table UUIDs to be included for streaming
+   * Get the list of all the table UUIDs to be included for streaming.
+   * This overload fetches the DB stream info internally (one RPC per table — slow for large streams).
+   * Prefer the overload that accepts a pre-fetched {@link GetDBStreamInfoResponse}.
    * @param ybClient the {@link YBClient} instance
    * @param connectorConfig connector configuration for the connector
    * @return a Set of the tableIDs
    */
   public static Set<String> fetchTableList(YBClient ybClient,
                                            YugabyteDBConnectorConfig connectorConfig) {
+    try {
+      GetDBStreamInfoResponse streamInfoResponse = ybClient.getDBStreamInfo(connectorConfig.streamId());
+      return fetchTableList(ybClient, connectorConfig, streamInfoResponse);
+    } catch (Exception e) {
+      throw new DebeziumException(e);
+    }
+  }
+
+  /**
+   * Get the list of all the table UUIDs to be included for streaming, using a pre-fetched
+   * {@link GetDBStreamInfoResponse} to avoid redundant per-table RPCs.
+   * @param ybClient the {@link YBClient} instance
+   * @param connectorConfig connector configuration for the connector
+   * @param streamInfoResponse pre-fetched DB stream info response (used for stream membership checks)
+   * @return a Set of the tableIDs
+   */
+  public static Set<String> fetchTableList(YBClient ybClient,
+                                           YugabyteDBConnectorConfig connectorConfig,
+                                           GetDBStreamInfoResponse streamInfoResponse) {
     LOGGER.info("Fetching all the tables from the source");
-    String dbName = connectorConfig.getJdbcConfig().getDatabase();
     
     Set<String> tableIds = new HashSet<>();
       try {
@@ -88,23 +115,13 @@ public class YBClientUtils {
                               tableInfo.getName()));
                       continue;
                   }
-                  
-                  // Filter out the tables that are not in the database specified in the connector 
-                  // configuration
-                  // TODO(#29369): Filter out tables that don't belong to the database specified
-                  // in the connector config. This filtering should be done in YBClient itself.
-                  if (dbName != null
-                          && !dbName.equalsIgnoreCase(tableInfo.getNamespace().getName())) {
-                      continue;
-                  }
+
                   fqlTableName = tableInfo.getNamespace().getName() + "."
                                   + tableInfo.getPgschemaName() + "."
                                   + tableInfo.getName();
+                  tableId = YugabyteDBSchema.parseWithSchema(fqlTableName,
+                              tableInfo.getPgschemaName());
 
-                  tableId = YugabyteDBSchema.createTableIdWithCatalog(
-                    tableInfo.getNamespace().getName(),
-                    tableInfo.getPgschemaName(),
-                    tableInfo.getName());
               }
               else {
                   // Since there is no concept of schema in CQL we will be using namespaceName.tableName 
@@ -112,14 +129,11 @@ public class YBClientUtils {
                                   + tableInfo.getName();
                   tableId = YugabyteDBSchema.parseWithKeyspace(fqlTableName, tableInfo.getNamespace().getName());
               }
-              // Retrieve the list of tables in the stream ID,
-              GetDBStreamInfoResponse dbStreamInfoResponse = ybClient.getDBStreamInfo(
-                                                               connectorConfig.streamId());
 
               if (connectorConfig.getTableFilters().dataCollectionFilter().isIncluded(tableId)
                       && connectorConfig.databaseFilter().isIncluded(tableId)) {
                   // Throw an exception if the table in the include list is not a part of stream ID
-                  if (!isTableIncludedInStreamId(dbStreamInfoResponse, 
+                  if (!isTableIncludedInStreamId(streamInfoResponse, 
                                                  tableInfo.getId().toStringUtf8())) {
                       String warningMessageFormat = "The table %s is not a part of the "
                                                             + "stream ID %s. Ignoring the table.";
@@ -327,16 +341,23 @@ public class YBClientUtils {
 
   /**
    * Check whether the passed stream ID in the connector configuration has before image enabled.
-   * Make sure this function is not called often since this involves multiple RPC calls which
-   * will end up slowing down the connector operations.
+   * This overload fetches stream info internally (multiple RPCs). Prefer the overload that
+   * accepts a pre-fetched {@link CDCStreamInfo}.
    * @param connectorConfig the configuration properties for the connector
    * @return true if before image is enabled, false otherwise
    * @throws Exception if API cannot get the DB stream Info or if it cannot list the CDC streams.
    */
   public static boolean isBeforeImageEnabled(YugabyteDBConnectorConfig connectorConfig)
       throws Exception {
-    CDCStreamInfo cdcStreamInfo = getStreamInfo(connectorConfig);
+    return isBeforeImageEnabled(getStreamInfo(connectorConfig));
+  }
 
+  /**
+   * Check whether the given CDC stream has before image enabled.
+   * @param cdcStreamInfo the pre-fetched stream info
+   * @return true if before image is enabled, false otherwise
+   */
+  public static boolean isBeforeImageEnabled(CDCStreamInfo cdcStreamInfo) {
     // If streamInfo is null, it would mean that either there are no tables configured with the
     // given stream ID.
     if (cdcStreamInfo == null) {
@@ -344,30 +365,31 @@ public class YBClientUtils {
       return false;
     }
 
-    String recordType = cdcStreamInfo.getOptions().get("record_type");
-    if (recordType == null) {
-      // If the record_type option is not found, it means that the stream is configured with a slot + publication path.
-      // In this case, we return true to indicate that before image is enabled.
-      LOGGER.info("record_type option not found in stream options, the stream is likely configured"
-          + " via slot + publication path; returning before_image as enabled (true)");
-      return true;
-    }
-
-    return recordType.equals(CDCRecordType.ALL.name())
-           || recordType.equals(CDCRecordType.MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES.name())
-           || recordType.equals(CDCRecordType.PG_FULL.name())
-           || recordType.equals(CDCRecordType.PG_CHANGE_OLD_NEW.name());
+    return (cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.ALL.name())
+           || cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES.name()))
+           || (cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.PG_FULL.name())
+           || cdcStreamInfo.getOptions().get("record_type").equals(CDCRecordType.PG_CHANGE_OLD_NEW.name()));
   }
 
   /**
    * Check whether the stream has EXPLICIT checkpointing enabled.
+   * This overload fetches stream info internally (multiple RPCs). Prefer the overload that
+   * accepts a pre-fetched {@link CDCStreamInfo}.
    * @param connectorConfig the connector configuration
    * @return true if stream has EXPLICIT checkpointing enabled, false otherwise
    * @throws Exception
    */
   public static boolean isExplicitCheckpointingEnabled(YugabyteDBConnectorConfig connectorConfig)
           throws Exception {
-      CDCStreamInfo cdcStreamInfo = getStreamInfo(connectorConfig);
+      return isExplicitCheckpointingEnabled(getStreamInfo(connectorConfig));
+  }
+
+  /**
+   * Check whether the given CDC stream has EXPLICIT checkpointing enabled.
+   * @param cdcStreamInfo the pre-fetched stream info
+   * @return true if stream has EXPLICIT checkpointing enabled, false otherwise
+   */
+  public static boolean isExplicitCheckpointingEnabled(CDCStreamInfo cdcStreamInfo) {
       Objects.requireNonNull(cdcStreamInfo);
 
       return cdcStreamInfo.getOptions().get("checkpoint_type")
@@ -375,9 +397,16 @@ public class YBClientUtils {
   }
 
   public static Boolean isYSQLStream(Configuration configuration) {
+    final String streamId = configuration.getString(YugabyteDBConnectorConfig.STREAM_ID);
+
+    // Return cached result if available — a stream's query language never changes.
+    Boolean cached = isYSQLCache.get(streamId);
+    if (cached != null) {
+      return cached;
+    }
+
     GetDBStreamInfoResponse cdcStreamInfo = null;
     ListNamespacesResponse resp = null;
-    final String streamId = configuration.getString(YugabyteDBConnectorConfig.STREAM_ID);
 
     try (YBClient ybClient = getYbClient(configuration)) {
       cdcStreamInfo = ybClient.getDBStreamInfo(streamId);
@@ -400,17 +429,22 @@ public class YBClientUtils {
 
     Objects.requireNonNull(dbType);
 
+    boolean result;
     if (dbType.equals(YQLDatabase.YQL_DATABASE_PGSQL)) {
       LOGGER.info("Query Language used for tables is ysql");
-      return true;
+      result = true;
     } else {
       LOGGER.info("Query Language used for tables is ycql");
-      return false;
+      result = false;
     }
+
+    isYSQLCache.put(streamId, result);
+    return result;
   }
 
   /**
-   * Call getTabletListToPollForCDC rpc with retries
+   * Call getTabletListToPollForCDC rpc with retries, creating a new {@link YBClient} per attempt.
+   * Prefer the overload that accepts an existing {@link YBClient} to avoid repeated TLS handshakes.
    * @param table the {@link YBTable} instance of the table
    * @param tableId the UUID of the table for which we need the tablets to poll for
    * @param connectorConfig the configs used by the connector
@@ -458,6 +492,60 @@ public class YBClientUtils {
      }
      
      return resp;
+  }
+
+  /**
+   * Call getTabletListToPollForCDC rpc with retries, reusing an existing {@link YBClient}
+   * to avoid repeated TLS handshakes and connection overhead.
+   * @param ybClient existing client to reuse (caller manages lifecycle)
+   * @param table the {@link YBTable} instance of the table
+   * @param tableId the UUID of the table for which we need the tablets to poll for
+   * @param connectorConfig the configs used by the connector
+   * @return an RPC response containing the list of tablets to poll for
+   * @throws Exception when there are error after trying {@link YugabyteDBConnectorConfig#maxConnectorRetries()} times
+   */
+  public static GetTabletListToPollForCDCResponse getTabletListToPollForCDCWithRetry(
+      YBClient ybClient, YBTable table, String tableId,
+      YugabyteDBConnectorConfig connectorConfig) throws Exception {
+    int retryCount = 0;
+    Exception exception = null;
+    GetTabletListToPollForCDCResponse resp = null;
+
+    while (retryCount <= connectorConfig.maxConnectorRetries()) {
+      try {
+        resp = ybClient.getTabletListToPollForCdc(table, connectorConfig.streamId(), tableId);
+
+        if (resp.getTabletCheckpointPairListSize() == 0) {
+          throw new RuntimeException("Received an empty tablet list for table " + tableId);
+        }
+
+        return resp;
+      } catch (Exception e) {
+        retryCount++;
+        exception = e;
+        if (retryCount > connectorConfig.maxConnectorRetries()) {
+          LOGGER.error("Too many errors while trying to get the tablet list to poll, all the {} retries failed ", connectorConfig.maxConnectorRetries());
+          throw e;
+        }
+
+        LOGGER.warn("Error while trying to get the tablet list to poll for CDC; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
+                             retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e);
+
+        try {
+          final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+          retryMetronome.pause();
+        } catch (InterruptedException ie) {
+          LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
+          Thread.currentThread().interrupt();
+        }
+      }
+    }
+
+    if (exception != null) {
+      throw exception;
+    }
+
+    return resp;
   }
 
   /**
