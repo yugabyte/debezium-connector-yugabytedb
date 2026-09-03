@@ -45,7 +45,7 @@
         <!-- Dependency Versions -->
         <version.postgresql.driver>42.7.7</version.postgresql.driver>
         <version.com.google.protobuf>4.30.2</version.com.google.protobuf>
-        <version.kafka>3.9.2</version.kafka>
+        <version.kafka>4.3.1</version.kafka>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.2.13</version.logback>
         <version.ybclient>0.8.122-20260819.111006-1</version.ybclient>
@@ -203,11 +203,13 @@
             <groupId>org.apache.kafka</groupId>
             <artifactId>connect-api</artifactId>
             <version>${version.kafka}</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.kafka</groupId>
             <artifactId>connect-transforms</artifactId>
             <version>${version.kafka}</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -490,6 +492,9 @@
                         </goals>
                         <configuration>
                             <minimizeJar>true</minimizeJar>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>

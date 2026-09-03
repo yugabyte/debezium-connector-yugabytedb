@@ -1,0 +1,5 @@
+io.debezium.connector.yugabytedb.transforms.PGCompatible
+io.debezium.connector.yugabytedb.transforms.StriimCompatible
+io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState
+io.aiven.kafka.connect.transforms.ExtractTopic$Key
+io.aiven.kafka.connect.transforms.ExtractTopic$Value

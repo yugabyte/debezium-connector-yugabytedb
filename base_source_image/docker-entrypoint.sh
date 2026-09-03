@@ -7,16 +7,6 @@ set -e
 cp -rn $KAFKA_HOME/config.orig/* $KAFKA_HOME/config
 
 case $1 in
-    zookeeper)
-        shift
-        # Change the Zookeeper snapshot directory in zookeeper.properties file
-        sed -i "s|dataDir=.*|dataDir=${ZK_DATA}|" $KAFKA_HOME/config/zookeeper.properties
-        if [ -z "$1" ]; then
-            exec $KAFKA_HOME/bin/zookeeper-server-start.sh $KAFKA_HOME/config/zookeeper.properties
-        else
-            echo "Zookeeper can not have any arguments"
-        fi
-        ;;
     kafka)
         shift
         # Set the directory where the logs for kafka will be stored
@@ -45,7 +35,7 @@ case $1 in
         fi
         ;;
     *)
-        echo "First argument must be either zookeeper, kafka or kafka-connect."
+        echo "First argument must be either kafka or kafka-connect."
         exit 1
         ;;
 esac

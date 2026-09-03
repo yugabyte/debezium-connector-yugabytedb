@@ -6,7 +6,7 @@
 # -------
 # Provides a Kafka Connect runtime with Confluent serialization libraries,
 # replacing the upstream `debezium/connect:1.9.5.Final` image. Rolling our
-# own base lets us pin JDK 21, Kafka 3.9.2, Ubuntu 22.04 (Jammy), and a
+# own base lets us pin JDK 21, Kafka 4.3.1, Ubuntu 22.04 (Jammy), and a
 # non-root `kafka` user (UID 1001), and patch CVEs on our own cadence.
 #
 # Image contents
@@ -65,7 +65,7 @@ LABEL maintainer="yugabyte" \
 # Set the Debezium version, Kafka version, and Scala version (needed for download URL).
 #
 ARG DEBEZIUM_VERSION=1.9
-ARG KAFKA_VERSION=3.9.2
+ARG KAFKA_VERSION=4.3.1
 ARG SCALA_VERSION=2.13
 
 #
@@ -175,14 +175,23 @@ RUN mkdir $KAFKA_HOME/config.orig && \
     mv $KAFKA_HOME/config/* $KAFKA_HOME/config.orig && \
     chown -R 1001:kafka $KAFKA_HOME/config.orig
 
-# Pin stdout appender threshold to INFO (matches upstream debezium/connect).
-# Stops PUT /admin/loggers->DEBUG from flooding stdout and stalling the connector,
-# while still letting WARN/ERROR through.
-RUN for f in $KAFKA_HOME/config.orig/log4j.properties $KAFKA_HOME/config.orig/connect-log4j.properties; do \
-        if [ -f "$f" ] && ! grep -q '^log4j.appender.stdout.threshold' "$f"; then \
-            sed -i '/^log4j.appender.stdout=org.apache.log4j.ConsoleAppender/a log4j.appender.stdout.threshold=INFO' "$f"; \
-        fi; \
-    done
+# Kafka 4.x has no log4j.properties, so the fetched Debezium start script would
+# leave the worker with no logging. Point it at our connect-log4j2.yaml instead:
+# stock Kafka's file plus a ThresholdFilter that caps stdout at INFO, so turning
+# on DEBUG at runtime (PUT /admin/loggers) cannot flood stdout and stall the
+# connector. DEBUG still reaches connect.log. CONNECT_LOG4J_* and LOG_LEVEL edit
+# log4j 1.x files and have no effect on 4.x.
+COPY base_source_image/connect-log4j2.yaml /tmp/connect-log4j2.yaml
+RUN set -e; \
+    [ "${KAFKA_VERSION%%.*}" -ge 4 ] || { echo "FATAL: this Dockerfile supports Kafka 4.x only (got ${KAFKA_VERSION})"; exit 1; }; \
+    cp /tmp/connect-log4j2.yaml $KAFKA_HOME/config.orig/connect-log4j2.yaml; \
+    sed -i "s|config/log4j.properties|config/connect-log4j2.yaml|g" /scripts/kafka-connect-start.sh; \
+    sed -i "s|-Dlog4j.configuration=file:|-Dlog4j2.configurationFile=file:|g" /scripts/kafka-connect-start.sh; \
+    grep -q 'log4j2.configurationFile' /scripts/kafka-connect-start.sh \
+        || { echo "FATAL: failed to repoint KAFKA_LOG4J_OPTS at connect-log4j2.yaml"; exit 1; }; \
+    grep -q 'ThresholdFilter' $KAFKA_HOME/config.orig/connect-log4j2.yaml \
+        || { echo "FATAL: connect-log4j2.yaml missing stdout ThresholdFilter"; exit 1; }; \
+    rm -f /tmp/connect-log4j2.yaml
 
 # Remove unnecessary files (sources, javadoc, scaladoc JARs)
 RUN rm -f $KAFKA_HOME/libs/*-{sources,javadoc,scaladoc}.jar*
