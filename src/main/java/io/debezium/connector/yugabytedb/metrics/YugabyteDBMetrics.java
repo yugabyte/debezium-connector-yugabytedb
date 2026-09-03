@@ -62,10 +62,12 @@ public class YugabyteDBMetrics {
     registrationRetryDelay = Duration.ofMillis(connectorConfig.mbeanRegistrationRetryDelayMs());
 
     if (multiPartitionMode) {
-      this.name = metricName(connectorType, Collect.linkMapOf(
+      Map<String, String> tags = Collect.linkMapOf(
               "server", connectorName,
               "task", connectorConfig.getTaskId(),
-              "context", contextName));
+              "context", contextName);
+      tags.putAll(connectorConfig.getConnectorMetricTags());
+      this.name = metricName(connectorType, tags);
     } else {
       this.name = metricName(connectorType, connectorName, contextName);
     }
@@ -91,12 +93,13 @@ public class YugabyteDBMetrics {
     registrationRetryDelay = Duration.ofMillis(connectorConfig.mbeanRegistrationRetryDelayMs());
     
     if (multiPartitionMode) {
-      LOGGER.info("Configuring a metric with connector type {} server {}, task ID {} and context {}",
-                  connectorType, connectorName, taskId, contextName);
-      this.name = metricName(connectorType, Collect.linkMapOf(
+      Map<String, String> tags = Collect.linkMapOf(
           "server", connectorName,
           "task", taskId,
-          "context", contextName));
+          "context", contextName);
+      tags.putAll(connectorConfig.getConnectorMetricTags());
+      LOGGER.info("Configuring a metric with connector type {} and tags {}", connectorType, tags);
+      this.name = metricName(connectorType, tags);
     } else {
       this.name = metricName(connectorType, connectorName, contextName);
     }

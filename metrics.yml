@@ -113,7 +113,26 @@ rules:
       context: "$2"
       table: "$4"
 
-  - pattern: "debezium.([^:]+)<type=connector-metrics, server=([^,]+), task=([^,]+), context=([^,]+), partition=([^>]+)>([^:]+)"
+  - pattern: "debezium.([^:]+)<type=connector-metrics, server=([^,]+), task=([^,]+), context=([^,]+), partition=([^,>]+), connector=([^>]+)>([^:]+)"
+    name: "debezium_metrics_$7"
+    labels:
+      plugin: "$1"
+      name: "$2"
+      context: "$4"
+      task: "$3"
+      partition: "$5"
+      connector: "$6"
+
+  - pattern: "debezium.([^:]+)<type=connector-metrics, server=([^,]+), task=([^,]+), context=([^,]+), connector=([^>]+)>([^:]+)"
+    name: "debezium_metrics_$6"
+    labels:
+      plugin: "$1"
+      name: "$2"
+      context: "$4"
+      task: "$3"
+      connector: "$5"
+
+  - pattern: "debezium.([^:]+)<type=connector-metrics, server=([^,]+), task=([^,]+), context=([^,]+), partition=([^,>]+)>([^:]+)"
     name: "debezium_metrics_$6"
     labels:
       plugin: "$1"
@@ -122,7 +141,7 @@ rules:
       task: "$3"
       partition: "$5"
 
-  - pattern: "debezium.([^:]+)<type=connector-metrics, server=([^,]+), task=([^,]+), context=([^>]+)>([^:]+)"
+  - pattern: "debezium.([^:]+)<type=connector-metrics, server=([^,]+), task=([^,]+), context=([^,>]+)>([^:]+)"
     name: "debezium_metrics_$5"
     labels:
       plugin: "$1"

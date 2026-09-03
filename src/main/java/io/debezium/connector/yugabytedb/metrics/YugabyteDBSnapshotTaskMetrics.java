@@ -6,6 +6,7 @@
 package io.debezium.connector.yugabytedb.metrics;
 
 import java.util.Collection;
+import java.util.Map;
 
 import io.debezium.connector.base.ChangeEventQueueMetrics;
 import io.debezium.connector.common.CdcSourceTaskContext;
@@ -29,13 +30,15 @@ public class YugabyteDBSnapshotTaskMetrics extends AbstractYugabyteDBTaskMetrics
                                          YugabyteDBConnectorConfig connectorConfig,
                                          String taskId) {
         super(taskContext, "snapshot", changeEventQueueMetrics, partitions,
-                (YBPartition partition) -> new YugabyteDBSnapshotPartitionMetrics(taskContext,
-                        Collect.linkMapOf(
-                                "server", taskContext.getConnectorName(),
-                                "task", taskId,
-                                "context", "snapshot",
-                                "partition", partition.getFullPartitionName()),
-                        metadataProvider), connectorConfig, taskId);
+                (YBPartition partition) -> {
+                    Map<String, String> tags = Collect.linkMapOf(
+                            "server", taskContext.getConnectorName(),
+                            "task", taskId,
+                            "context", "snapshot",
+                            "partition", partition.getFullPartitionName());
+                    tags.putAll(connectorConfig.getConnectorMetricTags());
+                    return new YugabyteDBSnapshotPartitionMetrics(taskContext, tags, metadataProvider);
+                }, connectorConfig, taskId);
     }
 
     @Override
