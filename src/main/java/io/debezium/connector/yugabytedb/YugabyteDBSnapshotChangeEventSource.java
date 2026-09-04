@@ -138,7 +138,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     public SnapshotResult<YugabyteDBOffsetContext> execute(ChangeEventSourceContext context, YBPartition partition, YugabyteDBOffsetContext previousOffset)
             throws InterruptedException {
         SnapshottingTask snapshottingTask = getSnapshottingTask(partition, previousOffset);
-        LOGGER.debug("Dispatcher in snapshot: " + dispatcher.toString());
+        LOGGER.debug("Dispatcher in snapshot: {}", dispatcher);
         if (snapshottingTask.shouldSkipSnapshot()) {
             LOGGER.debug("Skipping snapshotting");
             return SnapshotResult.skipped(previousOffset);
@@ -477,7 +477,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         tabletToExplicitCheckpoint.put(p.getId(), startLsn.toCdcSdkCheckpoint());
         schemaNeeded.put(p.getId(), Boolean.TRUE);
         LOGGER.debug("Previous offset for table {} tablet {} is {}", p.getTableId(),
-                     p.getTabletId(), previousOffset.toString());
+                     p.getTabletId(), previousOffset);
       }
 
       if (FAIL_AFTER_SETTING_INITIAL_CHECKPOINT) {
@@ -626,7 +626,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                       LOGGER.warn("Transactional record of type {} encountered while snapshotting the table", message.getOperation().toString());
                     } else if (message.isDDLMessage()) {
                       LOGGER.debug("For table {}, received a DDL record {}",
-                                  message.getTable(), message.getSchema().toString());
+                                  message.getTable(), message.getSchema());
 
                       schemaNeeded.put(part.getId(), Boolean.FALSE);
 
@@ -1062,8 +1062,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
       if (fromOpId.isLesserThanOrEqualTo(explicitCheckpoint)
             && !isLastSnapshotRecordOfLastBatch(OpId.from(explicitCheckpoint))) {
-        LOGGER.debug("Request OpId for partition {} ({}) is less than or equal to explicit checkpoint ({})",
-          partition.getId(), fromOpId.toSerString(), explicitCheckpoint);
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Request OpId for partition {} ({}) is less than or equal to explicit checkpoint ({})",
+              partition.getId(), fromOpId.toSerString(), explicitCheckpoint);
+        }
         return fromOpId.toCdcSdkCheckpoint();
       }
 

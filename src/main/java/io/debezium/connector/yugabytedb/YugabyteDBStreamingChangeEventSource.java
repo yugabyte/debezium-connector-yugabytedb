@@ -375,7 +375,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 tabletListResponse.put(tId, resp);
             }
 
-            LOGGER.debug("The init tabletSourceInfo before updating is " + offsetContext.getTabletSourceInfo());
+            LOGGER.debug("The init tabletSourceInfo before updating is {}", offsetContext.getTabletSourceInfo());
 
             // Initialize the offsetContext and other supporting flags.
             // This schemaNeeded map here would have the elements as <tableId.tabletId>:<boolean-value>
@@ -432,7 +432,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             // in the stream as well.
             Map<String, Integer> beginCountForTablet = new HashMap<>();
 
-            LOGGER.debug("The init tabletSourceInfo after updating is " + offsetContext.getTabletSourceInfo());
+            LOGGER.debug("The init tabletSourceInfo after updating is {}", offsetContext.getTabletSourceInfo());
 
             // Only bootstrap if no snapshot has been enabled - if snapshot is enabled then
             // the assumption is that there will already be some checkpoints for the tablet in
@@ -664,13 +664,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             // Don't skip on BEGIN message as it would flush LSN for the whole transaction
                                             // too early
                                             if (message.getOperation() == Operation.BEGIN) {
-                                                LOGGER.debug("LSN in case of BEGIN is " + lsn);
+                                                LOGGER.debug("LSN in case of BEGIN is {}", lsn);
 
                                                 recordsInTransactionalBlock.put(part.getId(), 0);
                                                 beginCountForTablet.merge(part.getId(), 1, Integer::sum);
                                             }
                                             if (message.getOperation() == Operation.COMMIT) {
-                                                LOGGER.debug("LSN in case of COMMIT is " + lsn);
+                                                LOGGER.debug("LSN in case of COMMIT is {}", lsn);
                                                 Integer recordsInBlock = recordsInTransactionalBlock.get(part.getId());
                                                 if (recordsInBlock == null || recordsInBlock != 0) {
                                                     offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
@@ -696,13 +696,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         }
 
                                         if (message.getOperation() == Operation.BEGIN) {
-                                            LOGGER.debug("LSN in case of BEGIN is " + lsn);
+                                            LOGGER.debug("LSN in case of BEGIN is {}", lsn);
                                             dispatcher.dispatchTransactionStartedEvent(part, message.getTransactionId(), offsetContext);
 
                                             recordsInTransactionalBlock.put(part.getId(), 0);
                                             beginCountForTablet.merge(part.getId(), 1, Integer::sum);
                                         } else if (message.getOperation() == Operation.COMMIT) {
-                                            LOGGER.debug("LSN in case of COMMIT is " + lsn);
+                                            LOGGER.debug("LSN in case of COMMIT is {}", lsn);
                                             Integer recordsInBlock = recordsInTransactionalBlock.get(part.getId());
                                             if (recordsInBlock == null || recordsInBlock != 0) {
                                                 offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
@@ -727,8 +727,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                         }
                                         maybeWarnAboutGrowingWalBacklog(true);
                                     } else if (message.isDDLMessage()) {
-                                        LOGGER.debug("Received DDL message {}", message.getSchema().toString()
-                                                + " the table is " + message.getTable());
+                                        LOGGER.debug("Received DDL message {} the table is {}",
+                                                message.getSchema(), message.getTable());
 
                                         // If a DDL message is received for a tablet, we do not need its schema again
                                         schemaNeeded.put(part.getId(), Boolean.FALSE);
@@ -887,8 +887,10 @@ public class YugabyteDBStreamingChangeEventSource implements
         CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(partition.getId());
 
         if (fromOpId.isLesserThanOrEqualTo(explicitCheckpoint)) {
-            LOGGER.debug("Request OpId for partition {} ({}) is less than or equal to explicit checkpoint ({})",
-                         partition.getId(), fromOpId.toSerString(), explicitCheckpoint);
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("Request OpId for partition {} ({}) is less than or equal to explicit checkpoint ({})",
+                             partition.getId(), fromOpId.toSerString(), explicitCheckpoint);
+            }
             return fromOpId.toCdcSdkCheckpoint();
         }
 
