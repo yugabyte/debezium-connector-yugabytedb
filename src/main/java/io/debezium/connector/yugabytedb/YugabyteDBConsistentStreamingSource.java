@@ -59,7 +59,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
             Set<String> tIds =
                     partitionRanges.stream().map(HashPartition::getTableId).collect(Collectors.toSet());
             for (String tId : tIds) {
-                LOGGER.debug("Table UUID: {}", tIds);
+                LOGGER.debug("Table UUID: {}", tId);
                 YBTable table = syncClient.openTableByUUID(tId);
                 tableIdToTable.put(tId, table);
 
