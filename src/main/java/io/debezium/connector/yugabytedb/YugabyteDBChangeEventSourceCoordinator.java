@@ -75,7 +75,7 @@ public class YugabyteDBChangeEventSourceCoordinator extends ChangeEventSourceCoo
                         previousOffset);
             }
             catch (SQLException e) {
-                throw new DebeziumException("Failed to determine catch-up streaming stopping LSN");
+                throw new DebeziumException("Failed to determine catch-up streaming stopping LSN", e);
             }
             LOGGER.info("Previous connector state exists and will stream events until {} then perform snapshot",
                     previousOffset.getStreamingStoppingLsn());

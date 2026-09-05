@@ -26,7 +26,7 @@ public class YugabyteDBErrorHandler extends ErrorHandler {
 
     @Override
     protected boolean isRetriable(Throwable throwable) {
-        LOGGER.info("Received throwable to check for retry: {}", throwable);
+        LOGGER.info("Received throwable to check for retry", throwable);
 
         if (throwable.getMessage() == null) {
             LOGGER.warn("Exception message received in throwable is null");

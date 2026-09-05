@@ -354,7 +354,8 @@ public class YugabyteDBConnectorTask
                 if (retryCount > maxRetries) {
                     LOGGER.error("Too many errors connecting to server." +
                             " All {} retries failed.", maxRetries);
-                    throw new ConnectException(ex);
+                    throw new ConnectException(String.format(
+                            "Could not create a replication connection after %d retries", maxRetries), ex);
                 }
 
                 LOGGER.warn("Error connecting to server; will attempt retry {} of {} after {} " +

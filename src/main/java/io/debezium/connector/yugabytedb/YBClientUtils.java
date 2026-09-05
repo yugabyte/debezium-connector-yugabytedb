@@ -141,10 +141,19 @@ public class YBClientUtils {
               }
           }
       }
+      catch (DebeziumException e) {
+          // Already carries a specific, user-facing message (for example the table-not-in-stream
+          // error raised above); rethrow it as-is instead of nesting it inside another exception.
+          throw e;
+      }
       catch (Exception e) {
           // We are ultimately throwing this exception since this will be thrown while initializing 
           // the connector and at this point if this exception is thrown, we should not proceed 
           // forward with the connector.
+          // The context goes to the log rather than into the exception message so that the cause's
+          // own message stays the message of the thrown exception.
+          LOGGER.error("Failed to fetch the list of tables to stream for stream {}",
+                       connectorConfig.streamId(), e);
           throw new DebeziumException(e);
       }
       return tableIds;
@@ -175,8 +184,14 @@ public class YBClientUtils {
       }
       Collections.sort(tableToTabletIds, (a, b) -> a.getRight().compareTo(b.getRight()));
     }
+    catch (DebeziumException e) {
+        throw e;
+    }
     catch (Exception e) {
-        LOGGER.error("Error while fetching all the tablets", e);
+        // The context goes to the log rather than into the exception message so that the cause's
+        // own message stays the message of the thrown exception.
+        LOGGER.error("Error while fetching the tablets of tables {} for stream {}",
+                     tableIds, dbStreamId, e);
         throw new DebeziumException(e);
     }
 
@@ -503,8 +518,12 @@ public class YBClientUtils {
       }
     }
 
-    // In ideal scenarios, this code will never be hit.
-    LOGGER.warn("Returning null as checkpoint (should never happen, check code)");
-    return null;
+    // In ideal scenarios, this code will never be hit: the loop above either returns a
+    // response or rethrows. Throw instead of returning null so that a bug here surfaces
+    // here rather than as a message-less NullPointerException in the caller.
+    throw new IllegalStateException(String.format(
+      "Exhausted the retry loop for GetCheckpoint on tablet %s of stream %s without a "
+        + "response or an error; this indicates a bug in getCheckpointWithRetry",
+      tabletId, connectorConfig.streamId()));
   }
 }

@@ -343,7 +343,8 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             LOGGER.debug("The master host address is " + hostAddress);
             HostAndPort masterHostPort = ybClient.getLeaderMasterHostAndPort();
             if (masterHostPort == null) {
-                LOGGER.error("Failed testing connection at {}", yugabyteDBConnectorConfig.hostname());
+                LOGGER.error("Could not determine the leader master; failed contacting the master "
+                        + "addresses {}", hostAddress);
             }
 
             // Do a get and check if the streamid exists.
@@ -415,6 +416,12 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                 LOGGER.error(errorMessage, e);
                 throw new DebeziumException(errorMessage, e);
             }
+        }
+        catch (DebeziumException e) {
+            // Already carries a specific, user-facing message; rethrow it as-is so that it is not
+            // masked by the generic wrapper below.
+            LOGGER.warn("Connection validation failed", e);
+            throw e;
         }
         catch (Exception e) {
             LOGGER.warn("Exception while validating connection", e);

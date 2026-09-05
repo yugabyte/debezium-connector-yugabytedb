@@ -179,7 +179,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         }
         catch (Exception t) {
             completedSuccessfully = false;
-            throw new DebeziumException(t);
+            throw new DebeziumException("Failed to execute the snapshot phase", t);
         }
         finally {
             LOGGER.info("Snapshot - Final stage");
