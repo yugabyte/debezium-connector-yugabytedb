@@ -1,0 +1,42 @@
+# Kafka Connect logging for Kafka 4.x (log4j2).
+#
+# This is Apache Kafka's stock connect-log4j2.yaml with one addition: a
+# ThresholdFilter that caps the console appender at INFO. A logger raised to
+# DEBUG through PUT /admin/loggers therefore cannot flood stdout and stall the
+# connector. DEBUG output still reaches the connect.log file appender.
+
+Configuration:
+  Properties:
+    Property:
+      - name: "kafka.logs.dir"
+        value: "."
+      - name: "logPattern"
+        value: "[%d] %p %X{connector.context}%m (%c:%L)%n"
+
+  Appenders:
+    Console:
+      name: STDOUT
+      PatternLayout:
+        pattern: "${logPattern}"
+      Filters:
+        ThresholdFilter:
+          level: INFO
+          onMatch: ACCEPT
+          onMismatch: DENY
+
+    RollingFile:
+      - name: ConnectAppender
+        fileName: "${sys:kafka.logs.dir}/connect.log"
+        filePattern: "${sys:kafka.logs.dir}/connect-%d{yyyy-MM-dd-HH}.log"
+        PatternLayout:
+          pattern: "${logPattern}"
+        TimeBasedTriggeringPolicy:
+          modulate: true
+          interval: 1
+
+  Loggers:
+    Root:
+      level: INFO
+      AppenderRef:
+        - ref: STDOUT
+        - ref: ConnectAppender
