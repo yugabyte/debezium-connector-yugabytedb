@@ -159,9 +159,11 @@ public class YugabyteDBEventDispatcher<T extends DataCollectionId> extends Event
                    changeRecordEmitter.getOffset().getOffset());
                    break;
             case SKIP:
-                LOGGER.debug(
-                  "Error while processing event at offset {}",
-                  changeRecordEmitter.getOffset().getOffset());
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug(
+                      "Error while processing event at offset {}",
+                      changeRecordEmitter.getOffset().getOffset());
+                }
                 break;
             }
           return false;

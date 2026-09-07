@@ -82,7 +82,7 @@ public class YugabyteDBConnectorTask
         final Snapshotter snapshotter = connectorConfig.getSnapshotter();
         final SchemaNameAdjuster schemaNameAdjuster = SchemaNameAdjuster.create();
 
-        LOGGER.debug("The config is " + config);
+        LOGGER.debug("The config is {}", config);
 
         if (snapshotter == null) {
             throw new ConnectException("Unable to load snapshotter, if using custom snapshot mode," +
@@ -249,7 +249,7 @@ public class YugabyteDBConnectorTask
         OffsetContext.Loader<YugabyteDBOffsetContext> loader) {
         // return super.getPreviousOffsets(provider, loader);
         Set<YBPartition> partitions = provider.getPartitions();
-        LOGGER.debug("The size of partitions is " + partitions.size());
+        LOGGER.debug("The size of partitions is {}", partitions.size());
         OffsetReader<YBPartition, YugabyteDBOffsetContext, OffsetContext.Loader<YugabyteDBOffsetContext>> reader = new OffsetReader<>(
                 context.offsetStorageReader(), loader);
         Map<YBPartition, YugabyteDBOffsetContext> offsets = reader.offsets(partitions);
@@ -379,7 +379,7 @@ public class YugabyteDBConnectorTask
         // the poll the queue
         // and notify.
         final List<DataChangeEvent> records = queue.poll();
-        LOGGER.debug("Got the records from queue: " + records);
+        LOGGER.debug("Got the records from queue: {}", records);
         final List<SourceRecord> sourceRecords = records.stream()
                 .map(DataChangeEvent::getRecord)
                 .collect(Collectors.toList());

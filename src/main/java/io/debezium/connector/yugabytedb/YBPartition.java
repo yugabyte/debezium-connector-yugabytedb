@@ -131,7 +131,7 @@ public class YBPartition implements Partition {
             List<HashPartition> tabletPairList;
             try {
                 tabletPairList = YugabyteDBConnectorUtils.populatePartitionRanges(tabletListSerialized);
-                LOGGER.debug("The tablet list is " + tabletPairList);
+                LOGGER.debug("The tablet list is {}", tabletPairList);
             } catch (IOException | ClassNotFoundException e) {
                 // The task should fail if tablet list cannot be deserialized
                 throw new DebeziumException("Error while deserializing tablet list", e);
@@ -141,7 +141,7 @@ public class YBPartition implements Partition {
             for (HashPartition partition : tabletPairList) {
                 partitions.add(partition.toYBPartition());
             }
-            LOGGER.debug("The partition being returned is " + partitions);
+            LOGGER.debug("The partition being returned is {}", partitions);
             return partitions;
         }
     }

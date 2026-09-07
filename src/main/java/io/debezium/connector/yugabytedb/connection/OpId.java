@@ -182,7 +182,9 @@ public class OpId implements Comparable<OpId> {
             return false;
         }
 
-        LOGGER.debug("this: {} checkpoint: {}", this.toSerString(), checkpoint);
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("this: {} checkpoint: {}", this.toSerString(), checkpoint);
+        }
         if (this.term < checkpoint.getTerm() || this.index < checkpoint.getIndex() || this.time < checkpoint.getTime()) {
             return true;
         } else if (this.term == checkpoint.getTerm() && this.index == checkpoint.getIndex() && this.time == checkpoint.getTime()) {

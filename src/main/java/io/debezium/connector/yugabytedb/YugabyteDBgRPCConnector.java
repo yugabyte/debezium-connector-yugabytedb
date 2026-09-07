@@ -70,7 +70,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
     @Override
     public void start(Map<String, String> props) {
         this.props = props;
-        LOGGER.debug("Props " + props);
+        LOGGER.debug("Props {}", props);
         Configuration config = Configuration.from(this.props);
 
         YugabyteDBConnectorConfig.assertStreamIdAndSlotNameMutuallyExclusive(config);
@@ -124,16 +124,16 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                 Map<Integer, YugabyteDBType> oidToType = typeRegistry.getOidToType();
                 try {
                     serializedNameToType = ObjectUtil.serializeObjectToString(nameToType);
-                    LOGGER.debug("The serializedNameToType " + serializedNameToType);
+                    LOGGER.debug("The serializedNameToType {}", serializedNameToType);
                     Object test = ObjectUtil.deserializeObjectFromString(serializedNameToType);
-                    LOGGER.debug("The deserializedNameToType " + test);
+                    LOGGER.debug("The deserializedNameToType {}", test);
                 } catch (IOException | ClassNotFoundException e) {
                     e.printStackTrace();
                 }
 
                 try {
                     serializedOidToType = ObjectUtil.serializeObjectToString(oidToType);
-                    LOGGER.debug("The serializedOidToType " + serializedOidToType);
+                    LOGGER.debug("The serializedOidToType {}", serializedOidToType);
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
@@ -156,8 +156,8 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
         validateTServerConnection(results, config);
 
         String streamIdValue = this.yugabyteDBConnectorConfig.streamId();
-        LOGGER.debug("The streamid in config is" + this.yugabyteDBConnectorConfig.streamId());
-        LOGGER.debug("The port in config is "+ this.yugabyteDBConnectorConfig.port());
+        LOGGER.debug("The streamid in config is {}", this.yugabyteDBConnectorConfig.streamId());
+        LOGGER.debug("The port in config is {}", this.yugabyteDBConnectorConfig.port());
 
         if (streamIdValue == null) {
             streamIdValue = results.get(YugabyteDBConnectorConfig.STREAM_ID.name()).value().toString();
@@ -208,7 +208,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             String hashRangesSerialized = "";
             try {
                 hashRangesSerialized = ObjectUtil.serializeObjectToString(taskTables);
-                LOGGER.debug("The taskTablesSerialized " + hashRangesSerialized);
+                LOGGER.debug("The taskTablesSerialized {}", hashRangesSerialized);
             } catch (IOException e) {
                 LOGGER.error("Error while serializing task tables");
                 e.printStackTrace();
@@ -340,7 +340,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
         try (YBClient ybClient = YBClientUtils.getYbClient(yugabyteDBConnectorConfig)) {
             String hostAddress = config.getString(YugabyteDBConnectorConfig.MASTER_ADDRESSES.toString());
             // so whenever they are null, they will just be ignored
-            LOGGER.debug("The master host address is " + hostAddress);
+            LOGGER.debug("The master host address is {}", hostAddress);
             HostAndPort masterHostPort = ybClient.getLeaderMasterHostAndPort();
             if (masterHostPort == null) {
                 LOGGER.error("Failed testing connection at {}", yugabyteDBConnectorConfig.hostname());

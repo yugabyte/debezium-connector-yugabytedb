@@ -200,7 +200,9 @@ public class YBExtractNewRecordState<R extends ConnectRecord<R>> extends Extract
             updatedSchema = makeUpdatedSchema(value.schema(), value);
         }
 
-        LOGGER.debug("Updated schema as json: " + io.debezium.data.SchemaUtil.asString(value.schema()));
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Updated schema as json: {}", io.debezium.data.SchemaUtil.asString(value.schema()));
+        }
 
         final Struct updatedValue = new Struct(updatedSchema);
 

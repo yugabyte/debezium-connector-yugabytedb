@@ -144,13 +144,19 @@ public class StriimCompatible<R extends ConnectRecord<R>> implements Transformat
     }
 
     public Pair<Schema, Struct> getUpdatedValueAndSchema(Schema schema, Struct value, List<String> primaryKeys) {
-        LOGGER.debug("Original Schema as json: " + io.debezium.data.SchemaUtil.asString(schema));
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Original Schema as json: {}", io.debezium.data.SchemaUtil.asString(schema));
+        }
         Schema updatedSchema = makeUpdatedSchema(schema);
-        LOGGER.debug("Updated schema as json: " + io.debezium.data.SchemaUtil.asString(updatedSchema));
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Updated schema as json: {}", io.debezium.data.SchemaUtil.asString(updatedSchema));
+        }
 
         List<String> allFields = getAllFieldsInOrder(schema.field("after").schema());
 
-        LOGGER.debug("Original value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(value));
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug("Original value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(value));
+        }
         Struct newVal = new Struct(updatedSchema);
         Struct metadata = makeMetadata(value, updatedSchema.field("metadata").schema());
         newVal.put("columns", allFields);
@@ -163,7 +169,9 @@ public class StriimCompatible<R extends ConnectRecord<R>> implements Transformat
                newVal.put("metadata", metadata);
                newVal.put("data", convertToOrderedList(newValues, allFields));
 
-               LOGGER.debug("Update value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(newVal));
+               if (LOGGER.isDebugEnabled()) {
+                   LOGGER.debug("Update value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(newVal));
+               }
                return new org.yb.util.Pair<>(updatedSchema, newVal);
             }
             case "u": {
@@ -179,7 +187,9 @@ public class StriimCompatible<R extends ConnectRecord<R>> implements Transformat
                 newVal.put("data", convertToOrderedList(newValues, allFields));
                 newVal.put("before", convertToOrderedList(oldValues, allFields));
 
-                LOGGER.debug("Update value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(newVal));
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("Update value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(newVal));
+                }
                 return new org.yb.util.Pair<>(updatedSchema, newVal);
             }
             case "d": {
@@ -190,7 +200,9 @@ public class StriimCompatible<R extends ConnectRecord<R>> implements Transformat
                 newVal.put("metadata", metadata);
                 newVal.put("data", convertToOrderedList(oldValues, allFields));
 
-                LOGGER.debug("Update value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(newVal));
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("Update value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(newVal));
+                }
                 return new org.yb.util.Pair<>(updatedSchema, newVal);
             }
             case "r": {
@@ -200,7 +212,9 @@ public class StriimCompatible<R extends ConnectRecord<R>> implements Transformat
                 newVal.put("metadata", metadata);
                 newVal.put("data", convertToOrderedList(newValues, allFields));
 
-                LOGGER.debug("Update value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(newVal));
+                if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug("Update value as json: {}", io.debezium.data.SchemaUtil.asDetailedString(newVal));
+                }
                 return new org.yb.util.Pair<>(updatedSchema, newVal);
             }
             default: {
