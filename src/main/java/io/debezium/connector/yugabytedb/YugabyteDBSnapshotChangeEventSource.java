@@ -66,7 +66,11 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     protected final Clock clock;
     private final Snapshotter snapshotter;
     private final YugabyteDBConnection connection;
-    private final YBClient syncClient;
+
+    // Created lazily by getSyncClient() on first use and closed by closeSyncClient() once
+    // execute() returns, so that a connector which never snapshots never builds one. Only ever
+    // touched from the snapshot thread; commitOffset() does not use it.
+    private YBClient syncClient;
     private OpId lastCompletelyProcessedLsn;
 
     private YugabyteDBTypeRegistry yugabyteDbTypeRegistry;
@@ -108,19 +112,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         this.snapshotProgressListener = snapshotProgressListener;
         this.heartbeatIntervalMs = connectorConfig.getHeartbeatInterval().toMillis();
 
-        AsyncYBClient asyncClient = new AsyncYBClient.AsyncYBClientBuilder(connectorConfig.masterAddresses())
-            .defaultAdminOperationTimeoutMs(connectorConfig.adminOperationTimeoutMs())
-            .defaultOperationTimeoutMs(connectorConfig.operationTimeoutMs())
-            .defaultSocketReadTimeoutMs(connectorConfig.socketReadTimeoutMs())
-            .numTablets(connectorConfig.maxNumTablets())
-            .sslCertFile(connectorConfig.sslRootCert())
-            .sslClientCertFiles(connectorConfig.sslClientCert(), connectorConfig.sslClientKey())
-            .maxRpcAttempts(connectorConfig.maxRPCRetryAttempts())
-            .sleepTime(connectorConfig.rpcRetrySleepTime())
-            .build();
-        
-        this.syncClient = new YBClient(asyncClient);
-
         this.yugabyteDbTypeRegistry = taskContext.schema().getTypeRegistry();
         this.tabletToExplicitCheckpoint = new HashMap<>();
         this.tabletSafeTime = new HashMap<>();
@@ -134,8 +125,65 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                 : null;
     }
 
+    /**
+     * Get the client used to talk to the YugabyteDB service during the snapshot, creating it if
+     * this is the first use. The client owns a Netty timer thread and is therefore built only when
+     * a snapshot is actually going to run - {@link #closeSyncClient()} releases it afterwards.
+     */
+    private YBClient getSyncClient() {
+        if (syncClient == null) {
+            AsyncYBClient asyncClient = new AsyncYBClient.AsyncYBClientBuilder(connectorConfig.masterAddresses())
+                .defaultAdminOperationTimeoutMs(connectorConfig.adminOperationTimeoutMs())
+                .defaultOperationTimeoutMs(connectorConfig.operationTimeoutMs())
+                .defaultSocketReadTimeoutMs(connectorConfig.socketReadTimeoutMs())
+                .numTablets(connectorConfig.maxNumTablets())
+                .sslCertFile(connectorConfig.sslRootCert())
+                .sslClientCertFiles(connectorConfig.sslClientCert(), connectorConfig.sslClientKey())
+                .maxRpcAttempts(connectorConfig.maxRPCRetryAttempts())
+                .sleepTime(connectorConfig.rpcRetrySleepTime())
+                .build();
+
+            syncClient = new YBClient(asyncClient);
+        }
+
+        return syncClient;
+    }
+
+    /**
+     * Release the client obtained from {@link #getSyncClient()}, if one was ever created. Failing
+     * to do this leaks the client's Netty {@code HashedWheelTimer} along with its thread, which
+     * Netty's leak detector only reports much later, when the abandoned timer gets collected.
+     */
+    private void closeSyncClient() {
+        if (syncClient != null) {
+            try {
+                LOGGER.info("Closing the client used for the snapshot");
+                syncClient.close();
+            }
+            catch (Exception e) {
+                LOGGER.warn("Error while closing the client used for the snapshot", e);
+            }
+            finally {
+                syncClient = null;
+            }
+        }
+    }
+
     @Override
     public SnapshotResult<YugabyteDBOffsetContext> execute(ChangeEventSourceContext context, YBPartition partition, YugabyteDBOffsetContext previousOffset)
+            throws InterruptedException {
+        try {
+            return executeSnapshot(context, partition, previousOffset);
+        }
+        finally {
+            // Covers the paths which return or throw before the snapshot begins - a skipped
+            // snapshot and a failure to prepare the snapshot context - as well as the normal one.
+            closeSyncClient();
+        }
+    }
+
+    private SnapshotResult<YugabyteDBOffsetContext> executeSnapshot(ChangeEventSourceContext context, YBPartition partition,
+                                                                    YugabyteDBOffsetContext previousOffset)
             throws InterruptedException {
         SnapshottingTask snapshottingTask = getSnapshottingTask(partition, previousOffset);
         LOGGER.debug("Dispatcher in snapshot: {}", dispatcher);
@@ -184,14 +232,6 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         finally {
             LOGGER.info("Snapshot - Final stage");
             complete(ctx);
-            if (syncClient != null) {
-                try {
-                    LOGGER.info(" Closing the client after the snapshot completed.");
-                    syncClient.close();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
             if (completedSuccessfully) {
                 snapshotProgressListener.snapshotCompleted(partition);
             }
@@ -229,7 +269,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       
       for (Entry<String, YBTable> entry : tableIdToTable.entrySet()) {
         res.put(
-            YBClientUtils.getTableIdFromYbTable(this.syncClient, entry.getValue()), entry.getKey());
+            YBClientUtils.getTableIdFromYbTable(getSyncClient(), entry.getValue()), entry.getKey());
       }
 
       dbzTableIds = res.entrySet().stream().map(entry -> entry.getKey())
@@ -284,7 +324,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           
           LOGGER.info("Setting checkpoint on tablet {} with {}.{},"
             + " will be taking snapshot now", tabletId, term, index);
-          YBClientUtils.setCheckpoint(this.syncClient, this.connectorConfig.streamId(), tableId, tabletId, term, index,
+          YBClientUtils.setCheckpoint(getSyncClient(), this.connectorConfig.streamId(), tableId, tabletId, term, index,
             true /*initialCheckpoint */, bootstrap);
 
           // Reaching this point would mean that the process went through without failure
@@ -428,7 +468,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
       Set<String> tableUUIDs = partitionRanges.stream().map(HashPartition::getTableId).collect(Collectors.toSet());
       for (String tableUUID : tableUUIDs) {
-        YBTable ybTable = syncClient.openTableByUUID(tableUUID);
+        YBTable ybTable = getSyncClient().openTableByUUID(tableUUID);
         tableIdToTable.put(tableUUID, ybTable);
 
         GetTabletListToPollForCDCResponse resp =
@@ -450,7 +490,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         YBPartition p = new YBPartition(tableId, tabletId, true /* colocated */);
 
         GetCheckpointResponse resp =
-            YBClientUtils.getCheckpointWithRetry(connectorConfig, syncClient, tableIdToTable.get(tableId), tabletId);
+            YBClientUtils.getCheckpointWithRetry(connectorConfig, getSyncClient(), tableIdToTable.get(tableId), tabletId);
         LOGGER.info("Checkpoint before snapshotting tablet {}: Term {} Index {} SnapshotKey: {}",
                     tabletId, resp.getTerm(), resp.getIndex(), Arrays.toString(resp.getSnapshotKey()));
 
@@ -580,7 +620,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
                   break;
                 }
 
-                GetChangesResponse resp = this.syncClient.getChangesCDCSDK(table,
+                GetChangesResponse resp = getSyncClient().getChangesCDCSDK(table,
                     connectorConfig.streamId(), tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
                     cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
                     explicitCdcSdkCheckpoint,
@@ -867,7 +907,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           throw new RuntimeException(String.format("[TEST ONLY] Throwing Error explicitly while marking snpashot done for tablet: " + partition.getId()));
         }
         GetChangesResponse response =
-            this.syncClient.getChangesCDCSDK(tableIdToTable.get(partition.getTableId()), connectorConfig.streamId(), 
+            getSyncClient().getChangesCDCSDK(tableIdToTable.get(partition.getTableId()), connectorConfig.streamId(), 
                                              partition.getTabletId(), snapshotDoneMarker.getTerm(),
                                              snapshotDoneMarker.getIndex(), snapshotDoneMarker.getKey(), 
                                              snapshotDoneMarker.getWrite_id(), snapshotDoneMarker.getTime(),
