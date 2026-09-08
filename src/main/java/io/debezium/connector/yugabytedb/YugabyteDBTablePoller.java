@@ -148,11 +148,13 @@ public class YugabyteDBTablePoller extends Thread {
         if (retryCount > MAX_RETRY_COUNT) {
           LOGGER.error("Retries exceeded the maximum retry count in table poller thread,"
                     + " all {} retries failed", MAX_RETRY_COUNT);
-          throw fail(e);
+          throw fail(e, String.format("getting the DB stream info for stream %s",
+                                      this.connectorConfig.streamId()));
         }
 
-        LOGGER.warn("Exception while trying to get DB stream Info in poller thread,"
-                  + "will retry again", e);
+        LOGGER.warn("Exception while getting the DB stream info for stream {} in the poller "
+                  + "thread; will check again on the next poll interval ({} ms)",
+                  this.connectorConfig.streamId(), pollMs, e);
         return false;
       }
     }
@@ -209,11 +211,13 @@ public class YugabyteDBTablePoller extends Thread {
         if (retryCount > MAX_RETRY_COUNT) {
           LOGGER.error("Retries exceeded the maximum retry count in table poller thread,"
                     + " all {} retries failed", MAX_RETRY_COUNT);
-          throw fail(e);
+          throw fail(e, String.format("reading the table list of publication %s",
+                                      this.connectorConfig.publicationName()));
         }
 
-        LOGGER.warn("Exception while trying to get DB stream Info in poller thread,"
-                  + "will retry again", e);
+        LOGGER.warn("Exception while reading the table list of publication {} in the poller "
+                  + "thread; will check again on the next poll interval ({} ms)",
+                  this.connectorConfig.publicationName(), pollMs, e);
         return false;
       }
     }
@@ -294,10 +298,11 @@ public class YugabyteDBTablePoller extends Thread {
   /**
    * Return a failure with {@link RuntimeException}
    * @param t the throwable object
+   * @param whileDoing description of the operation that failed, used in the error message
    * @return a RuntimeException
    */
-  private RuntimeException fail(Throwable t) {
-    String errorMessage = "Error while trying to get the DB stream Info in poller thread";
+  private RuntimeException fail(Throwable t, String whileDoing) {
+    String errorMessage = "Error in the table poller thread while " + whileDoing;
     LOGGER.error(errorMessage, t);
 
     RuntimeException runtimeException = new ConnectException(errorMessage, t);

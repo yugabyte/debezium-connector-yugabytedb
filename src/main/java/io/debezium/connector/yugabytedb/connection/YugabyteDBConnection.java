@@ -213,7 +213,9 @@ public class YugabyteDBConnection extends JdbcConnection {
      * Obtains the LSN to resume streaming from. On PG 9.5 there is no confirmed_flushed_lsn yet, so restart_lsn will be
      * read instead. This may result in more records to be re-read after a restart.
      */
-    private Lsn parseConfirmedFlushLsn(String slotName, String pluginName, String database, ResultSet rs) {
+    // Package-private rather than private so that the error paths can be unit tested without a
+    // live server; see YugabyteDBConnectionLsnMessageTest.
+    Lsn parseConfirmedFlushLsn(String slotName, String pluginName, String database, ResultSet rs) {
         Lsn confirmedFlushedLsn = null;
 
         try {
@@ -225,26 +227,35 @@ public class YugabyteDBConnection extends JdbcConnection {
                 confirmedFlushedLsn = tryParseLsn(slotName, pluginName, database, rs, "restart_lsn");
             }
             catch (SQLException e2) {
-                throw new ConnectException("Neither confirmed_flush_lsn nor restart_lsn could be found");
+                e2.addSuppressed(e);
+                throw new ConnectException(String.format(
+                        "Neither confirmed_flush_lsn nor restart_lsn could be read from the "
+                                + "pg_replication_slots row for slot = '%s', plugin = '%s', database = '%s'",
+                        slotName, pluginName, database), e2);
             }
         }
 
         return confirmedFlushedLsn;
     }
 
-    private Lsn parseRestartLsn(String slotName, String pluginName, String database, ResultSet rs) {
+    // Package-private for testing; see parseConfirmedFlushLsn.
+    Lsn parseRestartLsn(String slotName, String pluginName, String database, ResultSet rs) {
         Lsn restartLsn = null;
         try {
             restartLsn = tryParseLsn(slotName, pluginName, database, rs, "restart_lsn");
         }
         catch (SQLException e) {
-            throw new ConnectException("restart_lsn could be found");
+            throw new ConnectException(String.format(
+                    "restart_lsn could not be read from the pg_replication_slots row for "
+                            + "slot = '%s', plugin = '%s', database = '%s'",
+                    slotName, pluginName, database), e);
         }
 
         return restartLsn;
     }
 
-    private Lsn tryParseLsn(String slotName, String pluginName, String database, ResultSet rs, String column) throws ConnectException, SQLException {
+    // Package-private for testing; see parseConfirmedFlushLsn.
+    Lsn tryParseLsn(String slotName, String pluginName, String database, ResultSet rs, String column) throws ConnectException, SQLException {
         Lsn lsn = null;
 
         String lsnStr = rs.getString(column);
@@ -255,13 +266,15 @@ public class YugabyteDBConnection extends JdbcConnection {
             lsn = Lsn.valueOf(lsnStr);
         }
         catch (Exception e) {
-            throw new ConnectException("Value " + column + " in the pg_replication_slots table for slot = '"
+            throw new ConnectException("Value " + column + " ('" + lsnStr + "') in the pg_replication_slots table for slot = '"
                     + slotName + "', plugin = '"
                     + pluginName + "', database = '"
-                    + database + "' is not valid. This is an abnormal situation and the database status should be checked.");
+                    + database + "' is not valid. This is an abnormal situation and the database status should be checked.", e);
         }
         if (!lsn.isValid()) {
-            throw new ConnectException("Invalid LSN returned from database");
+            throw new ConnectException("Invalid LSN '" + lsnStr + "' returned from database in column " + column
+                    + " of the pg_replication_slots row for slot = '" + slotName + "', plugin = '"
+                    + pluginName + "', database = '" + database + "'");
         }
         return lsn;
     }
