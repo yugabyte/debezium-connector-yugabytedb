@@ -166,8 +166,10 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
         boolean sendBeforeImage = false;
         boolean enableExplicitCheckpointing = false;
         try {
-            sendBeforeImage = YBClientUtils.isBeforeImageEnabled(this.yugabyteDBConnectorConfig);
-            enableExplicitCheckpointing = YBClientUtils.isExplicitCheckpointingEnabled(this.yugabyteDBConnectorConfig);
+            // Fetch stream info once and reuse for both checks, avoiding redundant RPCs.
+            CDCStreamInfo streamInfo = YBClientUtils.getStreamInfo(this.yugabyteDBConnectorConfig);
+            sendBeforeImage = YBClientUtils.isBeforeImageEnabled(streamInfo);
+            enableExplicitCheckpointing = YBClientUtils.isExplicitCheckpointingEnabled(streamInfo);
             LOGGER.info("Before image status: {}", sendBeforeImage);
             LOGGER.info("Explicit checkpointing enabled: {}", enableExplicitCheckpointing);
         } catch (Exception e) {
@@ -379,7 +381,9 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                 throw new DebeziumException(errorMessage);
             }
 
-            this.tableIds = YBClientUtils.fetchTableList(ybClient, this.yugabyteDBConnectorConfig);
+            // Pass the already-fetched stream info to avoid per-table getDBStreamInfo RPCs.
+            this.tableIds = YBClientUtils.fetchTableList(ybClient, this.yugabyteDBConnectorConfig,
+                    getStreamInfoResp);
 
             if (tableIds == null || tableIds.isEmpty()) {
                 throw new DebeziumException("The tables provided in table.include.list do not exist");
@@ -389,8 +393,9 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             try {
                 for (String tableId : tableIds) {
                     YBTable table = ybClient.openTableByUUID(tableId);
-                    GetTabletListToPollForCDCResponse resp = YBClientUtils.getTabletListToPollForCDCWithRetry(table,
-                            tableId, yugabyteDBConnectorConfig);
+                    // Reuse existing YBClient to avoid per-table TLS handshakes.
+                    GetTabletListToPollForCDCResponse resp = YBClientUtils.getTabletListToPollForCDCWithRetry(
+                            ybClient, table, tableId, yugabyteDBConnectorConfig);
                     List<HashPartition> partitions = new ArrayList<>();
                     LOGGER.info("TabletCheckpointPair list size for table {}: {}", tableId, resp.getTabletCheckpointPairListSize());
                     for (TabletCheckpointPair pair : resp.getTabletCheckpointPairList()) {
