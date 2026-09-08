@@ -269,6 +269,14 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     }
 
     private Optional<DataCollectionSchema> newTable(TableId tableId) {
+        // Schemas are cached per (table, tablet). Return the registered tablet schema on a hit;
+        // only a genuine miss needs the rebuild below. DDL refreshes it via
+        // refreshSchemaWithTabletId.
+        final TableSchema cachedSchema = schema.schemaForTablet(tableId, tabletId);
+        if (cachedSchema != null) {
+            return Optional.of(cachedSchema);
+        }
+
         LOGGER.debug("Creating a new schema entry for table: {} and tablet {}", tableId, tabletId);
         refreshTableFromDatabase(tableId);
         final TableSchema tableSchema = schema.schemaForTablet(tableId, tabletId);
