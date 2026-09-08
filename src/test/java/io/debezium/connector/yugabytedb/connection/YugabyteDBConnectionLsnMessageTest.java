@@ -126,6 +126,48 @@ public class YugabyteDBConnectionLsnMessageTest {
     }
 
     @Test
+    public void confirmedFlushLsnShouldBeUsedWhenItIsPresent() throws Exception {
+        YugabyteDBConnection connection = newConnection();
+        // Both columns present and valid; the primary one must win and the fallback must not be
+        // consulted.
+        ResultSet rs = resultSetReturning(Map.of(
+                "confirmed_flush_lsn", "0/15D68C50",
+                "restart_lsn", "0/AAAAAAA"));
+
+        Lsn lsn = connection.parseConfirmedFlushLsn(SLOT, PLUGIN, DATABASE, rs);
+
+        assertEquals(Lsn.valueOf("0/15D68C50"), lsn,
+                "confirmed_flush_lsn should be preferred over restart_lsn when it is readable");
+    }
+
+    @Test
+    public void shouldFallBackToRestartLsnWhenConfirmedFlushLsnCannotBeRead() throws Exception {
+        YugabyteDBConnection connection = newConnection();
+        // confirmed_flush_lsn absent (as on a server that does not expose it), restart_lsn present:
+        // the documented fallback should kick in and return the restart_lsn value.
+        ResultSet rs = resultSetReturning(Map.of("restart_lsn", "0/15D68C50"));
+
+        Lsn lsn = connection.parseConfirmedFlushLsn(SLOT, PLUGIN, DATABASE, rs);
+
+        assertNotNull(lsn, "The fallback should return the restart_lsn value, not null");
+        assertEquals(Lsn.valueOf("0/15D68C50"), lsn,
+                "The returned LSN should be the one read from restart_lsn");
+        assertTrue(lsn.isValid(), "The LSN returned by the fallback should be valid");
+    }
+
+    @Test
+    public void shouldFallBackToRestartLsnEvenWhenItIsNull() throws Exception {
+        YugabyteDBConnection connection = newConnection();
+        // confirmed_flush_lsn absent and restart_lsn present but null. tryParseLsn returns null for
+        // a null column rather than throwing, so the fallback succeeds with a null result and must
+        // not be reported as a failure.
+        ResultSet rs = resultSetReturning(java.util.Collections.singletonMap("restart_lsn", null));
+
+        assertNull(connection.parseConfirmedFlushLsn(SLOT, PLUGIN, DATABASE, rs),
+                "A null restart_lsn is not an error once the fallback has been taken");
+    }
+
+    @Test
     public void unparseableLsnShouldReportTheOffendingValueAndKeepTheCause() {
         YugabyteDBConnection connection = newConnection();
         // "zz/1" has the right shape but is not hexadecimal, so Lsn.valueOf throws.
