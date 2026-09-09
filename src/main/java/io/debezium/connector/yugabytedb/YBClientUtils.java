@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -149,7 +150,71 @@ public class YBClientUtils {
       }
       return tableIds;
   }
-  
+
+  /**
+   * Build a map from DocDB table UUID to PG schema name by calling the {@code ListTables} RPC.
+   * The {@code pgschema_name} in {@code ListTablesResponsePB.TableInfo} is resolved live from
+   * {@code pg_class} and {@code pg_namespace} by the YB master on each call, so the returned
+   * values are always authoritative and up-to-date.
+   *
+   * @param ybClient the {@link YBClient} instance
+   * @param connectorConfig the connector configuration (used for database name and retry settings)
+   * @return a map from table UUID to PG schema name
+   * @throws Exception if the ListTables RPC fails after all retries are exhausted
+   */
+  public static Map<String, String> buildTableUuidToPgSchemaMap(YBClient ybClient,
+                                                                YugabyteDBConnectorConfig connectorConfig) throws Exception {
+    String dbName = connectorConfig.databaseName();
+    int retryCount = 0;
+    while (retryCount <= connectorConfig.maxConnectorRetries()) {
+      try {
+        Map<String, String> uuidToSchemaMap = new java.util.HashMap<>();
+        ListTablesResponse tablesResponse = ybClient.getTablesList();
+        for (TableInfo tableInfo : tablesResponse.getTableInfoList()) {
+          if (tableInfo.getRelationType() == MasterTypes.RelationType.INDEX_TABLE_RELATION ||
+                tableInfo.getRelationType() == MasterTypes.RelationType.SYSTEM_TABLE_RELATION) {
+            continue;
+          }
+          if (tableInfo.getNamespace().getDatabaseType() != CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL) {
+            continue;
+          }
+          if (dbName != null && !dbName.equalsIgnoreCase(tableInfo.getNamespace().getName())) {
+            continue;
+          }
+          String tableUUID = tableInfo.getId().toStringUtf8();
+          String pgSchemaName = tableInfo.getPgschemaName();
+          if (pgSchemaName != null && !pgSchemaName.isEmpty()) {
+            uuidToSchemaMap.put(tableUUID, pgSchemaName);
+          }
+        }
+        return uuidToSchemaMap;
+      } catch (Exception e) {
+        ++retryCount;
+        if (retryCount > connectorConfig.maxConnectorRetries()) {
+          LOGGER.error("Too many errors while trying to build UUID-to-schema map, "
+                         + "all {} retries failed", connectorConfig.maxConnectorRetries());
+          throw e;
+        }
+
+        LOGGER.warn("Error while trying to build UUID-to-schema map; will attempt "
+                       + "retry {} of {} after {} milli-seconds. Exception: {}",
+            retryCount, connectorConfig.maxConnectorRetries(),
+            connectorConfig.connectorRetryDelayMs(), e.getMessage());
+
+        try {
+          final Metronome retryMetronome = Metronome.parker(
+              Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
+          retryMetronome.pause();
+        } catch (InterruptedException ie) {
+          LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
+          Thread.currentThread().interrupt();
+        }
+      }
+    }
+
+    return Collections.emptyMap();
+  }
+
   /**
    * Helper function to get the mapped values for the table to tablet IDs. The function returns a
    * list in which each element is a pair like Pair<tableID, tabletId>
@@ -220,10 +285,13 @@ public class YBClientUtils {
     }
 
   /**
-   * Helper function to get the Debezium style TableId of a table from table UUID
+   * Helper function to get the Debezium style TableId of a table from table UUID.
+   * Uses the {@code ListTables} RPC to resolve the PG schema name from the master, which
+   * computes it live from {@code pg_class} and {@code pg_namespace}.
+   *
    * @param ybClient the {@link YBClient} instance
    * @param table the {@link YBTable} instance
-   * @return the {@link TableId}
+   * @return the {@link TableId}, or null if the table is not found
    * @throws Exception if a {@link YBTable} cannot be opened by the client
    */
   public static TableId getTableIdFromYbTable(YBClient ybClient, YBTable table) throws Exception {
