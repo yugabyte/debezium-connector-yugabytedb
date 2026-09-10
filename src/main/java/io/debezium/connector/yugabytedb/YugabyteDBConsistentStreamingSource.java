@@ -284,6 +284,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                     // The connector should ideally be stopped if this kind of state is reached.
                     throw new DebeziumException(ae);
                 } catch (Exception e) {
+                    failFastIfNonRetriableCdcError(e);
                     ++retryCount;
                     // If the retry limit is exceeded, log an error with a description and throw the exception.
                     if (retryCount > connectorConfig.maxConnectorRetries()) {
