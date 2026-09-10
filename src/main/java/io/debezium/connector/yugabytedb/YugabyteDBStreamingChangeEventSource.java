@@ -28,7 +28,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.TabletCheckpointPair;
-import org.yb.cdc.CdcService.CDCErrorPB.Code;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.client.*;
 
@@ -179,6 +178,19 @@ public class YugabyteDBStreamingChangeEventSource implements
         }
     }
 
+    protected void failFastIfNonRetriableCdcError(Throwable error) throws Exception {
+        if (YugabyteDBCdcErrorClassifier.isFailFast(error, connectorConfig)) {
+            CDCErrorException cdcException = YugabyteDBCdcErrorClassifier.findCdcError(error);
+            LOGGER.error("Failing fast for non-retriable CDC error from YugabyteDB. code={}, status={}",
+                    cdcException.getCDCError().getCode(),
+                    cdcException.getCDCError().hasStatus()
+                            ? cdcException.getCDCError().getStatus()
+                            : "none",
+                    error);
+            throw error instanceof Exception ? (Exception) error : new DebeziumException(error);
+        }
+    }
+
     private void bootstrapTablet(YBClient syncClient, YBTable table, String tabletId) throws Exception {
         LOGGER.info("Bootstrapping the tablet {}", tabletId);
         syncClient.bootstrapTablet(table, connectorConfig.streamId(), tabletId, 0, 0, true, true);
@@ -209,6 +221,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // Reset the flag to retry.
                     shouldRetry = false;
                 } catch (Exception e) {
+                    failFastIfNonRetriableCdcError(e);
                     ++retryCountForGetCheckpoint;
 
                     shouldRetry = true;
@@ -254,6 +267,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // Reset the retry flag if the bootstrap was successful
                     shouldRetry = false;
                 } catch (Exception e) {
+                    failFastIfNonRetriableCdcError(e);
                     ++retryCountForBootstrapping;
 
                     // The connector should go for a retry if any exception is thrown
@@ -293,6 +307,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // Break upon successful request.
                 break;
             } catch (Exception e) {
+                failFastIfNonRetriableCdcError(e);
                 ++retryCount;
 
                 if (retryCount > connectorConfig.maxConnectorRetries()) {
@@ -574,7 +589,14 @@ public class YugabyteDBStreamingChangeEventSource implements
                             } catch (CDCErrorException cdcException) {
                                 // Check if exception indicates a tablet split.
                                 LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
-                                if (cdcException.getCDCError().getCode() == Code.TABLET_SPLIT || cdcException.getCDCError().getCode() == Code.INVALID_REQUEST) {
+                                if (cdcException.getCDCError().hasStatus()) {
+                                    LOGGER.warn("CDC app status code: {}", cdcException.getCDCError().getStatus().getCode());
+                                    LOGGER.warn("CDC app status message: {}", cdcException.getCDCError().getStatus().getMessage());
+                                    LOGGER.debug("Full CDC app status: {}", cdcException.getCDCError().getStatus());
+                                }
+                                YugabyteDBCdcErrorClassifier.CdcErrorAction action =
+                                        YugabyteDBCdcErrorClassifier.actionFor(cdcException.getCDCError(), connectorConfig);
+                                if (action == YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM) {
                                     LOGGER.info("Encountered a tablet split on tablet {}, handling it gracefully", tabletId);
                                     if (LOGGER.isDebugEnabled()) {
                                         cdcException.printStackTrace();
@@ -847,6 +869,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                         retryCount = 0;
                     }
                 } catch (Exception e) {
+                    failFastIfNonRetriableCdcError(e);
+
                     ++retryCount;
                     // If the retry limit is exceeded, log an error with a description and throw the exception.
                     if (retryCount > connectorConfig.maxConnectorRetries()) {
@@ -946,7 +970,15 @@ public class YugabyteDBStreamingChangeEventSource implements
             // point because the previous GetChanges call is supposed to throw
             // an exception which will be handled.
         } catch (CDCErrorException cdcErrorException) {
-            if (cdcErrorException.getCDCError().getCode() == Code.TABLET_SPLIT) {
+            LOGGER.info("Code received in CDCErrorException: {}", cdcErrorException.getCDCError().getCode());
+            if (cdcErrorException.getCDCError().hasStatus()) {
+                LOGGER.warn("CDC app status code: {}", cdcErrorException.getCDCError().getStatus().getCode());
+                LOGGER.warn("CDC app status message: {}", cdcErrorException.getCDCError().getStatus().getMessage());
+                LOGGER.debug("Full CDC app status: {}", cdcErrorException.getCDCError().getStatus());
+            }
+            YugabyteDBCdcErrorClassifier.CdcErrorAction action =
+                    YugabyteDBCdcErrorClassifier.actionFor(cdcErrorException.getCDCError(), connectorConfig);
+            if (action == YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM) {
                 LOGGER.info("Handling tablet split error gracefully for enqueued tablet {}", partition.getTabletId());
             } else {
                 throw cdcErrorException;
