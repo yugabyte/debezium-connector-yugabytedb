@@ -290,6 +290,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           // Reaching this point would mean that the process went through without failure
           return;
         } catch (Exception e) {
+          YugabyteDBCdcErrorClassifier.throwIfFailFast(e, this.connectorConfig);
           ++retryCount;
 
           if (retryCount > totalRetries) {
@@ -787,6 +788,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             }
           }
         } catch (Exception e) {
+          YugabyteDBCdcErrorClassifier.throwIfFailFast(e, this.connectorConfig);
           ++retryCount;
 
           if (retryCount > this.connectorConfig.maxConnectorRetries()) {
@@ -878,6 +880,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         // Break upon successful request.
         break;
       } catch (Exception e) {
+        YugabyteDBCdcErrorClassifier.throwIfFailFast(e, connectorConfig);
         ++retryCount;
 
         if (retryCount > connectorConfig.maxConnectorRetries()) {
