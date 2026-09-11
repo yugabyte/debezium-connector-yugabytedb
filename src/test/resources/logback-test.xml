@@ -7,13 +7,13 @@
         </encoder>
     </appender>
 
-    <root level="debug">
+    <root level="warn">
         <appender-ref ref="CONSOLE" />
     </root>
 
     <!-- Set up the default logging to be INFO level, then override specific
         units -->
-    <logger name="io.debezium" level="debug" additivity="false">
+    <logger name="io.debezium" level="info" additivity="false">
         <appender-ref ref="CONSOLE" />
     </logger>
     <logger
@@ -34,11 +34,11 @@
         <appender-ref ref="CONSOLE" />
     </logger>
 
-    <logger name="io.debezium.pipeline" level="debug"
+    <logger name="io.debezium.pipeline" level="info"
         additivity="false">
         <appender-ref ref="CONSOLE" />
     </logger>
-    <logger name="io.debezium.connector.yugabytedb" level="debug"
+    <logger name="io.debezium.connector.yugabytedb" level="info"
         additivity="false">
         <appender-ref ref="CONSOLE" />
     </logger>
@@ -46,11 +46,7 @@
         additivity="false">
         <appender-ref ref="CONSOLE" />
     </logger>
-    <logger name="org.yb.client" level="debug"
-        additivity="false">
-        <appender-ref ref="CONSOLE" />
-    </logger>
-    <logger name="org.yb.client.TabletClient" level="debug"
+    <logger name="org.yb.client.TabletClient" level="info"
         additivity="false">
         <appender-ref ref="CONSOLE" />
     </logger>
