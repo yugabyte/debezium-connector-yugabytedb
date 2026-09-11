@@ -34,21 +34,33 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+      # Fork PRs do not receive org secrets, so Quay login would fail with
+      # "Username and password required". Skip the private image + ITs then.
       - name: Login to Quay.io
+        if: ${{ secrets.QUAY_BOT_USERNAME != '' }}
         uses: docker/login-action@v2
         with:
           registry: quay.io
           username: ${{ secrets.QUAY_BOT_USERNAME }}
           password: ${{ secrets.QUAY_BOT_TOKEN }}
       - name: Log YugabyteDB version
+        if: ${{ secrets.QUAY_BOT_USERNAME != '' }}
         run: echo YugabyteDB version being used $YB_DOCKER_IMAGE
       - name: Pull docker image
+        if: ${{ secrets.QUAY_BOT_USERNAME != '' }}
         run: docker pull $YB_DOCKER_IMAGE
+      - name: Unit tests that do not need YugabyteDB
+        if: ${{ secrets.QUAY_BOT_USERNAME == '' }}
+        run: mvn -Dtest=YugabyteDBCdcErrorClassifierTest test
       - name: YugabyteDBDatatypesTest
+        if: ${{ secrets.QUAY_BOT_USERNAME != '' }}
         run: mvn clean test -Dtest=YugabyteDBDatatypesTest
       - name: YugabyteDBTabletSplitTest
+        if: ${{ secrets.QUAY_BOT_USERNAME != '' }}
         run: mvn clean test -Dtest=YugabyteDBTabletSplitTest
       - name: YugabyteDBEnumValuesTest
+        if: ${{ secrets.QUAY_BOT_USERNAME != '' }}
         run: mvn clean test -Dtest=YugabyteDBEnumValuesTest
       - name: YugabyteDBSnapshotTest
+        if: ${{ secrets.QUAY_BOT_USERNAME != '' }}
         run: mvn clean test -Dtest=YugabyteDBSnapshotTest
