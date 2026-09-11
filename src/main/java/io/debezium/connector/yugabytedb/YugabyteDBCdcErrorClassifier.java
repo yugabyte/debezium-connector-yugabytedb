@@ -7,14 +7,22 @@ package io.debezium.connector.yugabytedb;
 
 import java.util.Locale;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcService.CDCErrorPB;
 import org.yb.client.CDCErrorException;
+import org.yb.client.MasterErrorException;
+import org.yb.master.MasterTypes.MasterErrorPB;
+
+import io.debezium.DebeziumException;
 
 /**
- * Classifies CDC server errors before the generic connector retry loop.
+ * Classifies CDC and master errors before the generic connector retry loop.
  */
 final class YugabyteDBCdcErrorClassifier {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBCdcErrorClassifier.class);
 
     enum CdcErrorAction {
         HANDLE_IN_STREAM,
@@ -26,7 +34,8 @@ final class YugabyteDBCdcErrorClassifier {
     }
 
     static CdcErrorAction actionFor(CDCErrorPB error, YugabyteDBConnectorConfig connectorConfig) {
-        return actionFor(error, connectorConfig.publicationAutocreateMode());
+        return actionFor(error, connectorConfig.publicationAutocreateMode(),
+                YugabyteDBConnectorConfig.shouldUsePublication(connectorConfig.getConfig()));
     }
 
     static CDCErrorException findCdcError(Throwable error) {
@@ -42,17 +51,50 @@ final class YugabyteDBCdcErrorClassifier {
 
     static boolean isFailFast(Throwable error, YugabyteDBConnectorConfig connectorConfig) {
         CDCErrorException cdcError = findCdcError(error);
-        return cdcError != null
-                && actionFor(cdcError.getCDCError(), connectorConfig) == CdcErrorAction.FAIL_FAST;
+        if (cdcError != null) {
+            return actionFor(cdcError.getCDCError(), connectorConfig) == CdcErrorAction.FAIL_FAST;
+        }
+        return isFatalMasterError(error);
+    }
+
+    static void throwIfFailFast(Throwable error, YugabyteDBConnectorConfig connectorConfig) throws Exception {
+        if (!isFailFast(error, connectorConfig)) {
+            return;
+        }
+
+        CDCErrorException cdcException = findCdcError(error);
+        if (cdcException != null) {
+            LOGGER.error("Failing fast for non-retriable CDC error from YugabyteDB. code={}, status={}",
+                    cdcException.getCDCError().getCode(),
+                    cdcException.getCDCError().hasStatus()
+                            ? cdcException.getCDCError().getStatus()
+                            : "none",
+                    error);
+        }
+        else {
+            LOGGER.error("Failing fast for non-retriable YugabyteDB error", error);
+        }
+
+        throw error instanceof Exception ? (Exception) error : new DebeziumException(error);
+    }
+
+    /**
+     * Used by unit tests. {@code FILTERED} and {@code ALL_TABLES} are treated as publication paths.
+     */
+    static CdcErrorAction actionFor(CDCErrorPB error,
+                                    YugabyteDBConnectorConfig.AutoCreateMode publicationMode) {
+        return actionFor(error, publicationMode,
+                publicationMode != YugabyteDBConnectorConfig.AutoCreateMode.DISABLED);
     }
 
     static CdcErrorAction actionFor(CDCErrorPB error,
-                                    YugabyteDBConnectorConfig.AutoCreateMode publicationMode) {
+                                    YugabyteDBConnectorConfig.AutoCreateMode publicationMode,
+                                    boolean usePublication) {
         switch (error.getCode()) {
             case TABLET_SPLIT:
                 return CdcErrorAction.HANDLE_IN_STREAM;
             case TABLE_NOT_FOUND:
-                return shouldRetryTableNotFound(publicationMode)
+                return usePublication && shouldRetryTableNotFound(publicationMode)
                         ? CdcErrorAction.RETRY
                         : CdcErrorAction.FAIL_FAST;
             case INVALID_REQUEST:
@@ -70,11 +112,9 @@ final class YugabyteDBCdcErrorClassifier {
                 return CdcErrorAction.RETRY;
             case UNKNOWN_ERROR:
             case INTERNAL_ERROR:
-                return isTransientAppStatus(error)
-                        ? CdcErrorAction.RETRY
-                        : CdcErrorAction.FAIL_FAST;
+                return actionForUnknownOrInternal(error);
             default:
-                return CdcErrorAction.RETRY;
+                return CdcErrorAction.FAIL_FAST;
         }
     }
 
@@ -88,7 +128,25 @@ final class YugabyteDBCdcErrorClassifier {
             return CdcErrorAction.HANDLE_IN_STREAM;
         }
 
-        if (isFatalInvalidRequest(error)) {
+        if (!error.hasStatus()) {
+            return CdcErrorAction.FAIL_FAST;
+        }
+
+        if (isFatalAppStatus(error) || hasFatalMessage(error)) {
+            return CdcErrorAction.FAIL_FAST;
+        }
+
+        return isTransientAppStatus(error)
+                ? CdcErrorAction.RETRY
+                : CdcErrorAction.FAIL_FAST;
+    }
+
+    private static CdcErrorAction actionForUnknownOrInternal(CDCErrorPB error) {
+        if (isTabletSplit(error)) {
+            return CdcErrorAction.HANDLE_IN_STREAM;
+        }
+
+        if (hasFatalMessage(error)) {
             return CdcErrorAction.FAIL_FAST;
         }
 
@@ -98,54 +156,37 @@ final class YugabyteDBCdcErrorClassifier {
     }
 
     private static boolean isTabletSplit(CDCErrorPB error) {
-        return error.hasStatus()
-                && (error.getStatus().getCode() == ErrorCode.TABLET_SPLIT
-                        || statusMessage(error).contains("split"));
+        if (error.hasStatus() && error.getStatus().getCode() == ErrorCode.TABLET_SPLIT) {
+            return true;
+        }
+
+        String message = statusMessage(error);
+        return message.contains("tablet was split") || message.contains("tablet split");
     }
 
-    private static boolean isFatalInvalidRequest(CDCErrorPB error) {
+    private static boolean isFatalAppStatus(CDCErrorPB error) {
         if (!error.hasStatus()) {
             return false;
         }
 
         ErrorCode appStatusCode = error.getStatus().getCode();
-        if (appStatusCode == ErrorCode.INVALID_ARGUMENT
+        return appStatusCode == ErrorCode.INVALID_ARGUMENT
                 || appStatusCode == ErrorCode.NOT_AUTHORIZED
                 || appStatusCode == ErrorCode.NOT_SUPPORTED
                 || appStatusCode == ErrorCode.CONFIGURATION_ERROR
                 || appStatusCode == ErrorCode.DELETED
                 || appStatusCode == ErrorCode.EXPIRED
-                || appStatusCode == ErrorCode.NOT_FOUND) {
-            return true;
-        }
+                || appStatusCode == ErrorCode.NOT_FOUND
+                || appStatusCode == ErrorCode.RUNTIME_ERROR;
+    }
 
-        String message = statusMessage(error);
-        return containsAny(message,
+    private static boolean hasFatalMessage(CDCErrorPB error) {
+        return containsAny(statusMessage(error),
                 "could not find cdc stream",
-                "invalid stream",
-                "invalid cdc stream",
-                "stream id",
-                "stream_id",
-                "deleted stream",
-                "deleted subscriber",
-                "subscriber not found",
-                "invalid subscriber",
-                "incorrect tablet",
-                "invalid tablet",
-                "tablet id",
-                "tablet_id",
-                "not part of publication",
-                "not in publication",
-                "not part of cdc stream",
-                "not in cdc stream",
-                "bad checkpoint",
-                "invalid checkpoint",
-                "checkpoint too old",
-                "unsupported",
-                "configuration",
-                "permission",
-                "not authorized",
-                "unauthorized");
+                "is not part of stream",
+                "not found under stream",
+                "is expired for tablet",
+                "expired for tablet");
     }
 
     private static boolean isTransientAppStatus(CDCErrorPB error) {
@@ -175,6 +216,32 @@ final class YugabyteDBCdcErrorClassifier {
             default:
                 return true;
         }
+    }
+
+    static boolean isFatalMasterError(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof MasterErrorException) {
+                MasterErrorException masterError = (MasterErrorException) current;
+                if (masterError.error != null && isFatalMasterCode(masterError.error.getCode())) {
+                    return true;
+                }
+
+                String message = String.valueOf(current.getMessage()).toLowerCase(Locale.ROOT);
+                return containsAny(message, "object_not_found", "does not exist");
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static boolean isFatalMasterCode(MasterErrorPB.Code code) {
+        return code == MasterErrorPB.Code.OBJECT_NOT_FOUND
+                || code == MasterErrorPB.Code.NAMESPACE_NOT_FOUND
+                || code == MasterErrorPB.Code.TYPE_NOT_FOUND
+                || code == MasterErrorPB.Code.ROLE_NOT_FOUND
+                || code == MasterErrorPB.Code.INVALID_REQUEST
+                || code == MasterErrorPB.Code.NOT_AUTHORIZED;
     }
 
     private static String statusMessage(CDCErrorPB error) {

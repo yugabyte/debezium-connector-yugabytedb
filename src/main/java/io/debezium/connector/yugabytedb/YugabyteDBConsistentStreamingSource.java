@@ -200,9 +200,6 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                     // Check if exception indicates a tablet split.
                                     if (cdcException.getCDCError().getCode() == CdcService.CDCErrorPB.Code.TABLET_SPLIT) {
                                         LOGGER.info("Encountered a tablet split, handling it gracefully");
-                                        if (LOGGER.isDebugEnabled()) {
-                                            cdcException.printStackTrace();
-                                        }
 
                                         handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
 
