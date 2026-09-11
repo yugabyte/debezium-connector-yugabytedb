@@ -28,20 +28,27 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Login to Quay.io
+        if: ${{ secrets.QUAY_BOT_USERNAME != '' }}
         uses: docker/login-action@v2
         with:
           registry: quay.io
           username: ${{ secrets.QUAY_BOT_USERNAME }}
           password: ${{ secrets.QUAY_BOT_TOKEN }}
       - name: Pull docker image
+        if: ${{ secrets.QUAY_BOT_USERNAME != '' }}
         env:
           YB_DOCKER_IMAGE: ${{ secrets.YB_DOCKER_IMAGE }}
         run: docker pull $YB_DOCKER_IMAGE
+      - name: Unit tests that do not need YugabyteDB
+        if: ${{ secrets.QUAY_BOT_USERNAME == '' }}
+        run: mvn -Dtest=YugabyteDBCdcErrorClassifierTest test
       - name: Sanity Test that code compiles and tests pass.
+        if: ${{ secrets.QUAY_BOT_USERNAME != '' }}
         env:
           YB_DOCKER_IMAGE: ${{ secrets.YB_DOCKER_IMAGE }}
         run: mvn clean test -Dtest=!YugabyteDBColocatedTablesTest#shouldWorkWithMixOfColocatedAndNonColocatedTables
       - name: Flaky test YugabyteDBColocatedTablesTest#shouldWorkWithMixOfColocatedAndNonColocatedTables
+        if: ${{ secrets.QUAY_BOT_USERNAME != '' }}
         env:
           YB_DOCKER_IMAGE: ${{ secrets.YB_DOCKER_IMAGE }}
         run: mvn clean test -Dtest=YugabyteDBColocatedTablesTest#shouldWorkWithMixOfColocatedAndNonColocatedTables
