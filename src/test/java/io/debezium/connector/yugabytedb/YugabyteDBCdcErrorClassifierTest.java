@@ -1,12 +1,17 @@
 package io.debezium.connector.yugabytedb;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.lang.reflect.Constructor;
 
 import org.junit.jupiter.api.Test;
 import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcService.CDCErrorPB;
 import org.yb.cdc.CdcService.CDCErrorPB.Code;
+import org.yb.client.MasterErrorException;
+import org.yb.master.MasterTypes.MasterErrorPB;
 
 /**
  * Unit tests for {@link YugabyteDBCdcErrorClassifier}. These tests construct CDC proto errors
@@ -67,6 +72,47 @@ public class YugabyteDBCdcErrorClassifierTest {
     public void tableNotFoundShouldFailFastWhenPublicationIsDisabled() {
         assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
                 classify(error(Code.TABLE_NOT_FOUND), DISABLED));
+    }
+
+    @Test
+    public void tableNotFoundShouldFailFastWhenNotUsingPublication() {
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
+                YugabyteDBCdcErrorClassifier.actionFor(error(Code.TABLE_NOT_FOUND), ALL_TABLES, false));
+    }
+
+    @Test
+    public void invalidRequestWithoutStatusShouldFailFast() {
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
+                classify(error(Code.INVALID_REQUEST), DISABLED));
+    }
+
+    @Test
+    public void invalidRequestWithGenericSplitWordShouldFailFast() {
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
+                classify(error(Code.INVALID_REQUEST, ErrorCode.RUNTIME_ERROR, "unexpected split of request"), DISABLED));
+    }
+
+    @Test
+    public void internalErrorStreamExpiredShouldFailFast() {
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
+                classify(error(Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR,
+                        "Stream ID abc is expired for Tablet ID xyz"), DISABLED));
+    }
+
+    @Test
+    public void masterObjectNotFoundShouldFailFast() throws Exception {
+        MasterErrorPB masterError = MasterErrorPB.newBuilder()
+                .setCode(MasterErrorPB.Code.OBJECT_NOT_FOUND)
+                .setStatus(AppStatusPB.newBuilder()
+                        .setCode(ErrorCode.NOT_FOUND)
+                        .setMessage("The object does not exist")
+                        .build())
+                .build();
+        Constructor<MasterErrorException> constructor =
+                MasterErrorException.class.getDeclaredConstructor(String.class, MasterErrorPB.class);
+        constructor.setAccessible(true);
+        MasterErrorException exception = constructor.newInstance("tserver", masterError);
+        assertTrue(YugabyteDBCdcErrorClassifier.isFatalMasterError(exception));
     }
 
     @Test

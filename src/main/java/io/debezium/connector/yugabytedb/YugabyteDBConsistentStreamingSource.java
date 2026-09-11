@@ -197,20 +197,10 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                             tabletSafeTime.getOrDefault(part.getId(), -1L), offsetContext.getWalSegmentIndex(part),
                                             null /* getchangesRespMaxSizeBytes */, offsetContext.getMaxIndexInSortWindow(part));
                                 } catch (CDCErrorException cdcException) {
-                                    // Check if exception indicates a tablet split.
-                                    LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
-                                    if (cdcException.getCDCError().hasStatus()) {
-                                        LOGGER.warn("CDC app status code: {}", cdcException.getCDCError().getStatus().getCode());
-                                        LOGGER.warn("CDC app status message: {}", cdcException.getCDCError().getStatus().getMessage());
-                                        LOGGER.debug("Full CDC app status: {}", cdcException.getCDCError().getStatus());
-                                    }
                                     YugabyteDBCdcErrorClassifier.CdcErrorAction action =
                                             YugabyteDBCdcErrorClassifier.actionFor(cdcException.getCDCError(), connectorConfig);
                                     if (action == YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM) {
                                         LOGGER.info("Encountered a tablet split, handling it gracefully");
-                                        if (LOGGER.isDebugEnabled()) {
-                                            cdcException.printStackTrace();
-                                        }
 
                                         handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
 

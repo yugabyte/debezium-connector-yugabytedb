@@ -179,16 +179,7 @@ public class YugabyteDBStreamingChangeEventSource implements
     }
 
     protected void failFastIfNonRetriableCdcError(Throwable error) throws Exception {
-        if (YugabyteDBCdcErrorClassifier.isFailFast(error, connectorConfig)) {
-            CDCErrorException cdcException = YugabyteDBCdcErrorClassifier.findCdcError(error);
-            LOGGER.error("Failing fast for non-retriable CDC error from YugabyteDB. code={}, status={}",
-                    cdcException.getCDCError().getCode(),
-                    cdcException.getCDCError().hasStatus()
-                            ? cdcException.getCDCError().getStatus()
-                            : "none",
-                    error);
-            throw error instanceof Exception ? (Exception) error : new DebeziumException(error);
-        }
+        YugabyteDBCdcErrorClassifier.throwIfFailFast(error, connectorConfig);
     }
 
     private void bootstrapTablet(YBClient syncClient, YBTable table, String tabletId) throws Exception {
@@ -587,20 +578,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     TEST_explicitCheckpoints.put(tabletId, explicitCheckpoint);
                                 }
                             } catch (CDCErrorException cdcException) {
-                                // Check if exception indicates a tablet split.
-                                LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
-                                if (cdcException.getCDCError().hasStatus()) {
-                                    LOGGER.warn("CDC app status code: {}", cdcException.getCDCError().getStatus().getCode());
-                                    LOGGER.warn("CDC app status message: {}", cdcException.getCDCError().getStatus().getMessage());
-                                    LOGGER.debug("Full CDC app status: {}", cdcException.getCDCError().getStatus());
-                                }
                                 YugabyteDBCdcErrorClassifier.CdcErrorAction action =
                                         YugabyteDBCdcErrorClassifier.actionFor(cdcException.getCDCError(), connectorConfig);
                                 if (action == YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM) {
                                     LOGGER.info("Encountered a tablet split on tablet {}, handling it gracefully", tabletId);
-                                    if (LOGGER.isDebugEnabled()) {
-                                        cdcException.printStackTrace();
-                                    }
 
                                     if (taskContext.shouldEnableExplicitCheckpointing()) {
                                         OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
@@ -970,12 +951,6 @@ public class YugabyteDBStreamingChangeEventSource implements
             // point because the previous GetChanges call is supposed to throw
             // an exception which will be handled.
         } catch (CDCErrorException cdcErrorException) {
-            LOGGER.info("Code received in CDCErrorException: {}", cdcErrorException.getCDCError().getCode());
-            if (cdcErrorException.getCDCError().hasStatus()) {
-                LOGGER.warn("CDC app status code: {}", cdcErrorException.getCDCError().getStatus().getCode());
-                LOGGER.warn("CDC app status message: {}", cdcErrorException.getCDCError().getStatus().getMessage());
-                LOGGER.debug("Full CDC app status: {}", cdcErrorException.getCDCError().getStatus());
-            }
             YugabyteDBCdcErrorClassifier.CdcErrorAction action =
                     YugabyteDBCdcErrorClassifier.actionFor(cdcErrorException.getCDCError(), connectorConfig);
             if (action == YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM) {
@@ -1306,6 +1281,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 retryCount = 0;
                 return response;
             } catch (Exception e) {
+                failFastIfNonRetriableCdcError(e);
                 ++retryCount;
                 if (retryCount > connectorConfig.maxConnectorRetries()) {
                     LOGGER.error("Too many errors while trying to get children for split tablet {}", splitTabletId);
