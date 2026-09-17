@@ -107,9 +107,11 @@ final class YugabyteDBCdcErrorClassifier {
             case TABLET_SPLIT:
                 return CdcErrorAction.HANDLE_IN_STREAM;
             case TABLE_NOT_FOUND:
-                return usePublication && shouldRetryTableNotFound(publicationMode)
-                        ? CdcErrorAction.RETRY
-                        : CdcErrorAction.FAIL_FAST;
+                // Any publication deployment can see transient TABLE_NOT_FOUND while
+                // CDC metadata catches up (including autocreate.mode=disabled, where
+                // operators add tables by hand and the table poller reconfigures).
+                // Gate only on usePublication — not on autocreate mode.
+                return usePublication ? CdcErrorAction.RETRY : CdcErrorAction.FAIL_FAST;
             case INVALID_REQUEST:
                 // main intentionally stopped treating bare INVALID_REQUEST as a
                 // tablet split (transient GetChanges failures use this code).
@@ -135,11 +137,6 @@ final class YugabyteDBCdcErrorClassifier {
                 // build does not know. Retry like the old generic catch loop.
                 return CdcErrorAction.RETRY;
         }
-    }
-
-    private static boolean shouldRetryTableNotFound(YugabyteDBConnectorConfig.AutoCreateMode publicationMode) {
-        return publicationMode == YugabyteDBConnectorConfig.AutoCreateMode.ALL_TABLES
-                || publicationMode == YugabyteDBConnectorConfig.AutoCreateMode.FILTERED;
     }
 
     private static CdcErrorAction actionForInvalidRequest(CDCErrorPB error) {
