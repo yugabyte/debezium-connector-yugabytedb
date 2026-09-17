@@ -16,6 +16,7 @@ import org.yb.client.MasterErrorException;
 import org.yb.master.MasterTypes.MasterErrorPB;
 
 import io.debezium.DebeziumException;
+import io.debezium.config.Configuration;
 
 /**
  * Classifies CDC and master errors before the generic connector retry loop.
@@ -34,8 +35,20 @@ final class YugabyteDBCdcErrorClassifier {
     }
 
     static CdcErrorAction actionFor(CDCErrorPB error, YugabyteDBConnectorConfig connectorConfig) {
-        return actionFor(error, connectorConfig.publicationAutocreateMode(),
-                YugabyteDBConnectorConfig.shouldUsePublication(connectorConfig.getConfig()));
+        return actionFor(error, connectorConfig.getConfig());
+    }
+
+    /**
+     * Same decision as {@link #actionFor(CDCErrorPB, YugabyteDBConnectorConfig)} but reads
+     * publication mode and {@link YugabyteDBConnectorConfig#usesPublication(Configuration)}
+     * from raw config — the path tasks use after stream id has been injected.
+     */
+    static CdcErrorAction actionFor(CDCErrorPB error, Configuration config) {
+        YugabyteDBConnectorConfig.AutoCreateMode publicationMode =
+                YugabyteDBConnectorConfig.AutoCreateMode.parse(
+                        config.getString(YugabyteDBConnectorConfig.PUBLICATION_AUTOCREATE_MODE),
+                        YugabyteDBConnectorConfig.DEFAULT_PUBLICATION_AUTOCREATE_MODE);
+        return actionFor(error, publicationMode, YugabyteDBConnectorConfig.usesPublication(config));
     }
 
     static CDCErrorException findCdcError(Throwable error) {
@@ -98,6 +111,12 @@ final class YugabyteDBCdcErrorClassifier {
                         ? CdcErrorAction.RETRY
                         : CdcErrorAction.FAIL_FAST;
             case INVALID_REQUEST:
+                // Older YugabyteDB signalled tablet splits as CDC INVALID_REQUEST
+                // (before CDCErrorPB.TABLET_SPLIT existed). Streaming treats
+                // HANDLE_IN_STREAM as "run handleTabletSplit" — same as the
+                // historical TABLET_SPLIT || INVALID_REQUEST check. Bare or
+                // ambiguous INVALID_REQUEST must not fail-fast or the first
+                // split kills the task. Clearly transient AppStatus still retries.
                 return actionForInvalidRequest(error);
             case CHECKPOINT_TOO_OLD:
             case SUBSCRIBER_NOT_FOUND:
@@ -114,7 +133,9 @@ final class YugabyteDBCdcErrorClassifier {
             case INTERNAL_ERROR:
                 return actionForUnknownOrInternal(error);
             default:
-                return CdcErrorAction.FAIL_FAST;
+                // Forward-compatible: a newer server may send codes this connector
+                // build does not know. Retry like the old generic catch loop.
+                return CdcErrorAction.RETRY;
         }
     }
 
@@ -124,25 +145,18 @@ final class YugabyteDBCdcErrorClassifier {
     }
 
     private static CdcErrorAction actionForInvalidRequest(CDCErrorPB error) {
-        if (isTabletSplit(error)) {
-            return CdcErrorAction.HANDLE_IN_STREAM;
+        // Prefer retry for unambiguous transport/leader blips. Otherwise hand off
+        // to the streaming tablet-split path: keyed on CDC code INVALID_REQUEST
+        // (and AppStatus TABLET_SPLIT when present), not free-text messages.
+        if (isExplicitlyTransientAppStatus(error)) {
+            return CdcErrorAction.RETRY;
         }
-
-        if (!error.hasStatus()) {
-            return CdcErrorAction.FAIL_FAST;
-        }
-
-        if (isFatalAppStatus(error) || hasFatalMessage(error)) {
-            return CdcErrorAction.FAIL_FAST;
-        }
-
-        return isTransientAppStatus(error)
-                ? CdcErrorAction.RETRY
-                : CdcErrorAction.FAIL_FAST;
+        return CdcErrorAction.HANDLE_IN_STREAM;
     }
 
     private static CdcErrorAction actionForUnknownOrInternal(CDCErrorPB error) {
-        if (isTabletSplit(error)) {
+        // Only trust the AppStatus tablet-split code here — not message substrings.
+        if (error.hasStatus() && error.getStatus().getCode() == ErrorCode.TABLET_SPLIT) {
             return CdcErrorAction.HANDLE_IN_STREAM;
         }
 
@@ -155,38 +169,33 @@ final class YugabyteDBCdcErrorClassifier {
                 : CdcErrorAction.FAIL_FAST;
     }
 
-    private static boolean isTabletSplit(CDCErrorPB error) {
-        if (error.hasStatus() && error.getStatus().getCode() == ErrorCode.TABLET_SPLIT) {
-            return true;
-        }
-
-        String message = statusMessage(error);
-        return message.contains("tablet was split") || message.contains("tablet split");
-    }
-
-    private static boolean isFatalAppStatus(CDCErrorPB error) {
+    private static boolean isExplicitlyTransientAppStatus(CDCErrorPB error) {
         if (!error.hasStatus()) {
             return false;
         }
-
-        ErrorCode appStatusCode = error.getStatus().getCode();
-        return appStatusCode == ErrorCode.INVALID_ARGUMENT
-                || appStatusCode == ErrorCode.NOT_AUTHORIZED
-                || appStatusCode == ErrorCode.NOT_SUPPORTED
-                || appStatusCode == ErrorCode.CONFIGURATION_ERROR
-                || appStatusCode == ErrorCode.DELETED
-                || appStatusCode == ErrorCode.EXPIRED
-                || appStatusCode == ErrorCode.NOT_FOUND
-                || appStatusCode == ErrorCode.RUNTIME_ERROR;
+        switch (error.getStatus().getCode()) {
+            case SERVICE_UNAVAILABLE:
+            case TIMED_OUT:
+            case ABORTED:
+            case TRY_AGAIN_CODE:
+            case BUSY:
+            case LEADER_NOT_READY_TO_SERVE:
+            case LEADER_HAS_NO_LEASE:
+            case CACHE_MISS_ERROR:
+                return true;
+            default:
+                return false;
+        }
     }
 
     private static boolean hasFatalMessage(CDCErrorPB error) {
+        // Do not treat "is expired for tablet" as fatal: that message is also returned when
+        // SetCheckpoint has not been issued yet and is cured by makeStreamActive / bootstrap
+        // retries (see YugabyteDBSnapshotChangeEventSource#isSnapshotRequired).
         return containsAny(statusMessage(error),
                 "could not find cdc stream",
                 "is not part of stream",
-                "not found under stream",
-                "is expired for tablet",
-                "expired for tablet");
+                "not found under stream");
     }
 
     private static boolean isTransientAppStatus(CDCErrorPB error) {
@@ -223,12 +232,10 @@ final class YugabyteDBCdcErrorClassifier {
         while (current != null) {
             if (current instanceof MasterErrorException) {
                 MasterErrorException masterError = (MasterErrorException) current;
-                if (masterError.error != null && isFatalMasterCode(masterError.error.getCode())) {
-                    return true;
-                }
-
-                String message = String.valueOf(current.getMessage()).toLowerCase(Locale.ROOT);
-                return containsAny(message, "object_not_found", "does not exist");
+                // Only trust explicit permanent master codes. Free-text matching
+                // ("does not exist") is too broad: stale tserver-cache lookups during
+                // bootstrap can surface similar wording and must still be retried.
+                return masterError.error != null && isFatalMasterCode(masterError.error.getCode());
             }
             current = current.getCause();
         }
@@ -236,11 +243,12 @@ final class YugabyteDBCdcErrorClassifier {
     }
 
     private static boolean isFatalMasterCode(MasterErrorPB.Code code) {
+        // INVALID_REQUEST is deliberately omitted: it can appear from transient
+        // master/tserver cache inconsistency and should use the connector retry budget.
         return code == MasterErrorPB.Code.OBJECT_NOT_FOUND
                 || code == MasterErrorPB.Code.NAMESPACE_NOT_FOUND
                 || code == MasterErrorPB.Code.TYPE_NOT_FOUND
                 || code == MasterErrorPB.Code.ROLE_NOT_FOUND
-                || code == MasterErrorPB.Code.INVALID_REQUEST
                 || code == MasterErrorPB.Code.NOT_AUTHORIZED;
     }
 
