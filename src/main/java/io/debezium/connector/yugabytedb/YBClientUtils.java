@@ -433,6 +433,7 @@ public class YBClientUtils {
 
         return resp;
       } catch (Exception e) {
+        YugabyteDBCdcErrorClassifier.throwIfFailFast(e, connectorConfig);
         retryCount++;
         exception = e;
         if (retryCount > connectorConfig.maxConnectorRetries()) {
@@ -476,6 +477,7 @@ public class YBClientUtils {
       try {
         return ybClient.getCheckpoint(ybTable, connectorConfig.streamId(), tabletId);
       } catch (Exception e) {
+        YugabyteDBCdcErrorClassifier.throwIfFailFast(e, connectorConfig);
         ++retryCount;
 
         if (retryCount > connectorConfig.maxConnectorRetries()) {
