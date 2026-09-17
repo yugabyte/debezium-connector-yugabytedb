@@ -90,6 +90,11 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
         config = config.edit()
                         .with(YugabyteDBConnectorConfig.STREAM_ID, streamId)
                         .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, tableIncludeList)
+                        // Persist publication-path decision before STREAM_ID is filled; otherwise
+                        // usesPublication() becomes false and connector-scoped RPCs (e.g.
+                        // getTabletListToPollForCDCWithRetry in taskConfigs) fail-fast on
+                        // transient TABLE_NOT_FOUND instead of retrying.
+                        .with(YugabyteDBConnectorConfig.TASK_USE_PUBLICATION, usePublication)
                         .build();
         this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
         
@@ -144,6 +149,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                     String tableIncludeList =  YugabyteDBConnectorConfig.extractTableListFromPublication(config);
                     config  = config.edit()
                                     .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, tableIncludeList)
+                                    .with(YugabyteDBConnectorConfig.TASK_USE_PUBLICATION, true)
                                     .build();
                     this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
                 }

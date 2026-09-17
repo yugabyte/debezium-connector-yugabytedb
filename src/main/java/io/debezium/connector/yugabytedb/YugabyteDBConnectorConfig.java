@@ -779,15 +779,16 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withDescription("Internal task config: Charset for the YugabyteDB instance.");
 
     /**
-     * Set on task configs by {@link YugabyteDBgRPCConnector} after it decides the publication
-     * path. Needed because {@link #shouldUsePublication(Configuration)} is only valid before
-     * the resolved stream id is written into task props.
+     * Set by {@link YugabyteDBgRPCConnector} on both the connector-scoped config (after
+     * stream-id injection in {@code start()}) and on task props. Needed because
+     * {@link #shouldUsePublication(Configuration)} is only valid before the resolved
+     * stream id is written into config.
      */
     public static final Field TASK_USE_PUBLICATION = Field.create(TASK_CONFIG_PREFIX + "use.publication")
             .withDisplayName("Task uses publication")
             .withType(Type.BOOLEAN)
             .withDefault(false)
-            .withDescription("Internal task config: true when the connector was started with the publication/slot path.");
+            .withDescription("Internal config: true when the connector was started with the publication/slot path.");
 
     public static final Field NAME_TO_TYPE = Field.create(TASK_CONFIG_PREFIX + "nametotype")
             .withDisplayName("YugabyteDB Name to Type map")
