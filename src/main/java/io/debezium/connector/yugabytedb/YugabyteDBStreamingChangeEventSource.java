@@ -953,9 +953,10 @@ public class YugabyteDBStreamingChangeEventSource implements
             // point because the previous GetChanges call is supposed to throw
             // an exception which will be handled.
         } catch (CDCErrorException cdcErrorException) {
-            YugabyteDBCdcErrorClassifier.CdcErrorAction action =
-                    YugabyteDBCdcErrorClassifier.actionFor(cdcErrorException.getCDCError(), connectorConfig);
-            if (action == YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM) {
+            // This helper must only treat a real tablet split as success (javadoc above).
+            // Do not use HANDLE_IN_STREAM — that action is broader and would let the
+            // caller retire the parent as if the explicit checkpoint were written.
+            if (YugabyteDBCdcErrorClassifier.isTabletSplit(cdcErrorException.getCDCError())) {
                 LOGGER.info("Handling tablet split error gracefully for enqueued tablet {}", partition.getTabletId());
             } else {
                 throw cdcErrorException;
