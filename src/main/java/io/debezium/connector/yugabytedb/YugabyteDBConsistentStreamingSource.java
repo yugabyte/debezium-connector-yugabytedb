@@ -197,9 +197,10 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                             tabletSafeTime.getOrDefault(part.getId(), -1L), offsetContext.getWalSegmentIndex(part),
                                             null /* getchangesRespMaxSizeBytes */, offsetContext.getMaxIndexInSortWindow(part));
                                 } catch (CDCErrorException cdcException) {
-                                    YugabyteDBCdcErrorClassifier.CdcErrorAction action =
-                                            YugabyteDBCdcErrorClassifier.actionFor(cdcException.getCDCError(), connectorConfig);
-                                    if (action == YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM) {
+                                    // Consistent/transaction-ordering path historically handled
+                                    // TABLET_SPLIT only. Do not use HANDLE_IN_STREAM here — that
+                                    // could widen to other codes; gate on split evidence alone.
+                                    if (YugabyteDBCdcErrorClassifier.isTabletSplit(cdcException.getCDCError())) {
                                         LOGGER.info("Encountered a tablet split, handling it gracefully");
 
                                         handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);

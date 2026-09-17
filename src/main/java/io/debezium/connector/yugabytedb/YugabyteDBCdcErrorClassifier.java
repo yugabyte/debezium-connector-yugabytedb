@@ -92,6 +92,19 @@ final class YugabyteDBCdcErrorClassifier {
     }
 
     /**
+     * True only when the server reported an actual tablet split (CDC
+     * {@code TABLET_SPLIT}, or AppStatus {@code TABLET_SPLIT}). Used by paths
+     * that historically handled {@code TABLET_SPLIT} only and must not treat
+     * bare {@code INVALID_REQUEST} as a split.
+     */
+    static boolean isTabletSplit(CDCErrorPB error) {
+        if (error.getCode() == CDCErrorPB.Code.TABLET_SPLIT) {
+            return true;
+        }
+        return error.hasStatus() && error.getStatus().getCode() == ErrorCode.TABLET_SPLIT;
+    }
+
+    /**
      * Used by unit tests. {@code FILTERED} and {@code ALL_TABLES} are treated as publication paths.
      */
     static CdcErrorAction actionFor(CDCErrorPB error,

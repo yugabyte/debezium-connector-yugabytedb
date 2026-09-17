@@ -330,6 +330,28 @@ public class YugabyteDBCdcErrorClassifierTest {
                 classify(error(Code.UNKNOWN_ERROR), DISABLED));
     }
 
+    @Test
+    public void isTabletSplitTrueForTabletSplitCode() {
+        assertTrue(YugabyteDBCdcErrorClassifier.isTabletSplit(error(Code.TABLET_SPLIT)));
+    }
+
+    @Test
+    public void isTabletSplitTrueForInvalidRequestWithTabletSplitStatus() {
+        assertTrue(YugabyteDBCdcErrorClassifier.isTabletSplit(
+                error(Code.INVALID_REQUEST, ErrorCode.TABLET_SPLIT, "tablet split detected")));
+    }
+
+    @Test
+    public void isTabletSplitFalseForBareInvalidRequest() {
+        assertFalse(YugabyteDBCdcErrorClassifier.isTabletSplit(error(Code.INVALID_REQUEST)));
+    }
+
+    @Test
+    public void isTabletSplitFalseForPermanentInvalidRequest() {
+        assertFalse(YugabyteDBCdcErrorClassifier.isTabletSplit(
+                error(Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT, "invalid stream id")));
+    }
+
     private static YugabyteDBCdcErrorClassifier.CdcErrorAction classify(
             CDCErrorPB error,
             YugabyteDBConnectorConfig.AutoCreateMode publicationMode) {
