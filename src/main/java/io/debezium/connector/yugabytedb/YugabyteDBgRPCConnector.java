@@ -299,6 +299,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
         config = config.edit()
                         .with(YugabyteDBConnectorConfig.STREAM_ID, streamId)
                         .with(YugabyteDBConnectorConfig.TABLE_INCLUDE_LIST, tableIncludeList)
+                        .with(YugabyteDBConnectorConfig.TASK_USE_PUBLICATION, usePublication)
                         .build();
 
         this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
