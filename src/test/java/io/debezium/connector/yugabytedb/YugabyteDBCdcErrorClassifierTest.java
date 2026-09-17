@@ -72,9 +72,25 @@ public class YugabyteDBCdcErrorClassifierTest {
     }
 
     @Test
-    public void tableNotFoundShouldFailFastWhenPublicationIsDisabled() {
+    public void tableNotFoundShouldFailFastWhenNotUsingPublication() {
+        // Convenience overload treats AutoCreateMode.DISABLED as usePublication=false.
         assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
                 classify(error(Code.TABLE_NOT_FOUND), DISABLED));
+    }
+
+    @Test
+    public void tableNotFoundShouldRetryForPublicationEvenWithAutocreateDisabled() {
+        // Supported: publication path with publication.autocreate.mode=disabled.
+        // Operator adds tables by hand; table poller still reconfigures and can hit
+        // the same brief TABLE_NOT_FOUND window as ALL_TABLES/FILTERED.
+        Configuration config = Configuration.create()
+                .with(YugabyteDBConnectorConfig.STREAM_ID, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+                .with(YugabyteDBConnectorConfig.TASK_USE_PUBLICATION, true)
+                .with(YugabyteDBConnectorConfig.PUBLICATION_AUTOCREATE_MODE, DISABLED.getValue())
+                .build();
+        assertTrue(YugabyteDBConnectorConfig.usesPublication(config));
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
+                YugabyteDBCdcErrorClassifier.actionFor(error(Code.TABLE_NOT_FOUND), config));
     }
 
     @Test
