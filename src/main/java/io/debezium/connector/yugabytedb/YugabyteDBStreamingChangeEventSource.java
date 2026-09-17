@@ -578,6 +578,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     TEST_explicitCheckpoints.put(tabletId, explicitCheckpoint);
                                 }
                             } catch (CDCErrorException cdcException) {
+                                // Tablet splits use CDCErrorPB.TABLET_SPLIT (or AppStatus TABLET_SPLIT).
+                                // Do not treat bare INVALID_REQUEST as a split — that can be a
+                                // transient GetChanges failure and must retry (see main).
+                                LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
                                 YugabyteDBCdcErrorClassifier.CdcErrorAction action =
                                         YugabyteDBCdcErrorClassifier.actionFor(cdcException.getCDCError(), connectorConfig);
                                 if (action == YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM) {

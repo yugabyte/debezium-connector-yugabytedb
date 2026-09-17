@@ -130,16 +130,16 @@ public class YugabyteDBCdcErrorClassifierTest {
     }
 
     @Test
-    public void invalidRequestWithoutStatusShouldBeHandledInStream() {
-        // Legacy YB used bare CDC INVALID_REQUEST for tablet splits.
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM,
+    public void invalidRequestWithoutStatusShouldRetry() {
+        // Align with main: bare INVALID_REQUEST is not assumed to be a tablet split.
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
                 classify(error(Code.INVALID_REQUEST), DISABLED));
     }
 
     @Test
-    public void invalidRequestWithGenericSplitWordShouldBeHandledInStream() {
-        // Split decision is keyed on CDC INVALID_REQUEST, not message text.
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM,
+    public void invalidRequestWithGenericSplitWordShouldFailFast() {
+        // Message text alone is not enough; RUNTIME_ERROR AppStatus is permanent.
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
                 classify(error(Code.INVALID_REQUEST, ErrorCode.RUNTIME_ERROR, "unexpected split of request"), DISABLED));
     }
 
@@ -216,46 +216,44 @@ public class YugabyteDBCdcErrorClassifierTest {
     }
 
     @Test
-    public void invalidRequestWithInvalidStreamIdShouldBeHandledInStream() {
-        // Same CDC code as legacy splits; streaming runs handleTabletSplit and
-        // a non-split failure surfaces from that path / outer catch.
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM,
+    public void invalidRequestWithInvalidStreamIdShouldFailFast() {
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
                 classify(error(Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT, "invalid stream id"), DISABLED));
     }
 
     @Test
-    public void invalidRequestWithDeletedStreamShouldBeHandledInStream() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM,
+    public void invalidRequestWithDeletedStreamShouldFailFast() {
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
                 classify(error(Code.INVALID_REQUEST, ErrorCode.DELETED, "deleted stream"), DISABLED));
     }
 
     @Test
-    public void invalidRequestWithIncorrectTabletIdShouldBeHandledInStream() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM,
+    public void invalidRequestWithIncorrectTabletIdShouldFailFast() {
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
                 classify(error(Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT, "incorrect tablet id"), DISABLED));
     }
 
     @Test
-    public void invalidRequestWithTableNotInPublicationShouldBeHandledInStream() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM,
+    public void invalidRequestWithTableNotInPublicationShouldFailFast() {
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
                 classify(error(Code.INVALID_REQUEST, ErrorCode.NOT_FOUND, "table is not part of publication"), DISABLED));
     }
 
     @Test
-    public void invalidRequestWithBadCheckpointShouldBeHandledInStream() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM,
+    public void invalidRequestWithBadCheckpointShouldFailFast() {
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
                 classify(error(Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT, "invalid checkpoint"), DISABLED));
     }
 
     @Test
-    public void invalidRequestWithUnsupportedConfigShouldBeHandledInStream() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM,
+    public void invalidRequestWithUnsupportedConfigShouldFailFast() {
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
                 classify(error(Code.INVALID_REQUEST, ErrorCode.NOT_SUPPORTED, "unsupported request"), DISABLED));
     }
 
     @Test
-    public void invalidRequestWithPermissionMismatchShouldBeHandledInStream() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM,
+    public void invalidRequestWithPermissionMismatchShouldFailFast() {
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
                 classify(error(Code.INVALID_REQUEST, ErrorCode.NOT_AUTHORIZED, "permission denied"), DISABLED));
     }
 
@@ -266,8 +264,9 @@ public class YugabyteDBCdcErrorClassifierTest {
     }
 
     @Test
-    public void invalidRequestWithSplitInMessageShouldBeHandledInStream() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM,
+    public void invalidRequestWithSplitInMessageShouldFailFast() {
+        // Split is keyed on AppStatus TABLET_SPLIT, not message substrings.
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
                 classify(error(Code.INVALID_REQUEST, ErrorCode.RUNTIME_ERROR, "tablet was split"), DISABLED));
     }
 

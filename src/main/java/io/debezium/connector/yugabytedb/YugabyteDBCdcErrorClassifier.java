@@ -111,12 +111,10 @@ final class YugabyteDBCdcErrorClassifier {
                         ? CdcErrorAction.RETRY
                         : CdcErrorAction.FAIL_FAST;
             case INVALID_REQUEST:
-                // Older YugabyteDB signalled tablet splits as CDC INVALID_REQUEST
-                // (before CDCErrorPB.TABLET_SPLIT existed). Streaming treats
-                // HANDLE_IN_STREAM as "run handleTabletSplit" — same as the
-                // historical TABLET_SPLIT || INVALID_REQUEST check. Bare or
-                // ambiguous INVALID_REQUEST must not fail-fast or the first
-                // split kills the task. Clearly transient AppStatus still retries.
+                // main intentionally stopped treating bare INVALID_REQUEST as a
+                // tablet split (transient GetChanges failures use this code).
+                // Only HANDLE_IN_STREAM when AppStatus explicitly says TABLET_SPLIT;
+                // otherwise retry (or fail-fast for clearly permanent AppStatus).
                 return actionForInvalidRequest(error);
             case CHECKPOINT_TOO_OLD:
             case SUBSCRIBER_NOT_FOUND:
@@ -145,13 +143,38 @@ final class YugabyteDBCdcErrorClassifier {
     }
 
     private static CdcErrorAction actionForInvalidRequest(CDCErrorPB error) {
-        // Prefer retry for unambiguous transport/leader blips. Otherwise hand off
-        // to the streaming tablet-split path: keyed on CDC code INVALID_REQUEST
-        // (and AppStatus TABLET_SPLIT when present), not free-text messages.
+        // Confirmed split via AppStatus — handle in stream.
+        if (error.hasStatus() && error.getStatus().getCode() == ErrorCode.TABLET_SPLIT) {
+            return CdcErrorAction.HANDLE_IN_STREAM;
+        }
+
+        // Transient transport/leader issues — retry.
         if (isExplicitlyTransientAppStatus(error)) {
             return CdcErrorAction.RETRY;
         }
-        return CdcErrorAction.HANDLE_IN_STREAM;
+
+        // Permanent request failures — fail fast.
+        if (error.hasStatus() && (isFatalAppStatus(error) || hasFatalMessage(error))) {
+            return CdcErrorAction.FAIL_FAST;
+        }
+
+        // Bare / ambiguous INVALID_REQUEST: retry like main (do not assume split).
+        return CdcErrorAction.RETRY;
+    }
+
+    private static boolean isFatalAppStatus(CDCErrorPB error) {
+        if (!error.hasStatus()) {
+            return false;
+        }
+        ErrorCode appStatusCode = error.getStatus().getCode();
+        return appStatusCode == ErrorCode.INVALID_ARGUMENT
+                || appStatusCode == ErrorCode.NOT_AUTHORIZED
+                || appStatusCode == ErrorCode.NOT_SUPPORTED
+                || appStatusCode == ErrorCode.CONFIGURATION_ERROR
+                || appStatusCode == ErrorCode.DELETED
+                || appStatusCode == ErrorCode.EXPIRED
+                || appStatusCode == ErrorCode.NOT_FOUND
+                || appStatusCode == ErrorCode.RUNTIME_ERROR;
     }
 
     private static CdcErrorAction actionForUnknownOrInternal(CDCErrorPB error) {
