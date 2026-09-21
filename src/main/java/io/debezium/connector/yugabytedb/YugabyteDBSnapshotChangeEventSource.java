@@ -432,7 +432,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         tableIdToTable.put(tableUUID, ybTable);
 
         GetTabletListToPollForCDCResponse resp =
-            YBClientUtils.getTabletListToPollForCDCWithRetry(ybTable, tableUUID, connectorConfig);
+            YBClientUtils.getTabletListToPollForCDCWithRetry(syncClient, ybTable, tableUUID, connectorConfig);
         populateTabletPairList(tableUUID, resp, tableToTabletIds);
       }
 

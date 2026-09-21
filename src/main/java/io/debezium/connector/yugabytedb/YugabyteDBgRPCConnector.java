@@ -393,7 +393,8 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             try {
                 for (String tableId : tableIds) {
                     YBTable table = ybClient.openTableByUUID(tableId);
-                    // Reuse existing YBClient to avoid per-table TLS handshakes.
+                    // Reuse the existing YBClient for the first attempt to avoid per-table TLS handshakes;
+                    // retries (if any) fall back to a fresh client internally.
                     GetTabletListToPollForCDCResponse resp = YBClientUtils.getTabletListToPollForCDCWithRetry(
                             ybClient, table, tableId, yugabyteDBConnectorConfig);
                     List<HashPartition> partitions = new ArrayList<>();

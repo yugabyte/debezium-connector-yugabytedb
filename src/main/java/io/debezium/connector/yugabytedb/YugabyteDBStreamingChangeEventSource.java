@@ -361,7 +361,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 tableIdToTable.put(tId, table);
 
                 GetTabletListToPollForCDCResponse resp =
-                        YBClientUtils.getTabletListToPollForCDCWithRetry(table, tId, connectorConfig);
+                        YBClientUtils.getTabletListToPollForCDCWithRetry(syncClient, table, tId, connectorConfig);
 
                 // Validate that we receive the complete range of tablets in case of non-colocated tables.
                 if (!table.isColocated()) {

@@ -477,74 +477,16 @@ public class YBClientUtils {
   }
 
   /**
-   * Call getTabletListToPollForCDC rpc with retries, creating a fresh {@link YBClient} for each
-   * attempt.
+   * Call getTabletListToPollForCDC rpc with retries.
    * <p>
-   * The per-attempt client is deliberate for the long-lived streaming and snapshot sources: a
-   * fresh client re-resolves the master leader and re-establishes the connection, so the retry
-   * loop can recover from a dead connection or a master leader change. Callers that are already
-   * holding a healthy, short-lived client (e.g. bootstrap validation) should prefer
-   * {@link #getTabletListToPollForCDCWithRetry(YBClient, YBTable, String, YugabyteDBConnectorConfig)}
-   * to avoid a TLS handshake per table.
-   * @param table the {@link YBTable} instance of the table
-   * @param tableId the UUID of the table for which we need the tablets to poll for
-   * @param connectorConfig the configs used by the connector
-   * @return an RPC response containing the list of tablets to poll for
-   * @throws Exception when there are error after trying {@link YugabyteDBConnectorConfig#maxConnectorRetries()} times
-   */
-  public static GetTabletListToPollForCDCResponse getTabletListToPollForCDCWithRetry(YBTable table,
-      String tableId, YugabyteDBConnectorConfig connectorConfig) throws Exception {
-    int retryCount = 0;
-    Exception exception = null;
-    GetTabletListToPollForCDCResponse resp = null;
-    
-    while (retryCount <= connectorConfig.maxConnectorRetries()) {
-      try (YBClient syncClient = getYbClient(connectorConfig)) {
-        resp = syncClient.getTabletListToPollForCdc(table, connectorConfig.streamId(), tableId);
-
-        if (resp.getTabletCheckpointPairListSize() == 0) {
-          throw new RuntimeException("Received an empty tablet list for table " + tableId);
-        }
-
-        return resp;
-      } catch (Exception e) {
-        retryCount++;
-        exception = e;
-        if (retryCount > connectorConfig.maxConnectorRetries()) {
-          LOGGER.error("Too many errors while trying to get the tablet list to poll, all the {} retries failed ", connectorConfig.maxConnectorRetries());
-          throw e;
-        }
-
-        LOGGER.warn("Error while trying to get the tablet list to poll for CDC; will attempt retry {} of {} after {} milli-seconds. Exception: {}",
-                             retryCount, connectorConfig.maxConnectorRetries(), connectorConfig.connectorRetryDelayMs(), e);
-
-        try {
-          final Metronome retryMetronome = Metronome.parker(Duration.ofMillis(connectorConfig.connectorRetryDelayMs()), Clock.SYSTEM);
-          retryMetronome.pause();
-        } catch (InterruptedException ie) {
-          LOGGER.warn("Connector retry sleep interrupted by exception: {}", ie);
-          Thread.currentThread().interrupt();
-        }
-      }
-    }
-
-     if (exception != null) {
-      throw exception;
-     }
-     
-     return resp;
-  }
-
-  /**
-   * Call getTabletListToPollForCDC rpc with retries, reusing an existing {@link YBClient}.
-   * <p>
-   * Unlike {@link #getTabletListToPollForCDCWithRetry(YBTable, String, YugabyteDBConnectorConfig)},
-   * this overload does not create a client per attempt; it reuses the caller-provided client
-   * (whose lifecycle the caller manages) to avoid a TLS handshake per table. This is intended for
-   * short-lived bootstrap validation, where the caller already holds a healthy client and the
-   * retries are best-effort. It does not re-resolve the master leader between attempts, so it is
-   * not a substitute for the fresh-client overload used by the streaming and snapshot sources.
-   * @param ybClient an existing client to reuse (caller manages its lifecycle)
+   * The first attempt reuses the caller-provided {@link YBClient} (whose lifecycle the caller
+   * manages), so the common no-failure path costs no extra client construction or TLS handshake.
+   * Every retry opens a fresh client for that attempt: a fresh client re-resolves the master
+   * leader and re-establishes the connection, which lets the retry loop recover from a dead
+   * connection or a master leader change rather than retrying on a possibly-broken client.
+   * Every call site already holds a client from the preceding {@code openTableByUUID} call, so
+   * there is no overload that constructs one internally.
+   * @param ybClient an existing client used for the first attempt (caller manages its lifecycle)
    * @param table the {@link YBTable} instance of the table
    * @param tableId the UUID of the table for which we need the tablets to poll for
    * @param connectorConfig the configs used by the connector
@@ -560,10 +502,14 @@ public class YBClientUtils {
 
     while (retryCount <= connectorConfig.maxConnectorRetries()) {
       try {
-        resp = ybClient.getTabletListToPollForCdc(table, connectorConfig.streamId(), tableId);
-
-        if (resp.getTabletCheckpointPairListSize() == 0) {
-          throw new RuntimeException("Received an empty tablet list for table " + tableId);
+        if (retryCount == 0) {
+          // First attempt: reuse the caller's (presumed healthy) client.
+          resp = getTabletListToPollForCdc(ybClient, table, tableId, connectorConfig);
+        } else {
+          // Retry: the caller's client may be the thing that is broken, so use a fresh one.
+          try (YBClient freshClient = getYbClient(connectorConfig)) {
+            resp = getTabletListToPollForCdc(freshClient, table, tableId, connectorConfig);
+          }
         }
 
         return resp;
@@ -590,6 +536,23 @@ public class YBClientUtils {
 
     if (exception != null) {
       throw exception;
+    }
+
+    return resp;
+  }
+
+  /**
+   * Single getTabletListToPollForCDC rpc attempt on the given client; treats an empty tablet
+   * list as a failure so the caller's retry loop handles it like any other error.
+   */
+  private static GetTabletListToPollForCDCResponse getTabletListToPollForCdc(
+      YBClient client, YBTable table, String tableId,
+      YugabyteDBConnectorConfig connectorConfig) throws Exception {
+    GetTabletListToPollForCDCResponse resp =
+        client.getTabletListToPollForCdc(table, connectorConfig.streamId(), tableId);
+
+    if (resp.getTabletCheckpointPairListSize() == 0) {
+      throw new RuntimeException("Received an empty tablet list for table " + tableId);
     }
 
     return resp;
