@@ -269,17 +269,20 @@ public class YugabyteDBChangeRecordEmitter extends RelationalChangeRecordEmitter
     }
 
     private Optional<DataCollectionSchema> newTable(TableId tableId) {
-        LOGGER.debug("Creating a new schema entry for table: {} and tablet {}", tableId, tabletId);
-        refreshTableFromDatabase(tableId);
+        // Schemas are cached per (table, tablet) and registered by refreshSchemaWithTabletId when
+        // a DDL message arrives, which the streaming sources request via needSchemaInfo before
+        // polling a tablet. This is therefore a hit for every record on the streaming path.
         final TableSchema tableSchema = schema.schemaForTablet(tableId, tabletId);
-        if (tableSchema == null) {
-            LOGGER.warn("cannot load schema for table '{}'", tableId);
-            return Optional.empty();
-        }
-        else {
-            LOGGER.debug("refreshed DB schema to include table '{}'", tableId);
+        if (tableSchema != null) {
+            LOGGER.trace("Serving the cached schema for table: {} and tablet {}", tableId, tabletId);
             return Optional.of(tableSchema);
         }
+
+        // Only refreshSchemaWithTabletId writes the tablet schema cache; the refresh below
+        // repopulates tabletIdToTable, leaving the record undispatched.
+        refreshTableFromDatabase(tableId);
+        LOGGER.warn("cannot load schema for table '{}' and tablet '{}'", tableId, tabletId);
+        return Optional.empty();
     }
 
     private void refreshTableFromDatabase(TableId tableId) {
