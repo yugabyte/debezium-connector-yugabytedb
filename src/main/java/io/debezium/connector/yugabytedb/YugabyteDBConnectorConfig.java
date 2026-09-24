@@ -778,6 +778,18 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withWidth(ConfigDef.Width.MEDIUM)
             .withDescription("Internal task config: Charset for the YugabyteDB instance.");
 
+    /**
+     * Set by {@link YugabyteDBgRPCConnector} on both the connector-scoped config (after
+     * stream-id injection in {@code start()}) and on task props. Needed because
+     * {@link #shouldUsePublication(Configuration)} is only valid before the resolved
+     * stream id is written into config.
+     */
+    public static final Field TASK_USE_PUBLICATION = Field.create(TASK_CONFIG_PREFIX + "use.publication")
+            .withDisplayName("Task uses publication")
+            .withType(Type.BOOLEAN)
+            .withDefault(false)
+            .withDescription("Internal config: true when the connector was started with the publication/slot path.");
+
     public static final Field NAME_TO_TYPE = Field.create(TASK_CONFIG_PREFIX + "nametotype")
             .withDisplayName("YugabyteDB Name to Type map")
             .withType(ConfigDef.Type.STRING)
@@ -1459,6 +1471,21 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return getConfig().getString(PUBLICATION_NAME);
     }
 
+    /**
+     * True when this config is on the publication/slot path. Prefer the task-internal flag that
+     * survives stream-id injection; fall back to an empty {@code database.streamid} (connector start).
+     */
+    public static boolean usesPublication(Configuration config) {
+        if (config.getBoolean(TASK_USE_PUBLICATION)) {
+            return true;
+        }
+        return shouldUsePublication(config);
+    }
+
+    public boolean usesPublication() {
+        return usesPublication(getConfig());
+    }
+
     protected AutoCreateMode publicationAutocreateMode() {
         return AutoCreateMode.parse(getConfig().getString(PUBLICATION_AUTOCREATE_MODE));
     }
@@ -1820,6 +1847,11 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         }
     }
 
+    /**
+     * True when the user config is the publication/slot path: {@code database.streamid} is empty.
+     * After {@link YugabyteDBgRPCConnector} injects the resolved stream id into task props this
+     * returns false; tasks must use {@link #usesPublication()} / {@link #TASK_USE_PUBLICATION}.
+     */
     public static boolean shouldUsePublication(Configuration config) {
         String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
 

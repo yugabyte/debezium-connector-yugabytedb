@@ -28,7 +28,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.TabletCheckpointPair;
-import org.yb.cdc.CdcService.CDCErrorPB.Code;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.client.*;
 
@@ -209,6 +208,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // Reset the flag to retry.
                     shouldRetry = false;
                 } catch (Exception e) {
+                    YugabyteDBCdcErrorClassifier.throwIfFailFast(e, connectorConfig);
                     ++retryCountForGetCheckpoint;
 
                     shouldRetry = true;
@@ -254,6 +254,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // Reset the retry flag if the bootstrap was successful
                     shouldRetry = false;
                 } catch (Exception e) {
+                    YugabyteDBCdcErrorClassifier.throwIfFailFast(e, connectorConfig);
                     ++retryCountForBootstrapping;
 
                     // The connector should go for a retry if any exception is thrown
@@ -293,6 +294,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // Break upon successful request.
                 break;
             } catch (Exception e) {
+                YugabyteDBCdcErrorClassifier.throwIfFailFast(e, connectorConfig);
                 ++retryCount;
 
                 if (retryCount > connectorConfig.maxConnectorRetries()) {
@@ -572,13 +574,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     TEST_explicitCheckpoints.put(tabletId, explicitCheckpoint);
                                 }
                             } catch (CDCErrorException cdcException) {
-                                // Check if exception indicates a tablet split.
+                                // Only CDC TABLET_SPLIT is a split. INVALID_REQUEST is
+                                // retried; treating it as a split can poll a child with -1.-1.
                                 LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
-                                if (cdcException.getCDCError().getCode() == Code.TABLET_SPLIT) {
+                                YugabyteDBCdcErrorClassifier.CdcErrorAction action =
+                                        YugabyteDBCdcErrorClassifier.actionFor(cdcException.getCDCError(), connectorConfig);
+                                if (action == YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM) {
                                     LOGGER.info("Encountered a tablet split on tablet {}, handling it gracefully", tabletId);
-                                    if (LOGGER.isDebugEnabled()) {
-                                        cdcException.printStackTrace();
-                                    }
 
                                     if (taskContext.shouldEnableExplicitCheckpointing()) {
                                         OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
@@ -847,6 +849,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                         retryCount = 0;
                     }
                 } catch (Exception e) {
+                    YugabyteDBCdcErrorClassifier.throwIfFailFast(e, connectorConfig);
+
                     ++retryCount;
                     // If the retry limit is exceeded, log an error with a description and throw the exception.
                     if (retryCount > connectorConfig.maxConnectorRetries()) {
@@ -946,7 +950,10 @@ public class YugabyteDBStreamingChangeEventSource implements
             // point because the previous GetChanges call is supposed to throw
             // an exception which will be handled.
         } catch (CDCErrorException cdcErrorException) {
-            if (cdcErrorException.getCDCError().getCode() == Code.TABLET_SPLIT) {
+            // This helper must only treat a real tablet split as success (javadoc above).
+            // Do not use HANDLE_IN_STREAM — that action is broader and would let the
+            // caller retire the parent as if the explicit checkpoint were written.
+            if (YugabyteDBCdcErrorClassifier.isTabletSplit(cdcErrorException.getCDCError())) {
                 LOGGER.info("Handling tablet split error gracefully for enqueued tablet {}", partition.getTabletId());
             } else {
                 throw cdcErrorException;
@@ -1274,6 +1281,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 retryCount = 0;
                 return response;
             } catch (Exception e) {
+                YugabyteDBCdcErrorClassifier.throwIfFailFast(e, connectorConfig);
                 ++retryCount;
                 if (retryCount > connectorConfig.maxConnectorRetries()) {
                     LOGGER.error("Too many errors while trying to get children for split tablet {}", splitTabletId);
