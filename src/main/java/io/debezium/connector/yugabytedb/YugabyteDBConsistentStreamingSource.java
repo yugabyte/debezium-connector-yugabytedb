@@ -200,6 +200,9 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                     // Check if exception indicates a tablet split.
                                     if (cdcException.getCDCError().getCode() == CdcService.CDCErrorPB.Code.TABLET_SPLIT) {
                                         LOGGER.info("Encountered a tablet split, handling it gracefully");
+                                        if (LOGGER.isDebugEnabled()) {
+                                            cdcException.printStackTrace();
+                                        }
 
                                         handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
 
@@ -281,7 +284,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                     // The connector should ideally be stopped if this kind of state is reached.
                     throw new DebeziumException(ae);
                 } catch (Exception e) {
-                    failFastIfNonRetriableCdcError(e);
+                    YugabyteDBCdcErrorClassifier.throwIfFailFast(e, connectorConfig);
                     ++retryCount;
                     // If the retry limit is exceeded, log an error with a description and throw the exception.
                     if (retryCount > connectorConfig.maxConnectorRetries()) {

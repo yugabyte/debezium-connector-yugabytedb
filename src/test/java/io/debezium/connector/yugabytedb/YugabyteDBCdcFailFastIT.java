@@ -62,6 +62,7 @@ public class YugabyteDBCdcFailFastIT extends YugabytedTestBase {
                 .with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, CONNECTOR_RETRY_DELAY_MS)
                 .with(YugabyteDBConnectorConfig.MAX_RPC_RETRY_ATTEMPTS, 5)
                 .with(YugabyteDBConnectorConfig.RPC_RETRY_SLEEP_TIME, 100);
+        Configuration connectorConfig = configBuilder.build();
 
         AtomicReference<Throwable> completionError = new AtomicReference<>();
         startEngine(configBuilder, (success, message, error) -> {
@@ -98,8 +99,7 @@ public class YugabyteDBCdcFailFastIT extends YugabytedTestBase {
         if (cdcError != null) {
             assertTrue(
                     YugabyteDBCdcErrorClassifier.actionFor(
-                            cdcError.getCDCError(),
-                            YugabyteDBConnectorConfig.AutoCreateMode.DISABLED)
+                            cdcError.getCDCError(), connectorConfig)
                             == YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
                     "CDC error should classify as FAIL_FAST, got code="
                             + cdcError.getCDCError().getCode());
