@@ -45,6 +45,7 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
     private static final long RETRY_DELAY_MS = 2_500L;
 
     private ListAppender<ILoggingEvent> logAppender;
+    private Configuration connectorConfig;
 
     @BeforeAll
     public static void beforeClass() throws SQLException {
@@ -203,6 +204,7 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
                 .with(YugabyteDBConnectorConfig.RPC_RETRY_SLEEP_TIME, 50)
                 .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "never");
 
+        connectorConfig = configBuilder.build();
         AtomicReference<Throwable> completionError = new AtomicReference<>();
         startEngine(configBuilder, (success, message, error) -> {
             completionError.set(error);
@@ -239,8 +241,7 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
             return false;
         }
         return YugabyteDBCdcErrorClassifier.actionFor(
-                cdcError.getCDCError(),
-                YugabyteDBConnectorConfig.AutoCreateMode.DISABLED)
+                cdcError.getCDCError(), connectorConfig)
                 == YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST;
     }
 
