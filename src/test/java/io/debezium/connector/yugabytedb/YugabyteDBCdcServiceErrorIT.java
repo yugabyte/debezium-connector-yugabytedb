@@ -235,13 +235,13 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
 
     private boolean isClassifiedFailFast(Throwable error) {
         CDCErrorException cdcError = YugabyteDBCdcErrorClassifier.findCdcError(error);
-        if (cdcError != null) {
-            return YugabyteDBCdcErrorClassifier.actionFor(
-                    cdcError.getCDCError(),
-                    YugabyteDBConnectorConfig.AutoCreateMode.DISABLED)
-                    == YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST;
+        if (cdcError == null) {
+            return false;
         }
-        return YugabyteDBCdcErrorClassifier.isFatalMasterError(error);
+        return YugabyteDBCdcErrorClassifier.actionFor(
+                cdcError.getCDCError(),
+                YugabyteDBConnectorConfig.AutoCreateMode.DISABLED)
+                == YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST;
     }
 
     private boolean logsContain(String token) {
