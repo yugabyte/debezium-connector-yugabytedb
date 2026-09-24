@@ -12,22 +12,23 @@ import org.slf4j.LoggerFactory;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcService.CDCErrorPB;
 import org.yb.client.CDCErrorException;
-import org.yb.client.MasterErrorException;
-import org.yb.master.MasterTypes.MasterErrorPB;
 
 import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
 
 /**
- * Classifies CDC and master errors before the generic connector retry loop.
+ * Classifies CDC errors before the generic connector retry loop.
  */
 final class YugabyteDBCdcErrorClassifier {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBCdcErrorClassifier.class);
 
     enum CdcErrorAction {
+        /** Tablet split: refresh children in the streaming loop (do not fail/retry the task) */
         HANDLE_IN_STREAM,
+        /** Permanent error: stop the task immediately (no connector retry) */
         FAIL_FAST,
+        /** Transient error: let the existing connector retry loop run its course */
         RETRY
     }
 
@@ -64,10 +65,10 @@ final class YugabyteDBCdcErrorClassifier {
 
     static boolean isFailFast(Throwable error, YugabyteDBConnectorConfig connectorConfig) {
         CDCErrorException cdcError = findCdcError(error);
-        if (cdcError != null) {
-            return actionFor(cdcError.getCDCError(), connectorConfig) == CdcErrorAction.FAIL_FAST;
+        if (cdcError == null) {
+            return false;
         }
-        return isFatalMasterError(error);
+        return actionFor(cdcError.getCDCError(), connectorConfig) == CdcErrorAction.FAIL_FAST;
     }
 
     static void throwIfFailFast(Throwable error, YugabyteDBConnectorConfig connectorConfig) throws Exception {
@@ -76,17 +77,12 @@ final class YugabyteDBCdcErrorClassifier {
         }
 
         CDCErrorException cdcException = findCdcError(error);
-        if (cdcException != null) {
-            LOGGER.error("Failing fast for non-retriable CDC error from YugabyteDB. code={}, status={}",
-                    cdcException.getCDCError().getCode(),
-                    cdcException.getCDCError().hasStatus()
-                            ? cdcException.getCDCError().getStatus()
-                            : "none",
-                    error);
-        }
-        else {
-            LOGGER.error("Failing fast for non-retriable YugabyteDB error", error);
-        }
+        LOGGER.error("Failing fast for non-retriable CDC error from YugabyteDB. code={}, status={}",
+                cdcException.getCDCError().getCode(),
+                cdcException.getCDCError().hasStatus()
+                        ? cdcException.getCDCError().getStatus()
+                        : "none",
+                error);
 
         throw error instanceof Exception ? (Exception) error : new DebeziumException(error);
     }
@@ -222,31 +218,6 @@ final class YugabyteDBCdcErrorClassifier {
             default:
                 return true;
         }
-    }
-
-    static boolean isFatalMasterError(Throwable error) {
-        Throwable current = error;
-        while (current != null) {
-            if (current instanceof MasterErrorException) {
-                MasterErrorException masterError = (MasterErrorException) current;
-                // Only trust explicit permanent master codes. Free-text matching
-                // ("does not exist") is too broad: stale tserver-cache lookups during
-                // bootstrap can surface similar wording and must still be retried.
-                return masterError.error != null && isFatalMasterCode(masterError.error.getCode());
-            }
-            current = current.getCause();
-        }
-        return false;
-    }
-
-    private static boolean isFatalMasterCode(MasterErrorPB.Code code) {
-        // INVALID_REQUEST is deliberately omitted: it can appear from transient
-        // master/tserver cache inconsistency and should use the connector retry budget.
-        return code == MasterErrorPB.Code.OBJECT_NOT_FOUND
-                || code == MasterErrorPB.Code.NAMESPACE_NOT_FOUND
-                || code == MasterErrorPB.Code.TYPE_NOT_FOUND
-                || code == MasterErrorPB.Code.ROLE_NOT_FOUND
-                || code == MasterErrorPB.Code.NOT_AUTHORIZED;
     }
 
     private static String statusMessage(CDCErrorPB error) {

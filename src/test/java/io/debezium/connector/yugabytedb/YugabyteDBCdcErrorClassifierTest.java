@@ -4,8 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.lang.reflect.Constructor;
-
 import io.debezium.config.Configuration;
 
 import org.junit.jupiter.api.Test;
@@ -13,8 +11,6 @@ import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcService.CDCErrorPB;
 import org.yb.cdc.CdcService.CDCErrorPB.Code;
-import org.yb.client.MasterErrorException;
-import org.yb.master.MasterTypes.MasterErrorPB;
 
 /**
  * Unit tests for {@link YugabyteDBCdcErrorClassifier}. These tests construct CDC proto errors
@@ -166,57 +162,6 @@ public class YugabyteDBCdcErrorClassifierTest {
         assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
                 classify(error(Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR,
                         "Stream ID abc is expired for Tablet ID xyz"), DISABLED));
-    }
-
-    @Test
-    public void masterObjectNotFoundShouldFailFast() throws Exception {
-        MasterErrorPB masterError = MasterErrorPB.newBuilder()
-                .setCode(MasterErrorPB.Code.OBJECT_NOT_FOUND)
-                .setStatus(AppStatusPB.newBuilder()
-                        .setCode(ErrorCode.NOT_FOUND)
-                        .setMessage("The object does not exist")
-                        .build())
-                .build();
-        Constructor<MasterErrorException> constructor =
-                MasterErrorException.class.getDeclaredConstructor(String.class, MasterErrorPB.class);
-        constructor.setAccessible(true);
-        MasterErrorException exception = constructor.newInstance("tserver", masterError);
-        assertTrue(YugabyteDBCdcErrorClassifier.isFatalMasterError(exception));
-    }
-
-    @Test
-    public void masterInvalidRequestShouldNotFailFast() throws Exception {
-        // Stale tserver-cache lookups during bootstrap can surface INVALID_REQUEST;
-        // bootstrap uses maxConnectorRetries * 5 and must be allowed to spend that budget.
-        MasterErrorPB masterError = MasterErrorPB.newBuilder()
-                .setCode(MasterErrorPB.Code.INVALID_REQUEST)
-                .setStatus(AppStatusPB.newBuilder()
-                        .setCode(ErrorCode.INVALID_ARGUMENT)
-                        .setMessage("Invalid request against stale cache entry")
-                        .build())
-                .build();
-        Constructor<MasterErrorException> constructor =
-                MasterErrorException.class.getDeclaredConstructor(String.class, MasterErrorPB.class);
-        constructor.setAccessible(true);
-        MasterErrorException exception = constructor.newInstance("tserver", masterError);
-        assertFalse(YugabyteDBCdcErrorClassifier.isFatalMasterError(exception));
-    }
-
-    @Test
-    public void masterErrorWithDoesNotExistTextAloneShouldNotFailFast() throws Exception {
-        // Free-text "does not exist" must not be enough without a permanent master code.
-        MasterErrorPB masterError = MasterErrorPB.newBuilder()
-                .setCode(MasterErrorPB.Code.UNKNOWN_ERROR)
-                .setStatus(AppStatusPB.newBuilder()
-                        .setCode(ErrorCode.RUNTIME_ERROR)
-                        .setMessage("tablet peer does not exist yet")
-                        .build())
-                .build();
-        Constructor<MasterErrorException> constructor =
-                MasterErrorException.class.getDeclaredConstructor(String.class, MasterErrorPB.class);
-        constructor.setAccessible(true);
-        MasterErrorException exception = constructor.newInstance("tserver", masterError);
-        assertFalse(YugabyteDBCdcErrorClassifier.isFatalMasterError(exception));
     }
 
     @Test
