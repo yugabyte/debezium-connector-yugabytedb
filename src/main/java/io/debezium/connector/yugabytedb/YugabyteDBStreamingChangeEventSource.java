@@ -847,6 +847,14 @@ public class YugabyteDBStreamingChangeEventSource implements
                         retryCount = 0;
                     }
                 } catch (Exception e) {
+                    // A checkpoint below the WAL retention floor can never be served, no matter
+                    // how often the request is retried - fail the task immediately instead of
+                    // masking the permanent failure behind the retry loop.
+                    if (isCheckpointTooOldFailure(e)) {
+                        LOGGER.error("WAL on the server has been garbage collected past the checkpoint for tablet {}; retries cannot succeed, failing the task", curTabletId, e);
+                        throw e;
+                    }
+
                     ++retryCount;
                     // If the retry limit is exceeded, log an error with a description and throw the exception.
                     if (retryCount > connectorConfig.maxConnectorRetries()) {
@@ -868,6 +876,45 @@ public class YugabyteDBStreamingChangeEventSource implements
                 }
             }
         }
+    }
+
+    /**
+     * Checks whether the given exception indicates that the WAL required to serve the tablet's
+     * checkpoint has already been garbage collected on the server (CHECKPOINT_TOO_OLD). Once the
+     * server has GC'd past the checkpoint, no retry of GetChanges can ever succeed, so this
+     * failure must be treated as terminal.
+     * <p>
+     * The typed {@link CDCErrorException} is usually available on the cause chain: when the
+     * client's retry budget is exhausted, AsyncYBClient chains the last attempt's exception as
+     * the cause of the surfaced {@link NonRecoverableException}. Some exhaustion paths surface
+     * no cause though, in which case the failure can only be recognized by the server error
+     * text appended to the message.
+     *
+     * @param throwable the exception to classify
+     * @return true if the failure is a GC'd-WAL failure and retrying is pointless
+     */
+    protected static boolean isCheckpointTooOldFailure(Throwable throwable) {
+        for (Throwable t = throwable; t != null; t = t.getCause()) {
+            if (t instanceof CDCErrorException) {
+                CdcService.CDCErrorPB error = ((CDCErrorException) t).getCDCError();
+                if (error != null && error.getCode() == Code.CHECKPOINT_TOO_OLD) {
+                    return true;
+                }
+            }
+
+            // Backstop for client paths which do not attach the typed CDC error.
+            if (t instanceof YBException) {
+                String message = t.getMessage();
+                if (message != null && (message.contains("garbage collected") || message.contains("already GCed"))) {
+                    return true;
+                }
+            }
+
+            if (t.getCause() == t) {
+                break;
+            }
+        }
+        return false;
     }
 
     private void probeConnectionIfNeeded() throws SQLException {
