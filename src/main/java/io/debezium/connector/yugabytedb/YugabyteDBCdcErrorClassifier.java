@@ -47,16 +47,14 @@ final class YugabyteDBCdcErrorClassifier {
     }
 
     static CdcErrorAction actionFor(CDCErrorPB error, YugabyteDBConnectorConfig connectorConfig) {
-        return actionFor(error, connectorConfig.getConfig());
+        return actionFor(error);
     }
 
     /**
-     * Same decision as {@link #actionFor(CDCErrorPB, YugabyteDBConnectorConfig)} but reads
-     * {@link YugabyteDBConnectorConfig#usesPublication(Configuration)} from raw config —
-     * the path tasks use after stream id has been injected.
+     * Same decision as {@link #actionFor(CDCErrorPB)}. Publication mode does not change it.
      */
     static CdcErrorAction actionFor(CDCErrorPB error, Configuration config) {
-        return actionFor(error, YugabyteDBConnectorConfig.usesPublication(config));
+        return actionFor(error);
     }
 
     static CDCErrorException findCdcError(Throwable error) {
@@ -94,7 +92,7 @@ final class YugabyteDBCdcErrorClassifier {
         return error.getCode() == CDCErrorPB.Code.TABLET_SPLIT;
     }
 
-    static CdcErrorAction actionFor(CDCErrorPB error, boolean usePublication) {
+    static CdcErrorAction actionFor(CDCErrorPB error) {
         if (!error.hasCode()) {
             LOGGER.warn("CDC error has no code set; proto2 getCode() defaults to UNKNOWN_ERROR");
         }
@@ -102,11 +100,9 @@ final class YugabyteDBCdcErrorClassifier {
             case TABLET_SPLIT:
                 return CdcErrorAction.HANDLE_IN_STREAM;
             case TABLE_NOT_FOUND:
-                // Any publication deployment can see transient TABLE_NOT_FOUND while
-                // CDC metadata catches up (including autocreate.mode=disabled, where
-                // operators add tables by hand and the table poller reconfigures).
-                // Gate only on usePublication — not on autocreate mode.
-                return usePublication ? CdcErrorAction.RETRY : CdcErrorAction.FAIL_FAST;
+                // Transient while CDC metadata catches up, on both publication and
+                // plain gRPC stream tasks. Do not fail the task.
+                return CdcErrorAction.RETRY;
             case INVALID_REQUEST:
                 // Not a tablet split. GetChanges uses this for bad requests
                 // (InvalidArgument) and some pre-producer failures (e.g. master lookup).
@@ -114,9 +110,7 @@ final class YugabyteDBCdcErrorClassifier {
                 // receive that code instead of calling handleTabletSplit on a child.
                 return actionForAmbiguousCdcCode(error);
             case CHECKPOINT_TOO_OLD:
-            case SUBSCRIBER_NOT_FOUND:
             case OPERATION_DISALLOWED:
-            case AUTO_FLAGS_CONFIG_VERSION_MISMATCH:
                 return CdcErrorAction.FAIL_FAST;
             case TABLET_NOT_FOUND:
             case TABLET_NOT_RUNNING:
@@ -128,9 +122,8 @@ final class YugabyteDBCdcErrorClassifier {
             case INTERNAL_ERROR:
                 return actionForAmbiguousCdcCode(error);
             default:
-                // cdc_service.proto is proto2: an unknown enum value is not kept on
-                // getCode(); the field falls back to UNKNOWN_ERROR and is handled
-                // above. This branch is only for generated leftovers (e.g. UNRECOGNIZED).
+                // Not reached with the current yb-client enum. Kept so a future
+                // Code constant this switch does not list yet is retried.
                 return CdcErrorAction.RETRY;
         }
     }
@@ -147,12 +140,23 @@ final class YugabyteDBCdcErrorClassifier {
         return error.hasStatus() && FATAL_APP_STATUS.contains(error.getStatus().getCode());
     }
 
+    /**
+     * Permanent CDC failures that often arrive as {@code UNKNOWN_ERROR} or {@code INTERNAL_ERROR},
+     * so the status text is what distinguishes them from a retryable error with the same code.
+     */
     private static boolean hasFatalMessage(CDCErrorPB error) {
-        
         return StringUtils.containsAny(statusMessage(error),
                 "could not find cdc stream",
                 "is not part of stream",
-                "not found under stream");
+                "not found under stream",
+                "garbage collected",
+                "already gced intents",
+                "due to compaction",
+                "did not find a wal message",
+                "is expired for tablet",
+                "unpolled for too long",
+                "unsupported replica identity",
+                "replica identity not found");
     }
 
     private static String statusMessage(CDCErrorPB error) {
