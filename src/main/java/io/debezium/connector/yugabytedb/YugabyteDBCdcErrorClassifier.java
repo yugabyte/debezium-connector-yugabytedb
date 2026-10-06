@@ -16,8 +16,6 @@ import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcService.CDCErrorPB;
 import org.yb.client.CDCErrorException;
 
-import io.debezium.config.Configuration;
-
 /**
  * Classifies CDC errors before the generic connector retry loop.
  */
@@ -46,31 +44,20 @@ final class YugabyteDBCdcErrorClassifier {
     private YugabyteDBCdcErrorClassifier() {
     }
 
-    static CdcErrorAction actionFor(CDCErrorPB error, YugabyteDBConnectorConfig connectorConfig) {
-        return actionFor(error);
-    }
-
-    /**
-     * Same decision as {@link #actionFor(CDCErrorPB)}. Publication mode does not change it.
-     */
-    static CdcErrorAction actionFor(CDCErrorPB error, Configuration config) {
-        return actionFor(error);
-    }
-
     static CDCErrorException findCdcError(Throwable error) {
         return ExceptionUtils.throwableOfType(error, CDCErrorException.class);
     }
 
-    static boolean isFailFast(Throwable error, YugabyteDBConnectorConfig connectorConfig) {
+    static boolean isFailFast(Throwable error) {
         CDCErrorException cdcError = findCdcError(error);
         if (cdcError == null) {
             return false;
         }
-        return actionFor(cdcError.getCDCError(), connectorConfig) == CdcErrorAction.FAIL_FAST;
+        return actionFor(cdcError.getCDCError()) == CdcErrorAction.FAIL_FAST;
     }
 
-    static void throwIfFailFast(Exception error, YugabyteDBConnectorConfig connectorConfig) throws Exception {
-        if (!isFailFast(error, connectorConfig)) {
+    static void throwIfFailFast(Exception error) throws Exception {
+        if (!isFailFast(error)) {
             return;
         }
 

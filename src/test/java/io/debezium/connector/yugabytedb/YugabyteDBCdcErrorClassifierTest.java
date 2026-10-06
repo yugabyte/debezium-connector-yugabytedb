@@ -9,8 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.lang.reflect.Constructor;
 import java.util.stream.Stream;
 
-import io.debezium.config.Configuration;
-
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -82,72 +80,6 @@ public class YugabyteDBCdcErrorClassifierTest {
     public void tableNotFoundShouldRetryWhenNotUsingPublication() {
         assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
                 classify(error(Code.TABLE_NOT_FOUND), DISABLED));
-    }
-
-    @Test
-    public void tableNotFoundShouldRetryForPublicationEvenWithAutocreateDisabled() {
-        // Supported: publication path with publication.autocreate.mode=disabled.
-        // Operator adds tables by hand; table poller still reconfigures and can hit
-        // the same brief TABLE_NOT_FOUND window as ALL_TABLES/FILTERED.
-        Configuration config = Configuration.create()
-                .with(YugabyteDBConnectorConfig.STREAM_ID, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-                .with(YugabyteDBConnectorConfig.TASK_USE_PUBLICATION, true)
-                .with(YugabyteDBConnectorConfig.PUBLICATION_AUTOCREATE_MODE, DISABLED.getValue())
-                .build();
-        assertTrue(YugabyteDBConnectorConfig.usesPublication(config));
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                YugabyteDBCdcErrorClassifier.actionFor(error(Code.TABLE_NOT_FOUND), config));
-    }
-
-    @Test
-    public void tableNotFoundShouldRetryForPublicationEvenAfterStreamIdIsInjected() {
-        // Mimics task props: stream id already filled from the slot, plus the flag the
-        // connector writes so the classifier still knows this is a publication deployment.
-        Configuration config = Configuration.create()
-                .with(YugabyteDBConnectorConfig.STREAM_ID, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-                .with(YugabyteDBConnectorConfig.TASK_USE_PUBLICATION, true)
-                .with(YugabyteDBConnectorConfig.PUBLICATION_AUTOCREATE_MODE, ALL_TABLES.getValue())
-                .build();
-        assertTrue(YugabyteDBConnectorConfig.usesPublication(config));
-        // Must go through the config-based overload — same entry used at task runtime.
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                YugabyteDBCdcErrorClassifier.actionFor(error(Code.TABLE_NOT_FOUND), config));
-    }
-
-    @Test
-    public void tableNotFoundShouldRetryForGrpcStreamWithInjectedStreamId() {
-        Configuration config = Configuration.create()
-                .with(YugabyteDBConnectorConfig.STREAM_ID, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-                .with(YugabyteDBConnectorConfig.TASK_USE_PUBLICATION, false)
-                .with(YugabyteDBConnectorConfig.PUBLICATION_AUTOCREATE_MODE, ALL_TABLES.getValue())
-                .build();
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                YugabyteDBCdcErrorClassifier.actionFor(error(Code.TABLE_NOT_FOUND), config));
-    }
-
-    @Test
-    public void tableNotFoundShouldRetryWhenStreamIdPresentButPublicationFlagMissing() {
-        Configuration config = Configuration.create()
-                .with(YugabyteDBConnectorConfig.STREAM_ID, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-                .with(YugabyteDBConnectorConfig.PUBLICATION_AUTOCREATE_MODE, ALL_TABLES.getValue())
-                .build();
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                YugabyteDBCdcErrorClassifier.actionFor(error(Code.TABLE_NOT_FOUND), config));
-    }
-
-    @Test
-    public void tableNotFoundDuringAutoAddWindowShouldRetryOnPublicationTask() {
-        // auto.add.new.tables / table poller: task already has a stream id, and during
-        // reconfiguration GetTabletList/GetChanges can briefly return TABLE_NOT_FOUND.
-        // Publication tasks must RETRY so the task is not killed in that window.
-        Configuration config = Configuration.create()
-                .with(YugabyteDBConnectorConfig.STREAM_ID, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
-                .with(YugabyteDBConnectorConfig.TASK_USE_PUBLICATION, true)
-                .with(YugabyteDBConnectorConfig.PUBLICATION_AUTOCREATE_MODE, FILTERED.getValue())
-                .with(YugabyteDBConnectorConfig.AUTO_ADD_NEW_TABLES, true)
-                .build();
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                YugabyteDBCdcErrorClassifier.actionFor(error(Code.TABLE_NOT_FOUND), config));
     }
 
     @Test
