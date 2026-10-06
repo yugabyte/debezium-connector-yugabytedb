@@ -208,7 +208,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // Reset the flag to retry.
                     shouldRetry = false;
                 } catch (Exception e) {
-                    YugabyteDBCdcErrorClassifier.throwIfFailFast(e, connectorConfig);
+                    YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
                     ++retryCountForGetCheckpoint;
 
                     shouldRetry = true;
@@ -254,7 +254,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // Reset the retry flag if the bootstrap was successful
                     shouldRetry = false;
                 } catch (Exception e) {
-                    YugabyteDBCdcErrorClassifier.throwIfFailFast(e, connectorConfig);
+                    YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
                     ++retryCountForBootstrapping;
 
                     // The connector should go for a retry if any exception is thrown
@@ -294,7 +294,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // Break upon successful request.
                 break;
             } catch (Exception e) {
-                YugabyteDBCdcErrorClassifier.throwIfFailFast(e, connectorConfig);
+                YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
                 ++retryCount;
 
                 if (retryCount > connectorConfig.maxConnectorRetries()) {
@@ -578,7 +578,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 // retried; treating it as a split can poll a child with -1.-1.
                                 LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
                                 YugabyteDBCdcErrorClassifier.CdcErrorAction action =
-                                        YugabyteDBCdcErrorClassifier.actionFor(cdcException.getCDCError(), connectorConfig);
+                                        YugabyteDBCdcErrorClassifier.actionFor(cdcException.getCDCError());
                                 if (action == YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM) {
                                     LOGGER.info("Encountered a tablet split on tablet {}, handling it gracefully", tabletId);
 
@@ -849,7 +849,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                         retryCount = 0;
                     }
                 } catch (Exception e) {
-                    YugabyteDBCdcErrorClassifier.throwIfFailFast(e, connectorConfig);
+                    YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
 
                     ++retryCount;
                     // If the retry limit is exceeded, log an error with a description and throw the exception.
@@ -1281,7 +1281,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 retryCount = 0;
                 return response;
             } catch (Exception e) {
-                YugabyteDBCdcErrorClassifier.throwIfFailFast(e, connectorConfig);
+                YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
                 ++retryCount;
                 if (retryCount > connectorConfig.maxConnectorRetries()) {
                     LOGGER.error("Too many errors while trying to get children for split tablet {}", splitTabletId);
