@@ -46,8 +46,6 @@
         <version.postgresql.driver>42.7.7</version.postgresql.driver>
         <version.com.google.protobuf>4.30.2</version.com.google.protobuf>
         <version.kafka>4.3.1</version.kafka>
-        <!-- debezium-embedded 1.9.x is built against Kafka 3.2; tests need that API at runtime -->
-        <version.kafka.test>3.2.0</version.kafka.test>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.2.13</version.logback>
         <version.ybclient>0.8.122-20260819.111006-1</version.ybclient>
@@ -554,19 +552,6 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${version.surefire.plugin}</version>
-                <configuration>
-                    <!-- debezium-embedded 1.9.x invokes SourceTask.commitRecord(SourceRecord); Kafka 4.x API removed it -->
-                    <classpathDependencyExcludes>
-                        <classpathDependencyExclude>org.apache.kafka:connect-api:jar:4.3.1</classpathDependencyExclude>
-                    </classpathDependencyExcludes>
-                    <additionalClasspathDependencies>
-                        <dependency>
-                            <groupId>org.apache.kafka</groupId>
-                            <artifactId>connect-api</artifactId>
-                            <version>${version.kafka.test}</version>
-                        </dependency>
-                    </additionalClasspathDependencies>
-                </configuration>
                 <dependencies>
                     <dependency>
                         <groupId>org.junit.jupiter</groupId>
@@ -638,16 +623,6 @@
                 <configuration>
                     <skipTests>${skipITs}</skipTests>
                     <enableAssertions>true</enableAssertions>
-                    <classpathDependencyExcludes>
-                        <classpathDependencyExclude>org.apache.kafka:connect-api:jar:4.3.1</classpathDependencyExclude>
-                    </classpathDependencyExcludes>
-                    <additionalClasspathDependencies>
-                        <dependency>
-                            <groupId>org.apache.kafka</groupId>
-                            <artifactId>connect-api</artifactId>
-                            <version>${version.kafka.test}</version>
-                        </dependency>
-                    </additionalClasspathDependencies>
                 </configuration>
             </plugin>
             <plugin>
