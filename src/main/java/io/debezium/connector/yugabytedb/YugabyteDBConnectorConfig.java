@@ -1820,9 +1820,6 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         }
     }
 
-    /**
-     * True when the user config is the publication/slot path: {@code database.streamid} is empty.
-     */
     public static boolean shouldUsePublication(Configuration config) {
         String streamId = config.getString(YugabyteDBConnectorConfig.STREAM_ID);
 

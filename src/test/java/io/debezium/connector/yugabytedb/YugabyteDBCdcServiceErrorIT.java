@@ -35,9 +35,12 @@ import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 /**
- * Service-side validation of CDC error classification. Disabled in CI unless
- * {@code -Dyb.service.it=true} is set. Optional {@code -Dyb.bin.dir=/path/to/yugabyte/bin}
+ * Service-side validation of CDC error classification while the connector is running. Disabled in
+ * CI unless {@code -Dyb.service.it=true} is set. Optional {@code -Dyb.bin.dir=/path/to/yugabyte/bin}
  * (or {@code YB_BIN_DIR}) locates {@code yb-admin} / {@code yb-ts-cli}; otherwise PATH is used.
+ * <p>
+ * A bogus {@code database.stream.id} at task startup is intentionally not tested here (see
+ * {@link YugabyteDBCdcFailFastIT}).
  */
 @EnabledIfSystemProperty(named = "yb.service.it", matches = "true")
 public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
@@ -49,7 +52,8 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
     @BeforeAll
     public static void beforeClass() throws SQLException {
         initializeYBContainer();
-        assumeTrue(isYugabyteReachable(), "Local yugabyted is not reachable on 127.0.0.1:5433/7100");
+        assumeTrue(isYugabyteReachable(),
+                "Local yugabyted is not reachable (master " + TestHelper.getMasterAddress() + ", YSQL 5433)");
         TestHelper.dropAllSchemas();
         resetSimulateFlag();
     }
@@ -112,18 +116,6 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
     }
 
     @Test
-    public void nonexistentStreamIdShouldFailFast() throws Exception {
-        TestHelper.execute("CREATE TABLE t_bad_stream (id INT PRIMARY KEY, name TEXT);");
-        AtomicReference<Throwable> error = startConnector("public.t_bad_stream",
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-        waitUntilStopped(error, Duration.ofSeconds(25));
-        assertConnectorNotRunning();
-        assertNotNull(error.get());
-        assertFalse(logsContain("will attempt retry"),
-                "Nonexistent stream should not enter connector retry: " + joinedLogs());
-    }
-
-    @Test
     public void injectPeerNotStartedShouldRetry() throws Exception {
         assertRetryOnInjectedError("t_inj_peer_not_started", 0);
     }
@@ -139,14 +131,15 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
     }
 
     @Test
-    public void injectPeerNotLeaderIsRetriedBecauseYbClientDropsCdcCode() throws Exception {
-        // TEST_SimulateError returns a Status, not CDCErrorPB. After yb-client exhausts
-        // RPC attempts the connector sees NonRecoverableException and retries.
+    public void injectPeerNotLeaderShouldRetry() throws Exception {
+        // yb-client surfaces CDCErrorException on the cause chain; NOT_LEADER is RETRY in the classifier.
         assertRetryOnInjectedError("t_inj_not_leader", 2);
     }
 
     @Test
-    public void injectLogFooterNotFoundIsRetriedBecauseYbClientDropsCdcCode() throws Exception {
+    public void injectLogFooterNotFoundShouldRetry() throws Exception {
+        // Injected footer-missing errors often carry AppStatus NOT_FOUND; that status alone is RETRY
+        // (see YugabyteDBCdcErrorClassifierTest.invalidRequestWithTableNotInPublicationAndNotFoundStatusShouldRetry).
         assertRetryOnInjectedError("t_inj_log_footer", 4);
     }
 
@@ -267,7 +260,7 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
     }
 
     private static boolean isYugabyteReachable() {
-        try (YBClient client = TestHelper.getYbClient("127.0.0.1:7100")) {
+        try (YBClient client = TestHelper.getYbClient(TestHelper.getMasterAddress())) {
             client.waitForMasterLeader(TimeUnit.SECONDS.toMillis(5));
             TestHelper.execute("SELECT 1;");
             return true;
@@ -307,20 +300,41 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
     }
 
     private static void runCommand(String... command) {
+        Process process;
         try {
-            Process process = new ProcessBuilder(command)
+            process = new ProcessBuilder(command)
                     .redirectErrorStream(true)
                     .start();
+        }
+        catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        try {
             String output;
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
                 output = reader.lines().collect(Collectors.joining("\n"));
             }
-            if (!process.waitFor(20, TimeUnit.SECONDS) || process.exitValue() != 0) {
+            if (!process.waitFor(20, TimeUnit.SECONDS)) {
+                throw new RuntimeException("Command timed out after 20s: " + List.of(command) + "\n" + output);
+            }
+            if (process.exitValue() != 0) {
                 throw new RuntimeException("Command failed: " + List.of(command) + "\n" + output);
             }
         }
+        catch (RuntimeException e) {
+            throw e;
+        }
         catch (Exception e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             throw new RuntimeException(e);
+        }
+        finally {
+            if (process.isAlive()) {
+                process.destroyForcibly();
+            }
         }
     }
 

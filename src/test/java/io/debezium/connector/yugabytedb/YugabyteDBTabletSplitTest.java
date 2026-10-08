@@ -23,8 +23,6 @@ import org.yb.client.GetTabletListToPollForCDCResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 
-import com.google.common.net.HostAndPort;
-
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
@@ -583,6 +581,10 @@ public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
 
   @Test
   public void shouldRetryInvalidRequestInsteadOfTreatingItAsSplit() throws Exception {
+    Assumptions.assumeTrue(
+        TestHelper.isTserverFlagListed(masterAddresses, TestHelper.TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET),
+        () -> TestHelper.cdcSdkFailGetChangesOnceFlagUnavailableMessage(masterAddresses));
+
     TestHelper.dropAllSchemas();
     TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
     String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false, false);
@@ -620,8 +622,8 @@ public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
     TestHelper.waitForTablets(ybClient, table, 3);
 
     // The child's first GetChanges fails with INVALID_REQUEST, as it did when the master was unreachable.
-    HostAndPort tserver = HostAndPort.fromParts(masterAddresses.split(":")[0], 9100);
-    assertTrue(ybClient.setFlag(tserver, "TEST_cdcsdk_fail_getchanges_once_for_tablet", child, true));
+    assertTrue(TestHelper.trySetCdcSdkFailGetChangesOnceForTablet(ybClient, masterAddresses, child),
+        "Failed to set " + TestHelper.TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET + " for tablet " + child);
 
     startEngine(configBuilder, (success, message, error) -> assertTrue(success));
     awaitUntilConnectorIsReady();
