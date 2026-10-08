@@ -6,7 +6,10 @@
 
 package io.debezium.connector.yugabytedb;
 
+import java.io.InputStream;
+import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -44,6 +47,7 @@ import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 
+import com.google.common.net.HostAndPort;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.PortBinding;
 import com.github.dockerjava.api.model.Ports;
@@ -480,6 +484,65 @@ public final class TestHelper {
                 .build();
 
         return new YBClient(asyncClient);
+    }
+
+    /** Tserver test flag used to force one INVALID_REQUEST on GetChanges for a tablet (see YugabyteDB CDC SDK). */
+    public static final String TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET =
+            "TEST_cdcsdk_fail_getchanges_once_for_tablet";
+
+    private static final int DEFAULT_TSERVER_WEB_PORT = 9000;
+
+    /**
+     * Whether the tserver {@code /varz} page lists a flag (used to skip CDC SDK hook tests on release builds).
+     */
+    public static boolean isTserverFlagListed(String masterAddresses, String flagName) {
+        String host = masterAddresses.split(":")[0];
+        try {
+            HttpURLConnection connection = (HttpURLConnection) new URL(
+                    "http://" + host + ":" + DEFAULT_TSERVER_WEB_PORT + "/varz").openConnection();
+            connection.setConnectTimeout(5_000);
+            connection.setReadTimeout(15_000);
+            try (InputStream in = connection.getInputStream()) {
+                String varz = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                return varz.contains(flagName);
+            }
+            finally {
+                connection.disconnect();
+            }
+        }
+        catch (Exception e) {
+            LOGGER.warn("Could not read tserver /varz on {}:{}: {}", host, DEFAULT_TSERVER_WEB_PORT, e.getMessage());
+            return false;
+        }
+    }
+
+    public static String cdcSdkFailGetChangesOnceFlagUnavailableMessage(String masterAddresses) {
+        String host = masterAddresses.split(":")[0];
+        return "YugabyteDB on " + host + " does not expose " + TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET
+                + ". Use the CI YB build (YB_DOCKER_IMAGE / internal Quay image) or upgrade yugabyted to a build"
+                + " that includes this CDC SDK test flag.";
+    }
+
+    /**
+     * Enables {@link #TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET} on the local tserver if the build supports it.
+     *
+     * @return {@code true} if the flag was set; {@code false} if this YugabyteDB build does not expose the flag
+     */
+    public static boolean trySetCdcSdkFailGetChangesOnceForTablet(
+            YBClient client, String masterAddresses, String tabletId) {
+        String host = masterAddresses.split(":")[0];
+        HostAndPort tserver = HostAndPort.fromParts(host, 9100);
+        try {
+            if (client.setFlag(tserver, TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET, tabletId, true)) {
+                return true;
+            }
+            return client.setFlag(tserver, TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET, tabletId);
+        }
+        catch (Exception e) {
+            LOGGER.warn("Could not set {} on {} for tablet {}: {}",
+                    TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET, tserver, tabletId, e.getMessage());
+            return false;
+        }
     }
 
     /**

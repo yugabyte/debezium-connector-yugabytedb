@@ -19,6 +19,7 @@ import io.debezium.heartbeat.HeartbeatFactory;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.RetriableException;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.postgresql.core.Encoding;
 import org.slf4j.Logger;
@@ -413,6 +414,14 @@ public class YugabyteDBConnectorTask
     }
 
     @Override
+    public void commitRecord(SourceRecord record, RecordMetadata metadata) throws InterruptedException {
+        // Do nothing.
+    }
+
+    /**
+     * Kafka Connect 3.x / Debezium embedded 1.9.x call this overload; Kafka 4.x uses
+     * {@link #commitRecord(SourceRecord, RecordMetadata)} only.
+     */
     public void commitRecord(SourceRecord record) throws InterruptedException {
         // Do nothing.
     }

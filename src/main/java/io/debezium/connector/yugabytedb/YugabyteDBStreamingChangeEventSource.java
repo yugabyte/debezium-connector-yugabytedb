@@ -574,8 +574,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     TEST_explicitCheckpoints.put(tabletId, explicitCheckpoint);
                                 }
                             } catch (CDCErrorException cdcException) {
-                                // Only CDC TABLET_SPLIT is a split. INVALID_REQUEST is
-                                // retried; treating it as a split can poll a child with -1.-1.
+                                // Only CDC TABLET_SPLIT is a split; INVALID_REQUEST is classified
+                                // (retry vs fail-fast) by YugabyteDBCdcErrorClassifier.
                                 LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
                                 YugabyteDBCdcErrorClassifier.CdcErrorAction action =
                                         YugabyteDBCdcErrorClassifier.actionFor(cdcException.getCDCError());
@@ -950,9 +950,9 @@ public class YugabyteDBStreamingChangeEventSource implements
             // point because the previous GetChanges call is supposed to throw
             // an exception which will be handled.
         } catch (CDCErrorException cdcErrorException) {
-            // This helper must only treat a real tablet split as success (javadoc above).
-            // Do not use HANDLE_IN_STREAM — that action is broader and would let the
-            // caller retire the parent as if the explicit checkpoint were written.
+            // Only TABLET_SPLIT is success here (see javadoc). We check the CDC code directly,
+            // not actionFor/HANDLE_IN_STREAM, so this path stays split-only even if HANDLE_IN_STREAM
+            // ever covers more than TABLET_SPLIT.
             if (YugabyteDBCdcErrorClassifier.isTabletSplit(cdcErrorException.getCDCError())) {
                 LOGGER.info("Handling tablet split error gracefully for enqueued tablet {}", partition.getTabletId());
             } else {

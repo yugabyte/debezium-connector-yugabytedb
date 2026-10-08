@@ -12,6 +12,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcService.CDCErrorPB;
 import org.yb.client.CDCErrorException;
@@ -62,12 +63,21 @@ final class YugabyteDBCdcErrorClassifier {
         }
 
         CDCErrorException cdcException = findCdcError(error);
-        LOGGER.error("Failing fast for non-retriable CDC error from YugabyteDB. code={}, status={}",
-                cdcException.getCDCError().getCode(),
-                cdcException.getCDCError().hasStatus()
-                        ? cdcException.getCDCError().getStatus()
-                        : "none",
-                error);
+        CDCErrorPB cdcError = cdcException.getCDCError();
+        String appStatusCode = "none";
+        String appStatusMessage = "";
+        if (cdcError.hasStatus()) {
+            AppStatusPB status = cdcError.getStatus();
+            appStatusCode = status.getCode().name();
+            if (status.hasMessage()) {
+                appStatusMessage = status.getMessage();
+            }
+        }
+        LOGGER.warn(
+                "Failing fast for non-retriable CDC error from YugabyteDB. code={}, appStatus={}, message={}",
+                cdcError.getCode(),
+                appStatusCode,
+                appStatusMessage);
 
         throw error;
     }
@@ -91,10 +101,8 @@ final class YugabyteDBCdcErrorClassifier {
                 // plain gRPC stream tasks. Do not fail the task.
                 return CdcErrorAction.RETRY;
             case INVALID_REQUEST:
-                // Not a tablet split. GetChanges uses this for bad requests
-                // (InvalidArgument) and some pre-producer failures (e.g. master lookup).
-                // A real split is CDC TABLET_SPLIT; retry here so the next poll can
-                // receive that code instead of calling handleTabletSplit on a child.
+                // Not a tablet split (only CDC TABLET_SPLIT is). Classified via actionForAmbiguousCdcCode:
+                // FAIL_FAST on fatal AppStatus/message; RETRY otherwise (e.g. transient pre-producer failure).
                 return actionForAmbiguousCdcCode(error);
             case CHECKPOINT_TOO_OLD:
             case OPERATION_DISALLOWED:
