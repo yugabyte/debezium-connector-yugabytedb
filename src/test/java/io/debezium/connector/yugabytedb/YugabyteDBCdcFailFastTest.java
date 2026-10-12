@@ -2,6 +2,7 @@ package io.debezium.connector.yugabytedb;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.sql.SQLException;
@@ -206,11 +207,13 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
                 .pollInterval(Duration.ofMillis(200))
                 .until(() -> logsContain("will attempt retry"));
 
-        assertTrue(engine.isRunning() || error.get() == null || !isClassifiedFailFast(error.get()),
-                "Injected code " + simulateCode + " should be retried, not fail-fast. logs="
-                        + joinedLogs() + " error=" + (error.get() == null ? "none" : flatten(error.get())));
         assertFalse(logsContain(FAIL_FAST_LOG),
                 "Injected code " + simulateCode + " should not fail fast: " + joinedLogs());
+        assertTrue(engine.isRunning(),
+                "Injected code " + simulateCode + " should be retried without stopping the task. logs="
+                        + joinedLogs() + " error=" + (error.get() == null ? "none" : flatten(error.get())));
+        assertNull(error.get(),
+                "Task should not have completed after injected retryable error. logs=" + joinedLogs());
     }
 
     private AtomicReference<Throwable> startConnectorForFailFast(
