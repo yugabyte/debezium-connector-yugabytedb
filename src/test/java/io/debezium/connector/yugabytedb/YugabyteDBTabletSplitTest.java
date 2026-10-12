@@ -630,8 +630,11 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
     TestHelper.waitForTablets(ybClient, table, 3);
 
     // Child's first GetChanges fails with INVALID_REQUEST (tablet not in stream list yet) — must retry, not split/fail-fast.
-    assertTrue(TestHelper.trySetCdcSdkFailGetChangesOnceForTablet(ybClient, masterAddresses, child),
-        "Failed to set " + TestHelper.TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET + " for tablet " + child);
+    TestHelper.TserverSetFlagResult setFlagResult = TestHelper.setCdcSdkFailGetChangesOnceForTablet(
+            ybClient, tserverHost, ybContainer.getMappedPort(9100), child);
+    assertEquals(TestHelper.TserverSetFlagResult.Status.SUCCESS, setFlagResult.status(),
+            () -> "setFlag for " + TestHelper.TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET
+                    + " on tablet " + child + ": " + setFlagResult.detail());
 
     startEngine(configBuilder, (success, message, error) -> assertTrue(success));
     awaitUntilConnectorIsReady();

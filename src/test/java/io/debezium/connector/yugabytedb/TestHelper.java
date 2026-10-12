@@ -492,6 +492,7 @@ public final class TestHelper {
             "TEST_cdcsdk_fail_getchanges_once_for_tablet";
 
     private static final int DEFAULT_TSERVER_WEB_PORT = 9000;
+    private static final int DEFAULT_TSERVER_RPC_PORT = 9100;
 
     /**
      * Result of reading tserver {@code /varz} for a test-only gflag name.
@@ -576,25 +577,73 @@ public final class TestHelper {
     }
 
     /**
-     * Enables {@link #TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET} on the tserver if the build supports it.
-     *
-     * @return {@code true} if the flag was set; {@code false} if this YugabyteDB build does not expose the flag
+     * Result of {@link YBClient#setFlag} for a tserver test gflag.
      */
-    public static boolean trySetCdcSdkFailGetChangesOnceForTablet(
-            YBClient client, String masterAddresses, String tabletId) {
-        String host = masterAddresses.split(":")[0];
-        HostAndPort tserver = HostAndPort.fromParts(host, 9100);
+    public static final class TserverSetFlagResult {
+        public enum Status {
+            /** {@code setFlag} returned success. */
+            SUCCESS,
+            /** RPC completed but the server rejected the change (not the same as flag missing on the build). */
+            REJECTED,
+            /** RPC failed (wrong host/port, timeout, connection refused, etc.). */
+            ERROR
+        }
+
+        private final Status status;
+        private final String detail;
+
+        private TserverSetFlagResult(Status status, String detail) {
+            this.status = status;
+            this.detail = detail;
+        }
+
+        public Status status() {
+            return status;
+        }
+
+        /** Non-null for {@link Status#REJECTED} and {@link Status#ERROR}. */
+        public String detail() {
+            return detail;
+        }
+
+        public boolean isSuccess() {
+            return status == Status.SUCCESS;
+        }
+    }
+
+    /**
+     * Sets {@link #TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET} on the given tserver RPC endpoint.
+     * Whether the build registers the flag is determined by {@link #probeTserverFlagOnVarz}, not by this method.
+     */
+    public static TserverSetFlagResult setCdcSdkFailGetChangesOnceForTablet(
+            YBClient client, String tserverHost, int tserverRpcPort, String tabletId) {
+        HostAndPort tserver = HostAndPort.fromParts(tserverHost, tserverRpcPort);
         try {
             if (client.setFlag(tserver, TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET, tabletId, true)) {
-                return true;
+                return new TserverSetFlagResult(TserverSetFlagResult.Status.SUCCESS, null);
             }
-            return client.setFlag(tserver, TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET, tabletId);
+            if (client.setFlag(tserver, TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET, tabletId)) {
+                return new TserverSetFlagResult(TserverSetFlagResult.Status.SUCCESS, null);
+            }
+            return new TserverSetFlagResult(TserverSetFlagResult.Status.REJECTED,
+                    "setFlag returned false for " + TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET
+                            + " on " + tserver + " tablet " + tabletId);
         }
         catch (Exception e) {
             LOGGER.warn("Could not set {} on {} for tablet {}: {}",
                     TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET, tserver, tabletId, e.getMessage());
-            return false;
+            return new TserverSetFlagResult(TserverSetFlagResult.Status.ERROR, e.getMessage());
         }
+    }
+
+    /**
+     * Like {@link #setCdcSdkFailGetChangesOnceForTablet(YBClient, String, int, String)} using the host from
+     * {@code masterAddresses} and {@link #DEFAULT_TSERVER_RPC_PORT}.
+     */
+    public static TserverSetFlagResult setCdcSdkFailGetChangesOnceForTablet(
+            YBClient client, String masterAddresses, String tabletId) {
+        String host = masterAddresses.split(":")[0];
+        return setCdcSdkFailGetChangesOnceForTablet(client, host, DEFAULT_TSERVER_RPC_PORT, tabletId);
     }
 
     /**
