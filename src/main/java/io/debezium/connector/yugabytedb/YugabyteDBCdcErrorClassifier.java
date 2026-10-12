@@ -16,16 +16,25 @@ import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcService.CDCErrorPB;
 import org.yb.client.CDCErrorException;
+import org.yb.client.MasterErrorException;
+import org.yb.master.MasterTypes.MasterErrorPB;
 
 /**
  * Classifies CDC errors before the generic connector retry loop.
+ * <p>
+ * {@code INVALID_REQUEST} with AppStatus {@code InvalidArgument} and message
+ * {@code Tablet ID … is not part of stream ID …} is intentionally retried: the
+ * tserver can build that error from an incomplete tablet list when
+ * {@code GetTablets(ignore_errors=true)} skips failed master lookups (cache miss,
+ * restart). The same wire shape can mean a real removal; the server does not
+ * distinguish them. Stream delete uses {@code NOT_FOUND} (e.g. could not find CDC
+ * stream), not that membership string.
  */
 final class YugabyteDBCdcErrorClassifier {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBCdcErrorClassifier.class);
 
     private static final EnumSet<ErrorCode> FATAL_APP_STATUS = EnumSet.of(
-            ErrorCode.INVALID_ARGUMENT,
             ErrorCode.NOT_AUTHORIZED,
             ErrorCode.NOT_SUPPORTED,
             ErrorCode.CONFIGURATION_ERROR,
@@ -50,11 +59,17 @@ final class YugabyteDBCdcErrorClassifier {
     }
 
     static boolean isFailFast(Throwable error) {
-        CDCErrorException cdcError = findCdcError(error);
-        if (cdcError == null) {
-            return false;
+        if (isMasterObjectNotFound(error)) {
+            return true;
         }
-        return actionFor(cdcError.getCDCError()) == CdcErrorAction.FAIL_FAST;
+        CDCErrorException cdcError = findCdcError(error);
+        if (cdcError != null) {
+            return actionFor(cdcError.getCDCError()) == CdcErrorAction.FAIL_FAST;
+        }
+        // Fallback when yb-client wraps errors as NonRecoverableException without CDCErrorPB on
+        // the chain (e.g. tooManyAttemptsOrTimeout(rpc, null)). Prefer CDC classification when
+        // the cause is preserved (delayedSendRpcToTablet after operation timeout).
+        return hasFatalExceptionMessage(error);
     }
 
     static void throwIfFailFast(Exception error) throws Exception {
@@ -62,22 +77,38 @@ final class YugabyteDBCdcErrorClassifier {
             return;
         }
 
-        CDCErrorException cdcException = findCdcError(error);
-        CDCErrorPB cdcError = cdcException.getCDCError();
-        String appStatusCode = "none";
-        String appStatusMessage = "";
-        if (cdcError.hasStatus()) {
-            AppStatusPB status = cdcError.getStatus();
-            appStatusCode = status.getCode().name();
-            if (status.hasMessage()) {
-                appStatusMessage = status.getMessage();
+        MasterErrorException masterException = ExceptionUtils.throwableOfType(error, MasterErrorException.class);
+        if (masterException != null && isMasterObjectNotFound(error)) {
+            LOGGER.warn(
+                    "Failing fast for non-retriable CDC error from YugabyteDB. masterError={}, message={}",
+                    masterException.error.getCode(),
+                    masterException.getMessage());
+        }
+        else {
+            CDCErrorException cdcException = findCdcError(error);
+            if (cdcException != null) {
+                CDCErrorPB cdcError = cdcException.getCDCError();
+                String appStatusCode = "none";
+                String appStatusMessage = "";
+                if (cdcError.hasStatus()) {
+                    AppStatusPB status = cdcError.getStatus();
+                    appStatusCode = status.getCode().name();
+                    if (status.hasMessage()) {
+                        appStatusMessage = status.getMessage();
+                    }
+                }
+                LOGGER.warn(
+                        "Failing fast for non-retriable CDC error from YugabyteDB. code={}, appStatus={}, message={}",
+                        cdcError.getCode(),
+                        appStatusCode,
+                        appStatusMessage);
+            }
+            else {
+                LOGGER.warn(
+                        "Failing fast for non-retriable CDC error from YugabyteDB. message={}",
+                        flattenMessages(error));
             }
         }
-        LOGGER.warn(
-                "Failing fast for non-retriable CDC error from YugabyteDB. code={}, appStatus={}, message={}",
-                cdcError.getCode(),
-                appStatusCode,
-                appStatusMessage);
 
         throw error;
     }
@@ -138,20 +169,51 @@ final class YugabyteDBCdcErrorClassifier {
     /**
      * Permanent CDC failures that often arrive as {@code UNKNOWN_ERROR} or {@code INTERNAL_ERROR},
      * so the status text is what distinguishes them from a retryable error with the same code.
+     * Also matched on {@code NonRecoverableException} when yb-client omits {@code CDCErrorPB}.
      */
+    private static final String[] FATAL_MESSAGE_FRAGMENTS = {
+            "could not find cdc stream",
+            "not found under stream",
+            "garbage collected",
+            "already gced intents",
+            "due to compaction",
+            "did not find a wal message",
+            "is expired for tablet",
+            "unpolled for too long",
+            "unsupported replica identity",
+            "replica identity not found",
+            "invalid stream id",
+            "incorrect tablet id",
+            "invalid checkpoint"
+    };
+
     private static boolean hasFatalMessage(CDCErrorPB error) {
-        return StringUtils.containsAny(statusMessage(error),
-                "could not find cdc stream",
-                "is not part of stream",
-                "not found under stream",
-                "garbage collected",
-                "already gced intents",
-                "due to compaction",
-                "did not find a wal message",
-                "is expired for tablet",
-                "unpolled for too long",
-                "unsupported replica identity",
-                "replica identity not found");
+        return StringUtils.containsAny(statusMessage(error), FATAL_MESSAGE_FRAGMENTS);
+    }
+
+    private static boolean hasFatalExceptionMessage(Throwable error) {
+        return StringUtils.containsAny(flattenMessages(error), FATAL_MESSAGE_FRAGMENTS);
+    }
+
+    /** DROP TABLE during bootstrap/openTable: master returns {@code OBJECT_NOT_FOUND}, not a CDC error. */
+    private static boolean isMasterObjectNotFound(Throwable error) {
+        MasterErrorException masterError = ExceptionUtils.throwableOfType(error, MasterErrorException.class);
+        if (masterError == null || masterError.error == null || !masterError.error.hasCode()) {
+            return false;
+        }
+        return masterError.error.getCode() == MasterErrorPB.Code.OBJECT_NOT_FOUND;
+    }
+
+    private static String flattenMessages(Throwable error) {
+        StringBuilder builder = new StringBuilder();
+        Throwable current = error;
+        while (current != null) {
+            if (current.getMessage() != null) {
+                builder.append(current.getMessage()).append(' ');
+            }
+            current = current.getCause();
+        }
+        return builder.toString().toLowerCase(Locale.ROOT);
     }
 
     private static String statusMessage(CDCErrorPB error) {

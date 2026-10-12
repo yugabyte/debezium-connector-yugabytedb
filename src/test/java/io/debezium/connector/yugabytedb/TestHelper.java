@@ -9,8 +9,8 @@ package io.debezium.connector.yugabytedb;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.sql.Connection;
@@ -457,10 +457,11 @@ public final class TestHelper {
         container.withPassword("yugabyte");
         container.withUsername("yugabyte");
         container.withDatabaseName("yugabyte");
-        container.withExposedPorts(7100, 9100, 5433, 9042);
+        container.withExposedPorts(7100, 9000, 9100, 5433, 9042);
         container.withCreateContainerCmdModifier(cmd -> cmd.withHostName(CONTAINER_HOSTNAME).getHostConfig().withPortBindings(new ArrayList<PortBinding>() {
             {
                 add(new PortBinding(Ports.Binding.bindPort(7100), new ExposedPort(7100)));
+                add(new PortBinding(Ports.Binding.bindPort(9000), new ExposedPort(9000)));
                 add(new PortBinding(Ports.Binding.bindPort(9100), new ExposedPort(9100)));
                 add(new PortBinding(Ports.Binding.bindPort(5433), new ExposedPort(5433)));
                 add(new PortBinding(Ports.Binding.bindPort(9042), new ExposedPort(9042)));
@@ -494,12 +495,21 @@ public final class TestHelper {
 
     /**
      * Whether the tserver {@code /varz} page lists a flag (used to skip CDC SDK hook tests on release builds).
+     * Uses {@link #DEFAULT_TSERVER_WEB_PORT} on the host parsed from {@code masterAddresses}.
      */
     public static boolean isTserverFlagListed(String masterAddresses, String flagName) {
         String host = masterAddresses.split(":")[0];
+        return isTserverFlagListed(host, DEFAULT_TSERVER_WEB_PORT, flagName);
+    }
+
+    /**
+     * Like {@link #isTserverFlagListed(String, String)} but with an explicit tserver web port (e.g.
+     * {@code ybContainer.getMappedPort(9000)} for Testcontainers).
+     */
+    public static boolean isTserverFlagListed(String host, int tserverWebPort, String flagName) {
         try {
             HttpURLConnection connection = (HttpURLConnection) new URL(
-                    "http://" + host + ":" + DEFAULT_TSERVER_WEB_PORT + "/varz").openConnection();
+                    "http://" + host + ":" + tserverWebPort + "/varz").openConnection();
             connection.setConnectTimeout(5_000);
             connection.setReadTimeout(15_000);
             try (InputStream in = connection.getInputStream()) {
@@ -511,7 +521,7 @@ public final class TestHelper {
             }
         }
         catch (Exception e) {
-            LOGGER.warn("Could not read tserver /varz on {}:{}: {}", host, DEFAULT_TSERVER_WEB_PORT, e.getMessage());
+            LOGGER.warn("Could not read tserver /varz on {}:{}: {}", host, tserverWebPort, e.getMessage());
             return false;
         }
     }
@@ -524,7 +534,7 @@ public final class TestHelper {
     }
 
     /**
-     * Enables {@link #TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET} on the local tserver if the build supports it.
+     * Enables {@link #TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET} on the tserver if the build supports it.
      *
      * @return {@code true} if the flag was set; {@code false} if this YugabyteDB build does not expose the flag
      */

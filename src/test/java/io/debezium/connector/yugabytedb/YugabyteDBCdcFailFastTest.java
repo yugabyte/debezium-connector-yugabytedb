@@ -3,15 +3,10 @@ package io.debezium.connector.yugabytedb;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -21,8 +16,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.Container.ExecResult;
 import org.yb.client.CDCErrorException;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
@@ -32,28 +27,30 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 
 import io.debezium.config.Configuration;
-import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
 /**
- * Service-side validation of CDC error classification while the connector is running. Disabled in
- * CI unless {@code -Dyb.service.it=true} is set. Optional {@code -Dyb.bin.dir=/path/to/yugabyte/bin}
- * (or {@code YB_BIN_DIR}) locates {@code yb-admin} / {@code yb-ts-cli}; otherwise PATH is used.
- * <p>
- * A bogus {@code database.stream.id} at task startup is intentionally not tested here (see
- * {@link YugabyteDBCdcFailFastIT}).
+ * End-to-end tests for CDC fail-fast vs connector retry while streaming (Testcontainers).
+ * Classification of individual codes is covered by {@link YugabyteDBCdcErrorClassifierTest}.
  */
-@EnabledIfSystemProperty(named = "yb.service.it", matches = "true")
-public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
+public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
 
-    private static final long RETRY_DELAY_MS = 2_500L;
+    private static final String SIMULATE_GET_CHANGES_ERROR_FLAG = "TEST_cdc_simulate_error_for_get_changes";
+
+    private static final long FAIL_FAST_RETRY_DELAY_MS = 500L;
+    private static final long INJECT_RETRY_DELAY_MS = 2_500L;
+    /**
+     * High RPC attempts + short operation timeout so yb-client exhausts in
+     * {@code delayedSendRpcToTablet} with the last {@link CDCErrorException} on the cause chain,
+     * not {@code tooManyAttemptsOrTimeout(rpc, null)} from low attempt limits.
+     */
+    private static final long FAIL_FAST_TEST_OPERATION_TIMEOUT_MS = 3_000L;
 
     private ListAppender<ILoggingEvent> logAppender;
 
     @BeforeAll
     public static void beforeClass() throws SQLException {
         initializeYBContainer();
-        assumeTrue(isYugabyteReachable(),
-                "Local yugabyted is not reachable (master " + TestHelper.getMasterAddress() + ", YSQL 5433)");
         TestHelper.dropAllSchemas();
         resetSimulateFlag();
     }
@@ -80,37 +77,34 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
     }
 
     @AfterAll
-    public static void afterClass() {
+    public static void afterClass() throws Exception {
         resetSimulateFlag();
         shutdownYBContainer();
     }
 
     @Test
     public void deleteStreamShouldFailFast() throws Exception {
-        assertFailFastAfterRunning("t_del_stream", () -> {
+        assertFailFastAfterRunning("t_del_stream", FAIL_FAST_RETRY_DELAY_MS, Duration.ofSeconds(60), () -> {
+            TestHelper.execute("INSERT INTO t_del_stream VALUES (1, 'fail-fast');");
             try (YBClient ybClient = TestHelper.getYbClient(getMasterAddress())) {
-                String streamId = currentStreamId();
-                ybClient.deleteCDCStream(Collections.singleton(streamId), false, true);
+                ybClient.deleteCDCStream(Collections.singleton(currentStreamId()), false, true);
             }
         });
     }
 
     @Test
     public void dropTableShouldFailFast() throws Exception {
-        assertFailFastAfterRunning("t_drop_table", () -> TestHelper.execute("DROP TABLE t_drop_table;"));
+        assertFailFastAfterRunning("t_drop_table", FAIL_FAST_RETRY_DELAY_MS, Duration.ofSeconds(60),
+                () -> TestHelper.execute("DROP TABLE t_drop_table;"));
     }
 
     @Test
     public void removeTableFromStreamShouldFailFast() throws Exception {
-        assertFailFastAfterRunning("t_remove_stream", () -> {
+        assertFailFastAfterRunning("t_remove_stream", FAIL_FAST_RETRY_DELAY_MS, Duration.ofSeconds(60), () -> {
             try (YBClient ybClient = TestHelper.getYbClient(getMasterAddress())) {
                 YBTable table = TestHelper.getYbTable(ybClient, "t_remove_stream");
                 assertNotNull(table);
-                runCommand(ybTool("yb-admin"),
-                        "--master_addresses", getMasterAddress(),
-                        "remove_user_table_from_change_data_stream",
-                        currentStreamId(),
-                        table.getTableId());
+                removeUserTableFromChangeDataStream(currentStreamId(), table.getTableId());
             }
         });
     }
@@ -132,14 +126,11 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
 
     @Test
     public void injectPeerNotLeaderShouldRetry() throws Exception {
-        // yb-client surfaces CDCErrorException on the cause chain; NOT_LEADER is RETRY in the classifier.
         assertRetryOnInjectedError("t_inj_not_leader", 2);
     }
 
     @Test
     public void injectLogFooterNotFoundShouldRetry() throws Exception {
-        // Injected footer-missing errors often carry AppStatus NOT_FOUND; that status alone is RETRY
-        // (see YugabyteDBCdcErrorClassifierTest.invalidRequestWithTableNotInPublicationAndNotFoundStatusShouldRetry).
         assertRetryOnInjectedError("t_inj_log_footer", 4);
     }
 
@@ -149,15 +140,19 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
         return streamIdRef.get();
     }
 
-    private void assertFailFastAfterRunning(String table, ThrowingRunnable trigger) throws Exception {
+    private void assertFailFastAfterRunning(
+            String table,
+            long connectorRetryDelayMs,
+            Duration stopTimeout,
+            ThrowingRunnable trigger) throws Exception {
         TestHelper.execute("CREATE TABLE " + table + " (id INT PRIMARY KEY, name TEXT);");
         String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
         streamIdRef.set(streamId);
-        AtomicReference<Throwable> error = startConnector("public." + table, streamId);
+        AtomicReference<Throwable> error = startConnectorForFailFast("public." + table, streamId, connectorRetryDelayMs);
         waitUntilRunning(error);
         trigger.run();
 
-        waitUntilStopped(error, Duration.ofSeconds(30));
+        waitUntilStopped(error, stopTimeout);
 
         assertConnectorNotRunning();
         assertNotNull(error.get());
@@ -171,7 +166,7 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
         TestHelper.execute("CREATE TABLE " + table + " (id INT PRIMARY KEY, name TEXT);");
         String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
         streamIdRef.set(streamId);
-        AtomicReference<Throwable> error = startConnector("public." + table, streamId);
+        AtomicReference<Throwable> error = startConnector("public." + table, streamId, INJECT_RETRY_DELAY_MS);
         waitUntilRunning(error);
 
         setSimulateFlag(simulateCode);
@@ -188,10 +183,33 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
                 "Injected code " + simulateCode + " should not fail fast: " + joinedLogs());
     }
 
-    private AtomicReference<Throwable> startConnector(String tableInclude, String streamId) throws Exception {
+    private AtomicReference<Throwable> startConnectorForFailFast(
+            String tableInclude, String streamId, long connectorRetryDelayMs) throws Exception {
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder(tableInclude, streamId)
                 .with(YugabyteDBConnectorConfig.MAX_CONNECTOR_RETRIES, 2)
-                .with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, RETRY_DELAY_MS)
+                .with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, connectorRetryDelayMs)
+                .with(YugabyteDBConnectorConfig.MAX_RPC_RETRY_ATTEMPTS,
+                        YugabyteDBConnectorConfig.DEFAULT_MAX_RPC_RETRY_ATTEMPTS)
+                .with(YugabyteDBConnectorConfig.OPERATION_TIMEOUT_MS, FAIL_FAST_TEST_OPERATION_TIMEOUT_MS)
+                .with(YugabyteDBConnectorConfig.ADMIN_OPERATION_TIMEOUT_MS, FAIL_FAST_TEST_OPERATION_TIMEOUT_MS)
+                .with(YugabyteDBConnectorConfig.RPC_RETRY_SLEEP_TIME, 100)
+                .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "never");
+
+        AtomicReference<Throwable> completionError = new AtomicReference<>();
+        startEngine(configBuilder, (success, message, error) -> {
+            completionError.set(error);
+            if (!success) {
+                LOGGER.info("Connector completed unsuccessfully: {}", message, error);
+            }
+        });
+        return completionError;
+    }
+
+    private AtomicReference<Throwable> startConnector(
+            String tableInclude, String streamId, long connectorRetryDelayMs) throws Exception {
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder(tableInclude, streamId)
+                .with(YugabyteDBConnectorConfig.MAX_CONNECTOR_RETRIES, 2)
+                .with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, connectorRetryDelayMs)
                 .with(YugabyteDBConnectorConfig.MAX_RPC_RETRY_ATTEMPTS, 2)
                 .with(YugabyteDBConnectorConfig.RPC_RETRY_SLEEP_TIME, 50)
                 .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "never");
@@ -208,7 +226,7 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
 
     private void waitUntilRunning(AtomicReference<Throwable> error) {
         Awaitility.await()
-                .atMost(Duration.ofSeconds(30))
+                .atMost(Duration.ofSeconds(60))
                 .pollInterval(Duration.ofMillis(250))
                 .until(() -> {
                     if (error.get() != null) {
@@ -222,18 +240,12 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
     private void waitUntilStopped(AtomicReference<Throwable> error, Duration timeout) {
         Awaitility.await()
                 .atMost(timeout)
-                .pollInterval(Duration.ofMillis(200))
+                .pollInterval(Duration.ofMillis(250))
                 .until(() -> !engine.isRunning() && error.get() != null);
     }
 
     private boolean isClassifiedFailFast(Throwable error) {
-        CDCErrorException cdcError = YugabyteDBCdcErrorClassifier.findCdcError(error);
-        if (cdcError == null) {
-            return false;
-        }
-        return YugabyteDBCdcErrorClassifier.actionFor(
-                cdcError.getCDCError())
-                == YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST;
+        return YugabyteDBCdcErrorClassifier.isFailFast(error);
     }
 
     private boolean logsContain(String token) {
@@ -259,82 +271,38 @@ public class YugabyteDBCdcServiceErrorIT extends YugabytedTestBase {
         return builder.toString();
     }
 
-    private static boolean isYugabyteReachable() {
-        try (YBClient client = TestHelper.getYbClient(TestHelper.getMasterAddress())) {
-            client.waitForMasterLeader(TimeUnit.SECONDS.toMillis(5));
-            TestHelper.execute("SELECT 1;");
-            return true;
-        }
-        catch (Exception e) {
-            return false;
+    private static void removeUserTableFromChangeDataStream(String streamId, String tableId) throws Exception {
+        ExecResult result = ybContainer.execInContainer(
+                "/home/yugabyte/bin/yb-admin",
+                "--master_addresses", containerIpAddress + ":7100",
+                "remove_user_table_from_change_data_stream",
+                streamId,
+                tableId);
+        if (result.getExitCode() != 0) {
+            throw new RuntimeException("yb-admin remove_user_table_from_change_data_stream failed (exit "
+                    + result.getExitCode() + "): " + result.getStdout() + result.getStderr());
         }
     }
 
-    private static void setSimulateFlag(int value) {
-        runCommand(ybTool("yb-ts-cli"),
-                "--server_address=127.0.0.1:9100",
+    private static void setSimulateFlag(int value) throws Exception {
+        ExecResult result = ybContainer.execInContainer(
+                "/home/yugabyte/bin/yb-ts-cli",
+                "--server_address", containerIpAddress,
                 "set_flag",
                 "-force",
-                "TEST_cdc_simulate_error_for_get_changes",
+                SIMULATE_GET_CHANGES_ERROR_FLAG,
                 String.valueOf(value));
+        if (result.getExitCode() != 0) {
+            throw new RuntimeException("set_flag failed (exit " + result.getExitCode() + "): "
+                    + result.getStdout() + result.getStderr());
+        }
     }
 
     private static void resetSimulateFlag() {
         try {
-            // -1 is parsed as a gflag by yb-ts-cli; any unused code disables injection.
             setSimulateFlag(99);
         }
-        catch (RuntimeException ignored) {
-        }
-    }
-
-    private static String ybTool(String name) {
-        String dir = System.getProperty("yb.bin.dir");
-        if (dir == null || dir.isEmpty()) {
-            dir = System.getenv("YB_BIN_DIR");
-        }
-        if (dir != null && !dir.isEmpty()) {
-            return dir + "/" + name;
-        }
-        return name;
-    }
-
-    private static void runCommand(String... command) {
-        Process process;
-        try {
-            process = new ProcessBuilder(command)
-                    .redirectErrorStream(true)
-                    .start();
-        }
-        catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-
-        try {
-            String output;
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                output = reader.lines().collect(Collectors.joining("\n"));
-            }
-            if (!process.waitFor(20, TimeUnit.SECONDS)) {
-                throw new RuntimeException("Command timed out after 20s: " + List.of(command) + "\n" + output);
-            }
-            if (process.exitValue() != 0) {
-                throw new RuntimeException("Command failed: " + List.of(command) + "\n" + output);
-            }
-        }
-        catch (RuntimeException e) {
-            throw e;
-        }
-        catch (Exception e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            throw new RuntimeException(e);
-        }
-        finally {
-            if (process.isAlive()) {
-                process.destroyForcibly();
-            }
+        catch (Exception ignored) {
         }
     }
 

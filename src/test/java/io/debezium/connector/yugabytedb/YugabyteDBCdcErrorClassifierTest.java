@@ -18,6 +18,9 @@ import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcService.CDCErrorPB;
 import org.yb.cdc.CdcService.CDCErrorPB.Code;
 import org.yb.client.CDCErrorException;
+import org.yb.client.MasterErrorException;
+import org.yb.client.NonRecoverableException;
+import org.yb.master.MasterTypes.MasterErrorPB;
 
 /**
  * Unit tests for {@link YugabyteDBCdcErrorClassifier}. These tests construct CDC proto errors
@@ -153,6 +156,14 @@ public class YugabyteDBCdcErrorClassifierTest {
     }
 
     @Test
+    public void invalidRequestWithTabletNotInStreamShouldRetry() {
+        // Same wire error as real removal; incomplete GetTablets(ignore_errors=true) on cache miss.
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
+                classify(error(Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT,
+                        "Tablet ID xyz is not part of stream ID abc")));
+    }
+
+    @Test
     public void unknownErrorWithTabletSplitStatusShouldRetry() {
         assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
                 classify(error(Code.UNKNOWN_ERROR, ErrorCode.TABLET_SPLIT, "tablet split")));
@@ -206,6 +217,64 @@ public class YugabyteDBCdcErrorClassifierTest {
     }
 
     @Test
+    public void isFailFastTrueWhenStreamMissingIsWrappedWithoutCdcError() {
+        RuntimeException error = new RuntimeException(
+                "Too many attempts: YRpc(method=GetTabletListToPollForCDC). "
+                        + "Server NOT_FOUND[code 1]: Could not find CDC stream: stream_id: \"abc\"");
+        assertTrue(YugabyteDBCdcErrorClassifier.isFailFast(error));
+    }
+
+    @Test
+    public void isFailFastTrueWhenTableNotUnderStreamIsWrappedWithoutCdcError() {
+        RuntimeException error = new RuntimeException(
+                "Too many attempts: YRpc(method=GetTabletListToPollForCDC). "
+                        + "NOT_FOUND[code 1]: Table 000034e1 not found under stream");
+        assertTrue(YugabyteDBCdcErrorClassifier.isFailFast(error));
+    }
+
+    @Test
+    public void isFailFastTrueWhenDroppedTableObjectNotFoundOnMaster() throws Exception {
+        MasterErrorException masterError = masterErrorException(
+                MasterErrorPB.Code.OBJECT_NOT_FOUND,
+                "The object 'yugabyte.public.t_drop_table' does not exist");
+        assertTrue(YugabyteDBCdcErrorClassifier.isFailFast(masterError));
+        assertTrue(YugabyteDBCdcErrorClassifier.isFailFast(
+                new RuntimeException("bootstrap failed", masterError)));
+    }
+
+    @Test
+    public void isFailFastFalseForMasterErrorOtherThanObjectNotFound() throws Exception {
+        MasterErrorException masterError = masterErrorException(
+                MasterErrorPB.Code.NOT_THE_LEADER,
+                "not the leader");
+        assertFalse(YugabyteDBCdcErrorClassifier.isFailFast(masterError));
+    }
+
+    @Test
+    public void isFailFastFalseForRpcExhaustedWithoutFatalText() {
+        RuntimeException error = new RuntimeException(
+                "Too many attempts: YRpc(method=GetChanges). "
+                        + "LEADER_NOT_READY_TO_SERVE[code 23]: Simulated error");
+        assertFalse(YugabyteDBCdcErrorClassifier.isFailFast(error));
+    }
+
+    @Test
+    public void isFailFastFalseWhenGetTabletListExhaustsWithoutStatusText() throws Exception {
+        NonRecoverableException error = nonRecoverable(
+                "Too many attempts: YRpc(method=GetTabletListToPollForCDC, service=yb.cdc.CDCService, "
+                        + "tablet=abc, attempt=5, maxAttempts=5, maxTimeoutMs=900000, elapsedTimeMs=704)");
+        assertFalse(YugabyteDBCdcErrorClassifier.isFailFast(error));
+    }
+
+    @Test
+    public void isFailFastFalseWhenGetChangesExhaustsWithoutStatusText() throws Exception {
+        NonRecoverableException error = nonRecoverable(
+                "Too many attempts: YRpc(method=GetChanges, service=yb.cdc.CDCService, tablet=abc, "
+                        + "attempt=2, maxAttempts=2, maxTimeoutMs=900000, elapsedTimeMs=107)");
+        assertFalse(YugabyteDBCdcErrorClassifier.isFailFast(error));
+    }
+
+    @Test
     public void unknownErrorWithRuntimeStatusShouldFailFast() {
         assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
                 classify(error(Code.UNKNOWN_ERROR, ErrorCode.RUNTIME_ERROR, "internal failure")));
@@ -254,7 +323,6 @@ public class YugabyteDBCdcErrorClassifierTest {
         String streamExpired = "Stream ID abc is expired for Tablet ID xyz";
         String unpolled = "Stream ID abc unpolled for too long for Tablet ID xyz";
         String streamMissing = "Could not find CDC stream: stream_id: \"abc\"";
-        String tabletNotInStream = "Tablet ID xyz is not part of stream ID abc";
         String unsupportedReplicaIdentity = "Unknown or unsupported replica identity for table t1";
         String replicaIdentityNotFound = "Replica Identity not found for table t1";
 
@@ -274,9 +342,6 @@ public class YugabyteDBCdcErrorClassifierTest {
                 failure("tablet unpolled too long", Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR, unpolled),
                 failure("cdc stream not found on invalid request", Code.INVALID_REQUEST, ErrorCode.NOT_FOUND, streamMissing),
                 failure("cdc stream not found on internal error", Code.INTERNAL_ERROR, ErrorCode.NOT_FOUND, streamMissing),
-                failure("tablet not part of stream", Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT, tabletNotInStream),
-                // INVALID_ARGUMENT is fatal on its own. This row keeps the message match under test.
-                failure("tablet not part of stream by message", Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR, tabletNotInStream),
                 failure("tablet not found under stream", Code.INTERNAL_ERROR, ErrorCode.NOT_FOUND,
                         "Tablet ID xyz not found under stream ID abc"),
                 failure("unsupported replica identity as unknown error", Code.UNKNOWN_ERROR, ErrorCode.INTERNAL_ERROR,
@@ -298,7 +363,8 @@ public class YugabyteDBCdcErrorClassifierTest {
                 Arguments.of("expired without a tablet", "stream expired"),
                 Arguments.of("unpolled without the timeout phrase", "tablet was not polled"),
                 Arguments.of("missing stream without cdc", "Could not find stream: stream_id: \"abc\""),
-                Arguments.of("tablet not part of a publication", "Tablet ID xyz is not part of publication abc"));
+                Arguments.of("tablet not part of a publication", "Tablet ID xyz is not part of publication abc"),
+                Arguments.of("tablet not part of stream membership", "Tablet ID xyz is not part of stream ID abc"));
     }
 
     private static Arguments failure(String name, Code code, ErrorCode status, String message) {
@@ -310,6 +376,28 @@ public class YugabyteDBCdcErrorClassifierTest {
                 CDCErrorException.class.getDeclaredConstructor(String.class, CDCErrorPB.class);
         constructor.setAccessible(true);
         return constructor.newInstance("tserver-1", error);
+    }
+
+    private static NonRecoverableException nonRecoverable(String message) throws Exception {
+        Constructor<NonRecoverableException> constructor =
+                NonRecoverableException.class.getDeclaredConstructor(String.class);
+        constructor.setAccessible(true);
+        return constructor.newInstance(message);
+    }
+
+    private static MasterErrorException masterErrorException(MasterErrorPB.Code code, String message)
+            throws Exception {
+        MasterErrorPB error = MasterErrorPB.newBuilder()
+                .setCode(code)
+                .setStatus(AppStatusPB.newBuilder()
+                        .setCode(ErrorCode.NOT_FOUND)
+                        .setMessage(message)
+                        .build())
+                .build();
+        Constructor<MasterErrorException> constructor =
+                MasterErrorException.class.getDeclaredConstructor(String.class, MasterErrorPB.class);
+        constructor.setAccessible(true);
+        return constructor.newInstance("master-1", error);
     }
 
     private static YugabyteDBCdcErrorClassifier.CdcErrorAction classify(CDCErrorPB error) {

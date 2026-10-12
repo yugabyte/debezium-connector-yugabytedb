@@ -26,16 +26,16 @@ import org.yb.client.YBTable;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
-import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import org.yb.cdc.CdcService.TabletCheckpointPair;
 
 /**
- * Unit tests to verify that the connector gracefully handles the tablet splitting on the server.
- * 
+ * Tests that the connector handles tablet splits and transient INVALID_REQUEST membership errors.
+ * Runs against YugabyteDB in Testcontainers ({@link YugabyteDBContainerTestBase}), same as CI basic tests.
+ *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
+public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
 
   private static String masterAddresses;
 
@@ -581,8 +581,11 @@ public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
 
   @Test
   public void shouldRetryInvalidRequestInsteadOfTreatingItAsSplit() throws Exception {
+    String tserverHost = masterAddresses.split(":")[0];
+    int tserverWebPort = ybContainer.getMappedPort(9000);
     Assumptions.assumeTrue(
-        TestHelper.isTserverFlagListed(masterAddresses, TestHelper.TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET),
+        TestHelper.isTserverFlagListed(tserverHost, tserverWebPort,
+            TestHelper.TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET),
         () -> TestHelper.cdcSdkFailGetChangesOnceFlagUnavailableMessage(masterAddresses));
 
     TestHelper.dropAllSchemas();
@@ -621,7 +624,7 @@ public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
     });
     TestHelper.waitForTablets(ybClient, table, 3);
 
-    // The child's first GetChanges fails with INVALID_REQUEST, as it did when the master was unreachable.
+    // Child's first GetChanges fails with INVALID_REQUEST (tablet not in stream list yet) — must retry, not split/fail-fast.
     assertTrue(TestHelper.trySetCdcSdkFailGetChangesOnceForTablet(ybClient, masterAddresses, child),
         "Failed to set " + TestHelper.TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET + " for tablet " + child);
 
