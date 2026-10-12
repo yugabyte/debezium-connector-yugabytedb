@@ -577,6 +577,18 @@ public final class TestHelper {
     }
 
     /**
+     * When true, {@code shouldRetryInvalidRequestInsteadOfTreatingItAsSplit} must not be skipped if the
+     * inject flag is missing from {@code /varz} (CI basic workflow and local runs with {@code YB_DOCKER_IMAGE}).
+     */
+    public static boolean requiresCdcSdkFailGetChangesInjectFlag() {
+        if ("true".equalsIgnoreCase(System.getenv("GITHUB_ACTIONS"))) {
+            return true;
+        }
+        String image = System.getenv("YB_DOCKER_IMAGE");
+        return image != null && !image.isBlank();
+    }
+
+    /**
      * Result of {@link YBClient#setFlag} for a tserver test gflag.
      */
     public static final class TserverSetFlagResult {

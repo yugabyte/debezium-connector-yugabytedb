@@ -32,6 +32,8 @@ import org.yb.cdc.CdcService.TabletCheckpointPair;
 /**
  * Tests that the connector handles tablet splits and transient INVALID_REQUEST membership errors.
  * Runs against YugabyteDB in Testcontainers ({@link YugabyteDBContainerTestBase}), same as CI basic tests.
+ * {@link #shouldRetryInvalidRequestInsteadOfTreatingItAsSplit} fails (not skips) when the CDC SDK inject
+ * flag is absent under CI or {@code YB_DOCKER_IMAGE}; it skips only on the default Docker Hub image locally.
  *
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
@@ -589,9 +591,13 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
       fail("Could not read tserver /varz on " + tserverHost + ":" + tserverWebPort + ": "
               + flagProbe.unreachableDetail());
     }
-    Assumptions.assumeTrue(
-        flagProbe.isListed(),
-        () -> TestHelper.cdcSdkFailGetChangesOnceFlagUnavailableMessage(masterAddresses));
+    if (!flagProbe.isListed()) {
+      String unavailable = TestHelper.cdcSdkFailGetChangesOnceFlagUnavailableMessage(masterAddresses);
+      if (TestHelper.requiresCdcSdkFailGetChangesInjectFlag()) {
+        fail(unavailable);
+      }
+      Assumptions.assumeTrue(false, unavailable);
+    }
 
     TestHelper.dropAllSchemas();
     TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
