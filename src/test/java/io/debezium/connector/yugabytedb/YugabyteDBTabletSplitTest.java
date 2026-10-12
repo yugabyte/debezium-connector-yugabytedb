@@ -156,6 +156,7 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
     setTserverFlags("enable_automatic_tablet_splitting=true");
     ybContainer = TestHelper.getYbContainer();
     ybContainer.start();
+    containerIpAddress = getContainerIp(ybContainer.getContainerId());
 
     LOGGER.info("Container startup command in test: {}", getYugabytedStartCommand());
 
@@ -165,9 +166,10 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
       throw new RuntimeException(e);
     }
 
-    TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433), ybContainer.getMappedPort(9042));
-    TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
-    
+    TestHelper.setContainerHostPort(containerIpAddress, ybContainer.getMappedPort(5433), ybContainer.getMappedPort(9042));
+    masterAddresses = containerIpAddress + ":" + ybContainer.getMappedPort(7100);
+    TestHelper.setMasterAddress(masterAddresses);
+
     TestHelper.dropAllSchemas();
     String generatedColumns = "";
     
