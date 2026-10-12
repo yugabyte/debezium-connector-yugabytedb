@@ -257,8 +257,15 @@ public class TestBaseClass extends AbstractConnectorTest {
       .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
       .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class);
 
+    engineCompleted.set(false);
+    engineCompletionError.set(null);
     countDownLatch = new CountDownLatch(1);
     DebeziumEngine.CompletionCallback wrapperCallback = (success, msg, error) -> {
+      if (error != null) {
+        engineCompletionError.set(error);
+        LOGGER.error("Embedded engine completed unsuccessfully: {}", msg, error);
+      }
+      engineCompleted.set(true);
       try {
         if (callback != null) {
           callback.handle(success, msg, error);
