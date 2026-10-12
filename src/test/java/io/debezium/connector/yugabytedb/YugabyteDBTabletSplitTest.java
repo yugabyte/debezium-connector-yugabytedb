@@ -583,9 +583,14 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
   public void shouldRetryInvalidRequestInsteadOfTreatingItAsSplit() throws Exception {
     String tserverHost = masterAddresses.split(":")[0];
     int tserverWebPort = ybContainer.getMappedPort(9000);
+    TestHelper.TserverVarzFlagProbe flagProbe = TestHelper.probeTserverFlagOnVarz(
+            tserverHost, tserverWebPort, TestHelper.TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET);
+    if (flagProbe.status() == TestHelper.TserverVarzFlagProbe.Status.UNREACHABLE) {
+      fail("Could not read tserver /varz on " + tserverHost + ":" + tserverWebPort + ": "
+              + flagProbe.unreachableDetail());
+    }
     Assumptions.assumeTrue(
-        TestHelper.isTserverFlagListed(tserverHost, tserverWebPort,
-            TestHelper.TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET),
+        flagProbe.isListed(),
         () -> TestHelper.cdcSdkFailGetChangesOnceFlagUnavailableMessage(masterAddresses));
 
     TestHelper.dropAllSchemas();

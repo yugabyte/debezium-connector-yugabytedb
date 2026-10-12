@@ -22,13 +22,19 @@ import org.yb.master.MasterTypes.MasterErrorPB;
 /**
  * Classifies CDC errors before the generic connector retry loop.
  * <p>
- * {@code INVALID_REQUEST} with AppStatus {@code InvalidArgument} and message
- * {@code Tablet ID … is not part of stream ID …} is intentionally retried: the
- * tserver can build that error from an incomplete tablet list when
- * {@code GetTablets(ignore_errors=true)} skips failed master lookups (cache miss,
- * restart). The same wire shape can mean a real removal; the server does not
- * distinguish them. Stream delete uses {@code NOT_FOUND} (e.g. could not find CDC
- * stream), not that membership string.
+ * Two different membership-related texts are not interchangeable:
+ * <ul>
+ *   <li>{@code Tablet ID … is not part of stream ID …} on {@code GetChanges} (often
+ *       {@code INVALID_REQUEST} / {@code InvalidArgument}) is intentionally {@link CdcErrorAction#RETRY retried}:
+ *       the tserver can build that error from an incomplete tablet list when
+ *       {@code GetTablets(ignore_errors=true)} skips failed master lookups (cache miss,
+ *       restart). The server does not distinguish that from a real removal on this RPC.</li>
+ *   <li>{@code … not found under stream …} (e.g. on {@code GetTabletListToPollForCDC} after
+ *       {@code remove_user_table_from_change_data_stream}) is {@link CdcErrorAction#FAIL_FAST fail-fast}
+ *       (permanent message fragments).</li>
+ * </ul>
+ * Stream delete uses {@code NOT_FOUND} (e.g. could not find CDC stream), not the GetChanges
+ * membership string above.
  */
 final class YugabyteDBCdcErrorClassifier {
 
@@ -80,7 +86,7 @@ final class YugabyteDBCdcErrorClassifier {
         MasterErrorException masterException = ExceptionUtils.throwableOfType(error, MasterErrorException.class);
         if (masterException != null && isMasterObjectNotFound(error)) {
             LOGGER.warn(
-                    "Failing fast for non-retriable CDC error from YugabyteDB. masterError={}, message={}",
+                    "Failing fast for non-retriable master error from YugabyteDB. masterError={}, message={}",
                     masterException.error.getCode(),
                     masterException.getMessage());
         }
@@ -105,7 +111,7 @@ final class YugabyteDBCdcErrorClassifier {
             }
             else {
                 LOGGER.warn(
-                        "Failing fast for non-retriable CDC error from YugabyteDB. message={}",
+                        "Failing fast for non-retriable error from YugabyteDB (no CDCErrorPB on chain). message={}",
                         flattenMessages(error));
             }
         }
@@ -170,6 +176,11 @@ final class YugabyteDBCdcErrorClassifier {
      * Permanent CDC failures that often arrive as {@code UNKNOWN_ERROR} or {@code INTERNAL_ERROR},
      * so the status text is what distinguishes them from a retryable error with the same code.
      * Also matched on {@code NonRecoverableException} when yb-client omits {@code CDCErrorPB}.
+     * <p>
+     * {@code Stream ID … is expired for Tablet ID …} is intentionally omitted: the same text is
+     * returned when GetChanges runs before an initial checkpoint ({@code YugabyteDBSnapshotChangeEventSource}
+     * sets the checkpoint via {@code makeStreamActive}). Bootstrap / {@code markNoSnapshotNeeded} retry
+     * until SetCDCCheckpoint succeeds.
      */
     private static final String[] FATAL_MESSAGE_FRAGMENTS = {
             "could not find cdc stream",
@@ -178,7 +189,6 @@ final class YugabyteDBCdcErrorClassifier {
             "already gced intents",
             "due to compaction",
             "did not find a wal message",
-            "is expired for tablet",
             "unpolled for too long",
             "unsupported replica identity",
             "replica identity not found",

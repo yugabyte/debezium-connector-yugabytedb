@@ -494,19 +494,58 @@ public final class TestHelper {
     private static final int DEFAULT_TSERVER_WEB_PORT = 9000;
 
     /**
-     * Whether the tserver {@code /varz} page lists a flag (used to skip CDC SDK hook tests on release builds).
-     * Uses {@link #DEFAULT_TSERVER_WEB_PORT} on the host parsed from {@code masterAddresses}.
+     * Result of reading tserver {@code /varz} for a test-only gflag name.
+     */
+    public static final class TserverVarzFlagProbe {
+        public enum Status {
+            /** {@code /varz} was read and contains the flag name. */
+            LISTED,
+            /** {@code /varz} was read; this build does not register the flag (skip test). */
+            NOT_LISTED,
+            /** Could not read {@code /varz} (fail test — not the same as flag missing). */
+            UNREACHABLE
+        }
+
+        private final Status status;
+        private final String unreachableDetail;
+
+        private TserverVarzFlagProbe(Status status, String unreachableDetail) {
+            this.status = status;
+            this.unreachableDetail = unreachableDetail;
+        }
+
+        public Status status() {
+            return status;
+        }
+
+        public String unreachableDetail() {
+            return unreachableDetail;
+        }
+
+        public boolean isListed() {
+            return status == Status.LISTED;
+        }
+    }
+
+    /**
+     * Whether the tserver {@code /varz} page lists a flag. Returns {@code false} for
+     * {@link TserverVarzFlagProbe.Status#NOT_LISTED} and {@link TserverVarzFlagProbe.Status#UNREACHABLE};
+     * use {@link #probeTserverFlagOnVarz(String, int, String)} when the distinction matters.
      */
     public static boolean isTserverFlagListed(String masterAddresses, String flagName) {
         String host = masterAddresses.split(":")[0];
         return isTserverFlagListed(host, DEFAULT_TSERVER_WEB_PORT, flagName);
     }
 
-    /**
-     * Like {@link #isTserverFlagListed(String, String)} but with an explicit tserver web port (e.g.
-     * {@code ybContainer.getMappedPort(9000)} for Testcontainers).
-     */
     public static boolean isTserverFlagListed(String host, int tserverWebPort, String flagName) {
+        return probeTserverFlagOnVarz(host, tserverWebPort, flagName).isListed();
+    }
+
+    /**
+     * Reads tserver {@code /varz} and checks for {@code flagName}. Distinguishes a successful read
+     * without the flag (release build) from failure to reach {@code /varz} at all.
+     */
+    public static TserverVarzFlagProbe probeTserverFlagOnVarz(String host, int tserverWebPort, String flagName) {
         try {
             HttpURLConnection connection = (HttpURLConnection) new URL(
                     "http://" + host + ":" + tserverWebPort + "/varz").openConnection();
@@ -514,7 +553,10 @@ public final class TestHelper {
             connection.setReadTimeout(15_000);
             try (InputStream in = connection.getInputStream()) {
                 String varz = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-                return varz.contains(flagName);
+                if (varz.contains(flagName)) {
+                    return new TserverVarzFlagProbe(TserverVarzFlagProbe.Status.LISTED, null);
+                }
+                return new TserverVarzFlagProbe(TserverVarzFlagProbe.Status.NOT_LISTED, null);
             }
             finally {
                 connection.disconnect();
@@ -522,7 +564,7 @@ public final class TestHelper {
         }
         catch (Exception e) {
             LOGGER.warn("Could not read tserver /varz on {}:{}: {}", host, tserverWebPort, e.getMessage());
-            return false;
+            return new TserverVarzFlagProbe(TserverVarzFlagProbe.Status.UNREACHABLE, e.getMessage());
         }
     }
 

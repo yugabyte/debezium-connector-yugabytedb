@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -30,8 +31,17 @@ import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 
 /**
- * End-to-end tests for CDC fail-fast vs connector retry while streaming (Testcontainers).
- * Classification of individual codes is covered by {@link YugabyteDBCdcErrorClassifierTest}.
+ * End-to-end tests for {@link YugabyteDBCdcErrorClassifier#throwIfFailFast} on real RPC paths (Testcontainers).
+ * Code/message rules are covered by {@link YugabyteDBCdcErrorClassifierTest}.
+ * <p>
+ * <b>During streaming</b> ({@link #deleteStreamDuringStreamingShouldFailFast},
+ * {@link #dropTableDuringStreamingShouldFailFast}): waits for {@link #waitUntilStreamingReady} (engine delay,
+ * {@code Processing messages}, and one consumed change) before the fault, then requires a {@code Failing fast} log
+ * from the classifier.
+ * <p>
+ * <b>Bootstrap / tablet list</b> ({@link #removeTableFromStreamBeforeStartShouldFailFast}): yb-admin removal before
+ * start; expects {@code not found under stream} on {@code GetTabletListToPollForCDC}. GetChanges
+ * {@code Tablet ID … is not part of stream ID …} remains retry (unit test).
  */
 public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
 
@@ -45,6 +55,9 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
      * not {@code tooManyAttemptsOrTimeout(rpc, null)} from low attempt limits.
      */
     private static final long FAIL_FAST_TEST_OPERATION_TIMEOUT_MS = 3_000L;
+    private static final long STREAMING_READY_CONSUME_TIMEOUT_MS = 120_000L;
+    private static final String STREAMING_LOOP_LOG = "Processing messages";
+    private static final String FAIL_FAST_LOG = "Failing fast";
 
     private ListAppender<ILoggingEvent> logAppender;
 
@@ -83,9 +96,9 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
     }
 
     @Test
-    public void deleteStreamShouldFailFast() throws Exception {
-        assertFailFastAfterRunning("t_del_stream", FAIL_FAST_RETRY_DELAY_MS, Duration.ofSeconds(60), () -> {
-            TestHelper.execute("INSERT INTO t_del_stream VALUES (1, 'fail-fast');");
+    public void deleteStreamDuringStreamingShouldFailFast() throws Exception {
+        assertFailFastAfterStreamingReady("t_del_stream", FAIL_FAST_RETRY_DELAY_MS, Duration.ofSeconds(60), () -> {
+            TestHelper.execute("INSERT INTO t_del_stream VALUES (2, 'fail-fast');");
             try (YBClient ybClient = TestHelper.getYbClient(getMasterAddress())) {
                 ybClient.deleteCDCStream(Collections.singleton(currentStreamId()), false, true);
             }
@@ -93,20 +106,32 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
     }
 
     @Test
-    public void dropTableShouldFailFast() throws Exception {
-        assertFailFastAfterRunning("t_drop_table", FAIL_FAST_RETRY_DELAY_MS, Duration.ofSeconds(60),
+    public void dropTableDuringStreamingShouldFailFast() throws Exception {
+        assertFailFastAfterStreamingReady("t_drop_table", FAIL_FAST_RETRY_DELAY_MS, Duration.ofSeconds(60),
                 () -> TestHelper.execute("DROP TABLE t_drop_table;"));
     }
 
     @Test
-    public void removeTableFromStreamShouldFailFast() throws Exception {
-        assertFailFastAfterRunning("t_remove_stream", FAIL_FAST_RETRY_DELAY_MS, Duration.ofSeconds(60), () -> {
-            try (YBClient ybClient = TestHelper.getYbClient(getMasterAddress())) {
-                YBTable table = TestHelper.getYbTable(ybClient, "t_remove_stream");
-                assertNotNull(table);
-                removeUserTableFromChangeDataStream(currentStreamId(), table.getTableId());
-            }
-        });
+    public void removeTableFromStreamBeforeStartShouldFailFast() throws Exception {
+        String table = "t_remove_stream";
+        TestHelper.execute("CREATE TABLE " + table + " (id INT PRIMARY KEY, name TEXT);");
+        String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
+        streamIdRef.set(streamId);
+
+        try (YBClient ybClient = TestHelper.getYbClient(getMasterAddress())) {
+            YBTable ybTable = TestHelper.getYbTable(ybClient, table);
+            assertNotNull(ybTable);
+            removeUserTableFromChangeDataStream(streamId, ybTable.getTableId());
+        }
+
+        AtomicReference<Throwable> error = startConnectorForFailFast("public." + table, streamId, FAIL_FAST_RETRY_DELAY_MS);
+        waitUntilStopped(error, Duration.ofSeconds(60));
+
+        assertFailFastTaskStopped(error.get());
+        String flattened = flatten(error.get()).toLowerCase();
+        assertTrue(flattened.contains("not found under stream"),
+                "Expected GetTabletListToPollForCDC-style removal error, not GetChanges membership retry. error="
+                        + flatten(error.get()) + " logs=" + joinedLogs());
     }
 
     @Test
@@ -140,7 +165,7 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         return streamIdRef.get();
     }
 
-    private void assertFailFastAfterRunning(
+    private void assertFailFastAfterStreamingReady(
             String table,
             long connectorRetryDelayMs,
             Duration stopTimeout,
@@ -149,15 +174,19 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
         streamIdRef.set(streamId);
         AtomicReference<Throwable> error = startConnectorForFailFast("public." + table, streamId, connectorRetryDelayMs);
-        waitUntilRunning(error);
+        waitUntilStreamingReady(error, table);
         trigger.run();
 
         waitUntilStopped(error, stopTimeout);
+        assertFailFastTaskStopped(error.get());
+    }
 
+    private void assertFailFastTaskStopped(Throwable error) {
         assertConnectorNotRunning();
-        assertNotNull(error.get());
-        assertTrue(logsContain("Failing fast") || isClassifiedFailFast(error.get()),
-                "Expected fail-fast. logs=" + joinedLogs() + " error=" + flatten(error.get()));
+        assertNotNull(error);
+        assertTrue(logsContain(FAIL_FAST_LOG),
+                "Expected YugabyteDBCdcErrorClassifier.throwIfFailFast log. isFailFast="
+                        + isClassifiedFailFast(error) + " error=" + flatten(error) + " logs=" + joinedLogs());
         assertFalse(logsContain("will attempt retry"),
                 "Should not enter connector retry loop: " + joinedLogs());
     }
@@ -167,9 +196,10 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
         streamIdRef.set(streamId);
         AtomicReference<Throwable> error = startConnector("public." + table, streamId, INJECT_RETRY_DELAY_MS);
-        waitUntilRunning(error);
+        waitUntilStreamingReady(error, table);
 
         setSimulateFlag(simulateCode);
+        TestHelper.execute("INSERT INTO " + table + " VALUES (2, 'inject-retry');");
 
         Awaitility.await()
                 .atMost(Duration.ofSeconds(20))
@@ -179,7 +209,7 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         assertTrue(engine.isRunning() || error.get() == null || !isClassifiedFailFast(error.get()),
                 "Injected code " + simulateCode + " should be retried, not fail-fast. logs="
                         + joinedLogs() + " error=" + (error.get() == null ? "none" : flatten(error.get())));
-        assertFalse(logsContain("Failing fast"),
+        assertFalse(logsContain(FAIL_FAST_LOG),
                 "Injected code " + simulateCode + " should not fail fast: " + joinedLogs());
     }
 
@@ -224,17 +254,28 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         return completionError;
     }
 
-    private void waitUntilRunning(AtomicReference<Throwable> error) {
+    /**
+     * After {@link #awaitUntilConnectorIsReady()}, waits for the streaming loop to start and at least one
+     * change to be delivered so {@code GetChanges} is active before faults or injection.
+     */
+    private void waitUntilStreamingReady(AtomicReference<Throwable> error, String table) throws Exception {
+        if (error.get() != null) {
+            throw new AssertionError("Connector failed before streaming ready: "
+                    + flatten(error.get()), error.get());
+        }
+        awaitUntilConnectorIsReady();
         Awaitility.await()
                 .atMost(Duration.ofSeconds(60))
                 .pollInterval(Duration.ofMillis(250))
                 .until(() -> {
                     if (error.get() != null) {
-                        throw new AssertionError("Connector failed before becoming ready: "
+                        throw new AssertionError("Connector failed before streaming loop: "
                                 + flatten(error.get()), error.get());
                     }
-                    return engine.isRunning();
+                    return logsContain(STREAMING_LOOP_LOG);
                 });
+        TestHelper.execute("INSERT INTO " + table + " VALUES (1, 'streaming-ready');");
+        waitAndFailIfCannotConsume(new ArrayList<>(), 1, STREAMING_READY_CONSUME_TIMEOUT_MS);
     }
 
     private void waitUntilStopped(AtomicReference<Throwable> error, Duration timeout) {

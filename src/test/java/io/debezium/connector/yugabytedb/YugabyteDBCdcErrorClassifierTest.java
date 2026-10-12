@@ -157,7 +157,8 @@ public class YugabyteDBCdcErrorClassifierTest {
 
     @Test
     public void invalidRequestWithTabletNotInStreamShouldRetry() {
-        // Same wire error as real removal; incomplete GetTablets(ignore_errors=true) on cache miss.
+        // GetChanges membership miss (incomplete GetTablets list). Durable removal via yb-admin is
+        // "not found under stream" on GetTabletListToPollForCDC — see YugabyteDBCdcFailFastTest.
         assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
                 classify(error(Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT,
                         "Tablet ID xyz is not part of stream ID abc")));
@@ -180,6 +181,16 @@ public class YugabyteDBCdcErrorClassifierTest {
         assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
                 classify(error(Code.UNKNOWN_ERROR, ErrorCode.NOT_FOUND,
                         "Could not find CDC stream: stream_id: \"abc\"")));
+    }
+
+    @Test
+    public void streamExpiredForTabletBeforeCheckpointShouldRetry() {
+        String message = "Stream ID abc is expired for Tablet ID xyz";
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
+                classify(error(Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR, message)));
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
+                classify(error(Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR,
+                        "STREAM ID ABC IS EXPIRED FOR TABLET ID XYZ")));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -320,7 +331,6 @@ public class YugabyteDBCdcErrorClassifierTest {
         String gcedIntents = "CDCSDK Trying to fetch already GCed intents for transaction 123";
         String beforeImage = "Failed to get the beforeimage for tablet_id: abc due to compaction";
         String missingWal = "Unexpectedly did not find a WAL message corresponding to from_op_id: 1.2";
-        String streamExpired = "Stream ID abc is expired for Tablet ID xyz";
         String unpolled = "Stream ID abc unpolled for too long for Tablet ID xyz";
         String streamMissing = "Could not find CDC stream: stream_id: \"abc\"";
         String unsupportedReplicaIdentity = "Unknown or unsupported replica identity for table t1";
@@ -336,9 +346,6 @@ public class YugabyteDBCdcErrorClassifierTest {
                 failure("before image lost to compaction as internal error", Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR, beforeImage),
                 failure("missing wal message as unknown error", Code.UNKNOWN_ERROR, ErrorCode.INTERNAL_ERROR, missingWal),
                 failure("missing wal message as internal error", Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR, missingWal),
-                failure("stream expired for tablet", Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR, streamExpired),
-                failure("stream expired for tablet is case insensitive", Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR,
-                        "STREAM ID ABC IS EXPIRED FOR TABLET ID XYZ"),
                 failure("tablet unpolled too long", Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR, unpolled),
                 failure("cdc stream not found on invalid request", Code.INVALID_REQUEST, ErrorCode.NOT_FOUND, streamMissing),
                 failure("cdc stream not found on internal error", Code.INTERNAL_ERROR, ErrorCode.NOT_FOUND, streamMissing),
@@ -361,6 +368,8 @@ public class YugabyteDBCdcErrorClassifierTest {
                 Arguments.of("before image without compaction", "Failed to get the beforeimage for tablet_id: abc"),
                 Arguments.of("from_op_id without a missing wal record", "from_op_id: 1.2 is not yet available"),
                 Arguments.of("expired without a tablet", "stream expired"),
+                Arguments.of("stream expired for tablet before checkpoint",
+                        "Stream ID abc is expired for Tablet ID xyz"),
                 Arguments.of("unpolled without the timeout phrase", "tablet was not polled"),
                 Arguments.of("missing stream without cdc", "Could not find stream: stream_id: \"abc\""),
                 Arguments.of("tablet not part of a publication", "Tablet ID xyz is not part of publication abc"),
