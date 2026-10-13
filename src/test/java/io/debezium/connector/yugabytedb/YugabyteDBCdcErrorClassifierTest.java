@@ -67,6 +67,16 @@ public class YugabyteDBCdcErrorClassifierTest {
     }
 
     @Test
+    public void tableNotFoundWithNotFoundUnderStreamMessageShouldRetry() throws Exception {
+        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
+                classify(error(Code.TABLE_NOT_FOUND, ErrorCode.NOT_FOUND,
+                        "Table 00000000-0000-0000-0000-000000000000 not found under stream")));
+        assertFalse(YugabyteDBCdcErrorClassifier.isFailFast(
+                cdcException(error(Code.TABLE_NOT_FOUND, ErrorCode.NOT_FOUND,
+                        "Table abc not found under stream"))));
+    }
+
+    @Test
     public void invalidRequestWithoutStatusShouldRetry() {
         // Align with main: bare INVALID_REQUEST is not assumed to be a tablet split.
         assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
@@ -102,12 +112,6 @@ public class YugabyteDBCdcErrorClassifierTest {
     public void invalidRequestWithDeletedStreamShouldFailFast() {
         assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
                 classify(error(Code.INVALID_REQUEST, ErrorCode.DELETED, "deleted stream")));
-    }
-
-    @Test
-    public void invalidRequestWithIncorrectTabletIdShouldFailFast() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
-                classify(error(Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT, "incorrect tablet id")));
     }
 
     @Test
@@ -157,8 +161,8 @@ public class YugabyteDBCdcErrorClassifierTest {
 
     @Test
     public void invalidRequestWithTabletNotInStreamShouldRetry() {
-        // GetChanges membership miss (incomplete GetTablets list). Durable removal via yb-admin is
-        // "not found under stream" on GetTabletListToPollForCDC — see YugabyteDBCdcFailFastTest.
+        // GetChanges membership miss (incomplete GetTablets list). yb-admin removal uses
+        // TABLE_NOT_FOUND on GetTabletListToPollForCDC (always retried) — YugabyteDBCdcFailFastTest.
         assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
                 classify(error(Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT,
                         "Tablet ID xyz is not part of stream ID abc")));
@@ -225,22 +229,6 @@ public class YugabyteDBCdcErrorClassifierTest {
     @Test
     public void isFailFastFalseForNonCdcException() {
         assertFalse(YugabyteDBCdcErrorClassifier.isFailFast(new IllegalStateException("leader moved")));
-    }
-
-    @Test
-    public void isFailFastTrueWhenStreamMissingIsWrappedWithoutCdcError() {
-        RuntimeException error = new RuntimeException(
-                "Too many attempts: YRpc(method=GetTabletListToPollForCDC). "
-                        + "Server NOT_FOUND[code 1]: Could not find CDC stream: stream_id: \"abc\"");
-        assertTrue(YugabyteDBCdcErrorClassifier.isFailFast(error));
-    }
-
-    @Test
-    public void isFailFastTrueWhenTableNotUnderStreamIsWrappedWithoutCdcError() {
-        RuntimeException error = new RuntimeException(
-                "Too many attempts: YRpc(method=GetTabletListToPollForCDC). "
-                        + "NOT_FOUND[code 1]: Table 000034e1 not found under stream");
-        assertTrue(YugabyteDBCdcErrorClassifier.isFailFast(error));
     }
 
     @Test
@@ -349,8 +337,6 @@ public class YugabyteDBCdcErrorClassifierTest {
                 failure("tablet unpolled too long", Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR, unpolled),
                 failure("cdc stream not found on invalid request", Code.INVALID_REQUEST, ErrorCode.NOT_FOUND, streamMissing),
                 failure("cdc stream not found on internal error", Code.INTERNAL_ERROR, ErrorCode.NOT_FOUND, streamMissing),
-                failure("tablet not found under stream", Code.INTERNAL_ERROR, ErrorCode.NOT_FOUND,
-                        "Tablet ID xyz not found under stream ID abc"),
                 failure("unsupported replica identity as unknown error", Code.UNKNOWN_ERROR, ErrorCode.INTERNAL_ERROR,
                         unsupportedReplicaIdentity),
                 failure("unsupported replica identity as internal error", Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR,

@@ -6,11 +6,8 @@
 
 package io.debezium.connector.yugabytedb;
 
-import java.io.InputStream;
-import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.sql.Connection;
@@ -47,7 +44,6 @@ import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 
-import com.google.common.net.HostAndPort;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.PortBinding;
 import com.github.dockerjava.api.model.Ports;
@@ -457,11 +453,10 @@ public final class TestHelper {
         container.withPassword("yugabyte");
         container.withUsername("yugabyte");
         container.withDatabaseName("yugabyte");
-        container.withExposedPorts(7100, 9000, 9100, 5433, 9042);
+        container.withExposedPorts(7100, 9100, 5433, 9042);
         container.withCreateContainerCmdModifier(cmd -> cmd.withHostName(CONTAINER_HOSTNAME).getHostConfig().withPortBindings(new ArrayList<PortBinding>() {
             {
                 add(new PortBinding(Ports.Binding.bindPort(7100), new ExposedPort(7100)));
-                add(new PortBinding(Ports.Binding.bindPort(9000), new ExposedPort(9000)));
                 add(new PortBinding(Ports.Binding.bindPort(9100), new ExposedPort(9100)));
                 add(new PortBinding(Ports.Binding.bindPort(5433), new ExposedPort(5433)));
                 add(new PortBinding(Ports.Binding.bindPort(9042), new ExposedPort(9042)));
@@ -485,177 +480,6 @@ public final class TestHelper {
                 .build();
 
         return new YBClient(asyncClient);
-    }
-
-    /** Tserver test flag used to force one INVALID_REQUEST on GetChanges for a tablet (see YugabyteDB CDC SDK). */
-    public static final String TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET =
-            "TEST_cdcsdk_fail_getchanges_once_for_tablet";
-
-    private static final int DEFAULT_TSERVER_WEB_PORT = 9000;
-    private static final int DEFAULT_TSERVER_RPC_PORT = 9100;
-
-    /**
-     * Result of reading tserver {@code /varz} for a test-only gflag name.
-     */
-    public static final class TserverVarzFlagProbe {
-        public enum Status {
-            /** {@code /varz} was read and contains the flag name. */
-            LISTED,
-            /** {@code /varz} was read; this build does not register the flag (skip test). */
-            NOT_LISTED,
-            /** Could not read {@code /varz} (fail test — not the same as flag missing). */
-            UNREACHABLE
-        }
-
-        private final Status status;
-        private final String unreachableDetail;
-
-        private TserverVarzFlagProbe(Status status, String unreachableDetail) {
-            this.status = status;
-            this.unreachableDetail = unreachableDetail;
-        }
-
-        public Status status() {
-            return status;
-        }
-
-        public String unreachableDetail() {
-            return unreachableDetail;
-        }
-
-        public boolean isListed() {
-            return status == Status.LISTED;
-        }
-    }
-
-    /**
-     * Whether the tserver {@code /varz} page lists a flag. Returns {@code false} for
-     * {@link TserverVarzFlagProbe.Status#NOT_LISTED} and {@link TserverVarzFlagProbe.Status#UNREACHABLE};
-     * use {@link #probeTserverFlagOnVarz(String, int, String)} when the distinction matters.
-     */
-    public static boolean isTserverFlagListed(String masterAddresses, String flagName) {
-        String host = masterAddresses.split(":")[0];
-        return isTserverFlagListed(host, DEFAULT_TSERVER_WEB_PORT, flagName);
-    }
-
-    public static boolean isTserverFlagListed(String host, int tserverWebPort, String flagName) {
-        return probeTserverFlagOnVarz(host, tserverWebPort, flagName).isListed();
-    }
-
-    /**
-     * Reads tserver {@code /varz} and checks for {@code flagName}. Distinguishes a successful read
-     * without the flag (release build) from failure to reach {@code /varz} at all.
-     */
-    public static TserverVarzFlagProbe probeTserverFlagOnVarz(String host, int tserverWebPort, String flagName) {
-        try {
-            HttpURLConnection connection = (HttpURLConnection) new URL(
-                    "http://" + host + ":" + tserverWebPort + "/varz").openConnection();
-            connection.setConnectTimeout(5_000);
-            connection.setReadTimeout(15_000);
-            try (InputStream in = connection.getInputStream()) {
-                String varz = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-                if (varz.contains(flagName)) {
-                    return new TserverVarzFlagProbe(TserverVarzFlagProbe.Status.LISTED, null);
-                }
-                return new TserverVarzFlagProbe(TserverVarzFlagProbe.Status.NOT_LISTED, null);
-            }
-            finally {
-                connection.disconnect();
-            }
-        }
-        catch (Exception e) {
-            LOGGER.warn("Could not read tserver /varz on {}:{}: {}", host, tserverWebPort, e.getMessage());
-            return new TserverVarzFlagProbe(TserverVarzFlagProbe.Status.UNREACHABLE, e.getMessage());
-        }
-    }
-
-    public static String cdcSdkFailGetChangesOnceFlagUnavailableMessage(String masterAddresses) {
-        String host = masterAddresses.split(":")[0];
-        return "YugabyteDB on " + host + " does not expose " + TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET
-                + ". Use the CI YB build (YB_DOCKER_IMAGE / internal Quay image) or upgrade yugabyted to a build"
-                + " that includes this CDC SDK test flag.";
-    }
-
-    /**
-     * When true, {@code shouldRetryInvalidRequestInsteadOfTreatingItAsSplit} must not be skipped if the
-     * inject flag is missing from {@code /varz} (CI basic workflow and local runs with {@code YB_DOCKER_IMAGE}).
-     */
-    public static boolean requiresCdcSdkFailGetChangesInjectFlag() {
-        if ("true".equalsIgnoreCase(System.getenv("GITHUB_ACTIONS"))) {
-            return true;
-        }
-        String image = System.getenv("YB_DOCKER_IMAGE");
-        return image != null && !image.isBlank();
-    }
-
-    /**
-     * Result of {@link YBClient#setFlag} for a tserver test gflag.
-     */
-    public static final class TserverSetFlagResult {
-        public enum Status {
-            /** {@code setFlag} returned success. */
-            SUCCESS,
-            /** RPC completed but the server rejected the change (not the same as flag missing on the build). */
-            REJECTED,
-            /** RPC failed (wrong host/port, timeout, connection refused, etc.). */
-            ERROR
-        }
-
-        private final Status status;
-        private final String detail;
-
-        private TserverSetFlagResult(Status status, String detail) {
-            this.status = status;
-            this.detail = detail;
-        }
-
-        public Status status() {
-            return status;
-        }
-
-        /** Non-null for {@link Status#REJECTED} and {@link Status#ERROR}. */
-        public String detail() {
-            return detail;
-        }
-
-        public boolean isSuccess() {
-            return status == Status.SUCCESS;
-        }
-    }
-
-    /**
-     * Sets {@link #TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET} on the given tserver RPC endpoint.
-     * Whether the build registers the flag is determined by {@link #probeTserverFlagOnVarz}, not by this method.
-     */
-    public static TserverSetFlagResult setCdcSdkFailGetChangesOnceForTablet(
-            YBClient client, String tserverHost, int tserverRpcPort, String tabletId) {
-        HostAndPort tserver = HostAndPort.fromParts(tserverHost, tserverRpcPort);
-        try {
-            if (client.setFlag(tserver, TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET, tabletId, true)) {
-                return new TserverSetFlagResult(TserverSetFlagResult.Status.SUCCESS, null);
-            }
-            if (client.setFlag(tserver, TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET, tabletId)) {
-                return new TserverSetFlagResult(TserverSetFlagResult.Status.SUCCESS, null);
-            }
-            return new TserverSetFlagResult(TserverSetFlagResult.Status.REJECTED,
-                    "setFlag returned false for " + TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET
-                            + " on " + tserver + " tablet " + tabletId);
-        }
-        catch (Exception e) {
-            LOGGER.warn("Could not set {} on {} for tablet {}: {}",
-                    TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET, tserver, tabletId, e.getMessage());
-            return new TserverSetFlagResult(TserverSetFlagResult.Status.ERROR, e.getMessage());
-        }
-    }
-
-    /**
-     * Like {@link #setCdcSdkFailGetChangesOnceForTablet(YBClient, String, int, String)} using the host from
-     * {@code masterAddresses} and {@link #DEFAULT_TSERVER_RPC_PORT}.
-     */
-    public static TserverSetFlagResult setCdcSdkFailGetChangesOnceForTablet(
-            YBClient client, String masterAddresses, String tabletId) {
-        String host = masterAddresses.split(":")[0];
-        return setCdcSdkFailGetChangesOnceForTablet(client, host, DEFAULT_TSERVER_RPC_PORT, tabletId);
     }
 
     /**

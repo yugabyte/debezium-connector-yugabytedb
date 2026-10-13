@@ -29,9 +29,10 @@ import org.yb.master.MasterTypes.MasterErrorPB;
  *       the tserver can build that error from an incomplete tablet list when
  *       {@code GetTablets(ignore_errors=true)} skips failed master lookups (cache miss,
  *       restart). The server does not distinguish that from a real removal on this RPC.</li>
- *   <li>{@code … not found under stream …} (e.g. on {@code GetTabletListToPollForCDC} after
- *       {@code remove_user_table_from_change_data_stream}) is {@link CdcErrorAction#FAIL_FAST fail-fast}
- *       (permanent message fragments).</li>
+ *   <li>{@code Table … not found under stream} on {@code GetTabletListToPollForCDC} is
+ *       {@code CDCErrorPB.TABLE_NOT_FOUND} and is always {@link CdcErrorAction#RETRY retried}:
+ *       the same code and text are used when stream metadata has not caught up after adding a
+ *       table as when a table was removed from the stream.</li>
  * </ul>
  * Stream delete uses {@code NOT_FOUND} (e.g. could not find CDC stream), not the GetChanges
  * membership string above.
@@ -72,10 +73,7 @@ final class YugabyteDBCdcErrorClassifier {
         if (cdcError != null) {
             return actionFor(cdcError.getCDCError()) == CdcErrorAction.FAIL_FAST;
         }
-        // Fallback when yb-client wraps errors as NonRecoverableException without CDCErrorPB on
-        // the chain (e.g. tooManyAttemptsOrTimeout(rpc, null)). Prefer CDC classification when
-        // the cause is preserved (delayedSendRpcToTablet after operation timeout).
-        return hasFatalExceptionMessage(error);
+        return false;
     }
 
     static void throwIfFailFast(Exception error) throws Exception {
@@ -174,17 +172,25 @@ final class YugabyteDBCdcErrorClassifier {
 
     /**
      * Permanent CDC failures that often arrive as {@code UNKNOWN_ERROR} or {@code INTERNAL_ERROR},
-     * so the status text is what distinguishes them from a retryable error with the same code.
-     * Also matched on {@code NonRecoverableException} when yb-client omits {@code CDCErrorPB}.
+     * so the AppStatus message on {@link CDCErrorPB} is what distinguishes them from a retryable
+     * error with the same code. Matched only via {@link #hasFatalMessage(CDCErrorPB)}, not on the
+     * exception message chain (stripped yb-client errors carry no server text to match).
      * <p>
-     * {@code Stream ID … is expired for Tablet ID …} is intentionally omitted: the same text is
-     * returned when GetChanges runs before an initial checkpoint ({@code YugabyteDBSnapshotChangeEventSource}
-     * sets the checkpoint via {@code makeStreamActive}). Bootstrap / {@code markNoSnapshotNeeded} retry
-     * until SetCDCCheckpoint succeeds.
+     * {@code Stream ID … is expired for Tablet ID …} is intentionally omitted. On GetChanges the
+     * tserver returns it from {@code CheckStreamActive} as {@code INTERNAL_ERROR} when active time
+     * plus intent retention is in the past. That covers bootstrap ordering (e.g.
+     * {@link YugabyteDBStreamingChangeEventSource#markNoSnapshotNeeded} before CDC state is warm,
+     * or {@link YugabyteDBSnapshotChangeEventSource} calling {@code makeStreamActive} via
+     * SetCDCCheckpoint) and genuine post-downtime expiry. The wire message does not distinguish
+     * them, so these errors stay {@link CdcErrorAction#RETRY retried} with the surrounding retry
+     * loops. {@code Stream ID … unpolled for too long for Tablet ID …} is a different check and
+     * remains a fatal fragment above.
+     * <p>
+     * {@code not found under stream} is omitted: master returns it only as
+     * {@link CDCErrorPB.Code#TABLE_NOT_FOUND}, which is always retried.
      */
     private static final String[] FATAL_MESSAGE_FRAGMENTS = {
             "could not find cdc stream",
-            "not found under stream",
             "garbage collected",
             "already gced intents",
             "due to compaction",
@@ -193,7 +199,6 @@ final class YugabyteDBCdcErrorClassifier {
             "unsupported replica identity",
             "replica identity not found",
             "invalid stream id",
-            "incorrect tablet id",
             "invalid checkpoint"
     };
 
@@ -201,11 +206,7 @@ final class YugabyteDBCdcErrorClassifier {
         return StringUtils.containsAny(statusMessage(error), FATAL_MESSAGE_FRAGMENTS);
     }
 
-    private static boolean hasFatalExceptionMessage(Throwable error) {
-        return StringUtils.containsAny(flattenMessages(error), FATAL_MESSAGE_FRAGMENTS);
-    }
-
-    /** DROP TABLE during bootstrap/openTable: master returns {@code OBJECT_NOT_FOUND}, not a CDC error. */
+    /** Master {@code OBJECT_NOT_FOUND} when opening a table that is gone (not CDC hidden-on-drop during streaming). */
     private static boolean isMasterObjectNotFound(Throwable error) {
         MasterErrorException masterError = ExceptionUtils.throwableOfType(error, MasterErrorException.class);
         if (masterError == null || masterError.error == null || !masterError.error.hasCode()) {

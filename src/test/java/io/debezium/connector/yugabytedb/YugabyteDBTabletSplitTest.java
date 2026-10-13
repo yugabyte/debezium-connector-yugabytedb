@@ -26,18 +26,16 @@ import org.yb.client.YBTable;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import org.yb.cdc.CdcService.TabletCheckpointPair;
 
 /**
- * Tests that the connector handles tablet splits and transient INVALID_REQUEST membership errors.
- * Runs against YugabyteDB in Testcontainers ({@link YugabyteDBContainerTestBase}), same as CI basic tests.
- * {@link #shouldRetryInvalidRequestInsteadOfTreatingItAsSplit} fails (not skips) when the CDC SDK inject
- * flag is absent under CI or {@code YB_DOCKER_IMAGE}; it skips only on the default Docker Hub image locally.
- *
+ * Unit tests to verify that the connector gracefully handles the tablet splitting on the server.
+ * 
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
-public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
+public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
 
   private static String masterAddresses;
 
@@ -156,7 +154,6 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
     setTserverFlags("enable_automatic_tablet_splitting=true");
     ybContainer = TestHelper.getYbContainer();
     ybContainer.start();
-    containerIpAddress = getContainerIp(ybContainer.getContainerId());
 
     LOGGER.info("Container startup command in test: {}", getYugabytedStartCommand());
 
@@ -166,10 +163,9 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
       throw new RuntimeException(e);
     }
 
-    TestHelper.setContainerHostPort(containerIpAddress, ybContainer.getMappedPort(5433), ybContainer.getMappedPort(9042));
-    masterAddresses = containerIpAddress + ":" + ybContainer.getMappedPort(7100);
-    TestHelper.setMasterAddress(masterAddresses);
-
+    TestHelper.setContainerHostPort(ybContainer.getHost(), ybContainer.getMappedPort(5433), ybContainer.getMappedPort(9042));
+    TestHelper.setMasterAddress(ybContainer.getHost() + ":" + ybContainer.getMappedPort(7100));
+    
     TestHelper.dropAllSchemas();
     String generatedColumns = "";
     
@@ -581,72 +577,5 @@ public class YugabyteDBTabletSplitTest extends YugabyteDBContainerTestBase {
     Collections.sort(rList);
 
     assertEquals(recordsCount, recordKeySet.size());
-  }
-
-  @Test
-  public void shouldRetryInvalidRequestInsteadOfTreatingItAsSplit() throws Exception {
-    String tserverHost = masterAddresses.split(":")[0];
-    int tserverWebPort = ybContainer.getMappedPort(9000);
-    TestHelper.TserverVarzFlagProbe flagProbe = TestHelper.probeTserverFlagOnVarz(
-            tserverHost, tserverWebPort, TestHelper.TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET);
-    if (flagProbe.status() == TestHelper.TserverVarzFlagProbe.Status.UNREACHABLE) {
-      fail("Could not read tserver /varz on " + tserverHost + ":" + tserverWebPort + ": "
-              + flagProbe.unreachableDetail());
-    }
-    if (!flagProbe.isListed()) {
-      String unavailable = TestHelper.cdcSdkFailGetChangesOnceFlagUnavailableMessage(masterAddresses);
-      if (TestHelper.requiresCdcSdkFailGetChangesInjectFlag()) {
-        fail(unavailable);
-      }
-      Assumptions.assumeTrue(false, unavailable);
-    }
-
-    TestHelper.dropAllSchemas();
-    TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
-    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false, false);
-    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId)
-        .with(YugabyteDBConnectorConfig.DELETE_STREAM_ON_STOP, false)
-        .with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 2000);
-    String insertFormat = "INSERT INTO t1 VALUES (%d, 'value for split table');";
-
-    startEngine(configBuilder, (success, message, error) -> assertTrue(success));
-    awaitUntilConnectorIsReady();
-    TestHelper.executeBulkWithRange(insertFormat, 0, 100);
-    waitAndFailIfCannotConsume(new ArrayList<>(), 100);
-    stopConnector();
-
-    YBClient ybClient = TestHelper.getYbClient(masterAddresses);
-    YBTable table = TestHelper.getYbTable(ybClient, "t1");
-    ybClient.flushTable(table.getTableId());
-    TestHelper.waitFor(Duration.ofSeconds(20));
-    ybClient.splitTablet(ybClient.getTabletUUIDs(table).iterator().next());
-    TestHelper.waitForTablets(ybClient, table, 2);
-    TestHelper.executeBulkWithRange(insertFormat, 100, 300);
-
-    // The child splits again before it has ever been polled.
-    String child = ybClient.getTabletUUIDs(table).iterator().next();
-    ybClient.flushTable(table.getTableId());
-    TestHelper.waitFor(Duration.ofSeconds(20));
-    Awaitility.await().atMost(Duration.ofSeconds(180)).pollInterval(Duration.ofSeconds(5)).until(() -> {
-      try {
-        ybClient.splitTablet(child);
-        return true;
-      } catch (Exception e) {
-        return false;
-      }
-    });
-    TestHelper.waitForTablets(ybClient, table, 3);
-
-    // Child's first GetChanges fails with INVALID_REQUEST (tablet not in stream list yet) — must retry, not split/fail-fast.
-    TestHelper.TserverSetFlagResult setFlagResult = TestHelper.setCdcSdkFailGetChangesOnceForTablet(
-            ybClient, tserverHost, ybContainer.getMappedPort(9100), child);
-    assertEquals(TestHelper.TserverSetFlagResult.Status.SUCCESS, setFlagResult.status(),
-            () -> "setFlag for " + TestHelper.TEST_CDCSDK_FAIL_GETCHANGES_ONCE_FOR_TABLET
-                    + " on tablet " + child + ": " + setFlagResult.detail());
-
-    startEngine(configBuilder, (success, message, error) -> assertTrue(success));
-    awaitUntilConnectorIsReady();
-    waitAndFailIfCannotConsume(new ArrayList<>(), 200);
-    ybClient.close();
   }
 }

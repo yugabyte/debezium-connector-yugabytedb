@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import org.awaitility.Awaitility;
+import com.google.common.net.HostAndPort;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -35,13 +36,16 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
  * End-to-end tests for {@link YugabyteDBCdcErrorClassifier#throwIfFailFast} on real RPC paths (Testcontainers).
  * Code/message rules are covered by {@link YugabyteDBCdcErrorClassifierTest}.
  * <p>
- * <b>During streaming</b> ({@link #deleteStreamDuringStreamingShouldFailFast},
- * {@link #dropTableDuringStreamingShouldFailFast}): waits for {@link #waitUntilStreamingReady} (engine delay,
- * {@code Processing messages}, and one consumed change) before the fault, then requires a {@code Failing fast} log
- * from the classifier.
+ * <b>During streaming</b> ({@link #deleteStreamDuringStreamingShouldFailFast}): waits for
+ * {@link #waitUntilStreamingReady} (engine delay, {@code Processing messages}, and one consumed change) before
+ * the fault, then requires a {@code Failing fast} log from the classifier. {@code DROP TABLE} on a table in an
+ * active CDCSDK stream is not covered here: master hides the table for CDC ({@code hide_only}), so streaming
+ * keeps polling known tablets and typical tserver errors ({@code TABLET_NOT_FOUND}, expired, not-in-stream) are
+ * retried by {@link YugabyteDBCdcErrorClassifier}, not fail-fast.
  * <p>
- * <b>Bootstrap / tablet list</b> ({@link #removeTableFromStreamBeforeStartShouldFailFast}): yb-admin removal before
- * start; expects {@code not found under stream} on {@code GetTabletListToPollForCDC}. GetChanges
+ * <b>Bootstrap / tablet list</b> ({@link #removeTableFromStreamBeforeStartShouldRetryUntilExhausted}): yb-admin
+ * removal before start yields {@code TABLE_NOT_FOUND} / {@code not found under stream} on
+ * {@code GetTabletListToPollForCDC} and connector retries until exhausted (not fail-fast). GetChanges
  * {@code Tablet ID … is not part of stream ID …} remains retry (unit test).
  */
 public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
@@ -107,13 +111,7 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
     }
 
     @Test
-    public void dropTableDuringStreamingShouldFailFast() throws Exception {
-        assertFailFastAfterStreamingReady("t_drop_table", FAIL_FAST_RETRY_DELAY_MS, Duration.ofSeconds(60),
-                () -> TestHelper.execute("DROP TABLE t_drop_table;"));
-    }
-
-    @Test
-    public void removeTableFromStreamBeforeStartShouldFailFast() throws Exception {
+    public void removeTableFromStreamBeforeStartShouldRetryUntilExhausted() throws Exception {
         String table = "t_remove_stream";
         TestHelper.execute("CREATE TABLE " + table + " (id INT PRIMARY KEY, name TEXT);");
         String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
@@ -126,9 +124,19 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         }
 
         AtomicReference<Throwable> error = startConnectorForFailFast("public." + table, streamId, FAIL_FAST_RETRY_DELAY_MS);
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(60))
+                .pollInterval(Duration.ofMillis(250))
+                .until(() -> logsContain("will attempt retry"));
+
         waitUntilStopped(error, Duration.ofSeconds(60));
 
-        assertFailFastTaskStopped(error.get());
+        assertConnectorNotRunning();
+        assertNotNull(error.get());
+        assertFalse(logsContain(FAIL_FAST_LOG),
+                "TABLE_NOT_FOUND should retry, not fail fast. logs=" + joinedLogs());
+        assertFalse(isClassifiedFailFast(error.get()),
+                "TABLE_NOT_FOUND should not be classified fail-fast. error=" + flatten(error.get()));
         String flattened = flatten(error.get()).toLowerCase();
         assertTrue(flattened.contains("not found under stream"),
                 "Expected GetTabletListToPollForCDC-style removal error, not GetChanges membership retry. error="
@@ -315,6 +323,9 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         return builder.toString();
     }
 
+    /**
+     * yb-client has no master RPC for {@code remove_user_table_from_change_data_stream}; yb-admin only.
+     */
     private static void removeUserTableFromChangeDataStream(String streamId, String tableId) throws Exception {
         ExecResult result = ybContainer.execInContainer(
                 "/home/yugabyte/bin/yb-admin",
@@ -329,16 +340,17 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
     }
 
     private static void setSimulateFlag(int value) throws Exception {
-        ExecResult result = ybContainer.execInContainer(
-                "/home/yugabyte/bin/yb-ts-cli",
-                "--server_address", containerIpAddress,
-                "set_flag",
-                "-force",
-                SIMULATE_GET_CHANGES_ERROR_FLAG,
-                String.valueOf(value));
-        if (result.getExitCode() != 0) {
-            throw new RuntimeException("set_flag failed (exit " + result.getExitCode() + "): "
-                    + result.getStdout() + result.getStderr());
+        HostAndPort tserver = HostAndPort.fromParts(
+                ybContainer.getHost(), ybContainer.getMappedPort(9100));
+        String flagValue = String.valueOf(value);
+        try (YBClient client = TestHelper.getYbClient(getMasterAddress())) {
+            if (client.setFlag(tserver, SIMULATE_GET_CHANGES_ERROR_FLAG, flagValue, true)) {
+                return;
+            }
+            if (client.setFlag(tserver, SIMULATE_GET_CHANGES_ERROR_FLAG, flagValue)) {
+                return;
+            }
+            throw new RuntimeException("setFlag failed for " + SIMULATE_GET_CHANGES_ERROR_FLAG + " on " + tserver);
         }
     }
 
