@@ -22,10 +22,16 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.yb.client.GetTabletListToPollForCDCResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.net.HostAndPort;
+
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.connection.OpId;
-import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import org.yb.cdc.CdcService.TabletCheckpointPair;
@@ -36,6 +42,8 @@ import org.yb.cdc.CdcService.TabletCheckpointPair;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
+
+  private static final String FAIL_FAST_CLASSIFIER_LOG = "Failing fast";
 
   private static String masterAddresses;
 
@@ -577,5 +585,71 @@ public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
     Collections.sort(rList);
 
     assertEquals(recordsCount, recordKeySet.size());
+  }
+
+  /**
+   * After a Gen2 split on an unpolled child tablet, the first GetChanges can return
+   * {@code INVALID_REQUEST} (same class of error as a partial tablet list). The connector must
+   * retry via the streaming loop, not treat it as {@code TABLET_SPLIT} and not fail-fast.
+   */
+  @Test
+  public void shouldRetryInvalidRequestInsteadOfTreatingItAsSplit() throws Exception {
+    TestHelper.dropAllSchemas();
+    TestHelper.execute("CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
+    String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false, false);
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t1", dbStreamId)
+        .with(YugabyteDBConnectorConfig.DELETE_STREAM_ON_STOP, false)
+        .with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, 2000);
+    String insertFormat = "INSERT INTO t1 VALUES (%d, 'value for split table');";
+
+    startEngine(configBuilder, (success, message, error) -> assertTrue(success));
+    awaitUntilConnectorIsReady();
+    TestHelper.executeBulkWithRange(insertFormat, 0, 100);
+    waitAndFailIfCannotConsume(new ArrayList<>(), 100);
+    stopConnector();
+
+    YBClient ybClient = TestHelper.getYbClient(masterAddresses);
+    YBTable table = TestHelper.getYbTable(ybClient, "t1");
+    ybClient.flushTable(table.getTableId());
+    TestHelper.waitFor(Duration.ofSeconds(20));
+    ybClient.splitTablet(ybClient.getTabletUUIDs(table).iterator().next());
+    TestHelper.waitForTablets(ybClient, table, 2);
+    TestHelper.executeBulkWithRange(insertFormat, 100, 300);
+
+    // The child splits again before it has ever been polled.
+    String child = ybClient.getTabletUUIDs(table).iterator().next();
+    ybClient.flushTable(table.getTableId());
+    TestHelper.waitFor(Duration.ofSeconds(20));
+    Awaitility.await().atMost(Duration.ofSeconds(180)).pollInterval(Duration.ofSeconds(5)).until(() -> {
+      try {
+        ybClient.splitTablet(child);
+        return true;
+      } catch (Exception e) {
+        return false;
+      }
+    });
+    TestHelper.waitForTablets(ybClient, table, 3);
+
+    // The child's first GetChanges fails with INVALID_REQUEST, as it did when the master was unreachable.
+    HostAndPort tserver = HostAndPort.fromParts(masterAddresses.split(":")[0], 9100);
+    assertTrue(ybClient.setFlag(tserver, "TEST_cdcsdk_fail_getchanges_once_for_tablet", child, true),
+            "YB build must expose TEST_cdcsdk_fail_getchanges_once_for_tablet for this scenario");
+
+    Logger connectorLogger = (Logger) LoggerFactory.getLogger("io.debezium.connector.yugabytedb");
+    ListAppender<ILoggingEvent> logAppender = new ListAppender<>();
+    logAppender.start();
+    connectorLogger.addAppender(logAppender);
+
+    startEngine(configBuilder, (success, message, error) -> assertTrue(success));
+    awaitUntilConnectorIsReady();
+    waitAndFailIfCannotConsume(new ArrayList<>(), 200);
+
+    connectorLogger.detachAppender(logAppender);
+    logAppender.stop();
+
+    assertFalse(logAppender.list.stream().anyMatch(event -> event.getFormattedMessage().contains(FAIL_FAST_CLASSIFIER_LOG)),
+            "Injected INVALID_REQUEST must be retried, not classified fail-fast");
+    assertConnectorIsRunning();
+    ybClient.close();
   }
 }
