@@ -107,11 +107,6 @@ final class YugabyteDBCdcErrorClassifier {
                         appStatusCode,
                         appStatusMessage);
             }
-            else {
-                LOGGER.warn(
-                        "Failing fast for non-retriable error from YugabyteDB (no CDCErrorPB on chain). message={}",
-                        flattenMessages(error));
-            }
         }
 
         throw error;
@@ -213,18 +208,6 @@ final class YugabyteDBCdcErrorClassifier {
             return false;
         }
         return masterError.error.getCode() == MasterErrorPB.Code.OBJECT_NOT_FOUND;
-    }
-
-    private static String flattenMessages(Throwable error) {
-        StringBuilder builder = new StringBuilder();
-        Throwable current = error;
-        while (current != null) {
-            if (current.getMessage() != null) {
-                builder.append(current.getMessage()).append(' ');
-            }
-            current = current.getCause();
-        }
-        return builder.toString().toLowerCase(Locale.ROOT);
     }
 
     private static String statusMessage(CDCErrorPB error) {
