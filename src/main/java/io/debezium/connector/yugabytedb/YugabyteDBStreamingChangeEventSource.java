@@ -1253,7 +1253,9 @@ public class YugabyteDBStreamingChangeEventSource implements
      * @param tableId table UUID of the table to which the split tablet belongs
      * @param splitTabletId tablet UUID of the split tablet
      * @return {@link GetTabletListToPollForCDCResponse} containing the list of child tablets
-     * @throws Exception when the retry limit has been hit or the metronome pause is interrupted
+     * @throws Exception immediately when {@link YugabyteDBCdcErrorClassifier#throwIfFailFast(Exception)} classifies
+     *         the error as non-retriable; otherwise after exhausting
+     *         {@link YugabyteDBConnectorConfig#maxConnectorRetries()} retries for transient failures
      */
     private GetTabletListToPollForCDCResponse getTabletListResponseWithRetry(YBClient syncClient,
         YBTable ybTable, String streamId, String tableId, String splitTabletId) throws Exception {
