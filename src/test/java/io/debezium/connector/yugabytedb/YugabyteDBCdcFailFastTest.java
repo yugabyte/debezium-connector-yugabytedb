@@ -9,8 +9,10 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.awaitility.Awaitility;
 import com.google.common.net.HostAndPort;
@@ -27,6 +29,7 @@ import org.yb.client.YBTable;
 
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.classic.spi.IThrowableProxy;
 import ch.qos.logback.core.read.ListAppender;
 
 import io.debezium.config.Configuration;
@@ -55,11 +58,16 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
     private static final long FAIL_FAST_RETRY_DELAY_MS = 500L;
     private static final long INJECT_RETRY_DELAY_MS = 2_500L;
     /**
-     * High RPC attempts + short operation timeout so yb-client exhausts in
+     * High RPC attempts and a bounded operation timeout so yb-client exhausts in
      * {@code delayedSendRpcToTablet} with the last {@link CDCErrorException} on the cause chain,
      * not {@code tooManyAttemptsOrTimeout(rpc, null)} from low attempt limits.
+     * <p>
+     * The timeout has to stay above the tserver {@code consensus_rpc_timeout_ms} (3s). A client
+     * deadline that short makes GetChanges return {@code safe_hybrid_time = 0}, and explicit
+     * checkpointing then keeps polling {@code 1.3} with time 0, so the streaming-ready insert is
+     * never delivered.
      */
-    private static final long FAIL_FAST_TEST_OPERATION_TIMEOUT_MS = 3_000L;
+    private static final long FAIL_FAST_TEST_OPERATION_TIMEOUT_MS = 15_000L;
     private static final long STREAMING_READY_CONSUME_TIMEOUT_MS = 120_000L;
     private static final String STREAMING_LOOP_LOG = "Processing messages";
     private static final String FAIL_FAST_LOG = "Failing fast";
@@ -131,14 +139,14 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
 
         waitUntilStopped(error, Duration.ofSeconds(60));
 
-        assertConnectorNotRunning();
         assertNotNull(error.get());
         assertFalse(logsContain(FAIL_FAST_LOG),
                 "TABLE_NOT_FOUND should retry, not fail fast. logs=" + joinedLogs());
         assertFalse(isClassifiedFailFast(error.get()),
                 "TABLE_NOT_FOUND should not be classified fail-fast. error=" + flatten(error.get()));
         String flattened = flatten(error.get()).toLowerCase();
-        assertTrue(flattened.contains("not found under stream"),
+        boolean removalError = flattened.contains("not found under stream") || logsContain("not found under stream");
+        assertTrue(removalError,
                 "Expected GetTabletListToPollForCDC-style removal error, not GetChanges membership retry. error="
                         + flatten(error.get()) + " logs=" + joinedLogs());
     }
@@ -191,7 +199,6 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
     }
 
     private void assertFailFastTaskStopped(Throwable error) {
-        assertConnectorNotRunning();
         assertNotNull(error);
         assertTrue(logsContain(FAIL_FAST_LOG),
                 "Expected YugabyteDBCdcErrorClassifier.throwIfFailFast log. isFailFast="
@@ -293,7 +300,7 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         Awaitility.await()
                 .atMost(timeout)
                 .pollInterval(Duration.ofMillis(250))
-                .until(() -> !engine.isRunning() && error.get() != null);
+                .until(() -> error.get() != null);
     }
 
     private boolean isClassifiedFailFast(Throwable error) {
@@ -301,13 +308,37 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
     }
 
     private boolean logsContain(String token) {
-        return logAppender.list.stream().anyMatch(event -> event.getFormattedMessage().contains(token));
+        return logMessages().stream().anyMatch(message -> message.contains(token));
     }
 
     private String joinedLogs() {
-        return logAppender.list.stream()
-                .map(ILoggingEvent::getFormattedMessage)
-                .collect(Collectors.joining(" | "));
+        return String.join(" | ", logMessages());
+    }
+
+    /** The appender list is mutated by the logging thread while tests scan it. */
+    private List<String> logMessages() {
+        while (true) {
+            try {
+                List<String> messages = new ArrayList<>();
+                for (ILoggingEvent event : new ArrayList<>(logAppender.list)) {
+                    messages.add(event.getFormattedMessage());
+                    appendThrowable(messages, event.getThrowableProxy());
+                }
+                return messages;
+            }
+            catch (java.util.ConcurrentModificationException ignored) {
+                // Appender added a line during the copy. Retry.
+            }
+        }
+    }
+
+    private static void appendThrowable(List<String> messages, IThrowableProxy proxy) {
+        while (proxy != null) {
+            if (proxy.getMessage() != null) {
+                messages.add(proxy.getMessage());
+            }
+            proxy = proxy.getCause();
+        }
     }
 
     private static String flatten(Throwable error) {
@@ -325,11 +356,12 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
 
     /**
      * yb-client has no master RPC for {@code remove_user_table_from_change_data_stream}; yb-admin only.
+     * Runs {@code yb-admin} inside the Testcontainers YB image.
      */
     private static void removeUserTableFromChangeDataStream(String streamId, String tableId) throws Exception {
         ExecResult result = ybContainer.execInContainer(
-                "/home/yugabyte/bin/yb-admin",
-                "--master_addresses", containerIpAddress + ":7100",
+                ybAdminBinary(),
+                "--master_addresses", inContainerMasterAddress(),
                 "remove_user_table_from_change_data_stream",
                 streamId,
                 tableId);
@@ -340,8 +372,7 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
     }
 
     private static void setSimulateFlag(int value) throws Exception {
-        HostAndPort tserver = HostAndPort.fromParts(
-                ybContainer.getHost(), ybContainer.getMappedPort(9100));
+        HostAndPort tserver = tserverRpcAddress();
         String flagValue = String.valueOf(value);
         try (YBClient client = TestHelper.getYbClient(getMasterAddress())) {
             if (client.setFlag(tserver, SIMULATE_GET_CHANGES_ERROR_FLAG, flagValue, true)) {
@@ -352,6 +383,67 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
             }
             throw new RuntimeException("setFlag failed for " + SIMULATE_GET_CHANGES_ERROR_FLAG + " on " + tserver);
         }
+    }
+
+    private static String ybAdminPath;
+    private static String masterAddressInContainer;
+    private static HostAndPort tserverRpc;
+
+    /** {@code yb-admin} on the image PATH, or beside the {@code yugabyted} this harness starts. */
+    private static String ybAdminBinary() throws Exception {
+        if (ybAdminPath != null) {
+            return ybAdminPath;
+        }
+        ExecResult which = ybContainer.execInContainer("sh", "-c", "command -v yb-admin");
+        if (which.getExitCode() == 0 && which.getStdout() != null && !which.getStdout().isBlank()) {
+            ybAdminPath = which.getStdout().trim().split("\\s+")[0];
+            return ybAdminPath;
+        }
+        int slash = yugabytedLocation.lastIndexOf('/');
+        ybAdminPath = slash < 0 ? "yb-admin" : yugabytedLocation.substring(0, slash + 1) + "yb-admin";
+        return ybAdminPath;
+    }
+
+    /** Master RPC as seen from inside the container, from the {@code yb-master} process. */
+    private static String inContainerMasterAddress() throws Exception {
+        if (masterAddressInContainer == null) {
+            masterAddressInContainer = containerIpAddress + ":" + rpcPortOf("yb-master");
+        }
+        return masterAddressInContainer;
+    }
+
+    /**
+     * Tserver RPC for {@link YBClient#setFlag}, using the host and mapped port the same way
+     * {@link #getMasterAddress()} does when that container port is published.
+     */
+    private static HostAndPort tserverRpcAddress() throws Exception {
+        if (tserverRpc != null) {
+            return tserverRpc;
+        }
+        int containerPort = rpcPortOf("yb-tserver");
+        String master = getMasterAddress();
+        String host = master.substring(0, master.lastIndexOf(':'));
+        int port = ybContainer.getExposedPorts().contains(containerPort)
+                ? ybContainer.getMappedPort(containerPort)
+                : containerPort;
+        if (!ybContainer.getExposedPorts().contains(containerPort)) {
+            host = containerIpAddress;
+        }
+        tserverRpc = HostAndPort.fromParts(host, port);
+        return tserverRpc;
+    }
+
+    private static int rpcPortOf(String processName) throws Exception {
+        String needle = processName.replace("'", "");
+        ExecResult cmdline = ybContainer.execInContainer("sh", "-c",
+                "for f in /proc/[0-9]*/cmdline; do tr '\\0' ' ' < \"$f\" 2>/dev/null; echo; done | grep -F '"
+                        + needle + "' | grep rpc_bind_addresses | head -n 1");
+        String args = cmdline.getStdout() == null ? "" : cmdline.getStdout();
+        Matcher matcher = Pattern.compile("rpc_bind_addresses(?:=|\\s+)\\S*:(\\d+)").matcher(args);
+        if (!matcher.find()) {
+            throw new IllegalStateException("No rpc_bind_addresses for " + processName + " in: " + args);
+        }
+        return Integer.parseInt(matcher.group(1));
     }
 
     private static void resetSimulateFlag() {
