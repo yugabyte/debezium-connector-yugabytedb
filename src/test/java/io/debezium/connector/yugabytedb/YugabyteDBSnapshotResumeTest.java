@@ -227,6 +227,7 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
         "INSERT INTO test_1 SELECT i, repeat('x', 2000) FROM generate_series(1, %d) i;", recordsCount), DEFAULT_COLOCATED_DB_NAME);
 
     YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = true;
+    long requestsBefore = YugabyteDBSnapshotChangeEventSource.SNAPSHOT_GET_CHANGES_REQUESTS.get();
 
     String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1", consistentSnapshot, useSnapshot);
     Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1", dbStreamId);
@@ -241,7 +242,7 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
     Awaitility.await()
         .atMost(Duration.ofSeconds(120))
         .until(() -> getNonConsumedRecordCount() == acknowledgedCount);
-    waitUntilExplicitCheckpointIsStable();
+    waitUntilSnapshotStopsRequesting(requestsBefore);
 
     Set<Integer> ids = new HashSet<>();
     consumeAvailableRecords(record -> ids.add(idOf(record)));
@@ -268,18 +269,20 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
   }
 
   @Test
-  public void verifyExplicitCheckpointComparisonUsesSnapshotKey() {
+  public void verifySnapshotRequestPositionComparisonUsesSnapshotKey() {
     byte[] none = new byte[0];
     byte[] row999 = {71, 18, 16, 72, -128, 0, 0, 1, 33, 73, -128, 0, 0, 0, 0, 0, 3, -25};
     byte[] row7761 = {71, 18, 16, 72, -128, 0, 0, 1, 33, 73, -128, 0, 0, 0, 0, 0, 30, 81};
     CdcSdkCheckpoint acknowledged = new CdcSdkCheckpoint(1, 6, row999, 0, 7L);
 
-    // Same term, index and time: the key decides, then write_id.
-    assertFalse(new OpId(1, 6, row7761, -1, 7L).isLesserThanOrEqualTo(acknowledged));
-    assertTrue(new OpId(1, 6, none, -1, 7L).isLesserThanOrEqualTo(acknowledged));
-    assertTrue(new OpId(1, 6, row999, -1, 7L).isLesserThanOrEqualTo(acknowledged));
-    assertTrue(new OpId(1, 6, none, 3, 0).isLesserThanOrEqualTo(new CdcSdkCheckpoint(1, 6, none, 3, 0)));
-    assertFalse(new OpId(1, 6, none, 4, 0).isLesserThanOrEqualTo(new CdcSdkCheckpoint(1, 6, none, 3, 0)));
+    // Same term, index and time: the snapshot key decides.
+    assertFalse(YugabyteDBSnapshotChangeEventSource.isAtOrBehind(new OpId(1, 6, row7761, -1, 7L), acknowledged));
+    assertTrue(YugabyteDBSnapshotChangeEventSource.isAtOrBehind(new OpId(1, 6, none, -1, 7L), acknowledged));
+    assertTrue(YugabyteDBSnapshotChangeEventSource.isAtOrBehind(new OpId(1, 6, row999, -1, 7L), acknowledged));
+    // Different term, index or time: the OpId rule as before.
+    assertTrue(YugabyteDBSnapshotChangeEventSource.isAtOrBehind(new OpId(-1, -1, none, -1, 0), acknowledged));
+    assertFalse(YugabyteDBSnapshotChangeEventSource.isAtOrBehind(new OpId(1, 7, none, -1, 7L), acknowledged));
+    assertFalse(YugabyteDBSnapshotChangeEventSource.isAtOrBehind(new OpId(1, 6, none, -1, 7L), null));
   }
 
   private static byte[] keyOrEmpty(byte[] key) {

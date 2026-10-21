@@ -68,6 +68,7 @@ public class YugabyteDBgRPCConnectorIT extends YugabyteDBContainerTestBase {
         insertRows(1, snapshotRows, "repeat('x', 2000)");
 
         YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = true;
+        long requestsBefore = YugabyteDBSnapshotChangeEventSource.SNAPSHOT_GET_CHANGES_REQUESTS.get();
         String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t_split", consistentSnapshot, useSnapshot);
         Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t_split", dbStreamId)
             .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
@@ -81,7 +82,7 @@ public class YugabyteDBgRPCConnectorIT extends YugabyteDBContainerTestBase {
         Awaitility.await()
             .atMost(Duration.ofSeconds(120))
             .until(() -> getNonConsumedRecordCount() == acknowledgedCount);
-        waitUntilExplicitCheckpointIsStable();
+        waitUntilSnapshotStopsRequesting(requestsBefore);
 
         Set<Integer> ids = new HashSet<>();
         consumeAvailableRecords(record -> ids.add(idOf(record)));
