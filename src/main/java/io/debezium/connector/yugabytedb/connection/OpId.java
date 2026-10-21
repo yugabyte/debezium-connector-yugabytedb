@@ -188,12 +188,21 @@ public class OpId implements Comparable<OpId> {
         if (this.term < checkpoint.getTerm() || this.index < checkpoint.getIndex() || this.time < checkpoint.getTime()) {
             return true;
         } else if (this.term == checkpoint.getTerm() && this.index == checkpoint.getIndex() && this.time == checkpoint.getTime()) {
+            // Snapshot positions differ only by key; DocDB key order is unsigned byte order.
+            int keyComparison = Arrays.compareUnsigned(keyOrEmpty(this.key), keyOrEmpty(checkpoint.getKey()));
+            if (keyComparison != 0) {
+                return keyComparison < 0;
+            }
             LOGGER.debug("Evaluating equality for a large transaction case");
             return this.write_id <= checkpoint.getWriteId();
         }
 
         LOGGER.debug("Current OpId is greater than the passed checkpoint");
         return false;
+    }
+
+    private static byte[] keyOrEmpty(byte[] key) {
+        return key == null ? new byte[0] : key;
     }
 
     /**

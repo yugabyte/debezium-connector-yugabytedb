@@ -3,6 +3,7 @@ package io.debezium.connector.yugabytedb;
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
+import io.debezium.connector.yugabytedb.connection.OpId;
 
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
@@ -20,7 +21,10 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -205,6 +209,90 @@ public class YugabyteDBSnapshotResumeTest extends YugabyteDBContainerTestBase {
     LOGGER.info("Remaining consumed record count: {}", recordsAfterRestart.size());
     assertNotEquals(totalConsumedSoFar, recordsAfterRestart.size());
     assertEquals(2 * snapshotBatchSize, recordsAfterRestart.size());
+  }
+
+  @ParameterizedTest
+  @MethodSource("io.debezium.connector.yugabytedb.YugabyteDBSnapshotTest#streamTypeProviderForSnapshotWithColocation")
+  public void verifyNoDataLossIfConnectorRestartsWithUnacknowledgedSnapshotRecords(boolean consistentSnapshot, boolean useSnapshot, boolean colocation) throws Exception {
+    // Kafka acknowledges only the first 1,000 of 5,000 rows while the snapshot keeps reading ahead.
+    // The checkpoint sent to the server must not pass the acknowledged row, so a restart loses nothing.
+    TestHelper.dropAllSchemas();
+    TestHelper.executeDDL("yugabyte_create_tables.ddl");
+    createTablesInColocatedDB(colocation);
+
+    final int recordsCount = 5_000;
+    final int acknowledgedCount = 1_000;
+    // ~2 KB rows so the 4 MB GetChanges bound splits the snapshot into several batches.
+    TestHelper.executeInDatabase(String.format(
+        "INSERT INTO test_1 SELECT i, repeat('x', 2000) FROM generate_series(1, %d) i;", recordsCount), DEFAULT_COLOCATED_DB_NAME);
+
+    YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = true;
+
+    String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1", consistentSnapshot, useSnapshot);
+    Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1", dbStreamId);
+    configBuilder.with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
+
+    startEngineWithPartialConsumptionOfLastBatch(configBuilder, acknowledgedCount, (success, message, error) -> {
+      if (error != null) {
+        LOGGER.error("Engine stopped: {}", message, error);
+      }
+    });
+    awaitUntilConnectorIsReady();
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(120))
+        .until(() -> getNonConsumedRecordCount() == acknowledgedCount);
+    waitUntilExplicitCheckpointIsStable();
+
+    Set<Integer> ids = new HashSet<>();
+    consumeAvailableRecords(record -> ids.add(idOf(record)));
+    assertEquals(acknowledgedCount, ids.size());
+
+    stopConnector();
+
+    OpId acknowledged = lastAcknowledgedOpId();
+    CdcSdkCheckpoint sent = YugabyteDBSnapshotChangeEventSource.LAST_EXPLICIT_CHECKPOINT;
+    LOGGER.info("Acknowledged {} | last explicit checkpoint sent {}", acknowledged.toSerString(), sent);
+    assertTrue(Arrays.compareUnsigned(keyOrEmpty(sent.getKey()), keyOrEmpty(acknowledged.getKey())) <= 0,
+        "explicit checkpoint " + sent + " is ahead of the acknowledged record " + acknowledged.toSerString());
+
+    YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = false;
+    startEngine(configBuilder);
+    awaitUntilConnectorIsReady();
+
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(180))
+        .until(() -> {
+          consumeAvailableRecords(record -> ids.add(idOf(record)));
+          return ids.size() == recordsCount;
+        });
+  }
+
+  @Test
+  public void verifyExplicitCheckpointComparisonUsesSnapshotKey() {
+    byte[] none = new byte[0];
+    byte[] row999 = {71, 18, 16, 72, -128, 0, 0, 1, 33, 73, -128, 0, 0, 0, 0, 0, 3, -25};
+    byte[] row7761 = {71, 18, 16, 72, -128, 0, 0, 1, 33, 73, -128, 0, 0, 0, 0, 0, 30, 81};
+    CdcSdkCheckpoint acknowledged = new CdcSdkCheckpoint(1, 6, row999, 0, 7L);
+
+    // Same term, index and time: the key decides, then write_id.
+    assertFalse(new OpId(1, 6, row7761, -1, 7L).isLesserThanOrEqualTo(acknowledged));
+    assertTrue(new OpId(1, 6, none, -1, 7L).isLesserThanOrEqualTo(acknowledged));
+    assertTrue(new OpId(1, 6, row999, -1, 7L).isLesserThanOrEqualTo(acknowledged));
+    assertTrue(new OpId(1, 6, none, 3, 0).isLesserThanOrEqualTo(new CdcSdkCheckpoint(1, 6, none, 3, 0)));
+    assertFalse(new OpId(1, 6, none, 4, 0).isLesserThanOrEqualTo(new CdcSdkCheckpoint(1, 6, none, 3, 0)));
+  }
+
+  private static byte[] keyOrEmpty(byte[] key) {
+    return key == null ? new byte[0] : key;
+  }
+
+  private OpId lastAcknowledgedOpId() {
+    for (Map.Entry<String, ?> entry : offsetMapForRecords.entrySet()) {
+      if (!entry.getKey().equals("transaction_id")) {
+        return OpId.valueOf((String) entry.getValue());
+      }
+    }
+    throw new IllegalStateException("no acknowledged offset");
   }
 
 	private int consumeAllAvailableRecordsTill(long minimumRecordsToConsume) {

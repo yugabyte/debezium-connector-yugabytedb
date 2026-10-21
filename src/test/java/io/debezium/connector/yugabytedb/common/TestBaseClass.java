@@ -2,6 +2,7 @@ package io.debezium.connector.yugabytedb.common;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.TestHelper;
+import io.debezium.connector.yugabytedb.YugabyteDBSnapshotChangeEventSource;
 import io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.connector.yugabytedb.container.YugabyteCustomContainer;
@@ -27,7 +28,9 @@ import org.testcontainers.containers.YugabyteYSQLContainer;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -341,6 +344,26 @@ public class TestBaseClass extends AbstractConnectorTest {
     }
 
     throw new RuntimeException("No checkpoint found for " + partitionId + " in offset map");
+  }
+
+  protected static int idOf(SourceRecord record) {
+    return ((Struct) record.value()).getStruct("after").getStruct("id").getInt32("value");
+  }
+
+  // Returns once the snapshot stopped issuing GetChanges requests (needs TRACK_EXPLICIT_CHECKPOINTS).
+  protected void waitUntilExplicitCheckpointIsStable() {
+    AtomicReference<String> last = new AtomicReference<>("");
+    AtomicInteger unchangedPolls = new AtomicInteger();
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(120))
+        .pollInterval(Duration.ofSeconds(1))
+        .until(() -> {
+          String current = String.valueOf(YugabyteDBSnapshotChangeEventSource.LAST_EXPLICIT_CHECKPOINT);
+          if (!current.equals(last.getAndSet(current))) {
+            unchangedPolls.set(0);
+          }
+          return unchangedPolls.incrementAndGet() >= 5;
+        });
   }
 
   @Override
