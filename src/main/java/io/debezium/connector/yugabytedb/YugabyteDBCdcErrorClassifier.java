@@ -171,15 +171,12 @@ final class YugabyteDBCdcErrorClassifier {
      * error with the same code. Matched only via {@link #hasFatalMessage(CDCErrorPB)}, not on the
      * exception message chain (stripped yb-client errors carry no server text to match).
      * <p>
-     * {@code Stream ID … is expired for Tablet ID …} is intentionally omitted. On GetChanges the
-     * tserver returns it from {@code CheckStreamActive} as {@code INTERNAL_ERROR} when active time
-     * plus intent retention is in the past. That covers bootstrap ordering (e.g.
-     * {@link YugabyteDBStreamingChangeEventSource#markNoSnapshotNeeded} before CDC state is warm,
-     * or {@link YugabyteDBSnapshotChangeEventSource} calling {@code makeStreamActive} via
-     * SetCDCCheckpoint) and genuine post-downtime expiry. The wire message does not distinguish
-     * them, so these errors stay {@link CdcErrorAction#RETRY retried} with the surrounding retry
-     * loops. {@code Stream ID … unpolled for too long for Tablet ID …} is a different check and
-     * remains a fatal fragment above.
+     * {@code Stream ID … is expired for Tablet ID …} is fatal. GetChanges runs
+     * {@code CheckStreamActive} before it updates active time, so retrying GetChanges cannot
+     * recover. Connector paths SetCDCCheckpoint / bootstrap before the first GetChanges on a
+     * tablet, so this is post-checkpoint intent-retention expiry, not a bootstrap race.
+     * {@code Stream ID … unpolled for too long for Tablet ID …} is a different check and is
+     * also a fatal fragment. A bare {@code stream expired} (no tablet) is not matched.
      * <p>
      * {@code not found under stream} is omitted: master returns it only as
      * {@link CDCErrorPB.Code#TABLE_NOT_FOUND}, which is always retried.
@@ -190,6 +187,7 @@ final class YugabyteDBCdcErrorClassifier {
             "already gced intents",
             "due to compaction",
             "did not find a wal message",
+            "is expired for tablet",
             "unpolled for too long",
             "unsupported replica identity",
             "replica identity not found",
