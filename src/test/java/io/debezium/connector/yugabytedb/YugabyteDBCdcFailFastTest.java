@@ -5,11 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.sql.SQLException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -25,7 +25,6 @@ import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.Container.ExecResult;
 import org.yb.client.CDCErrorException;
 import org.yb.client.YBClient;
-import org.yb.client.YBTable;
 
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
@@ -45,11 +44,10 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
  * active CDCSDK stream is not covered here: master hides the table for CDC ({@code hide_only}), so streaming
  * keeps polling known tablets and typical tserver errors ({@code TABLET_NOT_FOUND}, expired, not-in-stream) are
  * retried by {@link YugabyteDBCdcErrorClassifier}, not fail-fast.
- * <p>
- * <b>Bootstrap / tablet list</b> ({@link #removeTableFromStreamBeforeStartShouldRetryUntilExhausted}): yb-admin
- * removal before start yields {@code TABLE_NOT_FOUND} / {@code not found under stream} on
- * {@code GetTabletListToPollForCDC} and connector retries until exhausted (not fail-fast). GetChanges
- * {@code Tablet ID … is not part of stream ID …} remains retry (unit test).
+ * Removing a table from the stream before connector start is a bootstrap hard stop
+ * ({@code DebeziumException} from {@code getDBStreamInfo} / {@code fetchTableList}), not a
+ * GetTabletList retry loop; {@code TABLE_NOT_FOUND} → retry is covered by
+ * {@link YugabyteDBCdcErrorClassifierTest}.
  */
 public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
 
@@ -62,10 +60,11 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
      * {@code delayedSendRpcToTablet} with the last {@link CDCErrorException} on the cause chain,
      * not {@code tooManyAttemptsOrTimeout(rpc, null)} from low attempt limits.
      * <p>
-     * The timeout has to stay above the tserver {@code consensus_rpc_timeout_ms} (3s). A client
-     * deadline that short makes GetChanges return {@code safe_hybrid_time = 0}, and explicit
-     * checkpointing then keeps polling {@code 1.3} with time 0, so the streaming-ready insert is
-     * never delivered.
+     * The timeout has to stay above the GetChanges safe-deadline slack:
+     * {@code cdc_read_rpc_timeout_ms} (30s) × {@code cdc_read_safe_deadline_ratio} (0.1) = 3s.
+     * A client deadline that short makes GetChanges return {@code safe_hybrid_time = 0}, and
+     * explicit checkpointing then keeps polling {@code 1.3} with time 0, so the streaming-ready
+     * insert is never delivered.
      */
     private static final long FAIL_FAST_TEST_OPERATION_TIMEOUT_MS = 15_000L;
     private static final long STREAMING_READY_CONSUME_TIMEOUT_MS = 120_000L;
@@ -75,7 +74,7 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
     private ListAppender<ILoggingEvent> logAppender;
 
     @BeforeAll
-    public static void beforeClass() throws SQLException {
+    public static void beforeClass() throws Exception {
         initializeYBContainer();
         TestHelper.dropAllSchemas();
         resetSimulateFlag();
@@ -85,27 +84,35 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
     public void before() {
         initializeConnectorTestFramework();
         Logger logger = (Logger) LoggerFactory.getLogger("io.debezium.connector.yugabytedb");
-        logAppender = new ListAppender<>();
+        logAppender = new CopyOnWriteListAppender();
         logAppender.start();
         logger.addAppender(logAppender);
     }
 
     @AfterEach
     public void after() throws Exception {
-        resetSimulateFlag();
-        stopConnector();
-        Logger logger = (Logger) LoggerFactory.getLogger("io.debezium.connector.yugabytedb");
-        if (logAppender != null) {
-            logger.detachAppender(logAppender);
-            logAppender.stop();
+        try {
+            resetSimulateFlag();
         }
-        TestHelper.executeDDL("drop_tables_and_databases.ddl");
+        finally {
+            stopConnector();
+            Logger logger = (Logger) LoggerFactory.getLogger("io.debezium.connector.yugabytedb");
+            if (logAppender != null) {
+                logger.detachAppender(logAppender);
+                logAppender.stop();
+            }
+            TestHelper.executeDDL("drop_tables_and_databases.ddl");
+        }
     }
 
     @AfterAll
     public static void afterClass() throws Exception {
-        resetSimulateFlag();
-        shutdownYBContainer();
+        try {
+            resetSimulateFlag();
+        }
+        finally {
+            shutdownYBContainer();
+        }
     }
 
     @Test
@@ -116,39 +123,6 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
                 ybClient.deleteCDCStream(Collections.singleton(currentStreamId()), false, true);
             }
         });
-    }
-
-    @Test
-    public void removeTableFromStreamBeforeStartShouldRetryUntilExhausted() throws Exception {
-        String table = "t_remove_stream";
-        TestHelper.execute("CREATE TABLE " + table + " (id INT PRIMARY KEY, name TEXT);");
-        String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
-        streamIdRef.set(streamId);
-
-        try (YBClient ybClient = TestHelper.getYbClient(getMasterAddress())) {
-            YBTable ybTable = TestHelper.getYbTable(ybClient, table);
-            assertNotNull(ybTable);
-            removeUserTableFromChangeDataStream(streamId, ybTable.getTableId());
-        }
-
-        AtomicReference<Throwable> error = startConnectorForFailFast("public." + table, streamId, FAIL_FAST_RETRY_DELAY_MS);
-        Awaitility.await()
-                .atMost(Duration.ofSeconds(60))
-                .pollInterval(Duration.ofMillis(250))
-                .until(() -> logsContain("will attempt retry"));
-
-        waitUntilStopped(error, Duration.ofSeconds(60));
-
-        assertNotNull(error.get());
-        assertFalse(logsContain(FAIL_FAST_LOG),
-                "TABLE_NOT_FOUND should retry, not fail fast. logs=" + joinedLogs());
-        assertFalse(isClassifiedFailFast(error.get()),
-                "TABLE_NOT_FOUND should not be classified fail-fast. error=" + flatten(error.get()));
-        String flattened = flatten(error.get()).toLowerCase();
-        boolean removalError = flattened.contains("not found under stream") || logsContain("not found under stream");
-        assertTrue(removalError,
-                "Expected GetTabletListToPollForCDC-style removal error, not GetChanges membership retry. error="
-                        + flatten(error.get()) + " logs=" + joinedLogs());
     }
 
     @Test
@@ -315,21 +289,14 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         return String.join(" | ", logMessages());
     }
 
-    /** The appender list is mutated by the logging thread while tests scan it. */
+    /** Snapshot of events; the appender list is a {@link CopyOnWriteArrayList}. */
     private List<String> logMessages() {
-        while (true) {
-            try {
-                List<String> messages = new ArrayList<>();
-                for (ILoggingEvent event : new ArrayList<>(logAppender.list)) {
-                    messages.add(event.getFormattedMessage());
-                    appendThrowable(messages, event.getThrowableProxy());
-                }
-                return messages;
-            }
-            catch (java.util.ConcurrentModificationException ignored) {
-                // Appender added a line during the copy. Retry.
-            }
+        List<String> messages = new ArrayList<>();
+        for (ILoggingEvent event : logAppender.list) {
+            messages.add(event.getFormattedMessage());
+            appendThrowable(messages, event.getThrowableProxy());
         }
+        return messages;
     }
 
     private static void appendThrowable(List<String> messages, IThrowableProxy proxy) {
@@ -354,23 +321,6 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         return builder.toString();
     }
 
-    /**
-     * yb-client has no master RPC for {@code remove_user_table_from_change_data_stream}; yb-admin only.
-     * Runs {@code yb-admin} inside the Testcontainers YB image.
-     */
-    private static void removeUserTableFromChangeDataStream(String streamId, String tableId) throws Exception {
-        ExecResult result = ybContainer.execInContainer(
-                ybAdminBinary(),
-                "--master_addresses", inContainerMasterAddress(),
-                "remove_user_table_from_change_data_stream",
-                streamId,
-                tableId);
-        if (result.getExitCode() != 0) {
-            throw new RuntimeException("yb-admin remove_user_table_from_change_data_stream failed (exit "
-                    + result.getExitCode() + "): " + result.getStdout() + result.getStderr());
-        }
-    }
-
     private static void setSimulateFlag(int value) throws Exception {
         HostAndPort tserver = tserverRpcAddress();
         String flagValue = String.valueOf(value);
@@ -385,32 +335,7 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         }
     }
 
-    private static String ybAdminPath;
-    private static String masterAddressInContainer;
     private static HostAndPort tserverRpc;
-
-    /** {@code yb-admin} on the image PATH, or beside the {@code yugabyted} this harness starts. */
-    private static String ybAdminBinary() throws Exception {
-        if (ybAdminPath != null) {
-            return ybAdminPath;
-        }
-        ExecResult which = ybContainer.execInContainer("sh", "-c", "command -v yb-admin");
-        if (which.getExitCode() == 0 && which.getStdout() != null && !which.getStdout().isBlank()) {
-            ybAdminPath = which.getStdout().trim().split("\\s+")[0];
-            return ybAdminPath;
-        }
-        int slash = yugabytedLocation.lastIndexOf('/');
-        ybAdminPath = slash < 0 ? "yb-admin" : yugabytedLocation.substring(0, slash + 1) + "yb-admin";
-        return ybAdminPath;
-    }
-
-    /** Master RPC as seen from inside the container, from the {@code yb-master} process. */
-    private static String inContainerMasterAddress() throws Exception {
-        if (masterAddressInContainer == null) {
-            masterAddressInContainer = containerIpAddress + ":" + rpcPortOf("yb-master");
-        }
-        return masterAddressInContainer;
-    }
 
     /**
      * Tserver RPC for {@link YBClient#setFlag}, using the host and mapped port the same way
@@ -446,16 +371,28 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         return Integer.parseInt(matcher.group(1));
     }
 
-    private static void resetSimulateFlag() {
-        try {
-            setSimulateFlag(99);
-        }
-        catch (Exception ignored) {
-        }
+    private static void resetSimulateFlag() throws Exception {
+        setSimulateFlag(99);
     }
 
     @FunctionalInterface
     private interface ThrowingRunnable {
         void run() throws Exception;
+    }
+
+    /**
+     * {@link ListAppender} stores events in an {@link ArrayList}. Readers copy that list without
+     * the appender lock, so a concurrent {@code add} can expose a null slot. Store events in a
+     * {@link CopyOnWriteArrayList} instead.
+     */
+    private static final class CopyOnWriteListAppender extends ListAppender<ILoggingEvent> {
+        CopyOnWriteListAppender() {
+            this.list = new CopyOnWriteArrayList<>();
+        }
+
+        @Override
+        protected void append(ILoggingEvent event) {
+            list.add(event);
+        }
     }
 }

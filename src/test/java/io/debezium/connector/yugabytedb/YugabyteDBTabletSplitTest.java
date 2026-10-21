@@ -639,17 +639,18 @@ public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
     ListAppender<ILoggingEvent> logAppender = new ListAppender<>();
     logAppender.start();
     connectorLogger.addAppender(logAppender);
+    try {
+      startEngine(configBuilder, (success, message, error) -> assertTrue(success));
+      awaitUntilConnectorIsReady();
+      waitAndFailIfCannotConsume(new ArrayList<>(), 200);
 
-    startEngine(configBuilder, (success, message, error) -> assertTrue(success));
-    awaitUntilConnectorIsReady();
-    waitAndFailIfCannotConsume(new ArrayList<>(), 200);
-
-    connectorLogger.detachAppender(logAppender);
-    logAppender.stop();
-
-    assertFalse(logAppender.list.stream().anyMatch(event -> event.getFormattedMessage().contains(FAIL_FAST_CLASSIFIER_LOG)),
-            "Injected INVALID_REQUEST must be retried, not classified fail-fast");
-    assertConnectorIsRunning();
+      assertFalse(logAppender.list.stream().anyMatch(event -> event.getFormattedMessage().contains(FAIL_FAST_CLASSIFIER_LOG)),
+              "Injected INVALID_REQUEST must be retried, not classified fail-fast");
+      assertConnectorIsRunning();
+    } finally {
+      connectorLogger.detachAppender(logAppender);
+      logAppender.stop();
+    }
     ybClient.close();
   }
 }
