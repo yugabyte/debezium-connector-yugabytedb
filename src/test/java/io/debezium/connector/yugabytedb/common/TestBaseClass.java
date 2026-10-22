@@ -349,8 +349,9 @@ public class TestBaseClass extends AbstractConnectorTest {
     return ((Struct) record.value()).getStruct("after").getStruct("id").getInt32("value");
   }
 
-  // Returns once no snapshot GetChanges request has been issued for 5 s and at least two were issued
-  // since requestsBefore, i.e. the snapshot has read ahead past its first batch (needs TRACK_EXPLICIT_CHECKPOINTS).
+  // Returns once no snapshot GetChanges request has been issued for 5 s, i.e. every tablet has read to
+  // the end and waits for acknowledgements. Bootstrap calls count too, so the count check only stops it
+  // returning before requests start (needs TRACK_EXPLICIT_CHECKPOINTS).
   protected void waitUntilSnapshotStopsRequesting(long requestsBefore) {
     AtomicLong last = new AtomicLong(-1);
     AtomicInteger unchangedPolls = new AtomicInteger();
