@@ -1081,8 +1081,10 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       if (acknowledged == null) {
         return false;
       }
-      if (fromOpId.getTerm() != acknowledged.getTerm() || fromOpId.getIndex() != acknowledged.getIndex()
-            || fromOpId.getTime() != acknowledged.getTime()) {
+      boolean sameOpId = fromOpId.getTerm() == acknowledged.getTerm()
+            && fromOpId.getIndex() == acknowledged.getIndex()
+            && fromOpId.getTime() == acknowledged.getTime();
+      if (!sameOpId) {
         return fromOpId.isLesserThanOrEqualTo(acknowledged);
       }
       byte[] fromKey = fromOpId.getKey() == null ? new byte[0] : fromOpId.getKey();
