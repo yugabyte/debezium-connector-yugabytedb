@@ -46,6 +46,10 @@
         <version.postgresql.driver>42.7.7</version.postgresql.driver>
         <version.com.google.protobuf>4.30.2</version.com.google.protobuf>
         <version.kafka>4.3.1</version.kafka>
+        <!-- Kafka version the Debezium ${version.debezium} embedded engine used by the tests was built against.
+             debezium-embedded 1.9.x calls SourceTask.commitRecord(SourceRecord), which Kafka 4.0 removed,
+             so the test runtime stays on the embedded engine's Kafka while main compiles against ${version.kafka}. -->
+        <version.kafka.test>3.2.0</version.kafka.test>
         <version.org.slf4j>1.7.36</version.org.slf4j>
         <version.logback>1.2.13</version.logback>
         <version.ybclient>0.8.122-20260819.111006-1</version.ybclient>
@@ -574,6 +578,24 @@
                         <version>${version.junit}</version>
                     </dependency>
                 </dependencies>
+                <configuration>
+                    <classpathDependencyExcludes>
+                        <classpathDependencyExclude>org.apache.kafka:connect-api</classpathDependencyExclude>
+                        <classpathDependencyExclude>org.apache.kafka:connect-transforms</classpathDependencyExclude>
+                    </classpathDependencyExcludes>
+                    <additionalClasspathDependencies>
+                        <dependency>
+                            <groupId>org.apache.kafka</groupId>
+                            <artifactId>connect-api</artifactId>
+                            <version>${version.kafka.test}</version>
+                        </dependency>
+                        <dependency>
+                            <groupId>org.apache.kafka</groupId>
+                            <artifactId>connect-transforms</artifactId>
+                            <version>${version.kafka.test}</version>
+                        </dependency>
+                    </additionalClasspathDependencies>
+                </configuration>
             </plugin>
             <!--
             Unlike surefire, the failsafe plugin ensures 'post-integration-test' phase always runs, even
@@ -623,6 +645,26 @@
                 <configuration>
                     <skipTests>${skipITs}</skipTests>
                     <enableAssertions>true</enableAssertions>
+                    <!-- Run against the compiled classes, not the shaded jar (relocated classes break the yb-client
+                         calls in tests), and with a plain classpath so test resources resolve. -->
+                    <classesDirectory>${project.build.outputDirectory}</classesDirectory>
+                    <useManifestOnlyJar>false</useManifestOnlyJar>
+                    <classpathDependencyExcludes>
+                        <classpathDependencyExclude>org.apache.kafka:connect-api</classpathDependencyExclude>
+                        <classpathDependencyExclude>org.apache.kafka:connect-transforms</classpathDependencyExclude>
+                    </classpathDependencyExcludes>
+                    <additionalClasspathDependencies>
+                        <dependency>
+                            <groupId>org.apache.kafka</groupId>
+                            <artifactId>connect-api</artifactId>
+                            <version>${version.kafka.test}</version>
+                        </dependency>
+                        <dependency>
+                            <groupId>org.apache.kafka</groupId>
+                            <artifactId>connect-transforms</artifactId>
+                            <version>${version.kafka.test}</version>
+                        </dependency>
+                    </additionalClasspathDependencies>
                 </configuration>
             </plugin>
             <plugin>

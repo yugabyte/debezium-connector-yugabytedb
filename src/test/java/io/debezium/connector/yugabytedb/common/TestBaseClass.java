@@ -2,6 +2,7 @@ package io.debezium.connector.yugabytedb.common;
 
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.TestHelper;
+import io.debezium.connector.yugabytedb.YugabyteDBSnapshotChangeEventSource;
 import io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.connector.yugabytedb.container.YugabyteCustomContainer;
@@ -27,6 +28,7 @@ import org.testcontainers.containers.YugabyteYSQLContainer;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
@@ -341,6 +343,28 @@ public class TestBaseClass extends AbstractConnectorTest {
     }
 
     throw new RuntimeException("No checkpoint found for " + partitionId + " in offset map");
+  }
+
+  protected static int idOf(SourceRecord record) {
+    return ((Struct) record.value()).getStruct("after").getStruct("id").getInt32("value");
+  }
+
+  // Returns once no snapshot GetChanges request has been issued for 5 s, i.e. every tablet has read to
+  // the end and waits for acknowledgements. Bootstrap calls count too, so the count check only stops it
+  // returning before requests start (needs TRACK_EXPLICIT_CHECKPOINTS).
+  protected void waitUntilSnapshotStopsRequesting(long requestsBefore) {
+    AtomicLong last = new AtomicLong(-1);
+    AtomicInteger unchangedPolls = new AtomicInteger();
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(120))
+        .pollInterval(Duration.ofSeconds(1))
+        .until(() -> {
+          long current = YugabyteDBSnapshotChangeEventSource.SNAPSHOT_GET_CHANGES_REQUESTS.get();
+          if (current != last.getAndSet(current)) {
+            unchangedPolls.set(0);
+          }
+          return current - requestsBefore >= 2 && unchangedPolls.incrementAndGet() >= 5;
+        });
   }
 
   @Override

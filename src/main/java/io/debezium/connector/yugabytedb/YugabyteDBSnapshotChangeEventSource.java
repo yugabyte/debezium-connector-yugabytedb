@@ -9,6 +9,7 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -57,6 +58,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     public static boolean FAIL_WHEN_MARKING_SNAPSHOT_DONE;
     public static boolean TRACK_EXPLICIT_CHECKPOINTS = false;
     public static CdcSdkCheckpoint LAST_EXPLICIT_CHECKPOINT;
+    public static final AtomicLong SNAPSHOT_GET_CHANGES_REQUESTS = new AtomicLong();
 
     private final YugabyteDBConnectorConfig connectorConfig;
     private final YugabyteDBSchema schema;
@@ -589,6 +591,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
 
                 if (TRACK_EXPLICIT_CHECKPOINTS) {
                   LAST_EXPLICIT_CHECKPOINT = explicitCdcSdkCheckpoint;
+                  SNAPSHOT_GET_CHANGES_REQUESTS.incrementAndGet();
                 }
 
                 OpId finalOpId = new OpId(resp.getTerm(), resp.getIndex(), resp.getKey(),
@@ -1060,7 +1063,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
     protected CdcSdkCheckpoint getExplicitCheckpoint(YBPartition partition, OpId fromOpId) {
       CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(partition.getId());
 
-      if (fromOpId.isLesserThanOrEqualTo(explicitCheckpoint)
+      if (isAtOrBehind(fromOpId, explicitCheckpoint)
             && !isLastSnapshotRecordOfLastBatch(OpId.from(explicitCheckpoint))) {
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debug("Request OpId for partition {} ({}) is less than or equal to explicit checkpoint ({})",
@@ -1070,6 +1073,23 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
       }
 
       return explicitCheckpoint;
+    }
+
+    // Snapshot positions of a tablet share term, index and time and differ only by the snapshot key
+    // (DocDB key order is unsigned byte order); OpId's write_id comparison cannot order them.
+    static boolean isAtOrBehind(OpId fromOpId, CdcSdkCheckpoint acknowledged) {
+      if (acknowledged == null) {
+        return false;
+      }
+      boolean sameOpId = fromOpId.getTerm() == acknowledged.getTerm()
+            && fromOpId.getIndex() == acknowledged.getIndex()
+            && fromOpId.getTime() == acknowledged.getTime();
+      if (!sameOpId) {
+        return fromOpId.isLesserThanOrEqualTo(acknowledged);
+      }
+      byte[] fromKey = fromOpId.getKey() == null ? new byte[0] : fromOpId.getKey();
+      byte[] acknowledgedKey = acknowledged.getKey() == null ? new byte[0] : acknowledged.getKey();
+      return Arrays.compareUnsigned(fromKey, acknowledgedKey) <= 0;
     }
 
     /**
