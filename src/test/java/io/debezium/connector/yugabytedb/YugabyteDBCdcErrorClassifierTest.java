@@ -162,7 +162,9 @@ public class YugabyteDBCdcErrorClassifierTest {
     @Test
     public void invalidRequestWithTabletNotInStreamShouldRetry() {
         // GetChanges membership miss (incomplete GetTablets list). TABLE_NOT_FOUND
-        // (GetTabletListToPollForCDC) is always retried — see tests using Code.TABLE_NOT_FOUND.
+        // (GetTabletListToPollForCDC) returns RETRY here; getTabletListToPollForCDCWithRetry
+        // disambiguates by calling getDBStreamInfo to distinguish transient lag from permanent
+        // removal. See tests using Code.TABLE_NOT_FOUND.
         assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
                 classify(error(Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT,
                         "Tablet ID xyz is not part of stream ID abc")));

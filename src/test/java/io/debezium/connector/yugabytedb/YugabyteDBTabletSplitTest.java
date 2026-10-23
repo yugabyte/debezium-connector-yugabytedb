@@ -11,6 +11,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.connect.data.Struct;
@@ -636,7 +637,7 @@ public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
             "YB build must expose TEST_cdcsdk_fail_getchanges_once_for_tablet for this scenario");
 
     Logger connectorLogger = (Logger) LoggerFactory.getLogger("io.debezium.connector.yugabytedb");
-    ListAppender<ILoggingEvent> logAppender = new ListAppender<>();
+    ListAppender<ILoggingEvent> logAppender = new CopyOnWriteListAppender();
     logAppender.start();
     connectorLogger.addAppender(logAppender);
     try {
@@ -652,5 +653,23 @@ public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
       logAppender.stop();
     }
     ybClient.close();
+  }
+
+  /**
+   * {@link ListAppender} stores events in an {@link java.util.ArrayList}. Readers iterate that
+   * list without the appender lock, so a concurrent {@code add} can expose a null slot and cause
+   * {@link java.util.ConcurrentModificationException}. Back it with a
+   * {@link CopyOnWriteArrayList} instead, matching the pattern in
+   * {@code YugabyteDBCdcFailFastTest}.
+   */
+  private static final class CopyOnWriteListAppender extends ListAppender<ILoggingEvent> {
+    CopyOnWriteListAppender() {
+      this.list = new CopyOnWriteArrayList<>();
+    }
+
+    @Override
+    protected void append(ILoggingEvent event) {
+      list.add(event);
+    }
   }
 }

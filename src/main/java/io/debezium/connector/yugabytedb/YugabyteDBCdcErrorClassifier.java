@@ -30,9 +30,11 @@ import org.yb.master.MasterTypes.MasterErrorPB;
  *       {@code GetTablets(ignore_errors=true)} skips failed master lookups (cache miss,
  *       restart). The server does not distinguish that from a real removal on this RPC.</li>
  *   <li>{@code Table … not found under stream} on {@code GetTabletListToPollForCDC} is
- *       {@code CDCErrorPB.TABLE_NOT_FOUND} and is always {@link CdcErrorAction#RETRY retried}:
- *       the same code and text are used when stream metadata has not caught up after adding a
- *       table as when a table was removed from the stream.</li>
+ *       {@code CDCErrorPB.TABLE_NOT_FOUND}. Because the same code/text is used when stream
+ *       metadata has not caught up after adding a table as when a table was removed, the
+ *       connector calls {@code getDBStreamInfo} to check membership. If the table is still
+ *       listed in the stream, the error is {@link CdcErrorAction#RETRY retried}; if not, a
+ *       {@code DebeziumException} is thrown to fail-fast.</li>
  * </ul>
  * Stream delete uses {@code NOT_FOUND} (e.g. could not find CDC stream), not the GetChanges
  * membership string above.
@@ -127,8 +129,9 @@ final class YugabyteDBCdcErrorClassifier {
             case TABLET_SPLIT:
                 return CdcErrorAction.HANDLE_IN_STREAM;
             case TABLE_NOT_FOUND:
-                // Transient while CDC metadata catches up, on both publication and
-                // plain gRPC stream tasks. Do not fail the task.
+                // Transient while CDC metadata catches up after adding a table, or permanent
+                // if table was removed from stream. getTabletListToPollForCDCWithRetry disambiguates
+                // by calling getDBStreamInfo. This returns RETRY; disambiguation throws if not in stream.
                 return CdcErrorAction.RETRY;
             case INVALID_REQUEST:
                 // Not a tablet split (only CDC TABLET_SPLIT is). Classified via actionForAmbiguousCdcCode:
@@ -147,8 +150,9 @@ final class YugabyteDBCdcErrorClassifier {
             case INTERNAL_ERROR:
                 return actionForAmbiguousCdcCode(error);
             default:
-                // Not reached with the current yb-client enum. Kept so a future
-                // Code constant this switch does not list yet is retried.
+                // Reached for codes not explicitly listed above (e.g., SUBSCRIBER_NOT_FOUND,
+                // AUTO_FLAGS_CONFIG_VERSION_MISMATCH). Kept so any future Code constant is
+                // retried by default rather than causing a compilation error or accidental fail-fast.
                 return CdcErrorAction.RETRY;
         }
     }
@@ -179,7 +183,9 @@ final class YugabyteDBCdcErrorClassifier {
      * also a fatal fragment. A bare {@code stream expired} (no tablet) is not matched.
      * <p>
      * {@code not found under stream} is omitted: master returns it only as
-     * {@link CDCErrorPB.Code#TABLE_NOT_FOUND}, which is always retried.
+     * {@link CDCErrorPB.Code#TABLE_NOT_FOUND}. The connector calls {@code getDBStreamInfo}
+     * to check stream membership; if the table is still listed, the error is retried, otherwise
+     * a {@code DebeziumException} is thrown to fail-fast.
      */
     private static final String[] FATAL_MESSAGE_FRAGMENTS = {
             "could not find cdc stream",
@@ -199,7 +205,48 @@ final class YugabyteDBCdcErrorClassifier {
         return StringUtils.containsAny(statusMessage(error), FATAL_MESSAGE_FRAGMENTS);
     }
 
-    /** Master {@code OBJECT_NOT_FOUND} when opening a table that is gone (not CDC hidden-on-drop during streaming). */
+    /**
+     * Master {@code OBJECT_NOT_FOUND} is treated as fail-fast wherever a {@code MasterErrorException}
+     * propagates to a {@link #throwIfFailFast} call site or where {@link #isFailFast} is explicitly
+     * checked. Three situations where this can happen:
+     * <ol>
+     *   <li>Stream validation: {@code validateTServerConnection} calls {@code getDBStreamInfo}
+     *       ({@code YugabyteDBgRPCConnector:397}). The catch at {@code :398-409} checks
+     *       {@code isFailFast(e)} at line {@code :406}. If the stream is deleted
+     *       ({@code OBJECT_NOT_FOUND}), {@code raiseError} is called to stop the
+     *       {@code taskConfigs()} retry loop. This prevents endless retries on permanent
+     *       misconfiguration.</li>
+     *   <li>Tablet bootstrap: {@code bootstrapTabletWithRetry}
+     *       ({@code YugabyteDBStreamingChangeEventSource:250}) and the {@code openTableByUUID}
+     *       inside {@code YBClientUtils.setCheckpoint} (called via snapshot's
+     *       {@code makeStreamActive} at {@code YugabyteDBSnapshotChangeEventSource:267-295})
+     *       both call {@code openTableByUUID} inside retry loops whose catch blocks call
+     *       {@code throwIfFailFast}. If the table is dropped between the preceding discovery step
+     *       and that call, the master returns {@code OBJECT_NOT_FOUND} and the task stops
+     *       immediately. This is a production-only concurrent-DDL race.
+     *       Note: call sites such as {@code YugabyteDBgRPCConnector:458} and
+     *       {@code YugabyteDBStreamingChangeEventSource:364} also call {@code openTableByUUID}
+     *       but are <em>outside</em> {@code throwIfFailFast} catch. At {@code :458}, the catch at
+     *       {@code :482-494} wraps the exception as "Error while fetching all the tablets" without
+     *       calling {@code raiseError}, so {@code taskConfigs()} enters the Connect retry loop
+     *       rather than stopping. At {@code :364}, the exception propagates uncaught.
+     *       Note: a table explicitly excluded from the stream produces a {@link
+     *       io.debezium.DebeziumException} from {@code fetchTableList} directly, not this
+     *       error.</li>
+     *   <li>Tablet-split handling during streaming: {@code handleTabletSplit} calls
+     *       {@code syncClient.openTableByUUID} ({@code YugabyteDBStreamingChangeEventSource:1206})
+     *       to locate the split tablet's parent table. If that table was dropped between the
+     *       split event being observed and the handler running, the master returns
+     *       {@code OBJECT_NOT_FOUND}. This propagates past the inner
+     *       {@code CDCErrorException} catch to {@code throwIfFailFast} at the outer streaming
+     *       catch ({@code YugabyteDBConsistentStreamingSource:287}). Intentionally fail-fast:
+     *       a split on a dropped table cannot be recovered by retrying.</li>
+     * </ol>
+     * Note: a normal {@code DROP TABLE} on a table in an active CDCSDK stream uses the master's
+     * {@code hide_only} path — the table UUID remains accessible via {@code openTableByUUID}
+     * while CDC drains it — so that path does not produce {@code OBJECT_NOT_FOUND} during
+     * {@code GetChanges} polling and is not affected by this classification.
+     */
     private static boolean isMasterObjectNotFound(Throwable error) {
         MasterErrorException masterError = ExceptionUtils.throwableOfType(error, MasterErrorException.class);
         if (masterError == null || masterError.error == null || !masterError.error.hasCode()) {
