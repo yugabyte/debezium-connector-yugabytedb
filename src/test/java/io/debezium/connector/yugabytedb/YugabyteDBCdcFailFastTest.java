@@ -63,8 +63,11 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
  * distinction requires reading the C++ {@code CDCServiceImpl::GetChanges} handler.
  * {@code DROP TABLE} on a table in an active CDCSDK stream is not covered here: master hides
  * the table for CDC ({@code hide_only}), so streaming keeps polling known tablets and typical
- * tserver errors ({@code TABLET_NOT_FOUND}, expired, not-in-stream) are retried by
+ * tserver errors ({@code TABLET_NOT_FOUND} and not-in-stream) are retried by
  * {@link YugabyteDBCdcErrorClassifier}, not fail-fast.
+ * ({@code "is expired for tablet"} is a {@code FATAL_MESSAGE_FRAGMENTS} entry and
+ * <em>does</em> fail-fast; it is irrelevant here because {@code hide_only} does not
+ * expire the stream.)
  * Removing a table from the stream before connector start is a bootstrap hard stop
  * ({@code DebeziumException} from {@code getDBStreamInfo} / {@code fetchTableList}), not a
  * GetTabletList retry loop; {@code TABLE_NOT_FOUND} → retry is covered by
