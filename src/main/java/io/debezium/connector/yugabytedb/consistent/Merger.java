@@ -34,11 +34,12 @@ public class Merger {
     }
 
     /**
-     * Remove a retired tablet from the merger after a split. The parent tablet's slot must be
-     * empty before calling this, otherwise pending messages will be lost. Once removed, the
-     * parent's safetime is no longer included in streamSafeTime(), allowing child tablets to
-     * advance the stream.
+     * Remove a retired tablet from the merger after a split. Once removed, the parent's safetime
+     * is no longer included in streamSafeTime(), allowing child tablets to advance the stream.
+     *
      * @param tabletId the retired tablet UUID to remove
+     * @throws IllegalStateException if the tablet's merge slot still contains pending messages;
+     *                               the slot is left intact and no messages are dropped
      */
     public synchronized void removeTablet(String tabletId) {
         if (!mergeSlots.containsKey(tabletId)) {

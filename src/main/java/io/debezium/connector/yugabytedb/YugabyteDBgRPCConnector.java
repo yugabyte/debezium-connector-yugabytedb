@@ -412,10 +412,11 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             if (getStreamInfoResp.getTableInfoList().isEmpty()) {
                 String errorMessage = "The provided stream ID is not associated with any table";
                 LOGGER.error(errorMessage);
-                // Permanent stream state — retrying will not add tables to the stream.
-                final DebeziumException permanentError = new DebeziumException(errorMessage);
-                if (raiseOnPermanentError) context().raiseError(permanentError);
-                throw permanentError;
+                // Not necessarily permanent: YugabyteDB adds newly created tables to a namespace
+                // stream in the background. A connector deployed before the migration that creates
+                // the tables will see an empty stream info initially but it resolves once the
+                // tables appear. Let Kafka Connect retry taskConfigs() rather than going FAILED.
+                throw new DebeziumException(errorMessage);
             }
 
             // Pass the already-fetched stream info to avoid per-table getDBStreamInfo RPCs.
@@ -428,28 +429,45 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                 // - catch-all wrapper around ybClient.getTablesList() failures (YBClientUtils.java:181,
                 //   transient master/network errors)
                 // Only call raiseError for the permanent "not a part of the stream ID" case.
-                // The line-163 case has no cause; line-181 wraps the original exception.
+                // Both cases arrive with a cause: the line-163 throw is inside the outer try, so
+                // the catch-all at line-181 re-wraps it as new DebeziumException(e) too.
+                // The substring check on getMessage() works because DebeziumException(Throwable)
+                // copies cause.toString() (which includes the original message) into the message
+                // field. Do NOT switch to a getCause()==null guard: both cases have a cause.
                 boolean isPermanentStreamMembership = e.getMessage() != null 
                         && e.getMessage().contains("not a part of the stream ID");
                 
-                // In publication mode, "not in stream" can be transiently true: YugabyteDBTablePoller
-                // fires requestTaskReconfiguration as soon as a table appears in pg_publication_tables,
-                // but the master adds tables to the stream asynchronously. Let Kafka Connect retry
-                // taskConfigs() until the stream catches up. Only fail-fast in gRPC mode.
-                boolean isPublicationMode = yugabyteDBConnectorConfig.usePublication();
-                
-                if (raiseOnPermanentError && isPermanentStreamMembership && !isPublicationMode) {
+                // "not in stream" can be transiently true in two scenarios:
+                //
+                // 1. Publication mode: YugabyteDBTablePoller fires requestTaskReconfiguration as
+                //    soon as a table appears in pg_publication_tables, but the master adds the
+                //    table to the CDCSDK stream asynchronously. taskConfigs() may run during that
+                //    window and see the table in fetchTableList but not yet in getDBStreamInfo.
+                //
+                // 2. gRPC mode with auto.add.new.tables=true: areThereNewTablesInStream() fires
+                //    requestTaskReconfiguration as soon as ONE new table appears in getDBStreamInfo.
+                //    A sibling table created in the same migration batch may still be missing from
+                //    the stream when taskConfigs() runs. getTablesList() returns it, fetchTableList
+                //    checks it against the cached streamInfoResponse, and throws.
+                //
+                // In both cases, let Kafka Connect retry taskConfigs() until the stream catches up.
+                // Only call raiseError when neither condition holds (genuine permanent misconfiguration).
+                boolean isTransientNotInStream = this.usePublication
+                        || this.yugabyteDBConnectorConfig.autoAddNewTables();
+
+                if (raiseOnPermanentError && isPermanentStreamMembership && !isTransientNotInStream) {
                     context().raiseError(e);
                 }
                 throw e;
             }
 
             if (tableIds == null || tableIds.isEmpty()) {
-                // Permanent: the tables in table.include.list do not exist in the database.
-                final DebeziumException permanentError = new DebeziumException(
+                // Not necessarily permanent: a table listed in table.include.list may be created
+                // after the connector starts (deploy-before-migration pattern). A table created
+                // later in the same namespace is added to the stream and satisfies the include
+                // list. Let Kafka Connect retry taskConfigs() rather than going FAILED.
+                throw new DebeziumException(
                         "The tables provided in table.include.list do not exist");
-                if (raiseOnPermanentError) context().raiseError(permanentError);
-                throw permanentError;
             }
 
             this.hashRanges = new ArrayList<>();
@@ -487,6 +505,14 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                 if (e instanceof DebeziumException) {
                     if (raiseOnPermanentError) context().raiseError(e);
                     throw (DebeziumException) e;
+                }
+                // MasterErrorException(OBJECT_NOT_FOUND) from openTableByUUID is permanent —
+                // consult the classifier before wrapping and retrying.
+                if (raiseOnPermanentError && YugabyteDBCdcErrorClassifier.isFailFast(e)) {
+                    final DebeziumException permanentError =
+                            new DebeziumException("Error while fetching all the tablets", e);
+                    context().raiseError(permanentError);
+                    throw permanentError;
                 }
                 final String errorMessage = "Error while fetching all the tablets";
                 LOGGER.error(errorMessage, e);

@@ -71,9 +71,11 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
  * GetTabletList retry loop; {@code TABLE_NOT_FOUND} → retry is covered by
  * {@link YugabyteDBCdcErrorClassifierTest}.
  * <p>
- * {@link #streamExpiredForTabletDuringConsistentStreamingShouldFailFast} hits
- * {@link YugabyteDBConsistentStreamingSource} {@code throwIfFailFast} after intent-retention
- * expiry (live stream-delete during streaming is not reliably testable — see above).
+ * {@link #streamExpiredForTabletDuringConsistentStreamingShouldFailFast} enters the
+ * {@link YugabyteDBConsistentStreamingSource} path after intent-retention expiry and the
+ * connector fails fast; the assertions do not pinpoint which {@code throwIfFailFast} call site
+ * fired (bootstrap retries also run before the GetChanges loop).
+ * Live stream-delete during streaming is not reliably testable — see above.
  * {@link #tabletSplitDuringConsistentStreamingShouldNotFailFast} splits a tablet on that path
  * so {@code isTabletSplit} handles it in-stream.
  * <p>
@@ -211,9 +213,13 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
 
         applyShortIntentRetentionFlags();
         stopConnector();
-        // Clear the log so assertions below reflect only the restarted connector's run,
-        // proving that throwIfFailFast fired in YugabyteDBConsistentStreamingSource:287
-        // and not from a leftover "Processing consistent messages" from the first run.
+        // Clear the log so assertions below reflect only the restarted connector's run
+        // and not any "Processing consistent messages" from the first run.
+        // The assertion on "Processing consistent messages" proves the restarted connector
+        // entered the ConsistentStreamingSource path before the expiry was detected; it
+        // does not pinpoint which throwIfFailFast call site fired (bootstrap retries in
+        // YugabyteDBStreamingChangeEventSource:213/259 also run before the GetChanges
+        // loop at ConsistentStreamingSource:287).
         logAppender.list.clear();
         TestHelper.waitFor(Duration.ofSeconds(8));
 
@@ -823,7 +829,7 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
 
     private static void flushTable(String table) throws Exception {
         // yb-admin runs inside the container. yugabyted is started with
-        // --advertise_address=containerIpAddress (TestBaseClass:202), so the master
+        // --advertise_address=containerIpAddress (TestBaseClass:162), so the master
         // is bound to the container IP, not loopback. getMasterAddress() returns the
         // host-mapped port (ybContainer.getHost():mappedPort) which is unreachable
         // from inside the container; use containerIpAddress:7100 instead.

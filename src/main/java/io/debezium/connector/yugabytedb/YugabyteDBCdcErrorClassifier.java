@@ -32,9 +32,12 @@ import org.yb.master.MasterTypes.MasterErrorPB;
  *   <li>{@code Table … not found under stream} on {@code GetTabletListToPollForCDC} is
  *       {@code CDCErrorPB.TABLE_NOT_FOUND}. Because the same code/text is used when stream
  *       metadata has not caught up after adding a table as when a table was removed, the
- *       connector calls {@code getDBStreamInfo} to check membership. If the table is still
- *       listed in the stream, the error is {@link CdcErrorAction#RETRY retried}; if not, a
- *       {@code DebeziumException} is thrown to fail-fast.</li>
+ *       bootstrap path ({@code YBClientUtils.getTabletListToPollForCDCWithRetry}) calls
+ *       {@code getDBStreamInfo} to check membership. If the table is still listed in the
+ *       stream, the error is {@link CdcErrorAction#RETRY retried}; if not, a
+ *       {@code DebeziumException} is thrown to fail-fast. The split-child path
+ *       ({@code getTabletListResponseWithRetry}) does not perform this check and retries
+ *       on {@code TABLE_NOT_FOUND} like any other transient error.</li>
  * </ul>
  * Stream delete uses {@code NOT_FOUND} (e.g. could not find CDC stream), not the GetChanges
  * membership string above.
@@ -177,8 +180,11 @@ final class YugabyteDBCdcErrorClassifier {
      * <p>
      * {@code Stream ID … is expired for Tablet ID …} is fatal. GetChanges runs
      * {@code CheckStreamActive} before it updates active time, so retrying GetChanges cannot
-     * recover. Connector paths SetCDCCheckpoint / bootstrap before the first GetChanges on a
-     * tablet, so this is post-checkpoint intent-retention expiry, not a bootstrap race.
+     * recover. Normal connector startup always calls SetCDCCheckpoint / bootstrap before the
+     * first GetChanges on a tablet. Exception: child tablets after a tablet split are added
+     * directly to the streaming loop ({@code YugabyteDBStreamingChangeEventSource:1183})
+     * without a prior bootstrap call. Even so, expiry is irrecoverable: CheckStreamActive
+     * marks the tablet expired at the server and no subsequent GetChanges call can undo it.
      * {@code Stream ID … unpolled for too long for Tablet ID …} is a different check and is
      * also a fatal fragment. A bare {@code stream expired} (no tablet) is not matched.
      * <p>
@@ -224,12 +230,12 @@ final class YugabyteDBCdcErrorClassifier {
      *       {@code throwIfFailFast}. If the table is dropped between the preceding discovery step
      *       and that call, the master returns {@code OBJECT_NOT_FOUND} and the task stops
      *       immediately. This is a production-only concurrent-DDL race.
-     *       Note: call sites such as {@code YugabyteDBgRPCConnector:458} and
+     *       Note: call sites such as {@code YugabyteDBgRPCConnector:474} and
      *       {@code YugabyteDBStreamingChangeEventSource:364} also call {@code openTableByUUID}
-     *       but are <em>outside</em> {@code throwIfFailFast} catch. At {@code :458}, the catch at
-     *       {@code :482-494} wraps the exception as "Error while fetching all the tablets" without
-     *       calling {@code raiseError}, so {@code taskConfigs()} enters the Connect retry loop
-     *       rather than stopping. At {@code :364}, the exception propagates uncaught.
+     *       but are <em>outside</em> {@code throwIfFailFast} catch. At {@code :474}, the catch at
+     *       {@code :498-510} checks {@code isFailFast} and calls {@code raiseError} for permanent
+     *       errors (e.g. {@code OBJECT_NOT_FOUND}) before wrapping as "Error while fetching all
+     *       the tablets". At {@code :364}, the exception propagates uncaught.
      *       Note: a table explicitly excluded from the stream produces a {@link
      *       io.debezium.DebeziumException} from {@code fetchTableList} directly, not this
      *       error.</li>

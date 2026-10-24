@@ -651,8 +651,8 @@ public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
     } finally {
       connectorLogger.detachAppender(logAppender);
       logAppender.stop();
+      ybClient.close();
     }
-    ybClient.close();
   }
 
   /**
