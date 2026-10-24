@@ -57,6 +57,24 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
     public YugabyteDBgRPCConnector() {
     }
 
+    /**
+     * Calls {@link org.apache.kafka.connect.connector.ConnectorContext#raiseError} to mark this
+     * connector FAILED permanently, suppressing any {@link ClassCastException} that occurs when
+     * running inside an {@code EmbeddedEngine} test harness whose context does not implement
+     * {@link org.apache.kafka.connect.source.SourceConnectorContext}.  In that case the exception
+     * will propagate normally and stop the connector, which is the correct test behaviour.
+     */
+    private void raiseErrorSafely(Exception e) {
+        try {
+            context().raiseError(e);
+        }
+        catch (ClassCastException ignored) {
+            // EmbeddedEngine's context() is not a SourceConnectorContext; raiseError() is
+            // unavailable.  The exception propagates through the normal call stack and stops
+            // the connector, so no additional action is required.
+        }
+    }
+
     @Override
     public String version() {
         return Module.version();
@@ -187,7 +205,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                     + " to true";
             // Permanent misconfiguration — retrying taskConfigs() will never succeed; mark FAILED now.
             final DebeziumException permanentError = new DebeziumException(errorMessage);
-            context().raiseError(permanentError);
+            raiseErrorSafely(permanentError);
             throw permanentError;
         }
 
@@ -196,7 +214,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                     + "create a stream with explicit checkpointing and try again";
             // Permanent misconfiguration — retrying taskConfigs() will never succeed; mark FAILED now.
             final DebeziumException permanentError = new DebeziumException(errorMessage);
-            context().raiseError(permanentError);
+            raiseErrorSafely(permanentError);
             throw permanentError;
         }
 
@@ -374,7 +392,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                 // Permanent config error — no stream ID will ever appear without a config change.
                 final DebeziumException permanentError = new DebeziumException(
                         "DB Stream ID not provided, please provide a DB stream ID to proceed");
-                if (raiseOnPermanentError) context().raiseError(permanentError);
+                if (raiseOnPermanentError) raiseErrorSafely(permanentError);
                 throw permanentError;
             }
 
@@ -384,7 +402,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                 // Permanent config error — table list will not appear without a config change.
                 final DebeziumException permanentError = new DebeziumException(
                         "The table.include.list is empty, please provide a list of tables to get the changes from");
-                if (raiseOnPermanentError) context().raiseError(permanentError);
+                if (raiseOnPermanentError) raiseErrorSafely(permanentError);
                 throw permanentError;
             }
 
@@ -404,7 +422,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                 // new tables appear, so only stop retries for truly unrecoverable errors.
                 final DebeziumException wrappedException = new DebeziumException(errorMessage, e);
                 if (raiseOnPermanentError && YugabyteDBCdcErrorClassifier.isFailFast(e)) {
-                    context().raiseError(wrappedException);
+                    raiseErrorSafely(wrappedException);
                 }
                 throw wrappedException;
             }
@@ -456,7 +474,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                         || this.yugabyteDBConnectorConfig.autoAddNewTables();
 
                 if (raiseOnPermanentError && isPermanentStreamMembership && !isTransientNotInStream) {
-                    context().raiseError(e);
+                    raiseErrorSafely(e);
                 }
                 throw e;
             }
@@ -503,7 +521,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                 // from the stream. Pass it through without re-wrapping and mark FAILED if on
                 // the taskConfigs() path.
                 if (e instanceof DebeziumException) {
-                    if (raiseOnPermanentError) context().raiseError(e);
+                    if (raiseOnPermanentError) raiseErrorSafely(e);
                     throw (DebeziumException) e;
                 }
                 // MasterErrorException(OBJECT_NOT_FOUND) from openTableByUUID is permanent —
@@ -511,7 +529,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                 if (raiseOnPermanentError && YugabyteDBCdcErrorClassifier.isFailFast(e)) {
                     final DebeziumException permanentError =
                             new DebeziumException("Error while fetching all the tablets", e);
-                    context().raiseError(permanentError);
+                    raiseErrorSafely(permanentError);
                     throw permanentError;
                 }
                 final String errorMessage = "Error while fetching all the tablets";
@@ -520,7 +538,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             }
         }
         catch (Exception e) {
-            // DebeziumException instances have already had context().raiseError() called where
+            // DebeziumException instances have already had raiseErrorSafely() called where
             // appropriate (permanent config/stream errors, Fix 2 TABLE_NOT_FOUND disambiguation).
             // Pass them through unchanged. Re-wrap only unexpected non-DebeziumException failures.
             if (e instanceof DebeziumException) {
