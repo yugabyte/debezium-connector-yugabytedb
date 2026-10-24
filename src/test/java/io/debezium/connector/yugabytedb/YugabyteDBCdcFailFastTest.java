@@ -184,10 +184,15 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         deleteStreamOrFail(streamId);
 
         // taskConfigs() calls validateTServerConnection(..., raiseOnPermanentError=true), which calls
-        // getDBStreamInfo (master RPC). The deleted stream (OBJECT_NOT_FOUND) is detected immediately,
-        // and the catch at YugabyteDBgRPCConnector.java:398-409 calls context().raiseError() directly,
-        // not via throwIfFailFast. We assert isClassifiedFailFast rather than the "Failing fast" log
-        // line because raiseError marks the connector FAILED without logging that specific message.
+        // getDBStreamInfo (master RPC). The deleted stream (OBJECT_NOT_FOUND) causes isFailFast(e)
+        // to return true, so raiseErrorSafely() is called — but under EmbeddedEngine, context() is
+        // EmbeddedEngine$2 (not a SourceConnectorContext), so context().raiseError() is unreachable
+        // and the ClassCastException is silently swallowed. The connector actually stops because
+        // validateTServerConnection throws a DebeziumException wrapping the MasterErrorException.
+        // EmbeddedEngine captures that thrown exception and fires the completion callback.
+        // isClassifiedFailFast checks that MasterErrorException(OBJECT_NOT_FOUND) exists somewhere
+        // in the cause chain — which the thrown exception preserves — so the assertion holds.
+        // NOTE: the raiseError path is only exercised in production (real SourceConnectorContext).
         error = startConnectorForFailFast("public." + table, streamId, FAIL_FAST_RETRY_DELAY_MS);
         waitUntilStopped(error, Duration.ofSeconds(60));
         assertNotNull(error.get(), "Expected connector to stop with an error");
