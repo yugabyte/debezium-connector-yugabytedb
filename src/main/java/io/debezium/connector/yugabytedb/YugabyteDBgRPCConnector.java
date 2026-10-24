@@ -517,11 +517,19 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                 }
             } catch (Exception e) {
                 // A DebeziumException here comes from getTabletListToPollForCDCWithRetry's
-                // TABLE_NOT_FOUND disambiguation check (Fix 2): the table is permanently absent
-                // from the stream. Pass it through without re-wrapping and mark FAILED if on
-                // the taskConfigs() path.
+                // TABLE_NOT_FOUND disambiguation check: getDBStreamInfo confirmed the table is
+                // absent from the stream.  Apply the same transient-not-in-stream guard used on
+                // the fetchTableList path above: if usePublication or autoAddNewTables is set,
+                // the table may have disappeared between fetchTableList and
+                // getTabletListToPollForCDC (e.g. dropped mid-taskConfigs(), or a sibling table
+                // in the same migration batch not yet propagated).  Let Kafka Connect retry
+                // taskConfigs() rather than going FAILED permanently in those cases.
                 if (e instanceof DebeziumException) {
-                    if (raiseOnPermanentError) raiseErrorSafely(e);
+                    boolean isTransientNotInStream = this.usePublication
+                            || this.yugabyteDBConnectorConfig.autoAddNewTables();
+                    if (raiseOnPermanentError && !isTransientNotInStream) {
+                        raiseErrorSafely(e);
+                    }
                     throw (DebeziumException) e;
                 }
                 // MasterErrorException(OBJECT_NOT_FOUND) from openTableByUUID is permanent —
