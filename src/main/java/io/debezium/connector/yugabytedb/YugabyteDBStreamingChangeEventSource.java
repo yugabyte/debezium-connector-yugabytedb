@@ -9,6 +9,7 @@ import io.debezium.DebeziumException;
 import io.debezium.connector.yugabytedb.connection.*;
 import io.debezium.connector.yugabytedb.connection.ReplicationMessage.Operation;
 import io.debezium.connector.yugabytedb.connection.pgproto.YbProtoReplicationMessage;
+import io.debezium.connector.yugabytedb.consistent.Merger;
 import io.debezium.connector.yugabytedb.spi.Snapshotter;
 import io.debezium.connector.yugabytedb.util.YugabyteDBConnectorUtils;
 import io.debezium.heartbeat.Heartbeat;
@@ -28,10 +29,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.TabletCheckpointPair;
-import org.yb.cdc.CdcService.CDCErrorPB.Code;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.client.*;
 
+import java.math.BigInteger;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
@@ -209,6 +210,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // Reset the flag to retry.
                     shouldRetry = false;
                 } catch (Exception e) {
+                    YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
                     ++retryCountForGetCheckpoint;
 
                     shouldRetry = true;
@@ -254,6 +256,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // Reset the retry flag if the bootstrap was successful
                     shouldRetry = false;
                 } catch (Exception e) {
+                    YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
                     ++retryCountForBootstrapping;
 
                     // The connector should go for a retry if any exception is thrown
@@ -293,6 +296,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // Break upon successful request.
                 break;
             } catch (Exception e) {
+                YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
                 ++retryCount;
 
                 if (retryCount > connectorConfig.maxConnectorRetries()) {
@@ -515,7 +519,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                     LOGGER.info("Handling tablet split for enqueued tablet {} as we have now received the commit callback",
                                             part.getTabletId());
-                                    handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
+                                    handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded, null);
                                     splitTabletsWaitingForCallback.remove(part.getId());
                                     // Break out of the loop so that processing can happen on the modified list.
                                     break;
@@ -572,13 +576,13 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     TEST_explicitCheckpoints.put(tabletId, explicitCheckpoint);
                                 }
                             } catch (CDCErrorException cdcException) {
-                                // Check if exception indicates a tablet split.
+                                // Only CDC TABLET_SPLIT is a split; INVALID_REQUEST is classified
+                                // (retry vs fail-fast) by YugabyteDBCdcErrorClassifier.
                                 LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
-                                if (cdcException.getCDCError().getCode() == Code.TABLET_SPLIT) {
+                                YugabyteDBCdcErrorClassifier.CdcErrorAction action =
+                                        YugabyteDBCdcErrorClassifier.actionFor(cdcException.getCDCError());
+                                if (action == YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM) {
                                     LOGGER.info("Encountered a tablet split on tablet {}, handling it gracefully", tabletId);
-                                    if (LOGGER.isDebugEnabled()) {
-                                        cdcException.printStackTrace();
-                                    }
 
                                     if (taskContext.shouldEnableExplicitCheckpointing()) {
                                         OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
@@ -590,7 +594,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             LOGGER.info("Explicit checkpoint same as last seen record's checkpoint, handling tablet split immediately for partition {}, explicit checkpoint {}:{}:{} lastRecordCheckpoint: {}.{}.{}",
                                                     part.getId(), explicitCheckpoint.getTerm(), explicitCheckpoint.getIndex(), explicitCheckpoint.getTime(), lastRecordCheckpoint.getTerm(), lastRecordCheckpoint.getIndex(), lastRecordCheckpoint.getTime());
 
-                                            handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
+                                            handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded, null);
                                         } else {
                                             // Add the tablet for being processed later, this will mark the tablet as locked. There is a chance that explicit checkpoint may
                                             // be null, in that case, just to avoid NullPointerException in the log, simply log a null value.
@@ -600,7 +604,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             splitTabletsWaitingForCallback.add(part.getId());
                                         }
                                     } else {
-                                        handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
+                                        handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded, null);
                                     }
 
                                     // Break out of the loop so that the iteration can start afresh on the modified list.
@@ -829,10 +833,14 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                             tabletSafeTime.put(part.getId(), response.getResp().getSafeHybridTime());
 
-                            // In cases where there is no transactions on the server, the response checkpoint can still move ahead and we should
-                            // also move the explicit checkpoint forward, given that it was already greater than the lsn of the last seen valid record.
-                            // Otherwise the explicit checkpoint can get stuck at older values, and upon connector restart
-                            // we will resume from an older point than necessary.
+                            // In cases where there are no transactions on the server, the response checkpoint
+                            // can still move ahead and we should also move the explicit checkpoint forward,
+                            // given that it was already greater than the lsn of the last seen valid record.
+                            // Otherwise the explicit checkpoint can get stuck at older values, and upon
+                            // connector restart we will resume from an older point than necessary. Quiet
+                            // tablets (DDL-only, excluded colocated tables, empty transactions) also need
+                            // checkpoint advancement to prevent WAL retention buildup and eventual
+                            // CHECKPOINT_TOO_OLD failures.
                             if (taskContext.shouldEnableExplicitCheckpointing() && !TEST_STOP_ADVANCING_CHECKPOINTS) {
                                 OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();
                                 if (lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint)) {
@@ -847,6 +855,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                         retryCount = 0;
                     }
                 } catch (Exception e) {
+                    YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
+
                     ++retryCount;
                     // If the retry limit is exceeded, log an error with a description and throw the exception.
                     if (retryCount > connectorConfig.maxConnectorRetries()) {
@@ -946,7 +956,10 @@ public class YugabyteDBStreamingChangeEventSource implements
             // point because the previous GetChanges call is supposed to throw
             // an exception which will be handled.
         } catch (CDCErrorException cdcErrorException) {
-            if (cdcErrorException.getCDCError().getCode() == Code.TABLET_SPLIT) {
+            // Only TABLET_SPLIT is success here (see javadoc). We check the CDC code directly,
+            // not actionFor/HANDLE_IN_STREAM, so this path stays split-only even if HANDLE_IN_STREAM
+            // ever covers more than TABLET_SPLIT.
+            if (YugabyteDBCdcErrorClassifier.isTabletSplit(cdcErrorException.getCDCError())) {
                 LOGGER.info("Handling tablet split error gracefully for enqueued tablet {}", partition.getTabletId());
             } else {
                 throw cdcErrorException;
@@ -1182,7 +1195,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                      List<Pair<String,String>> tabletPairList,
                                      YugabyteDBOffsetContext offsetContext,
                                      String streamId,
-                                     Map<String, Boolean> schemaNeeded) throws Exception {
+                                     Map<String, Boolean> schemaNeeded,
+                                     Merger merger) throws Exception {
         LOGGER.info("Removing the tablet {} from the list to get the changes since it has been split", splitTabletId);
 
         Pair<String, String> entryToBeDeleted = getEntryToDelete(tabletPairList, splitTabletId);
@@ -1233,8 +1247,47 @@ public class YugabyteDBStreamingChangeEventSource implements
             }
         }
 
+        // Add child tablets to the merger BEFORE removing the parent. Initialize children with the
+        // parent's current safetime to prevent two issues:
+        // 1. Out-of-order emission: Without children in the merger, removing the parent would let
+        //    streamSafeTime jump to min(other tablets), releasing queued messages that should wait
+        //    for child records with intermediate commit times.
+        // 2. Deadlock: Setting children to ZERO while parent has pending messages would make
+        //    streamSafeTime=0, blocking parent's messages (commitTime > 0) from draining.
+        // Children inherit parent's safetime temporarily, then update to their actual CDC safetime
+        // on the first poll.
+        //
+        // KNOWN ISSUE (consistent streaming path only): when explicit checkpointing is enabled,
+        // cdc_state for the parent lags behind the merger's released watermark. Children start
+        // from cdc_state and may re-deliver records whose commitTime < parentSafetime, which
+        // causes Merger.setTabletSafeTime to throw AssertionError (Merger.java:102). This makes
+        // the problem visible — the connector restarts and resumes cleanly from the committed
+        // offset. The correct fix requires the consistent path to defer handleTabletSplit until
+        // the child's from_op_id is guaranteed past the merger's already-released watermark
+        // (analogous to the explicit-checkpoint deferral in the non-consistent path at :587-605),
+        // which needs a dedicated change tracked separately.
+        if (merger != null) {
+            BigInteger parentSafetime = merger.safeTimeForTablet(splitTabletId);
+            for (TabletCheckpointPair pair : getTabletListResponse.getTabletCheckpointPairList()) {
+                String childTabletId = pair.getTabletLocations().getTabletId().toStringUtf8();
+                merger.ensureTablet(childTabletId);
+                // Override the ZERO from ensureTablet with parent's safetime
+                merger.setTabletSafeTime(childTabletId, parentSafetime, null);
+                LOGGER.debug("Added child tablet {} to merger with inherited safetime {}",
+                        childTabletId, parentSafetime);
+            }
+        }
+
         for (TabletCheckpointPair pair : getTabletListResponse.getTabletCheckpointPairList()) {
             addTabletIfNotPresent(tabletPairList, pair, tableId, offsetContext, schemaNeeded);
+        }
+
+        // Remove the parent tablet from the merger only after its slot is empty. The parent is no
+        // longer polled, so its safetime is frozen. If it remains in the merger, streamSafeTime()
+        // stays pinned at that frozen value and child records (with higher commit times) never
+        // pass the peek/poll check, stalling the stream silently.
+        if (merger != null && merger.isSlotEmpty(splitTabletId)) {
+            merger.removeTablet(splitTabletId);
         }
     }
 
@@ -1246,7 +1299,9 @@ public class YugabyteDBStreamingChangeEventSource implements
      * @param tableId table UUID of the table to which the split tablet belongs
      * @param splitTabletId tablet UUID of the split tablet
      * @return {@link GetTabletListToPollForCDCResponse} containing the list of child tablets
-     * @throws Exception when the retry limit has been hit or the metronome pause is interrupted
+     * @throws Exception immediately when {@link YugabyteDBCdcErrorClassifier#throwIfFailFast(Exception)} classifies
+     *         the error as non-retriable; otherwise after exhausting
+     *         {@link YugabyteDBConnectorConfig#maxConnectorRetries()} retries for transient failures
      */
     private GetTabletListToPollForCDCResponse getTabletListResponseWithRetry(YBClient syncClient,
         YBTable ybTable, String streamId, String tableId, String splitTabletId) throws Exception {
@@ -1274,6 +1329,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 retryCount = 0;
                 return response;
             } catch (Exception e) {
+                YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
                 ++retryCount;
                 if (retryCount > connectorConfig.maxConnectorRetries()) {
                     LOGGER.error("Too many errors while trying to get children for split tablet {}", splitTabletId);

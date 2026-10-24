@@ -24,10 +24,36 @@ public class Merger {
     private final Map<String, BigInteger> tabletSafeTime = new HashMap<>();
 
     public Merger(List<String> tabletList) {
-        tabletList.forEach(tabletId -> {
-            mergeSlots.put(tabletId, new ArrayList<>());
-            this.tabletSafeTime.put(tabletId, BigInteger.ZERO);
-        });
+        tabletList.forEach(this::ensureTablet);
+    }
+
+    /** Child tablets after a split are added to the poll list without reconstructing Merger. */
+    public void ensureTablet(String tabletId) {
+        mergeSlots.computeIfAbsent(tabletId, id -> new ArrayList<>());
+        tabletSafeTime.putIfAbsent(tabletId, BigInteger.ZERO);
+    }
+
+    /**
+     * Remove a retired tablet from the merger after a split. Once removed, the parent's safetime
+     * is no longer included in streamSafeTime(), allowing child tablets to advance the stream.
+     *
+     * @param tabletId the retired tablet UUID to remove
+     * @throws IllegalStateException if the tablet's merge slot still contains pending messages;
+     *                               the slot is left intact and no messages are dropped
+     */
+    public synchronized void removeTablet(String tabletId) {
+        if (!mergeSlots.containsKey(tabletId)) {
+            LOGGER.warn("Attempted to remove tablet {} which is not in merger", tabletId);
+            return;
+        }
+        if (!mergeSlots.get(tabletId).isEmpty()) {
+            LOGGER.error("Attempted to remove tablet {} while its slot still has {} pending messages",
+                    tabletId, mergeSlots.get(tabletId).size());
+            throw new IllegalStateException("Cannot remove tablet " + tabletId + " with pending messages");
+        }
+        mergeSlots.remove(tabletId);
+        tabletSafeTime.remove(tabletId);
+        LOGGER.info("Removed retired tablet {} from merger after split", tabletId);
     }
 
     /**
@@ -40,6 +66,7 @@ public class Merger {
     public synchronized void addMessage(Message message) {
         assert message.record.getRowMessage().getOp() != CdcService.RowMessage.Op.DDL;
 
+        ensureTablet(message.tablet);
         setTabletSafeTime(message.tablet, message.commitTime, message); // TODO: Verify what happens if we move this inside the block
         if (message.record.getRowMessage().getOp() == CdcService.RowMessage.Op.SAFEPOINT) {
             LOGGER.debug("Received safe point message {}", message);
@@ -68,6 +95,7 @@ public class Merger {
      * @param safeTime the safetime to be set
      */
     public void setTabletSafeTime(String tabletId, BigInteger safeTime, Message m) {
+        ensureTablet(tabletId);
         // TODO: Wrap this assert under flag.
         // If the safetime we are setting is less than the already set value then it would indicate
         // that we are moving backward in time, which is wrong. Throw an assertion error in that case.
@@ -177,6 +205,7 @@ public class Merger {
      * @return true if the merge slot for the given tablet is empty, false otherwise
      */
     public boolean isSlotEmpty(String tabletId) {
+        ensureTablet(tabletId);
         return mergeSlots.get(tabletId).isEmpty();
     }
 

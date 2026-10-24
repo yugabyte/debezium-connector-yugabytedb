@@ -57,6 +57,24 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
     public YugabyteDBgRPCConnector() {
     }
 
+    /**
+     * Calls {@link org.apache.kafka.connect.connector.ConnectorContext#raiseError} to mark this
+     * connector FAILED permanently, suppressing any {@link ClassCastException} that occurs when
+     * running inside an {@code EmbeddedEngine} test harness whose context does not implement
+     * {@link org.apache.kafka.connect.source.SourceConnectorContext}.  In that case the exception
+     * will propagate normally and stop the connector, which is the correct test behaviour.
+     */
+    private void raiseErrorSafely(Exception e) {
+        try {
+            context().raiseError(e);
+        }
+        catch (ClassCastException ignored) {
+            // EmbeddedEngine's context() is not a SourceConnectorContext; raiseError() is
+            // unavailable.  The exception propagates through the normal call stack and stops
+            // the connector, so no additional action is required.
+        }
+    }
+
     @Override
     public String version() {
         return Module.version();
@@ -153,7 +171,10 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
         Configuration config = Configuration.from(this.props);
         Map<String, ConfigValue> results = validateAllFields(config);
 
-        validateTServerConnection(results, config);
+        // raiseOnPermanentError=true: mark connector FAILED immediately for config errors that
+        // cannot be resolved by retrying taskConfigs(). This flag is false on the validate()
+        // REST path so that thrown exceptions do not prematurely mark the connector FAILED.
+        validateTServerConnection(results, config, /* raiseOnPermanentError= */ true);
 
         String streamIdValue = this.yugabyteDBConnectorConfig.streamId();
         LOGGER.debug("The streamid in config is {}", this.yugabyteDBConnectorConfig.streamId());
@@ -182,13 +203,19 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                     + " is an IMPLICIT stream, create a stream with EXPLICIT checkpointing and try again."
                     + " To forcefully use an IMPLICIT stream, set configuration property force.use.implicit.stream"
                     + " to true";
-            throw new DebeziumException(errorMessage);
+            // Permanent misconfiguration — retrying taskConfigs() will never succeed; mark FAILED now.
+            final DebeziumException permanentError = new DebeziumException(errorMessage);
+            raiseErrorSafely(permanentError);
+            throw permanentError;
         }
 
         if (this.yugabyteDBConnectorConfig.transactionOrdering() && !enableExplicitCheckpointing) {
             final String errorMessage = "Explicit checkpointing not enabled in consistent streaming mode, "
                     + "create a stream with explicit checkpointing and try again";
-            throw new DebeziumException(errorMessage);
+            // Permanent misconfiguration — retrying taskConfigs() will never succeed; mark FAILED now.
+            final DebeziumException permanentError = new DebeziumException(errorMessage);
+            raiseErrorSafely(permanentError);
+            throw permanentError;
         }
 
         LOGGER.info("DB stream ID being used: {}", streamIdValue);
@@ -329,7 +356,9 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             }
         }
 
-        validateTServerConnection(configValues, config);
+        // raiseOnPermanentError=false: this is the validate() REST path; thrown exceptions
+        // should not mark the connector FAILED before start() is ever called.
+        validateTServerConnection(configValues, config, /* raiseOnPermanentError= */ false);
     }
 
     @Override
@@ -337,8 +366,16 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
         return config.validate(YugabyteDBConnectorConfig.ALL_FIELDS);
     }
 
+    /**
+     * @param raiseOnPermanentError when {@code true} (called from {@code taskConfigs()}), calls
+     *        {@link org.apache.kafka.connect.connector.ConnectorContext#raiseError} before throwing
+     *        for errors that will never be resolved by retrying, stopping the infinite retry loop.
+     *        Must be {@code false} on the {@code validate()} / REST path so that thrown exceptions
+     *        do not prematurely mark the connector FAILED before {@code start()} is ever called.
+     */
     protected void validateTServerConnection(Map<String, ConfigValue> configValues,
-                                             Configuration config) {
+                                             Configuration config,
+                                             boolean raiseOnPermanentError) {
         try (YBClient ybClient = YBClientUtils.getYbClient(yugabyteDBConnectorConfig)) {
             String hostAddress = config.getString(YugabyteDBConnectorConfig.MASTER_ADDRESSES.toString());
             // so whenever they are null, they will just be ignored
@@ -352,14 +389,21 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             // TODO: Find out where to do validation for table whitelist
             String streamId = yugabyteDBConnectorConfig.streamId();
             if (streamId == null || streamId.isEmpty()) {
-                // Coming to this block means the auto.create.stream is set to false and no stream ID is provided, the connector should not proceed forward.
-                throw new DebeziumException("DB Stream ID not provided, please provide a DB stream ID to proceed");
+                // Permanent config error — no stream ID will ever appear without a config change.
+                final DebeziumException permanentError = new DebeziumException(
+                        "DB Stream ID not provided, please provide a DB stream ID to proceed");
+                if (raiseOnPermanentError) raiseErrorSafely(permanentError);
+                throw permanentError;
             }
 
             final ConfigValue streamIdConfig = configValues.get(YugabyteDBConnectorConfig.STREAM_ID.name());
 
             if (yugabyteDBConnectorConfig.tableIncludeList() == null || yugabyteDBConnectorConfig.tableIncludeList().isEmpty()) {
-                throw new DebeziumException("The table.include.list is empty, please provide a list of tables to get the changes from");
+                // Permanent config error — table list will not appear without a config change.
+                final DebeziumException permanentError = new DebeziumException(
+                        "The table.include.list is empty, please provide a list of tables to get the changes from");
+                if (raiseOnPermanentError) raiseErrorSafely(permanentError);
+                throw permanentError;
             }
 
             // If the stream ID is not associated with any table then we should throw an exception
@@ -372,21 +416,76 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             } catch (Exception e) {
                 String errorMessage = String.format("Failed fetching all tables for the streamid %s", streamId);
                 LOGGER.error(errorMessage, e);
-                throw new DebeziumException(errorMessage, e);
+                // Only permanent if stream is deleted (OBJECT_NOT_FOUND). Master leader changes,
+                // network blips, and RPC timeouts are transient — retrying will succeed once the
+                // master is reachable. taskConfigs() can be re-run during normal operation when
+                // new tables appear, so only stop retries for truly unrecoverable errors.
+                final DebeziumException wrappedException = new DebeziumException(errorMessage, e);
+                if (raiseOnPermanentError && YugabyteDBCdcErrorClassifier.isFailFast(e)) {
+                    raiseErrorSafely(wrappedException);
+                }
+                throw wrappedException;
             }
 
             if (getStreamInfoResp.getTableInfoList().isEmpty()) {
                 String errorMessage = "The provided stream ID is not associated with any table";
                 LOGGER.error(errorMessage);
+                // Not necessarily permanent: YugabyteDB adds newly created tables to a namespace
+                // stream in the background. A connector deployed before the migration that creates
+                // the tables will see an empty stream info initially but it resolves once the
+                // tables appear. Let Kafka Connect retry taskConfigs() rather than going FAILED.
                 throw new DebeziumException(errorMessage);
             }
 
             // Pass the already-fetched stream info to avoid per-table getDBStreamInfo RPCs.
-            this.tableIds = YBClientUtils.fetchTableList(ybClient, this.yugabyteDBConnectorConfig,
-                    getStreamInfoResp);
+            try {
+                this.tableIds = YBClientUtils.fetchTableList(ybClient, this.yugabyteDBConnectorConfig,
+                        getStreamInfoResp);
+            } catch (DebeziumException e) {
+                // fetchTableList throws DebeziumException in two cases:
+                // - table in table.include.list not part of stream (YBClientUtils.java:163-164, permanent)
+                // - catch-all wrapper around ybClient.getTablesList() failures (YBClientUtils.java:181,
+                //   transient master/network errors)
+                // Only call raiseError for the permanent "not a part of the stream ID" case.
+                // Both cases arrive with a cause: the line-163 throw is inside the outer try, so
+                // the catch-all at line-181 re-wraps it as new DebeziumException(e) too.
+                // The substring check on getMessage() works because DebeziumException(Throwable)
+                // copies cause.toString() (which includes the original message) into the message
+                // field. Do NOT switch to a getCause()==null guard: both cases have a cause.
+                boolean isPermanentStreamMembership = e.getMessage() != null 
+                        && e.getMessage().contains("not a part of the stream ID");
+                
+                // "not in stream" can be transiently true in two scenarios:
+                //
+                // 1. Publication mode: YugabyteDBTablePoller fires requestTaskReconfiguration as
+                //    soon as a table appears in pg_publication_tables, but the master adds the
+                //    table to the CDCSDK stream asynchronously. taskConfigs() may run during that
+                //    window and see the table in fetchTableList but not yet in getDBStreamInfo.
+                //
+                // 2. gRPC mode with auto.add.new.tables=true: areThereNewTablesInStream() fires
+                //    requestTaskReconfiguration as soon as ONE new table appears in getDBStreamInfo.
+                //    A sibling table created in the same migration batch may still be missing from
+                //    the stream when taskConfigs() runs. getTablesList() returns it, fetchTableList
+                //    checks it against the cached streamInfoResponse, and throws.
+                //
+                // In both cases, let Kafka Connect retry taskConfigs() until the stream catches up.
+                // Only call raiseError when neither condition holds (genuine permanent misconfiguration).
+                boolean isTransientNotInStream = this.usePublication
+                        || this.yugabyteDBConnectorConfig.autoAddNewTables();
+
+                if (raiseOnPermanentError && isPermanentStreamMembership && !isTransientNotInStream) {
+                    raiseErrorSafely(e);
+                }
+                throw e;
+            }
 
             if (tableIds == null || tableIds.isEmpty()) {
-                throw new DebeziumException("The tables provided in table.include.list do not exist");
+                // Not necessarily permanent: a table listed in table.include.list may be created
+                // after the connector starts (deploy-before-migration pattern). A table created
+                // later in the same namespace is added to the stream and satisfies the include
+                // list. Let Kafka Connect retry taskConfigs() rather than going FAILED.
+                throw new DebeziumException(
+                        "The tables provided in table.include.list do not exist");
             }
 
             this.hashRanges = new ArrayList<>();
@@ -417,12 +516,42 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                                 partitions.stream().map(HashPartition::getTabletId).collect(Collectors.toSet()));
                 }
             } catch (Exception e) {
+                // A DebeziumException here comes from getTabletListToPollForCDCWithRetry's
+                // TABLE_NOT_FOUND disambiguation check: getDBStreamInfo confirmed the table is
+                // absent from the stream.  Apply the same transient-not-in-stream guard used on
+                // the fetchTableList path above: if usePublication or autoAddNewTables is set,
+                // the table may have disappeared between fetchTableList and
+                // getTabletListToPollForCDC (e.g. dropped mid-taskConfigs(), or a sibling table
+                // in the same migration batch not yet propagated).  Let Kafka Connect retry
+                // taskConfigs() rather than going FAILED permanently in those cases.
+                if (e instanceof DebeziumException) {
+                    boolean isTransientNotInStream = this.usePublication
+                            || this.yugabyteDBConnectorConfig.autoAddNewTables();
+                    if (raiseOnPermanentError && !isTransientNotInStream) {
+                        raiseErrorSafely(e);
+                    }
+                    throw (DebeziumException) e;
+                }
+                // MasterErrorException(OBJECT_NOT_FOUND) from openTableByUUID is permanent —
+                // consult the classifier before wrapping and retrying.
+                if (raiseOnPermanentError && YugabyteDBCdcErrorClassifier.isFailFast(e)) {
+                    final DebeziumException permanentError =
+                            new DebeziumException("Error while fetching all the tablets", e);
+                    raiseErrorSafely(permanentError);
+                    throw permanentError;
+                }
                 final String errorMessage = "Error while fetching all the tablets";
                 LOGGER.error(errorMessage, e);
                 throw new DebeziumException(errorMessage, e);
             }
         }
         catch (Exception e) {
+            // DebeziumException instances have already had raiseErrorSafely() called where
+            // appropriate (permanent config/stream errors, Fix 2 TABLE_NOT_FOUND disambiguation).
+            // Pass them through unchanged. Re-wrap only unexpected non-DebeziumException failures.
+            if (e instanceof DebeziumException) {
+                throw (DebeziumException) e;
+            }
             LOGGER.warn("Exception while validating connection", e);
             throw new DebeziumException("Exception while validating connection", e);
         }

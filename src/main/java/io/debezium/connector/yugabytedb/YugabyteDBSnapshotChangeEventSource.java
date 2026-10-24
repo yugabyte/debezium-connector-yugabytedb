@@ -292,6 +292,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
           // Reaching this point would mean that the process went through without failure
           return;
         } catch (Exception e) {
+          YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
           ++retryCount;
 
           if (retryCount > totalRetries) {
@@ -337,9 +338,9 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         // Mark the stream as active by setting a checkpoint.
         if (!OpId.isValid(getCheckpointResponse.getTerm(), getCheckpointResponse.getIndex())) {
           // Set checkpoint with bootstrap as false and initialCheckpoint as true.
-          // A call to set the checkpoint is required first otherwise we will get an error 
-          // from the server side saying:
-          // INTERNAL_ERROR[code 21]: Stream ID {} is expired for Tablet ID {}
+          // GetChanges runs CheckStreamActive; without an initial SetCDCCheckpoint / active time,
+          // the tserver can respond with INTERNAL_ERROR: Stream ID … is expired for Tablet ID …
+          // (same text as intent-retention expiry). makeStreamActive establishes CDC state first.
           makeStreamActive(partition.getTableId(), partition.getTabletId(), false);
         }
 
@@ -790,6 +791,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
             }
           }
         } catch (Exception e) {
+          YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
           ++retryCount;
 
           if (retryCount > this.connectorConfig.maxConnectorRetries()) {
@@ -881,6 +883,7 @@ public class YugabyteDBSnapshotChangeEventSource extends AbstractSnapshotChangeE
         // Break upon successful request.
         break;
       } catch (Exception e) {
+        YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
         ++retryCount;
 
         if (retryCount > connectorConfig.maxConnectorRetries()) {
