@@ -1256,6 +1256,16 @@ public class YugabyteDBStreamingChangeEventSource implements
         //    streamSafeTime=0, blocking parent's messages (commitTime > 0) from draining.
         // Children inherit parent's safetime temporarily, then update to their actual CDC safetime
         // on the first poll.
+        //
+        // KNOWN ISSUE (consistent streaming path only): when explicit checkpointing is enabled,
+        // cdc_state for the parent lags behind the merger's released watermark. Children start
+        // from cdc_state and may re-deliver records whose commitTime < parentSafetime, which
+        // causes Merger.setTabletSafeTime to throw AssertionError (Merger.java:102). This makes
+        // the problem visible — the connector restarts and resumes cleanly from the committed
+        // offset. The correct fix requires the consistent path to defer handleTabletSplit until
+        // the child's from_op_id is guaranteed past the merger's already-released watermark
+        // (analogous to the explicit-checkpoint deferral in the non-consistent path at :587-605),
+        // which needs a dedicated change tracked separately.
         if (merger != null) {
             BigInteger parentSafetime = merger.safeTimeForTablet(splitTabletId);
             for (TabletCheckpointPair pair : getTabletListResponse.getTabletCheckpointPairList()) {
@@ -1263,7 +1273,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 merger.ensureTablet(childTabletId);
                 // Override the ZERO from ensureTablet with parent's safetime
                 merger.setTabletSafeTime(childTabletId, parentSafetime, null);
-                LOGGER.debug("Added child tablet {} to merger with inherited safetime {}", 
+                LOGGER.debug("Added child tablet {} to merger with inherited safetime {}",
                         childTabletId, parentSafetime);
             }
         }
