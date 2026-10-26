@@ -313,8 +313,8 @@ public class TestBaseClass extends AbstractConnectorTest {
   }
 
   /**
-   * Start an embeddedEngine that acknowledges (and adds to linesConsumed) only the records matching
-   * the predicate; the others are dropped as if their Kafka topic never acknowledged them.
+   * Start an embeddedEngine that acknowledges only the records matching the predicate.
+   * The others are dropped as if their Kafka topic never acknowledged them.
    */
   public void startEngineAcknowledgingOnly(Configuration.Builder configBuilder, Predicate<SourceRecord> acknowledge) {
     configBuilder

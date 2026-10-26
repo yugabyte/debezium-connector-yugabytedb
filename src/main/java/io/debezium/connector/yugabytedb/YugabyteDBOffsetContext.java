@@ -174,7 +174,7 @@ public class YugabyteDBOffsetContext implements OffsetContext {
     }
 
     // Offset carrying only the given partition's checkpoint, so a record never advances a sibling
-    // tablet or another table of the same colocated tablet.
+    // tablet or, during the snapshot, another table of the same colocated tablet.
     public Map<String, ?> getOffset(YBPartition partition) {
         Map<String, Object> result = new HashMap<>();
         SourceInfo info = this.tabletSourceInfo.get(partition.getId());
