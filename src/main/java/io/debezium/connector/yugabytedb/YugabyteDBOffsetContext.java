@@ -173,16 +173,13 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         return result;
     }
 
-    // Offset carrying only the given tablet's checkpoint, so a record never advances a sibling
-    // tablet.
+    // Offset carrying only the given partition's checkpoint, so a record never advances a sibling
+    // tablet or another table of the same colocated tablet.
     public Map<String, ?> getOffset(YBPartition partition) {
         Map<String, Object> result = new HashMap<>();
-        String tabletId = partition.getTabletId();
-        for (Map.Entry<String, SourceInfo> entry : this.tabletSourceInfo.entrySet()) {
-            String key = entry.getKey();
-            if (key.equals(tabletId) || key.endsWith("." + tabletId)) {
-                result.put(key, entry.getValue().lsn().toSerString());
-            }
+        SourceInfo info = this.tabletSourceInfo.get(partition.getId());
+        if (info != null) {
+            result.put(partition.getId(), info.lsn().toSerString());
         }
         return result;
     }

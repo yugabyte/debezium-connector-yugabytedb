@@ -7,6 +7,7 @@ import org.apache.kafka.common.config.ConfigDef;
 import io.debezium.config.Configuration;
 import io.debezium.config.Field;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
+import io.debezium.connector.yugabytedb.connection.YugabyteDBConnection;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import org.awaitility.Awaitility;
@@ -25,6 +26,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class YugabyteDBgRPCConnectorIT extends YugabyteDBContainerTestBase {
@@ -107,6 +109,100 @@ public class YugabyteDBgRPCConnectorIT extends YugabyteDBContainerTestBase {
         String delivery = describeDelivery(ids, 1, snapshotRows);
         assertTrue(!delivery.contains("missing"), "snapshot rows after the restart mid-snapshot: " + delivery
             + "; streamed rows " + (snapshotRows + 1) + "-" + (snapshotRows + 2 * streamedRows) + " all delivered");
+    }
+
+    @ParameterizedTest
+    @MethodSource("io.debezium.connector.yugabytedb.YugabyteDBSnapshotTest#streamTypeProviderForSnapshotWithColocation")
+    public void shouldDeliverEverySnapshotRowWhenOnlyASiblingTableIsAcknowledged(boolean consistentSnapshot, boolean useSnapshot, boolean colocation) throws Exception {
+        // test_1 fits one snapshot batch while ~4 KB keys split test_2 over several, so test_2 keeps
+        // dispatching after test_1 has been read completely. Only test_2's records are acknowledged before a
+        // restart; test_1 must then be snapshotted again, whether the two tables share a colocated tablet or not.
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        createTablesInColocatedDB(colocation);
+
+        final int unacknowledgedRows = 1_000;
+        final int acknowledgedRows = 3_000;
+        TestHelper.executeInDatabase(String.format(
+            "INSERT INTO test_1 SELECT i FROM generate_series(1, %d) i;", unacknowledgedRows), DEFAULT_COLOCATED_DB_NAME);
+        TestHelper.executeInDatabase(String.format(
+            "INSERT INTO test_2 SELECT i::text || repeat('x', 4000) FROM generate_series(1, %d) i;", acknowledgedRows),
+            DEFAULT_COLOCATED_DB_NAME);
+
+        YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = true;
+        long requestsBefore = YugabyteDBSnapshotChangeEventSource.SNAPSHOT_GET_CHANGES_REQUESTS.get();
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1", consistentSnapshot, useSnapshot);
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2", dbStreamId)
+            .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue());
+
+        startEngineAcknowledgingOnly(configBuilder, record -> record.topic().endsWith(".test_2"));
+        awaitUntilConnectorIsReady();
+        Awaitility.await()
+            .atMost(Duration.ofSeconds(120))
+            .until(() -> getNonConsumedRecordCount() == acknowledgedRows);
+        waitUntilSnapshotStopsRequesting(requestsBefore);
+        stopConnector();
+        consumeAvailableRecords(record -> {});
+        YugabyteDBSnapshotChangeEventSource.TRACK_EXPLICIT_CHECKPOINTS = false;
+
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+        Set<Integer> ids = new HashSet<>();
+        Awaitility.await()
+            .atMost(Duration.ofSeconds(120))
+            .untilAsserted(() -> {
+                consumeAvailableRecords(record -> {
+                    if (record.topic().endsWith(".test_1")) {
+                        ids.add(idOf(record));
+                    }
+                });
+                assertEquals(unacknowledgedRows, ids.size(),
+                    "test_1 rows after the restart: " + describeDelivery(ids, 1, unacknowledgedRows));
+            });
+    }
+
+    @Test
+    public void shouldDeliverStreamedRowsOfAColocatedTableWhileOnlyItsSiblingIsAcknowledged() throws Exception {
+        // test_1's records are held back as if its topic were down while test_2's keep being acknowledged.
+        // Both tables stream from one colocated tablet, whichever table's tablet entry polls a row, so the
+        // tablet's checkpoint must not pass test_1's rows and a restart must deliver them.
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        createTablesInColocatedDB(true);
+
+        final int heldBackRows = 100;
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2", dbStreamId)
+            .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.NEVER.getValue());
+
+        startEngineAcknowledgingOnly(configBuilder, inSourcePartitionOrder(record -> !record.topic().endsWith(".test_1")));
+        awaitUntilConnectorIsReady();
+        TestHelper.executeInDatabase(String.format(
+            "INSERT INTO test_1 SELECT i FROM generate_series(1, %d) i;", heldBackRows), DEFAULT_COLOCATED_DB_NAME);
+        try (YugabyteDBConnection connection = TestHelper.createConnectionTo(DEFAULT_COLOCATED_DB_NAME)) {
+            for (int i = 1; i <= 200; i++) {
+                connection.execute("INSERT INTO test_2 VALUES ('" + i + "');");
+            }
+        }
+        // Time to commit what was acknowledged and hand the checkpoint to the service.
+        TestHelper.waitFor(Duration.ofSeconds(10));
+        stopConnector();
+        consumeAvailableRecords(record -> {});
+
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+        Set<Integer> ids = new HashSet<>();
+        Awaitility.await()
+            .atMost(Duration.ofSeconds(120))
+            .untilAsserted(() -> {
+                consumeAvailableRecords(record -> {
+                    if (record.topic().endsWith(".test_1")) {
+                        ids.add(idOf(record));
+                    }
+                });
+                assertEquals(heldBackRows, ids.size(),
+                    "test_1 rows after the restart: " + describeDelivery(ids, 1, heldBackRows));
+            });
     }
 
     private static void insertRows(int from, int to, String nameExpression) {

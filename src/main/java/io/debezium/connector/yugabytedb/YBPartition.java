@@ -28,23 +28,40 @@ public class YBPartition implements Partition {
 
     private boolean colocated;
 
+    private final boolean streaming;
+
     public YBPartition(String tableId, String tabletId) {
         this.tableId = tableId;
         this.tabletId = tabletId;
 
         // By default, assume that the table is not colocated.
         this.colocated = false;
+        this.streaming = false;
     }
 
     public YBPartition(String tableId, String tabletId, boolean isTableColocated) {
+        this(tableId, tabletId, isTableColocated, false);
+    }
+
+    private YBPartition(String tableId, String tabletId, boolean isTableColocated, boolean streaming) {
         this.tableId = tableId;
         this.tabletId = tabletId;
         this.colocated = isTableColocated;
+        this.streaming = streaming;
+    }
+
+    /**
+     * A partition polled by the streaming phase. The service streams and checkpoints a tablet as a
+     * whole, so records of every table of a colocated tablet share the tablet as source partition
+     * and Kafka Connect commits them in order.
+     */
+    public static YBPartition forStreaming(String tableId, String tabletId) {
+        return new YBPartition(tableId, tabletId, false, true);
     }
 
     @Override
     public Map<String, String> getSourcePartition() {
-        return Collect.hashMapOf(PARTITION_KEY, getFullPartitionName());
+        return Collect.hashMapOf(PARTITION_KEY, streaming ? getTabletId() : getFullPartitionName());
     }
 
     public String getTableId() {

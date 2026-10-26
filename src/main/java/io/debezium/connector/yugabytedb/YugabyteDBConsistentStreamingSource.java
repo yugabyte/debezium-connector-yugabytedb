@@ -87,7 +87,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                     opId = YugabyteDBOffsetContext.streamingStartLsn();
                 }
 
-                YBPartition partition = new YBPartition(entry.getKey(), entry.getValue(), false);
+                YBPartition partition = YBPartition.forStreaming(entry.getKey(), entry.getValue());
                 offsetContext.initSourceInfo(partition, this.connectorConfig, opId);
                 schemaNeeded.put(partition.getId(), Boolean.TRUE);
             }
@@ -155,7 +155,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                         for (Pair<String, String> entry : tabletPairList) {
                             final String tabletId = entry.getValue();
                             curTabletId = entry.getValue();
-                            YBPartition part = new YBPartition(entry.getKey(), tabletId, false);
+                            YBPartition part = YBPartition.forStreaming(entry.getKey(), tabletId);
 
                             maybeEmitTabletHeartbeat(part, offsetContext);
 
@@ -267,7 +267,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                             YbProtoReplicationMessage ybMessage = new YbProtoReplicationMessage(
                                     m, this.yugabyteDBTypeRegistry);
                             dispatchMessage(offsetContext, schemaNeeded, recordsInTransactionalBlock,
-                                    beginCountForTablet, message.tablet, new YBPartition(message.tableId, message.tablet, false),
+                                    beginCountForTablet, message.tablet, YBPartition.forStreaming(message.tableId, message.tablet),
                                     message.snapShotTime.longValue(), message.record, m, ybMessage);
 
                             pollMessage = merger.poll();
