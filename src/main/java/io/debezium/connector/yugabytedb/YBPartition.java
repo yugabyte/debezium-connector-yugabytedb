@@ -53,7 +53,8 @@ public class YBPartition implements Partition {
     /**
      * A partition polled by the streaming phase. The service streams and checkpoints a tablet as a
      * whole, so records of every table of a colocated tablet share the tablet as source partition
-     * and Kafka Connect commits them in order.
+     * and Kafka Connect commits them in order. {@code colocated} is false whatever the table, so
+     * {@link #getId()} is the tablet id as well.
      */
     public static YBPartition forStreaming(String tableId, String tabletId) {
         return new YBPartition(tableId, tabletId, false, true);
