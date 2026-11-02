@@ -646,10 +646,12 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                                 // TODO: Rename to Checkpoint, since OpId is misleading.
                                 // This is the checkpoint which will be stored in Kafka and will be used for explicit checkpointing.
+                                // Every record of a response carries the same from_op_id, so the record's own write_id is what
+                                // tells the rows of one transaction apart.
                                 final OpId lsn = new OpId(record.getFromOpId().getTerm(),
                                         record.getFromOpId().getIndex(),
                                         record.getFromOpId().getWriteIdKey().toByteArray(),
-                                        record.getFromOpId().getWriteId(),
+                                        record.getCdcSdkOpId().getWriteId(),
                                         record.getRowMessage().getCommitTime() - 1);
 
                                 if (message.isLastEventForLsn()) {
@@ -673,7 +675,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                                 LOGGER.debug("LSN in case of COMMIT is {}", lsn);
                                                 Integer recordsInBlock = recordsInTransactionalBlock.get(part.getId());
                                                 if (recordsInBlock == null || recordsInBlock != 0) {
-                                                    offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                                                    // COMMIT carries write_id 0, so it keeps the checkpoint of the transaction's last row.
+                                                    offsetContext.updateRecordPosition(part, offsetContext.getSourceInfo(part).lastRecordCheckpoint(), lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                             String.valueOf(message.getTransactionId()), null, message.getRecordTime(), message.getXreplOriginId());
                                                 }
 
@@ -705,7 +708,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                                             LOGGER.debug("LSN in case of COMMIT is {}", lsn);
                                             Integer recordsInBlock = recordsInTransactionalBlock.get(part.getId());
                                             if (recordsInBlock == null || recordsInBlock != 0) {
-                                                offsetContext.updateRecordPosition(part, lsn, lastCompletelyProcessedLsn, message.getRawCommitTime(),
+                                                // COMMIT carries write_id 0, so it keeps the checkpoint of the transaction's last row.
+                                                offsetContext.updateRecordPosition(part, offsetContext.getSourceInfo(part).lastRecordCheckpoint(), lastCompletelyProcessedLsn, message.getRawCommitTime(),
                                                         String.valueOf(message.getTransactionId()), null, message.getRecordTime(), message.getXreplOriginId());
                                             }
                                             dispatcher.dispatchTransactionCommittedEvent(part, offsetContext);

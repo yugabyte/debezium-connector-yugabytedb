@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class YugabyteDBgRPCConnectorIT extends YugabyteDBContainerTestBase {
@@ -107,6 +108,42 @@ public class YugabyteDBgRPCConnectorIT extends YugabyteDBContainerTestBase {
         String delivery = describeDelivery(ids, 1, snapshotRows);
         assertTrue(!delivery.contains("missing"), "snapshot rows after the restart mid-snapshot: " + delivery
             + "; streamed rows " + (snapshotRows + 1) + "-" + (snapshotRows + 2 * streamedRows) + " all delivered");
+    }
+
+    @Test
+    public void shouldRedeliverATransactionWhoseRowsWereOnlyPartlyAcknowledged() throws Exception {
+        // All rows of one transaction come back in one GetChanges response, and only the first of them is
+        // acknowledged. The tablet's checkpoint must stay before the transaction and a restart must deliver
+        // every row again.
+        TestHelper.dropAllSchemas();
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        TestHelper.execute("CREATE TABLE t_txn (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS;");
+
+        final int rows = 100;
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t_txn");
+        Configuration.Builder configBuilder = TestHelper.getConfigBuilder("public.t_txn", dbStreamId)
+            .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.NEVER.getValue());
+
+        startEngineWithPartialConsumptionOfLastBatch(configBuilder, 1);
+        awaitUntilConnectorIsReady();
+        TestHelper.execute(String.format("INSERT INTO t_txn SELECT i, 'txn' FROM generate_series(1, %d) i;", rows));
+        Awaitility.await()
+            .atMost(Duration.ofSeconds(60))
+            .until(() -> getNonConsumedRecordCount() == 1);
+        // Time to commit the acknowledged row and hand the checkpoint to the service.
+        TestHelper.waitFor(Duration.ofSeconds(10));
+        stopConnector();
+        consumeAvailableRecords(record -> {});
+
+        startEngine(configBuilder);
+        awaitUntilConnectorIsReady();
+        Set<Integer> ids = new HashSet<>();
+        Awaitility.await()
+            .atMost(Duration.ofSeconds(120))
+            .untilAsserted(() -> {
+                consumeAvailableRecords(record -> ids.add(idOf(record)));
+                assertEquals(rows, ids.size(), "t_txn rows after the restart: " + describeDelivery(ids, 1, rows));
+            });
     }
 
     private static void insertRows(int from, int to, String nameExpression) {
