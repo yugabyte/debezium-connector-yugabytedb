@@ -31,6 +31,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -309,6 +310,65 @@ public class TestBaseClass extends AbstractConnectorTest {
       LoggingContext.forConnector(getClass().getSimpleName(), "", "engine");
       engine.run();
     });
+  }
+
+  /**
+   * Start an embeddedEngine that acknowledges only the records matching the predicate.
+   * The others are dropped as if their Kafka topic never acknowledged them.
+   */
+  public void startEngineAcknowledgingOnly(Configuration.Builder configBuilder, Predicate<SourceRecord> acknowledge) {
+    configBuilder
+      .with(EmbeddedEngine.ENGINE_NAME, "test-connector")
+      .with(EmbeddedEngine.OFFSET_STORAGE, MemoryOffsetBackingStore.class.getName())
+      .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
+      .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class);
+
+    countDownLatch = new CountDownLatch(1);
+    engine = (EmbeddedEngine) EmbeddedEngine.create()
+               .using(configBuilder.build())
+               .using(OffsetCommitPolicy.always())
+               .using((success, msg, error) -> {
+                 if (!success) {
+                   countDownLatch.countDown();
+                 }
+               })
+               .using(new DebeziumEngine.ConnectorCallback() {
+                 @Override
+                 public void taskStarted() {
+                   countDownLatch.countDown();
+                 }
+               })
+               .using(this.getClass().getClassLoader())
+               .notifying((records, committer) -> {
+                 for (SourceRecord record : records) {
+                   if (acknowledge.test(record)) {
+                     linesConsumed.add(record);
+                     committer.markProcessed(record);
+                   }
+                 }
+                 committer.markBatchFinished();
+               }).build();
+
+    engineExecutor = Executors.newFixedThreadPool(1);
+    engineExecutor.submit(() -> {
+      LoggingContext.forConnector(getClass().getSimpleName(), "", "engine");
+      engine.run();
+    });
+  }
+
+  /**
+   * Acknowledges like Kafka Connect commits offsets: once a record of a source partition is held back,
+   * no later record of that source partition is committed either.
+   */
+  protected static Predicate<SourceRecord> inSourcePartitionOrder(Predicate<SourceRecord> acknowledge) {
+    Set<Map<String, ?>> heldBack = ConcurrentHashMap.newKeySet();
+    return record -> {
+      if (!heldBack.contains(record.sourcePartition()) && acknowledge.test(record)) {
+        return true;
+      }
+      heldBack.add(record.sourcePartition());
+      return false;
+    };
   }
 
   protected int consumeAvailableRecords(Consumer<SourceRecord> recordConsumer) {

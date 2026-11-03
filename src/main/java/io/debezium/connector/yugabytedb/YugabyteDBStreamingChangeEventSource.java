@@ -407,8 +407,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                 }
 
                 // For streaming, we do not want any colocated information and want to process the tables
-                // based on just their tablet IDs - pass false as the 'colocated' flag to enforce the same.
-                YBPartition p = new YBPartition(entry.getKey(), entry.getValue(), false /* colocated */);
+                // based on just their tablet IDs.
+                YBPartition p = YBPartition.forStreaming(entry.getKey(), entry.getValue());
                 offsetContext.initSourceInfo(p, this.connectorConfig, opId);
 
                 if (taskContext.shouldEnableExplicitCheckpointing()) {
@@ -481,7 +481,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                         for (Pair<String, String> entry : tabletPairList) {
                             final String tabletId = entry.getValue();
                             curTabletId = entry.getValue();
-                            YBPartition part = new YBPartition(entry.getKey() /* tableId */, tabletId, false /* colocated */);
+                            YBPartition part = YBPartition.forStreaming(entry.getKey() /* tableId */, tabletId);
 
                             // Give every tablet its chance to beat before anything can skip it. A tablet
                             // waiting on a split callback, or one whose GetChanges keeps failing, is never
@@ -962,7 +962,7 @@ public class YugabyteDBStreamingChangeEventSource implements
         Set<YBPartition> partitions = new HashSet<>();
 
         for (Pair<String, String> pair : this.tabletPairList) {
-            partitions.add(new YBPartition(pair.getKey(), pair.getValue(), false));
+            partitions.add(YBPartition.forStreaming(pair.getKey(), pair.getValue()));
         }
 
         if (LOGGER.isDebugEnabled()) {
@@ -1165,7 +1165,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             // This flow will be executed in case of tablet split only and since tablet split
             // is not possible on colocated tables, it is safe to assume that the tablets here
             // would be all non-colocated.
-            YBPartition p = new YBPartition(tableId, tabletId, false /* colocated */);
+            YBPartition p = YBPartition.forStreaming(tableId, tabletId);
 
             // Get the checkpoint for child tablet and unset its time.
             OpId checkpoint = OpId.from(pair.getCdcSdkCheckpoint());
