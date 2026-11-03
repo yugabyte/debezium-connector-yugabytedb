@@ -765,4 +765,19 @@ final class YugabyteDBTaskConnection implements BaseConnection {
     public boolean getAdaptiveFetch() {
         throw new UnsupportedOperationException();
     }
+
+    @Override
+    public boolean getConvertBooleanToNumeric() {
+        return false;
+    }
+
+    @Override
+    public int getQueryTimeout() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void setQueryTimeout(int seconds) throws SQLException {
+        throw new UnsupportedOperationException();
+    }
 }

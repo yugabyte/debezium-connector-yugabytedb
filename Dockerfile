@@ -15,9 +15,9 @@ ENV KAFKA_OPTS="-Djdk.tls.client.protocols=TLSv1.2"
 
 # Add the required jar files to be packaged with the base connector.
 RUN cd $KAFKA_CONNECT_YB_DIR && curl -sfLo kafka-connect-jdbc-10.6.5-CUSTOM.8.jar https://github.com/yugabyte/kafka-connect-jdbc/releases/download/10.6.5-CUSTOM.8/kafka-connect-jdbc-10.6.5-CUSTOM.8.jar
-RUN cd $KAFKA_CONNECT_YB_DIR && curl -sfLo jdbc-yugabytedb-42.3.5-yb-1.jar https://repo1.maven.org/maven2/com/yugabyte/jdbc-yugabytedb/42.3.5-yb-1/jdbc-yugabytedb-42.3.5-yb-1.jar
+RUN cd $KAFKA_CONNECT_YB_DIR && curl -sfLo jdbc-yugabytedb-42.7.3-yb-7.jar https://repo1.maven.org/maven2/com/yugabyte/jdbc-yugabytedb/42.7.3-yb-7/jdbc-yugabytedb-42.7.3-yb-7.jar
 RUN cd $KAFKA_CONNECT_YB_DIR && curl -sfLo mysql-connector-j-9.2.0.jar https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/9.2.0/mysql-connector-j-9.2.0.jar
-RUN cd $KAFKA_CONNECT_YB_DIR && curl -sfLo postgresql-42.7.7.jar https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.7/postgresql-42.7.7.jar
+RUN cd $KAFKA_CONNECT_YB_DIR && curl -sfLo postgresql-42.7.14.jar https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.14/postgresql-42.7.14.jar
 
 # Add JMX Prometheus agent and metrics pattern file to expose metrics
 RUN mkdir -p $KAFKA_HOME/etc && cd $KAFKA_HOME/etc && curl -sfo jmx_prometheus_javaagent-1.0.1.jar https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/1.0.1/jmx_prometheus_javaagent-1.0.1.jar
