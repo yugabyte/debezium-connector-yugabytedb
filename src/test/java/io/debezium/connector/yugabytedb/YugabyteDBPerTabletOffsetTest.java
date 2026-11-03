@@ -6,6 +6,7 @@ import io.debezium.embedded.EmbeddedEngine;
 import io.debezium.engine.spi.OffsetCommitPolicy;
 import io.debezium.util.LoggingContext;
 import io.debezium.util.Testing;
+import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.runtime.standalone.StandaloneConfig;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.awaitility.Awaitility;
@@ -390,5 +391,93 @@ public class YugabyteDBPerTabletOffsetTest extends YugabyteDBContainerTestBase {
         }
 
         engine.stop();
+    }
+
+    private List<SourceRecord> colocatedRecords(String op) {
+        return new ArrayList<>(captured).stream()
+                .filter(r -> r.topic() != null && (r.topic().endsWith(".test_1") || r.topic().endsWith(".test_2")))
+                .filter(r -> r.value() != null && op.equals(((Struct) r.value()).getString("op")))
+                .collect(Collectors.toList());
+    }
+
+    private static Set<String> offsetKeys(SourceRecord record) {
+        return record.sourceOffset().keySet().stream()
+                .filter(k -> !k.equals("transaction_id"))
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * Tables of a colocated database share one tablet, so matching offset entries by tablet id pulls in
+     * the other tables' entries. A record must carry only its own partition: its table's entry during the
+     * snapshot and the tablet's entry while streaming. Otherwise one table's acknowledgements move another
+     * table's snapshot checkpoint, up to marking its snapshot complete before its rows are delivered.
+     */
+    @Test
+    public void colocatedRecordOffsetCarriesOnlyItsOwnPartition() throws Exception {
+        snapshotAndStreamColocatedTables("colocated-offset.txt");
+
+        for (SourceRecord record : colocatedRecords("r")) {
+            String partition = (String) record.sourcePartition().get("yb_partition");
+            assertEquals(Set.of(partition), offsetKeys(record),
+                    "snapshot record on " + record.topic() + " must carry only its own table: " + record.sourceOffset());
+        }
+        for (SourceRecord record : colocatedRecords("c")) {
+            String tablet = tabletOf((String) record.sourcePartition().get("yb_partition"));
+            assertEquals(Set.of(tablet), offsetKeys(record),
+                    "streaming record on " + record.topic() + " must carry only its tablet: " + record.sourceOffset());
+        }
+
+        engine.stop();
+    }
+
+    /**
+     * The service streams and checkpoints a colocated tablet as a whole, so its streaming records must
+     * share the tablet as source partition whichever table they belong to. Kafka Connect then commits
+     * them in order, and an acknowledged row of one table cannot carry the tablet's checkpoint past an
+     * unacknowledged row of another. The snapshot runs per table and stays keyed by table and tablet.
+     */
+    @Test
+    public void colocatedStreamingRecordsShareTheTabletAsSourcePartition() throws Exception {
+        snapshotAndStreamColocatedTables("colocated-partition.txt");
+
+        Set<Object> snapshotPartitions = colocatedRecords("r").stream()
+                .map(r -> r.sourcePartition().get("yb_partition"))
+                .collect(Collectors.toSet());
+        assertEquals(2, snapshotPartitions.size(), "snapshot records must be keyed per table: " + snapshotPartitions);
+        String tablet = tabletOf((String) snapshotPartitions.iterator().next());
+
+        Set<Object> streamingPartitions = colocatedRecords("c").stream()
+                .map(r -> r.sourcePartition().get("yb_partition"))
+                .collect(Collectors.toSet());
+        assertEquals(Set.of(tablet), streamingPartitions, "streaming records of both tables must be keyed by the tablet");
+
+        engine.stop();
+    }
+
+    private void snapshotAndStreamColocatedTables(String offsetFile) throws Exception {
+        TestHelper.executeDDL("yugabyte_create_tables.ddl");
+        createTablesInColocatedDB(true);
+        TestHelper.executeInDatabase("INSERT INTO test_1 SELECT i FROM generate_series(1, 100) i;", DEFAULT_COLOCATED_DB_NAME);
+        TestHelper.executeInDatabase("INSERT INTO test_2 SELECT i::text FROM generate_series(1, 100) i;", DEFAULT_COLOCATED_DB_NAME);
+        String dbStreamId = TestHelper.getNewDbStreamId(DEFAULT_COLOCATED_DB_NAME, "test_1", false /* before image */,
+                true /* explicit checkpointing */, false, false);
+        Configuration config = TestHelper.getConfigBuilder(DEFAULT_COLOCATED_DB_NAME, "public.test_1,public.test_2", dbStreamId)
+                .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, YugabyteDBConnectorConfig.SnapshotMode.INITIAL.getValue())
+                .with(EmbeddedEngine.ENGINE_NAME, "colocated-offset-test")
+                .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG,
+                        Testing.Files.createTestingFile(offsetFile).getAbsolutePath())
+                .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
+                .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class)
+                .build();
+
+        runEngine(config);
+        awaitUntilConnectorIsReady();
+        Awaitility.await().atMost(Duration.ofSeconds(120)).until(() -> colocatedRecords("r").size() >= 200);
+
+        for (int i = 1001; i <= 1020; ++i) {
+            TestHelper.executeInDatabase("INSERT INTO test_1 VALUES (" + i + ");", DEFAULT_COLOCATED_DB_NAME);
+            TestHelper.executeInDatabase("INSERT INTO test_2 VALUES ('" + i + "');", DEFAULT_COLOCATED_DB_NAME);
+        }
+        Awaitility.await().atMost(Duration.ofSeconds(60)).until(() -> colocatedRecords("c").size() >= 40);
     }
 }
