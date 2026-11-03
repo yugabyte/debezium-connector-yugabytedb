@@ -47,6 +47,8 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
  * <ul>
  *   <li>{@link #streamExpiredDuringSnapshotShouldFailFast}: an expired stream stops the connector
  *       during the snapshot.</li>
+ *   <li>{@link #deleteStreamAfterStopShouldFailFast}: a deleted stream stops the connector
+ *       when it is restarted.</li>
  *   <li>{@link #streamExpiredForTabletAfterStopShouldFailFast} and
  *       {@link #streamExpiredForTabletDuringConsistentStreamingShouldFailFast}:
  *       an expired tablet stops the connector.</li>
@@ -112,6 +114,31 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         finally {
             shutdownYBContainer();
         }
+    }
+
+    @Test
+    public void deleteStreamAfterStopShouldFailFast() throws Exception {
+        String table = "t_del_stream";
+        TestHelper.execute("CREATE TABLE " + table + " (id INT PRIMARY KEY, name TEXT);");
+        String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
+
+
+        AtomicReference<Throwable> error = start(failFastConfig("public." + table, streamId));
+        waitUntilStreamingReady(error, table);
+        stopConnector();
+
+        deleteStreamOrFail(streamId);
+
+        AtomicReference<Throwable> restartError = start(failFastConfig("public." + table, streamId)
+                .with(YugabyteDBConnectorConfig.AUTO_ADD_NEW_TABLES, false));
+        waitUntilStopped(restartError, Duration.ofSeconds(60));
+        assertNotNull(completionMessage.get());
+        assertTrue(completionMessage.get().startsWith("Failed fetching all tables for the streamid"),
+                completionMessage.get());
+        assertTrue(YugabyteDBCdcErrorClassifier.isFailFast(restartError.get()),
+                "Expected fail-fast classification on deleted stream.");
+        assertFalse(logs.containsMessage("will attempt retry"),
+                "Should not enter connector retry loop.");
     }
 
     @Test

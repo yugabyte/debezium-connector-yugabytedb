@@ -57,6 +57,12 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
     public YugabyteDBgRPCConnector() {
     }
 
+    /** Marks the connector FAILED on the inherited context field and returns {@code error} to throw. */
+    private <E extends Exception> E raiseError(E error) {
+        context.raiseError(error);
+        return error;
+    }
+
     @Override
     public String version() {
         return Module.version();
@@ -153,7 +159,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
         Configuration config = Configuration.from(this.props);
         Map<String, ConfigValue> results = validateAllFields(config);
 
-        validateTServerConnection(results, config);
+        validateTServerConnection(results, config, /* raiseOnPermanentError= */ true);
 
         String streamIdValue = this.yugabyteDBConnectorConfig.streamId();
         LOGGER.debug("The streamid in config is {}", this.yugabyteDBConnectorConfig.streamId());
@@ -182,13 +188,15 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                     + " is an IMPLICIT stream, create a stream with EXPLICIT checkpointing and try again."
                     + " To forcefully use an IMPLICIT stream, set configuration property force.use.implicit.stream"
                     + " to true";
-            throw new DebeziumException(errorMessage);
+            // Permanent misconfiguration — retrying taskConfigs() will never succeed; mark FAILED now.
+            throw raiseError(new DebeziumException(errorMessage));
         }
 
         if (this.yugabyteDBConnectorConfig.transactionOrdering() && !enableExplicitCheckpointing) {
             final String errorMessage = "Explicit checkpointing not enabled in consistent streaming mode, "
                     + "create a stream with explicit checkpointing and try again";
-            throw new DebeziumException(errorMessage);
+            // Permanent misconfiguration — retrying taskConfigs() will never succeed; mark FAILED now.
+            throw raiseError(new DebeziumException(errorMessage));
         }
 
         LOGGER.info("DB stream ID being used: {}", streamIdValue);
@@ -329,7 +337,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             }
         }
 
-        validateTServerConnection(configValues, config);
+        validateTServerConnection(configValues, config, /* raiseOnPermanentError= */ false);
     }
 
     @Override
@@ -338,7 +346,8 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
     }
 
     protected void validateTServerConnection(Map<String, ConfigValue> configValues,
-                                             Configuration config) {
+                                             Configuration config,
+                                             boolean raiseOnPermanentError) {
         try (YBClient ybClient = YBClientUtils.getYbClient(yugabyteDBConnectorConfig)) {
             String hostAddress = config.getString(YugabyteDBConnectorConfig.MASTER_ADDRESSES.toString());
             // so whenever they are null, they will just be ignored
@@ -352,14 +361,19 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             // TODO: Find out where to do validation for table whitelist
             String streamId = yugabyteDBConnectorConfig.streamId();
             if (streamId == null || streamId.isEmpty()) {
-                // Coming to this block means the auto.create.stream is set to false and no stream ID is provided, the connector should not proceed forward.
-                throw new DebeziumException("DB Stream ID not provided, please provide a DB stream ID to proceed");
+                // Permanent config error — no stream ID will ever appear without a config change.
+                final DebeziumException permanentError = new DebeziumException(
+                        "DB Stream ID not provided, please provide a DB stream ID to proceed");
+                throw raiseOnPermanentError ? raiseError(permanentError) : permanentError;
             }
 
             final ConfigValue streamIdConfig = configValues.get(YugabyteDBConnectorConfig.STREAM_ID.name());
 
             if (yugabyteDBConnectorConfig.tableIncludeList() == null || yugabyteDBConnectorConfig.tableIncludeList().isEmpty()) {
-                throw new DebeziumException("The table.include.list is empty, please provide a list of tables to get the changes from");
+                // Permanent config error — table list will not appear without a config change.
+                final DebeziumException permanentError = new DebeziumException(
+                        "The table.include.list is empty, please provide a list of tables to get the changes from");
+                throw raiseOnPermanentError ? raiseError(permanentError) : permanentError;
             }
 
             // If the stream ID is not associated with any table then we should throw an exception
@@ -372,7 +386,12 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             } catch (Exception e) {
                 String errorMessage = String.format("Failed fetching all tables for the streamid %s", streamId);
                 LOGGER.error(errorMessage, e);
-                throw new DebeziumException(errorMessage, e);
+                // Only a deleted stream (OBJECT_NOT_FOUND) is permanent; others (master leader change, network error, RPC timeout) are transient.
+                final DebeziumException wrappedException = new DebeziumException(errorMessage, e);
+                if (raiseOnPermanentError && YugabyteDBCdcErrorClassifier.isFailFast(e)) {
+                    throw raiseError(wrappedException);
+                }
+                throw wrappedException;
             }
 
             if (getStreamInfoResp.getTableInfoList().isEmpty()) {
@@ -417,12 +436,25 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                                 partitions.stream().map(HashPartition::getTabletId).collect(Collectors.toSet()));
                 }
             } catch (Exception e) {
+                // A DebeziumException from the helpers above is already the error to surface; do not wrap it.
+                if (e instanceof DebeziumException) {
+                    throw (DebeziumException) e;
+                }
+                // MasterErrorException(OBJECT_NOT_FOUND) from openTableByUUID is permanent —
+                // consult the classifier before wrapping and retrying.
+                if (raiseOnPermanentError && YugabyteDBCdcErrorClassifier.isFailFast(e)) {
+                    throw raiseError(new DebeziumException("Error while fetching all the tablets", e));
+                }
                 final String errorMessage = "Error while fetching all the tablets";
                 LOGGER.error(errorMessage, e);
                 throw new DebeziumException(errorMessage, e);
             }
         }
         catch (Exception e) {
+            // Permanent errors already called raiseError. Pass DebeziumException through.
+            if (e instanceof DebeziumException) {
+                throw (DebeziumException) e;
+            }
             LOGGER.warn("Exception while validating connection", e);
             throw new DebeziumException("Exception while validating connection", e);
         }
