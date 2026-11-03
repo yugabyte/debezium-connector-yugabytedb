@@ -144,7 +144,6 @@
             <artifactId>gson</artifactId>
             <version>${version.gson}</version>
         </dependency>
-        <!-- Overrides the guava 30.1.1-jre that yb-client and debezium-core pull in -->
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
