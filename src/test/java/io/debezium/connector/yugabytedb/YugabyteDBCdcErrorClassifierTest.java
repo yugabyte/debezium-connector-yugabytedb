@@ -28,42 +28,10 @@ import org.yb.master.MasterTypes.MasterErrorPB;
  */
 public class YugabyteDBCdcErrorClassifierTest {
 
-    @Test
-    public void tabletSplitShouldBeHandledInStream() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM,
-                classify(error(Code.TABLET_SPLIT)));
-    }
-
-    @Test
-    public void checkpointTooOldShouldFailFast() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
-                classify(error(Code.CHECKPOINT_TOO_OLD)));
-    }
-
-    @Test
-    public void subscriberNotFoundShouldRetry() {
-        // Not a CDC-stream failure. The switch does not list this code, so it retries.
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                classify(error(Code.SUBSCRIBER_NOT_FOUND)));
-    }
-
-    @Test
-    public void operationDisallowedShouldFailFast() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
-                classify(error(Code.OPERATION_DISALLOWED)));
-    }
-
-    @Test
-    public void autoFlagsMismatchShouldRetry() {
-        // Not a CDC-stream failure. The switch does not list this code, so it retries.
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                classify(error(Code.AUTO_FLAGS_CONFIG_VERSION_MISMATCH)));
-    }
-
-    @Test
-    public void tableNotFoundShouldRetry() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                classify(error(Code.TABLE_NOT_FOUND)));
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("classificationCases")
+    public void classification(String name, YugabyteDBCdcErrorClassifier.CdcErrorAction expected, CDCErrorPB error) {
+        assertEquals(expected, classify(error), name);
     }
 
     @Test
@@ -74,129 +42,6 @@ public class YugabyteDBCdcErrorClassifierTest {
         assertFalse(YugabyteDBCdcErrorClassifier.isFailFast(
                 cdcException(error(Code.TABLE_NOT_FOUND, ErrorCode.NOT_FOUND,
                         "Table abc not found under stream"))));
-    }
-
-    @Test
-    public void invalidRequestWithoutStatusShouldRetry() {
-        // Align with main: bare INVALID_REQUEST is not assumed to be a tablet split.
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                classify(error(Code.INVALID_REQUEST)));
-    }
-
-    @Test
-    public void invalidRequestWithGenericSplitWordShouldFailFast() {
-        // Message text alone is not enough; RUNTIME_ERROR AppStatus is permanent.
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
-                classify(error(Code.INVALID_REQUEST, ErrorCode.RUNTIME_ERROR, "unexpected split of request")));
-    }
-
-    @Test
-    public void tabletNotFoundShouldRetry() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                classify(error(Code.TABLET_NOT_FOUND)));
-    }
-
-    @Test
-    public void leaderNotReadyShouldRetry() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                classify(error(Code.LEADER_NOT_READY)));
-    }
-
-    @Test
-    public void invalidRequestWithInvalidStreamIdShouldFailFast() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
-                classify(error(Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT, "invalid stream id")));
-    }
-
-    @Test
-    public void invalidRequestWithDeletedStreamShouldFailFast() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
-                classify(error(Code.INVALID_REQUEST, ErrorCode.DELETED, "deleted stream")));
-    }
-
-    @Test
-    public void invalidRequestWithTableNotInPublicationAndNotFoundStatusShouldRetry() {
-        // AppStatus NOT_FOUND is not fatal by itself (leader/tablet/footer also use it).
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                classify(error(Code.INVALID_REQUEST, ErrorCode.NOT_FOUND, "table is not part of publication")));
-    }
-
-    @Test
-    public void invalidRequestWithBadCheckpointShouldFailFast() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
-                classify(error(Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT, "invalid checkpoint")));
-    }
-
-    @Test
-    public void invalidRequestWithUnsupportedConfigShouldFailFast() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
-                classify(error(Code.INVALID_REQUEST, ErrorCode.NOT_SUPPORTED, "unsupported request")));
-    }
-
-    @Test
-    public void invalidRequestWithPermissionMismatchShouldFailFast() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
-                classify(error(Code.INVALID_REQUEST, ErrorCode.NOT_AUTHORIZED, "permission denied")));
-    }
-
-    @Test
-    public void invalidRequestWithTabletSplitStatusShouldRetry() {
-        // Only CDC TABLET_SPLIT is a split, not INVALID_REQUEST + AppStatus TABLET_SPLIT.
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                classify(error(Code.INVALID_REQUEST, ErrorCode.TABLET_SPLIT, "tablet split detected")));
-    }
-
-    @Test
-    public void invalidRequestWithSplitInMessageShouldFailFast() {
-        // RUNTIME_ERROR is a fatal AppStatus; message text is not a split.
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
-                classify(error(Code.INVALID_REQUEST, ErrorCode.RUNTIME_ERROR, "tablet was split")));
-    }
-
-    @Test
-    public void invalidRequestWithTransientStatusShouldRetry() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                classify(error(Code.INVALID_REQUEST, ErrorCode.SERVICE_UNAVAILABLE, "leader unavailable")));
-    }
-
-    @Test
-    public void invalidRequestWithTabletNotInStreamShouldRetry() {
-        // GetChanges membership miss (incomplete GetTablets list). TABLE_NOT_FOUND
-        // (GetTabletListToPollForCDC) returns RETRY here; getTabletListToPollForCDCWithRetry
-        // disambiguates by calling getDBStreamInfo to distinguish transient lag from permanent
-        // removal. See tests using Code.TABLE_NOT_FOUND.
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                classify(error(Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT,
-                        "Tablet ID xyz is not part of stream ID abc")));
-    }
-
-    @Test
-    public void unknownErrorWithTabletSplitStatusShouldRetry() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                classify(error(Code.UNKNOWN_ERROR, ErrorCode.TABLET_SPLIT, "tablet split")));
-    }
-
-    @Test
-    public void unknownErrorWithSplitMessageAloneShouldNotBeHandledAsSplit() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
-                classify(error(Code.UNKNOWN_ERROR, ErrorCode.RUNTIME_ERROR, "tablet was split")));
-    }
-
-    @Test
-    public void unknownErrorWithMissingStreamShouldFailFast() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
-                classify(error(Code.UNKNOWN_ERROR, ErrorCode.NOT_FOUND,
-                        "Could not find CDC stream: stream_id: \"abc\"")));
-    }
-
-    @Test
-    public void streamExpiredForTabletShouldFailFast() {
-        String message = "Stream ID abc is expired for Tablet ID xyz";
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
-                classify(error(Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR, message)));
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
-                classify(error(Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR,
-                        "STREAM ID ABC IS EXPIRED FOR TABLET ID XYZ")));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -276,24 +121,6 @@ public class YugabyteDBCdcErrorClassifierTest {
     }
 
     @Test
-    public void unknownErrorWithRuntimeStatusShouldFailFast() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST,
-                classify(error(Code.UNKNOWN_ERROR, ErrorCode.RUNTIME_ERROR, "internal failure")));
-    }
-
-    @Test
-    public void unknownErrorWithTimedOutShouldRetry() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                classify(error(Code.UNKNOWN_ERROR, ErrorCode.TIMED_OUT, "rpc timed out")));
-    }
-
-    @Test
-    public void unknownErrorWithoutStatusShouldRetry() {
-        assertEquals(YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY,
-                classify(error(Code.UNKNOWN_ERROR)));
-    }
-
-    @Test
     public void isTabletSplitTrueForTabletSplitCode() {
         assertTrue(YugabyteDBCdcErrorClassifier.isTabletSplit(error(Code.TABLET_SPLIT)));
     }
@@ -313,6 +140,66 @@ public class YugabyteDBCdcErrorClassifierTest {
     public void isTabletSplitFalseForPermanentInvalidRequest() {
         assertFalse(YugabyteDBCdcErrorClassifier.isTabletSplit(
                 error(Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT, "invalid stream id")));
+    }
+
+    private static Stream<Arguments> classificationCases() {
+        YugabyteDBCdcErrorClassifier.CdcErrorAction handle = YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM;
+        YugabyteDBCdcErrorClassifier.CdcErrorAction fail = YugabyteDBCdcErrorClassifier.CdcErrorAction.FAIL_FAST;
+        YugabyteDBCdcErrorClassifier.CdcErrorAction retry = YugabyteDBCdcErrorClassifier.CdcErrorAction.RETRY;
+        return Stream.of(
+                classificationCase("tablet split handled in stream", handle, error(Code.TABLET_SPLIT)),
+                classificationCase("checkpoint too old fails fast", fail, error(Code.CHECKPOINT_TOO_OLD)),
+                classificationCase("subscriber not found retries because the code is not listed", retry,
+                        error(Code.SUBSCRIBER_NOT_FOUND)),
+                classificationCase("operation disallowed fails fast", fail, error(Code.OPERATION_DISALLOWED)),
+                classificationCase("auto flags mismatch retries because the code is not listed", retry,
+                        error(Code.AUTO_FLAGS_CONFIG_VERSION_MISMATCH)),
+                classificationCase("table not found retries", retry, error(Code.TABLE_NOT_FOUND)),
+                classificationCase("bare INVALID_REQUEST is not a tablet split", retry, error(Code.INVALID_REQUEST)),
+                classificationCase("RUNTIME_ERROR is permanent, message text is not a split", fail,
+                        error(Code.INVALID_REQUEST, ErrorCode.RUNTIME_ERROR, "unexpected split of request")),
+                classificationCase("tablet not found retries", retry, error(Code.TABLET_NOT_FOUND)),
+                classificationCase("leader not ready retries", retry, error(Code.LEADER_NOT_READY)),
+                classificationCase("invalid stream id fails fast", fail,
+                        error(Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT, "invalid stream id")),
+                classificationCase("deleted stream fails fast", fail,
+                        error(Code.INVALID_REQUEST, ErrorCode.DELETED, "deleted stream")),
+                classificationCase("NOT_FOUND is not fatal by itself", retry,
+                        error(Code.INVALID_REQUEST, ErrorCode.NOT_FOUND, "table is not part of publication")),
+                classificationCase("invalid checkpoint fails fast", fail,
+                        error(Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT, "invalid checkpoint")),
+                classificationCase("unsupported request fails fast", fail,
+                        error(Code.INVALID_REQUEST, ErrorCode.NOT_SUPPORTED, "unsupported request")),
+                classificationCase("permission denied fails fast", fail,
+                        error(Code.INVALID_REQUEST, ErrorCode.NOT_AUTHORIZED, "permission denied")),
+                classificationCase("INVALID_REQUEST with AppStatus TABLET_SPLIT is not a split", retry,
+                        error(Code.INVALID_REQUEST, ErrorCode.TABLET_SPLIT, "tablet split detected")),
+                classificationCase("RUNTIME_ERROR with a split message is not a split", fail,
+                        error(Code.INVALID_REQUEST, ErrorCode.RUNTIME_ERROR, "tablet was split")),
+                classificationCase("transient INVALID_REQUEST retries", retry,
+                        error(Code.INVALID_REQUEST, ErrorCode.SERVICE_UNAVAILABLE, "leader unavailable")),
+                classificationCase("GetChanges membership miss retries", retry,
+                        error(Code.INVALID_REQUEST, ErrorCode.INVALID_ARGUMENT,
+                                "Tablet ID xyz is not part of stream ID abc")),
+                classificationCase("UNKNOWN_ERROR with AppStatus TABLET_SPLIT retries", retry,
+                        error(Code.UNKNOWN_ERROR, ErrorCode.TABLET_SPLIT, "tablet split")),
+                classificationCase("UNKNOWN_ERROR split message with RUNTIME_ERROR fails fast", fail,
+                        error(Code.UNKNOWN_ERROR, ErrorCode.RUNTIME_ERROR, "tablet was split")),
+                classificationCase("missing CDC stream on UNKNOWN_ERROR fails fast", fail,
+                        error(Code.UNKNOWN_ERROR, ErrorCode.NOT_FOUND,
+                                "Could not find CDC stream: stream_id: \"abc\"")),
+                classificationCase("expired for tablet matches regardless of case", fail,
+                        error(Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR,
+                                "STREAM ID ABC IS EXPIRED FOR TABLET ID XYZ")),
+                classificationCase("UNKNOWN_ERROR with RUNTIME_ERROR fails fast", fail,
+                        error(Code.UNKNOWN_ERROR, ErrorCode.RUNTIME_ERROR, "internal failure")),
+                classificationCase("UNKNOWN_ERROR timed out retries", retry,
+                        error(Code.UNKNOWN_ERROR, ErrorCode.TIMED_OUT, "rpc timed out")),
+                classificationCase("UNKNOWN_ERROR without status retries", retry, error(Code.UNKNOWN_ERROR)));
+    }
+
+    private static Arguments classificationCase(String name, YugabyteDBCdcErrorClassifier.CdcErrorAction action, CDCErrorPB error) {
+        return Arguments.of(name, action, error);
     }
 
     private static Stream<Arguments> permanentCdcFailures() {

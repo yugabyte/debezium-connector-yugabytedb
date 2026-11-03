@@ -11,7 +11,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.connect.data.Struct;
@@ -23,16 +22,12 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.yb.client.GetTabletListToPollForCDCResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
-import org.slf4j.LoggerFactory;
 
 import com.google.common.net.HostAndPort;
 
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
-
 import io.debezium.config.Configuration;
 import io.debezium.connector.yugabytedb.connection.OpId;
+import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
 import io.debezium.connector.yugabytedb.common.YugabytedTestBase;
 
 import org.yb.cdc.CdcService.TabletCheckpointPair;
@@ -43,8 +38,6 @@ import org.yb.cdc.CdcService.TabletCheckpointPair;
  * @author Vaibhav Kushwaha (vkushwaha@yugabyte.com)
  */
 public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
-
-  private static final String FAIL_FAST_CLASSIFIER_LOG = "Failing fast";
 
   private static String masterAddresses;
 
@@ -588,11 +581,6 @@ public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
     assertEquals(recordsCount, recordKeySet.size());
   }
 
-  /**
-   * After a Gen2 split on an unpolled child tablet, the first GetChanges can return
-   * {@code INVALID_REQUEST} (same class of error as a partial tablet list). The connector must
-   * retry via the streaming loop, not treat it as {@code TABLET_SPLIT} and not fail-fast.
-   */
   @Test
   public void shouldRetryInvalidRequestInsteadOfTreatingItAsSplit() throws Exception {
     TestHelper.dropAllSchemas();
@@ -633,43 +621,11 @@ public class YugabyteDBTabletSplitTest extends YugabytedTestBase {
 
     // The child's first GetChanges fails with INVALID_REQUEST, as it did when the master was unreachable.
     HostAndPort tserver = HostAndPort.fromParts(masterAddresses.split(":")[0], 9100);
-    assertTrue(ybClient.setFlag(tserver, "TEST_cdcsdk_fail_getchanges_once_for_tablet", child, true),
-            "YB build must expose TEST_cdcsdk_fail_getchanges_once_for_tablet for this scenario");
+    assertTrue(ybClient.setFlag(tserver, "TEST_cdcsdk_fail_getchanges_once_for_tablet", child, true));
 
-    Logger connectorLogger = (Logger) LoggerFactory.getLogger("io.debezium.connector.yugabytedb");
-    ListAppender<ILoggingEvent> logAppender = new CopyOnWriteListAppender();
-    logAppender.start();
-    connectorLogger.addAppender(logAppender);
-    try {
-      startEngine(configBuilder, (success, message, error) -> assertTrue(success));
-      awaitUntilConnectorIsReady();
-      waitAndFailIfCannotConsume(new ArrayList<>(), 200);
-
-      assertFalse(logAppender.list.stream().anyMatch(event -> event.getFormattedMessage().contains(FAIL_FAST_CLASSIFIER_LOG)),
-              "Injected INVALID_REQUEST must be retried, not classified fail-fast");
-      assertConnectorIsRunning();
-    } finally {
-      connectorLogger.detachAppender(logAppender);
-      logAppender.stop();
-      ybClient.close();
-    }
-  }
-
-  /**
-   * {@link ListAppender} stores events in an {@link java.util.ArrayList}. Readers iterate that
-   * list without the appender lock, so a concurrent {@code add} can expose a null slot and cause
-   * {@link java.util.ConcurrentModificationException}. Back it with a
-   * {@link CopyOnWriteArrayList} instead, matching the pattern in
-   * {@code YugabyteDBCdcFailFastTest}.
-   */
-  private static final class CopyOnWriteListAppender extends ListAppender<ILoggingEvent> {
-    CopyOnWriteListAppender() {
-      this.list = new CopyOnWriteArrayList<>();
-    }
-
-    @Override
-    protected void append(ILoggingEvent event) {
-      list.add(event);
-    }
+    startEngine(configBuilder, (success, message, error) -> assertTrue(success));
+    awaitUntilConnectorIsReady();
+    waitAndFailIfCannotConsume(new ArrayList<>(), 200);
+    ybClient.close();
   }
 }

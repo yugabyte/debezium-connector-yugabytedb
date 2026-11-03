@@ -17,7 +17,6 @@ import java.util.stream.Collectors;
 import io.debezium.connector.yugabytedb.connection.OpId;
 import io.debezium.heartbeat.HeartbeatFactory;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.errors.RetriableException;
 import org.apache.kafka.connect.source.SourceRecord;
@@ -413,11 +412,8 @@ public class YugabyteDBConnectorTask
         return YugabyteDBConnectorConfig.ALL_FIELDS;
     }
 
-    /**
-     * Kafka Connect 4 replaced {@code commitRecord(SourceRecord)}. Per-tablet checkpoints are applied in {@link #commit()}.
-     */
     @Override
-    public void commitRecord(SourceRecord record, RecordMetadata metadata) throws InterruptedException {
+    public void commitRecord(SourceRecord record) throws InterruptedException {
         // Do nothing.
     }
 

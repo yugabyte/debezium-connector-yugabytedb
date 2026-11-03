@@ -204,7 +204,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                             cdcException.printStackTrace();
                                         }
 
-                                        handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded, merger);
+                                        handleTabletSplit(syncClient, part.getTabletId(), tabletPairList, offsetContext, streamId, schemaNeeded);
 
                                         // Break out of the loop so that the iteration can start afresh on the modified list.
                                         break;
