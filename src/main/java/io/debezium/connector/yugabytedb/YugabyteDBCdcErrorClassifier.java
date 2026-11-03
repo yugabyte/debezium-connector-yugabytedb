@@ -21,6 +21,17 @@ import org.yb.master.MasterTypes.MasterErrorPB;
 
 /**
  * Classifies CDC errors before the generic connector retry loop.
+ * <p>
+ * Membership errors are handled differently by RPC:
+ * <ul>
+ *   <li>{@code GetChanges} "Tablet ID … is not part of stream ID …" is retried. The tserver can
+ *       build it from an incomplete tablet list, so it can't be told apart from a real removal.</li>
+ *   <li>{@code GetTabletListToPollForCDC} {@code TABLE_NOT_FOUND} is returned both while stream
+ *       metadata catches up after adding a table and after a table is removed, so it is retried
+ *       here. {@code YBClientUtils.getTabletListToPollForCDCWithRetry} calls {@code getDBStreamInfo}
+ *       and fails fast only if the table is gone from the stream. The split-child path does not
+ *       make this check.</li>
+ * </ul>
  */
 final class YugabyteDBCdcErrorClassifier {
 
@@ -112,8 +123,8 @@ final class YugabyteDBCdcErrorClassifier {
                 return CdcErrorAction.HANDLE_IN_STREAM;
             case TABLE_NOT_FOUND:
                 // Transient while CDC metadata catches up after adding a table, or permanent
-                // if table was removed from stream. The code alone cannot tell them apart, so
-                // this returns RETRY.
+                // if table was removed from stream. getTabletListToPollForCDCWithRetry disambiguates
+                // by calling getDBStreamInfo. This returns RETRY; disambiguation throws if not in stream.
                 return CdcErrorAction.RETRY;
             case INVALID_REQUEST:
                 return actionForAmbiguousCdcCode(error);
@@ -149,8 +160,18 @@ final class YugabyteDBCdcErrorClassifier {
     }
 
     /**
-     * Permanent CDC failures that often arrive as {@code UNKNOWN_ERROR} or {@code INTERNAL_ERROR}.
-     * Matched only on the AppStatus message of {@link CDCErrorPB}, not the exception chain.
+     * Permanent CDC failures that often arrive as {@code UNKNOWN_ERROR} or {@code INTERNAL_ERROR},
+     * so the AppStatus message on {@link CDCErrorPB} is what distinguishes them from a retryable
+     * error with the same code. Matched only via {@link #hasFatalMessage(CDCErrorPB)}, not on the
+     * exception message chain (stripped yb-client errors carry no server text to match).
+     * <p>
+     * {@code Stream ID … is expired for Tablet ID …} is fatal. GetChanges checks expiry
+     * before it refreshes the active time, so a retry hits the same error.
+     * {@code Stream ID … unpolled for too long for Tablet ID …} is a different check and is
+     * also a fatal fragment. A bare {@code stream expired} (no tablet) is not matched.
+     * <p>
+     * {@code not found under stream} is {@code TABLE_NOT_FOUND}, not a fatal fragment.
+     * If {@code getDBStreamInfo} still lists the table, retry. If not, fail fast.
      */
     private static final String[] FATAL_MESSAGE_FRAGMENTS = {
             "could not find cdc stream",
