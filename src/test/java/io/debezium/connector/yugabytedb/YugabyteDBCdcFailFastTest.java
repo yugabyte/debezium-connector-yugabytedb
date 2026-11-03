@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.yb.client.CDCErrorException;
+import org.yb.client.DeleteCDCStreamResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 
@@ -42,6 +44,8 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
  * End-to-end fail-fast tests on a Testcontainers YugabyteDB.
  * Code and message rules are covered by {@link YugabyteDBCdcErrorClassifierTest}.
  * <ul>
+ *   <li>{@link #deleteStreamDuringSnapshotShouldFailFast}: a deleted stream stops the connector
+ *       during the snapshot.</li>
  *   <li>{@link #streamExpiredForTabletAfterStopShouldFailFast} and
  *       {@link #streamExpiredForTabletDuringConsistentStreamingShouldFailFast}:
  *       an expired tablet stops the connector.</li>
@@ -146,6 +150,47 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         finally {
             resetIntentRetentionFlags();
         }
+    }
+
+    @Test
+    public void deleteStreamDuringSnapshotShouldFailFast() throws Exception {
+        String table = "t_del_stream_snap";
+        TestHelper.execute("CREATE TABLE " + table + " (id INT PRIMARY KEY, name TEXT);");
+        TestHelper.executeBulkWithRange(
+                "INSERT INTO " + table + " VALUES (%d, 'snap');", 0, 200);
+        String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
+
+
+        AtomicReference<Throwable> error = start(failFastConfig("public." + table, streamId)
+                .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial"));
+
+        // Wait until the connector has entered the snapshot phase.
+        Awaitility.await()
+                .atMost(Duration.ofSeconds(60))
+                .pollInterval(Duration.ofMillis(50))
+                .until(() -> {
+                    if (error.get() != null) {
+                        throw new AssertionError("Connector failed before snapshot.", error.get());
+                    }
+                    return logs.containsMessage("Starting the snapshot process now")
+                            || logs.containsMessage("Requesting snapshot for table " + table);
+                });
+
+        // Delete the stream while the connector is in snapshot mode.
+        resetLogs();
+        deleteStreamOrFail(streamId);
+
+        waitUntilStopped(error, Duration.ofSeconds(60));
+        assertFailFastTaskStopped(error.get());
+        assertFalse(logs.containsMessage(STREAMING_LOOP_LOG),
+                "Fail-fast happened after streaming started.");
+        // Every retry loop in YugabyteDBSnapshotChangeEventSource logs "will attempt retry" before
+        // sleeping. Without throwIfFailFast in those catch blocks the deleted stream would be
+        // retried here, so no such log means a snapshot catch block failed fast.
+        assertFalse(logs.containsMessage("will attempt retry"),
+                "Snapshot retry loop ran instead of failing fast.");
+        assertFalse(logs.containsMessage("Too many errors while trying to stream the snapshot"),
+                "Snapshot exhausted its retries instead of failing fast.");
     }
 
     @Test
@@ -265,6 +310,21 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
                 || logs.containsMessage("is expired for tablet")
                 || logs.containsStacktraceElement("is expired for Tablet")
                 || logs.containsStacktraceElement("is expired for tablet");
+    }
+
+    private static void deleteStreamOrFail(String streamId) throws Exception {
+        try (YBClient ybClient = TestHelper.getYbClient(TestHelper.getMasterAddress())) {
+            DeleteCDCStreamResponse response =
+                    ybClient.deleteCDCStream(Collections.singleton(streamId), false, true);
+            if (response.hasError()) {
+                throw new AssertionError("deleteCDCStream(" + streamId + ") failed: "
+                        + response.errorMessage());
+            }
+            if (response.getNotFoundStreamIds() != null
+                    && response.getNotFoundStreamIds().contains(streamId)) {
+                throw new AssertionError("deleteCDCStream did not find " + streamId);
+            }
+        }
     }
 
     private void assertFailFastTaskStopped(Throwable error) {
