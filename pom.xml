@@ -31,7 +31,7 @@
         <version.docker.maven.plugin>0.48.1</version.docker.maven.plugin>
         <version.protoc.maven.plugin>3.11.4</version.protoc.maven.plugin>
         <version.fabric8.plugin>0.48.1</version.fabric8.plugin>
-        <version.jackson>2.19.0</version.jackson>
+        <version.jackson>2.21.8</version.jackson>
 
         <!-- Compile: build requires JDK 21, output targets Java 17 -->
         <maven.compiler.source>21</maven.compiler.source>
@@ -43,9 +43,9 @@
         <jdk.min.version>21</jdk.min.version>
 
         <!-- Dependency Versions -->
-        <version.postgresql.driver>42.7.7</version.postgresql.driver>
+        <version.postgresql.driver>42.7.14</version.postgresql.driver>
         <version.com.google.protobuf>4.30.2</version.com.google.protobuf>
-        <version.kafka>4.3.1</version.kafka>
+        <version.kafka>4.3.2</version.kafka>
         <!-- Kafka version the Debezium ${version.debezium} embedded engine used by the tests was built against.
              debezium-embedded 1.9.x calls SourceTask.commitRecord(SourceRecord), which Kafka 4.0 removed,
              so the test runtime stays on the embedded engine's Kafka while main compiles against ${version.kafka}. -->
@@ -54,6 +54,7 @@
         <version.logback>1.2.13</version.logback>
         <version.ybclient>0.8.122-20260819.111006-1</version.ybclient>
         <version.gson>2.13.2</version.gson>
+        <version.guava>33.7.2-jre</version.guava>
 
         <!--
           Specify the properties that will be used for setting up the integration tests' Docker container.
@@ -123,7 +124,7 @@
 			<dependency>
 				<groupId>io.netty</groupId>
 				<artifactId>netty-bom</artifactId>
-				<version>4.1.128.Final</version>
+				<version>4.1.139.Final</version>
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
@@ -142,6 +143,11 @@
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
             <version>${version.gson}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>${version.guava}</version>
         </dependency>
         <dependency>
             <groupId>org.yb</groupId>
@@ -339,7 +345,7 @@
         <dependency>
             <groupId>io.netty</groupId>
             <artifactId>netty-all</artifactId>
-            <version>4.1.128.Final</version>
+            <version>4.1.139.Final</version>
         </dependency>
         <!-- https://mvnrepository.com/artifact/com.stumbleupon/async -->
         <dependency>

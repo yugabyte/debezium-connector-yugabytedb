@@ -6,7 +6,7 @@
 # -------
 # Provides a Kafka Connect runtime with Confluent serialization libraries,
 # replacing the upstream `debezium/connect:1.9.5.Final` image. Rolling our
-# own base lets us pin JDK 21, Kafka 4.3.1, Ubuntu 22.04 (Jammy), and a
+# own base lets us pin JDK 21, Kafka 4.3.2, Ubuntu 22.04 (Jammy), and a
 # non-root `kafka` user (UID 1001), and patch CVEs on our own cadence.
 #
 # Image contents
@@ -65,7 +65,7 @@ LABEL maintainer="yugabyte" \
 # Set the Debezium version, Kafka version, and Scala version (needed for download URL).
 #
 ARG DEBEZIUM_VERSION=1.9
-ARG KAFKA_VERSION=4.3.1
+ARG KAFKA_VERSION=4.3.2
 ARG SCALA_VERSION=2.13
 
 #
@@ -80,12 +80,17 @@ ENV KAFKA_CONNECT_PLUGINS_DIR=$KAFKA_HOME/connect \
     SCALA_VERSION=${SCALA_VERSION}
 
 #
-# Install minimal packages (curl needed for healthchecks and JAR downloads)
+# Install minimal packages (curl needed for healthchecks and JAR downloads).
+# Upgrade first so OS fixes don't depend on how fresh the eclipse-temurin tag is,
+# and purge wget/gnupg/dirmngr: the base image ships them, nothing here uses them,
+# and they only add CVE findings.
 #
 RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
         curl \
         iproute2 \
+    && apt-get purge -y wget gnupg dirmngr \
     && rm -rf /var/lib/apt/lists/*
 
 #
@@ -135,8 +140,8 @@ RUN cd $KAFKA_HOME/libs && \
     curl -sfLO "https://packages.confluent.io/maven/io/confluent/common-config/${CONFLUENT_VERSION}/common-config-${CONFLUENT_VERSION}.jar" && \
     curl -sfLO "https://packages.confluent.io/maven/io/confluent/common-utils/${CONFLUENT_VERSION}/common-utils-${CONFLUENT_VERSION}.jar" && \
     curl -sfLO "https://repo1.maven.org/maven2/org/apache/avro/avro/${AVRO_VERSION}/avro-${AVRO_VERSION}.jar" && \
-    curl -sfLO "https://repo1.maven.org/maven2/com/google/guava/guava/33.4.0-jre/guava-33.4.0-jre.jar" && \
-    curl -sfLO "https://repo1.maven.org/maven2/com/google/guava/failureaccess/1.0.2/failureaccess-1.0.2.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/com/google/guava/guava/33.7.2-jre/guava-33.7.2-jre.jar" && \
+    curl -sfLO "https://repo1.maven.org/maven2/com/google/guava/failureaccess/1.0.3/failureaccess-1.0.3.jar" && \
     curl -sfLO "https://repo1.maven.org/maven2/com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar" && \
     curl -sfLO "https://repo1.maven.org/maven2/org/checkerframework/checker-qual/3.43.0/checker-qual-3.43.0.jar" && \
     curl -sfLO "https://repo1.maven.org/maven2/com/google/j2objc/j2objc-annotations/3.0.0/j2objc-annotations-3.0.0.jar" && \
