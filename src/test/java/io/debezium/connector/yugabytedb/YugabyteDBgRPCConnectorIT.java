@@ -142,7 +142,7 @@ public class YugabyteDBgRPCConnectorIT extends YugabyteDBContainerTestBase {
         Awaitility.await()
             .atMost(Duration.ofSeconds(120))
             .untilAsserted(() -> {
-sed -i '30{/import static org.junit.jupiter.api.Assertions.assertEquals;/d}' src/test/java/io/debezium/connector/yugabytedb/YugabyteDBgRPCConnectorIT.java                consumeAvailableRecords(record -> ids.add(idOf(record)));
+                consumeAvailableRecords(record -> ids.add(idOf(record)));
                 assertEquals(rows, ids.size(), "t_txn rows after the restart: " + describeDelivery(ids, 1, rows));
             });
     }
