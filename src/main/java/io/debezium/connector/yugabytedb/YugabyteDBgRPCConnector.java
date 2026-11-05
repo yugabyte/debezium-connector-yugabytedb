@@ -49,12 +49,42 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
     private Map<String, String> props;
     private Set<String> tableIds;
     private List<HashPartition> hashRanges;
+    /** When "not a part of the stream ID" was first seen. Cleared when {@code fetchTableList} no longer reports it. */
+    private Long streamMembershipErrorSinceMs;
     private YugabyteDBConnectorConfig yugabyteDBConnectorConfig;
     private boolean usePublication;
 
     private YugabyteDBTablePoller tableMonitorThread;
 
     public YugabyteDBgRPCConnector() {
+    }
+
+    /** Marks the connector FAILED on the inherited context field and returns {@code error} to throw. */
+    private <E extends Exception> E raiseError(E error) {
+        context.raiseError(error);
+        return error;
+    }
+
+    /**
+     * Retry a table missing from the stream until {@code max.connector.retries} ×
+     * {@code connector.retry.delay.ms} has passed, then mark the connector FAILED.
+     * {@code validate()} passes {@code raiseOnPermanentError=false} and only throws.
+     */
+    private DebeziumException retryThenFail(DebeziumException error, boolean raiseOnPermanentError) {
+        if (!raiseOnPermanentError) {
+            return error;
+        }
+        long now = System.currentTimeMillis();
+        if (streamMembershipErrorSinceMs == null) {
+            streamMembershipErrorSinceMs = now;
+            return error;
+        }
+        long budgetMs = yugabyteDBConnectorConfig.maxConnectorRetries()
+                * yugabyteDBConnectorConfig.connectorRetryDelayMs();
+        if (now - streamMembershipErrorSinceMs >= budgetMs) {
+            return raiseError(error);
+        }
+        return error;
     }
 
     @Override
@@ -153,7 +183,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
         Configuration config = Configuration.from(this.props);
         Map<String, ConfigValue> results = validateAllFields(config);
 
-        validateTServerConnection(results, config);
+        validateTServerConnection(results, config, /* raiseOnPermanentError= */ true);
 
         String streamIdValue = this.yugabyteDBConnectorConfig.streamId();
         LOGGER.debug("The streamid in config is {}", this.yugabyteDBConnectorConfig.streamId());
@@ -182,13 +212,15 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                     + " is an IMPLICIT stream, create a stream with EXPLICIT checkpointing and try again."
                     + " To forcefully use an IMPLICIT stream, set configuration property force.use.implicit.stream"
                     + " to true";
-            throw new DebeziumException(errorMessage);
+            // Permanent misconfiguration — retrying taskConfigs() will never succeed; mark FAILED now.
+            throw raiseError(new DebeziumException(errorMessage));
         }
 
         if (this.yugabyteDBConnectorConfig.transactionOrdering() && !enableExplicitCheckpointing) {
             final String errorMessage = "Explicit checkpointing not enabled in consistent streaming mode, "
                     + "create a stream with explicit checkpointing and try again";
-            throw new DebeziumException(errorMessage);
+            // Permanent misconfiguration — retrying taskConfigs() will never succeed; mark FAILED now.
+            throw raiseError(new DebeziumException(errorMessage));
         }
 
         LOGGER.info("DB stream ID being used: {}", streamIdValue);
@@ -329,7 +361,7 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             }
         }
 
-        validateTServerConnection(configValues, config);
+        validateTServerConnection(configValues, config, /* raiseOnPermanentError= */ false);
     }
 
     @Override
@@ -338,7 +370,8 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
     }
 
     protected void validateTServerConnection(Map<String, ConfigValue> configValues,
-                                             Configuration config) {
+                                             Configuration config,
+                                             boolean raiseOnPermanentError) {
         try (YBClient ybClient = YBClientUtils.getYbClient(yugabyteDBConnectorConfig)) {
             String hostAddress = config.getString(YugabyteDBConnectorConfig.MASTER_ADDRESSES.toString());
             // so whenever they are null, they will just be ignored
@@ -352,14 +385,19 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             // TODO: Find out where to do validation for table whitelist
             String streamId = yugabyteDBConnectorConfig.streamId();
             if (streamId == null || streamId.isEmpty()) {
-                // Coming to this block means the auto.create.stream is set to false and no stream ID is provided, the connector should not proceed forward.
-                throw new DebeziumException("DB Stream ID not provided, please provide a DB stream ID to proceed");
+                // Permanent config error — no stream ID will ever appear without a config change.
+                final DebeziumException permanentError = new DebeziumException(
+                        "DB Stream ID not provided, please provide a DB stream ID to proceed");
+                throw raiseOnPermanentError ? raiseError(permanentError) : permanentError;
             }
 
             final ConfigValue streamIdConfig = configValues.get(YugabyteDBConnectorConfig.STREAM_ID.name());
 
             if (yugabyteDBConnectorConfig.tableIncludeList() == null || yugabyteDBConnectorConfig.tableIncludeList().isEmpty()) {
-                throw new DebeziumException("The table.include.list is empty, please provide a list of tables to get the changes from");
+                // Permanent config error — table list will not appear without a config change.
+                final DebeziumException permanentError = new DebeziumException(
+                        "The table.include.list is empty, please provide a list of tables to get the changes from");
+                throw raiseOnPermanentError ? raiseError(permanentError) : permanentError;
             }
 
             // If the stream ID is not associated with any table then we should throw an exception
@@ -372,7 +410,12 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             } catch (Exception e) {
                 String errorMessage = String.format("Failed fetching all tables for the streamid %s", streamId);
                 LOGGER.error(errorMessage, e);
-                throw new DebeziumException(errorMessage, e);
+                // Only a deleted stream (OBJECT_NOT_FOUND) is permanent; others (master leader change, network error, RPC timeout) are transient.
+                final DebeziumException wrappedException = new DebeziumException(errorMessage, e);
+                if (raiseOnPermanentError && YugabyteDBCdcErrorClassifier.isFailFast(e)) {
+                    throw raiseError(wrappedException);
+                }
+                throw wrappedException;
             }
 
             if (getStreamInfoResp.getTableInfoList().isEmpty()) {
@@ -382,8 +425,21 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             }
 
             // Pass the already-fetched stream info to avoid per-table getDBStreamInfo RPCs.
-            this.tableIds = YBClientUtils.fetchTableList(ybClient, this.yugabyteDBConnectorConfig,
-                    getStreamInfoResp);
+            try {
+                this.tableIds = YBClientUtils.fetchTableList(ybClient, this.yugabyteDBConnectorConfig,
+                        getStreamInfoResp);
+            } catch (DebeziumException e) {
+                // Membership and getTablesList failures both have a cause. Match the message;
+                // do not use getCause()==null.
+                // raiseError only after this error has lasted max.connector.retries × connector.retry.delay.ms.
+                if (e.getMessage() != null && e.getMessage().contains("not a part of the stream ID")) {
+                    throw retryThenFail(e, raiseOnPermanentError);
+                }
+                throw e;
+            }
+
+            // Membership error is gone. A later failure in this call must not keep the old start time.
+            streamMembershipErrorSinceMs = null;
 
             if (tableIds == null || tableIds.isEmpty()) {
                 throw new DebeziumException("The tables provided in table.include.list do not exist");
@@ -417,12 +473,26 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                                 partitions.stream().map(HashPartition::getTabletId).collect(Collectors.toSet()));
                 }
             } catch (Exception e) {
+                // DebeziumException here is "no longer part of stream" from getTabletListToPollForCDCWithRetry.
+                // Rethrow; the next taskConfigs() hits fetchTableList and the membership timer decides.
+                if (e instanceof DebeziumException) {
+                    throw (DebeziumException) e;
+                }
+                // MasterErrorException(OBJECT_NOT_FOUND) from openTableByUUID is permanent —
+                // consult the classifier before wrapping and retrying.
+                if (raiseOnPermanentError && YugabyteDBCdcErrorClassifier.isFailFast(e)) {
+                    throw raiseError(new DebeziumException("Error while fetching all the tablets", e));
+                }
                 final String errorMessage = "Error while fetching all the tablets";
                 LOGGER.error(errorMessage, e);
                 throw new DebeziumException(errorMessage, e);
             }
         }
         catch (Exception e) {
+            // Permanent errors already called raiseError. Pass DebeziumException through.
+            if (e instanceof DebeziumException) {
+                throw (DebeziumException) e;
+            }
             LOGGER.warn("Exception while validating connection", e);
             throw new DebeziumException("Exception while validating connection", e);
         }
