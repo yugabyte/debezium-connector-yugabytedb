@@ -571,13 +571,15 @@ public class YugabyteDBStreamingChangeEventSource implements
                                     TEST_explicitCheckpoints.put(tabletId, explicitCheckpoint);
                                 }
                             } catch (CDCErrorException cdcException) {
-                                // Only CDC TABLET_SPLIT is a split; INVALID_REQUEST is classified
-                                // (retry vs fail-fast) by YugabyteDBCdcErrorClassifier.
+                                // Check if exception indicates a tablet split.
                                 LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
                                 YugabyteDBCdcErrorClassifier.CdcErrorAction action =
                                         YugabyteDBCdcErrorClassifier.actionFor(cdcException.getCDCError());
                                 if (action == YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM) {
                                     LOGGER.info("Encountered a tablet split on tablet {}, handling it gracefully", tabletId);
+                                    if (LOGGER.isDebugEnabled()) {
+                                        cdcException.printStackTrace();
+                                    }
 
                                     if (taskContext.shouldEnableExplicitCheckpointing()) {
                                         OpId lastRecordCheckpoint = offsetContext.getSourceInfo(part).lastRecordCheckpoint();

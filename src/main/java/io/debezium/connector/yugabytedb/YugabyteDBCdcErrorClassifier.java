@@ -22,15 +22,8 @@ import org.yb.master.MasterTypes.MasterErrorPB;
 /**
  * Classifies CDC errors before the generic connector retry loop.
  * <p>
- * Membership errors are handled differently by RPC:
- * <ul>
- *   <li>{@code GetChanges} "Tablet ID … is not part of stream ID …" is retried. The tserver can
- *       build it from an incomplete tablet list, so it can't be told apart from a real removal.</li>
- *   <li>{@code GetTabletListToPollForCDC} {@code TABLE_NOT_FOUND} is returned both while stream
- *       metadata catches up after adding a table and after a table is removed, so it is retried
- *       here. A caller that needs to tell the two apart has to check {@code getDBStreamInfo}
- *       itself.</li>
- * </ul>
+ * {@code GetTabletListToPollForCDC} {@code TABLE_NOT_FOUND} is returned both while stream
+ * metadata catches up after adding a table and after a table is removed, so it is retried.
  */
 final class YugabyteDBCdcErrorClassifier {
 
@@ -124,7 +117,7 @@ final class YugabyteDBCdcErrorClassifier {
             case TABLE_NOT_FOUND:
                 // Transient while CDC metadata catches up after adding a table, or permanent
                 // if table was removed from stream. The code alone cannot tell them apart, so
-                // this returns RETRY; a caller that can check getDBStreamInfo may fail fast.
+                // this returns RETRY.
                 return CdcErrorAction.RETRY;
             case INVALID_REQUEST:
                 // Not a tablet split (only CDC TABLET_SPLIT is). Classified via actionForAmbiguousCdcCode:
