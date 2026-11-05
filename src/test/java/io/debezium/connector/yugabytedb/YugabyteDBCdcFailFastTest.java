@@ -138,8 +138,7 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
                     .with("tasks.max", 1));
             waitUntilStopped(error, Duration.ofSeconds(60));
             assertFailFastTaskStopped(error.get());
-            assertTrue(logs.containsMessage("is expired for tablet")
-                    || logs.containsStacktraceElement("is expired for tablet"),
+            assertTrue(logsContainExpiredForTablet(),
                     "Expected Stream ID … is expired for Tablet ID ….");
             assertTrue(logs.containsMessage("Processing consistent messages"),
                     "Expected fail-fast on ConsistentStreamingSource path.");
@@ -167,8 +166,7 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
             error = start(failFastConfig("public." + table, streamId));
             waitUntilStopped(error, Duration.ofSeconds(60));
             assertFailFastTaskStopped(error.get());
-            assertTrue(logs.containsMessage("is expired for tablet")
-                    || logs.containsStacktraceElement("is expired for tablet"),
+            assertTrue(logsContainExpiredForTablet(),
                     "Expected Stream ID … is expired for Tablet ID ….");
         }
         finally {
@@ -259,6 +257,14 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
     @Test
     public void injectLogReaderNotInitializedShouldRetry() throws Exception {
         assertRetryOnInjectedError("t_inj_log_reader", 5);
+    }
+
+    /** Server text uses {@code Tablet}; accept the lowercase form too. */
+    private boolean logsContainExpiredForTablet() {
+        return logs.containsMessage("is expired for Tablet")
+                || logs.containsMessage("is expired for tablet")
+                || logs.containsStacktraceElement("is expired for Tablet")
+                || logs.containsStacktraceElement("is expired for tablet");
     }
 
     private void assertFailFastTaskStopped(Throwable error) {
