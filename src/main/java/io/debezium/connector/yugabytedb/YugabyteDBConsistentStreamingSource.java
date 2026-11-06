@@ -198,7 +198,7 @@ public class YugabyteDBConsistentStreamingSource extends YugabyteDBStreamingChan
                                             null /* getchangesRespMaxSizeBytes */, offsetContext.getMaxIndexInSortWindow(part));
                                 } catch (CDCErrorException cdcException) {
                                     // Check if exception indicates a tablet split.
-                                    if (cdcException.getCDCError().getCode() == CdcService.CDCErrorPB.Code.TABLET_SPLIT) {
+                                    if (YugabyteDBCdcErrorClassifier.isTabletSplit(cdcException.getCDCError())) {
                                         LOGGER.info("Encountered a tablet split, handling it gracefully");
                                         if (LOGGER.isDebugEnabled()) {
                                             cdcException.printStackTrace();
