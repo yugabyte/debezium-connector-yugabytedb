@@ -162,6 +162,7 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         AtomicReference<Throwable> error = start(failFastConfig("public." + table, streamId)
                 .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial")
                 .with(YugabyteDBConnectorConfig.LOG_GET_CHANGES, true));
+        // Wait until the connector has entered the snapshot phase.
         Awaitility.await()
                 .atMost(Duration.ofSeconds(60))
                 .pollInterval(Duration.ofMillis(50))
