@@ -159,24 +159,20 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         TestHelper.executeBulkWithRange(
                 "INSERT INTO " + table + " VALUES (%d, 'snap');", 0, 200);
         String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
-
-
         AtomicReference<Throwable> error = start(failFastConfig("public." + table, streamId)
-                .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial"));
-
-        // Wait until the connector has entered the snapshot phase.
+                .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial")
+                .with(YugabyteDBConnectorConfig.LOG_GET_CHANGES, true));
         Awaitility.await()
                 .atMost(Duration.ofSeconds(60))
                 .pollInterval(Duration.ofMillis(50))
                 .until(() -> {
                     if (error.get() != null) {
-                        throw new AssertionError("Connector failed before snapshot.", error.get());
+                        throw new AssertionError("Connector failed before snapshot GetChanges.", error.get());
                     }
-                    return logs.containsMessage("Starting the snapshot process now")
-                            || logs.containsMessage("Requesting snapshot for table " + table);
+                    return logs.containsMessage("Requesting snapshot for table " + table);
                 });
 
-        // Delete the stream while the connector is in snapshot mode.
+        // Delete the stream while the connector is in the snapshot GetChanges loop.
         resetLogs();
         deleteStreamOrFail(streamId);
 
@@ -184,9 +180,8 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         assertFailFastTaskStopped(error.get());
         assertFalse(logs.containsMessage(STREAMING_LOOP_LOG),
                 "Fail-fast happened after streaming started.");
-        // Every retry loop in YugabyteDBSnapshotChangeEventSource logs "will attempt retry" before
-        // sleeping. Without throwIfFailFast in those catch blocks the deleted stream would be
-        // retried here, so no such log means a snapshot catch block failed fast.
+        // Each snapshot retry catch logs "will attempt retry" when it will retry.
+        // No such log means a snapshot catch block failed fast instead of retrying.
         assertFalse(logs.containsMessage("will attempt retry"),
                 "Snapshot retry loop ran instead of failing fast.");
         assertFalse(logs.containsMessage("Too many errors while trying to stream the snapshot"),
