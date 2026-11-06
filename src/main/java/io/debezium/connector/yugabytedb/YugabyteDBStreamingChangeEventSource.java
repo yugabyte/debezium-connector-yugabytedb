@@ -573,9 +573,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             } catch (CDCErrorException cdcException) {
                                 // Check if exception indicates a tablet split.
                                 LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
-                                YugabyteDBCdcErrorClassifier.CdcErrorAction action =
-                                        YugabyteDBCdcErrorClassifier.actionFor(cdcException.getCDCError());
-                                if (action == YugabyteDBCdcErrorClassifier.CdcErrorAction.HANDLE_IN_STREAM) {
+                                if (YugabyteDBCdcErrorClassifier.isTabletSplit(cdcException.getCDCError())) {
                                     LOGGER.info("Encountered a tablet split on tablet {}, handling it gracefully", tabletId);
                                     if (LOGGER.isDebugEnabled()) {
                                         cdcException.printStackTrace();
@@ -951,9 +949,6 @@ public class YugabyteDBStreamingChangeEventSource implements
             // point because the previous GetChanges call is supposed to throw
             // an exception which will be handled.
         } catch (CDCErrorException cdcErrorException) {
-            // Only TABLET_SPLIT is success here (see javadoc). We check the CDC code directly,
-            // not actionFor/HANDLE_IN_STREAM, so this path stays split-only even if HANDLE_IN_STREAM
-            // ever covers more than TABLET_SPLIT.
             if (YugabyteDBCdcErrorClassifier.isTabletSplit(cdcErrorException.getCDCError())) {
                 LOGGER.info("Handling tablet split error gracefully for enqueued tablet {}", partition.getTabletId());
             } else {

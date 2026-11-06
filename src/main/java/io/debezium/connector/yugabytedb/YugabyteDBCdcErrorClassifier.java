@@ -21,9 +21,6 @@ import org.yb.master.MasterTypes.MasterErrorPB;
 
 /**
  * Classifies CDC errors before the generic connector retry loop.
- * <p>
- * {@code GetTabletListToPollForCDC} {@code TABLE_NOT_FOUND} is returned both while stream
- * metadata catches up after adding a table and after a table is removed, so it is retried.
  */
 final class YugabyteDBCdcErrorClassifier {
 
@@ -34,8 +31,7 @@ final class YugabyteDBCdcErrorClassifier {
             ErrorCode.NOT_SUPPORTED,
             ErrorCode.CONFIGURATION_ERROR,
             ErrorCode.DELETED,
-            ErrorCode.EXPIRED,
-            ErrorCode.RUNTIME_ERROR);
+            ErrorCode.EXPIRED);
 
     enum CdcErrorAction {
         /** Tablet split: refresh children in the streaming loop (do not fail/retry the task) */
@@ -120,8 +116,6 @@ final class YugabyteDBCdcErrorClassifier {
                 // this returns RETRY.
                 return CdcErrorAction.RETRY;
             case INVALID_REQUEST:
-                // Not a tablet split (only CDC TABLET_SPLIT is). Classified via actionForAmbiguousCdcCode:
-                // FAIL_FAST on fatal AppStatus/message; RETRY otherwise (e.g. transient pre-producer failure).
                 return actionForAmbiguousCdcCode(error);
             case CHECKPOINT_TOO_OLD:
             case OPERATION_DISALLOWED:
@@ -156,17 +150,8 @@ final class YugabyteDBCdcErrorClassifier {
     }
 
     /**
-     * Permanent CDC failures that often arrive as {@code UNKNOWN_ERROR} or {@code INTERNAL_ERROR},
-     * so the AppStatus message on {@link CDCErrorPB} is what distinguishes them from a retryable
-     * error with the same code. Matched only via {@link #hasFatalMessage(CDCErrorPB)}, not on the
-     * exception message chain (stripped yb-client errors carry no server text to match).
-     * <p>
-     * {@code Stream ID … is expired for Tablet ID …} is fatal. GetChanges checks expiry
-     * before it refreshes the active time, so a retry hits the same error.
-     * {@code Stream ID … unpolled for too long for Tablet ID …} is a different check and is
-     * also a fatal fragment. A bare {@code stream expired} (no tablet) is not matched.
-     * <p>
-     * {@code not found under stream} is {@code TABLE_NOT_FOUND}, not a fatal fragment.
+     * Permanent CDC failures that often arrive as {@code UNKNOWN_ERROR} or {@code INTERNAL_ERROR}.
+     * Matched only on the AppStatus message of {@link CDCErrorPB}, not the exception chain.
      */
     private static final String[] FATAL_MESSAGE_FRAGMENTS = {
             "could not find cdc stream",
@@ -186,12 +171,6 @@ final class YugabyteDBCdcErrorClassifier {
         return StringUtils.containsAny(statusMessage(error), FATAL_MESSAGE_FRAGMENTS);
     }
 
-    /**
-     * True when a master {@code OBJECT_NOT_FOUND} reaches {@link #throwIfFailFast} or an
-     * explicit {@link #isFailFast} check. A normal {@code DROP TABLE} uses the master's
-     * {@code hide_only} path, so the table stays reachable and this error is not produced
-     * during {@code GetChanges} polling.
-     */
     private static boolean isMasterObjectNotFound(Throwable error) {
         MasterErrorException masterError = ExceptionUtils.throwableOfType(error, MasterErrorException.class);
         if (masterError == null || masterError.error == null || !masterError.error.hasCode()) {
