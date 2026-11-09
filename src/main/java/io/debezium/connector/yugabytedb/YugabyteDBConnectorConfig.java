@@ -611,6 +611,10 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final int DEFAULT_MAX_CONNECTOR_RETRIES = 5;
     protected static final long DEFAULT_CONNECTOR_RETRY_DELAY_MS = 60000;
     protected static final boolean DEFAULT_LIMIT_ONE_POLL_PER_ITERATION = false;
+    protected static final int DEFAULT_CDC_POLL_MAX_CONCURRENT_TABLETS = 1;
+    public static final int MAX_CDC_POLL_MAX_CONCURRENT_TABLETS = 32;
+    protected static final long DEFAULT_CDC_POLL_MAX_INFLIGHT_BYTES = 0;
+    public static final long MIN_GETCHANGES_RESPONSE_BYTES = 64 * 1024;
     protected static final boolean DEFAULT_LOG_GET_CHANGES = false;
     protected static final long DEFAULT_NEW_TABLE_POLL_INTERVAL_MS = 5 * 60 * 1000L;
     protected static final long DEFAULT_LOG_GET_CHANGES_INTERVAL_MS = 5 * 60 * 1000L;
@@ -726,6 +730,32 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withImportance(Importance.LOW)
             .withDefault(DEFAULT_CDC_POLL_INTERVAL_IDLE_MS)
             .withDescription("The poll interval in milliseconds when the connector is not receiving any changes from the database");
+
+    public static final Field CDC_POLL_MAX_CONCURRENT_TABLETS = Field.create("cdc.poll.max.concurrent.tablets")
+            .withDisplayName("Maximum concurrent GetChanges requests per task")
+            .withType(Type.INT)
+            .withImportance(Importance.LOW)
+            .withDefault(DEFAULT_CDC_POLL_MAX_CONCURRENT_TABLETS)
+            .withValidation(YugabyteDBConnectorConfig::validateMaxConcurrentTablets)
+            .withDescription("How many of a task's tablets can have a GetChanges request in flight at once, from 1 "
+                    + "(sequential, the default) to " + MAX_CDC_POLL_MAX_CONCURRENT_TABLETS + ". Responses are still "
+                    + "processed one tablet at a time in the usual order; a value above 1 only issues the next "
+                    + "tablets' requests while the current one is awaited and processed, so a pass over the task's "
+                    + "tablets costs about one round trip instead of one per tablet. Each in-flight response is "
+                    + "buffered until processed; see 'cdc.poll.max.inflight.bytes'. Ignored with "
+                    + "'transaction.ordering' enabled.");
+
+    public static final Field CDC_POLL_MAX_INFLIGHT_BYTES = Field.create("cdc.poll.max.inflight.bytes")
+            .withDisplayName("Maximum bytes of GetChanges responses in flight per task")
+            .withType(Type.LONG)
+            .withImportance(Importance.LOW)
+            .withDefault(DEFAULT_CDC_POLL_MAX_INFLIGHT_BYTES)
+            .withValidation(Field::isNonNegativeLong)
+            .withDescription("When 'cdc.poll.max.concurrent.tablets' is above 1, sets each GetChanges request's response "
+                    + "size limit to this budget divided by the concurrency (at least " + MIN_GETCHANGES_RESPONSE_BYTES
+                    + " bytes), so the responses a task buffers stay within it. The value replaces the tserver's limit "
+                    + "(cdc_stream_records_threshold_size_bytes, 4 MiB by default) rather than lowering it. 0 (default) "
+                    + "keeps the tserver's limit for every request.");
 
     public static final Field CDC_LIMIT_POLL_PER_ITERATION = Field.create("cdc.poll.limit")
             .withDisplayName("Limit number of polls per iteration to 1")
@@ -1402,6 +1432,14 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return cdcPollIntervalIdleMs;
     }
 
+    public int cdcPollMaxConcurrentTablets() {
+        return getConfig().getInteger(CDC_POLL_MAX_CONCURRENT_TABLETS);
+    }
+
+    public long cdcPollMaxInflightBytes() {
+        return getConfig().getLong(CDC_POLL_MAX_INFLIGHT_BYTES);
+    }
+
     public boolean cdcLimitPollPerIteration() {
         return getConfig().getBoolean(CDC_LIMIT_POLL_PER_ITERATION);
     }
@@ -1606,7 +1644,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     MBEAN_REGISTRATION_RETRY_DELAY_MS,
                     CDC_POLL_INTERVAL_MS,
                     CDC_POLL_INTERVAL_ACTIVE_MS,
-                    CDC_POLL_INTERVAL_IDLE_MS)
+                    CDC_POLL_INTERVAL_IDLE_MS,
+                    CDC_POLL_MAX_CONCURRENT_TABLETS,
+                    CDC_POLL_MAX_INFLIGHT_BYTES)
             .events(
                     INCLUDE_UNKNOWN_DATATYPES)
             .connector(
@@ -1667,6 +1707,17 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         if (hasStreamIdAndSlotNameConflict(config)) {
             throw new DebeziumException(buildStreamIdAndSlotNameConflictMessage(config, additionalMessage));
         }
+    }
+
+    private static int validateMaxConcurrentTablets(Configuration config, Field field, Field.ValidationOutput problems) {
+        // Each in-flight request holds a buffered response and a tserver RPC slot; past a few dozen the
+        // round-trip saving is gone and only memory and tserver load grow.
+        int value = config.getInteger(field);
+        if (value < 1 || value > MAX_CDC_POLL_MAX_CONCURRENT_TABLETS) {
+            problems.accept(field, value, "must be between 1 and " + MAX_CDC_POLL_MAX_CONCURRENT_TABLETS);
+            return 1;
+        }
+        return 0;
     }
 
     // Source of the validation rules - https://doxygen.postgresql.org/slot_8c.html#afac399f07320b9adfd2c599cf822aaa3
