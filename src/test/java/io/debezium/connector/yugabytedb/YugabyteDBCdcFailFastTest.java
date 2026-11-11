@@ -69,8 +69,7 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
      */
     private static final long FAIL_FAST_TEST_OPERATION_TIMEOUT_MS = 15_000L;
     private static final long STREAMING_READY_CONSUME_TIMEOUT_MS = 120_000L;
-    private static final String STREAMING_LOOP_LOG = "Processing messages";
-    private static final String CONSISTENT_STREAMING_LOOP_LOG = "Processing consistent messages";
+    private static final String STREAMING_READY_LOG = "Beginning to poll the changes from the server";
     private static final String FAIL_FAST_LOG = "Failing fast";
     private static final String CONNECTOR_LOGGER = "io.debezium.connector.yugabytedb";
 
@@ -161,6 +160,8 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         applyShortIntentRetentionFlags();
         try {
             stopConnector();
+            // Drop the first run's logs so a retry logged there cannot fail the restart's assertions.
+            resetLogs();
             TestHelper.waitFor(Duration.ofSeconds(8));
 
             error = start(failFastConfig("public." + table, streamId));
@@ -217,6 +218,8 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
             // chain and throwIfFailFast stops the task.
             // Do not open a YBClient between this start and the assert: AsyncYBClient.sleepTime is
             // static and a new client resets it to 500ms.
+            // Drop the first run's logs so a retry logged there cannot fail the restart's assertions.
+            resetLogs();
             error = start(failFastConfig("public." + table, streamId)
                     .with(YugabyteDBConnectorConfig.RPC_RETRY_SLEEP_TIME, 20_000));
             waitUntilStopped(error, Duration.ofSeconds(90));
@@ -279,23 +282,24 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         TestHelper.execute("CREATE TABLE " + table + " (id INT PRIMARY KEY, name TEXT);");
         String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
 
-        AtomicReference<Throwable> error = start(TestHelper.getConfigBuilder("public." + table, streamId)
-                .with(YugabyteDBConnectorConfig.MAX_CONNECTOR_RETRIES, 2)
-                .with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, INJECT_RETRY_DELAY_MS)
-                .with(YugabyteDBConnectorConfig.MAX_RPC_RETRY_ATTEMPTS, 2)
-                .with(YugabyteDBConnectorConfig.RPC_RETRY_SLEEP_TIME, 50)
-                .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "never"));
+        // Same RPC settings as the fail-fast tests: low max.rpc.retry.attempts makes yb-client drop
+        // the CDCErrorException, so the classifier would never see the injected error.
+        AtomicReference<Throwable> error = start(failFastConfig("public." + table, streamId)
+                .with(YugabyteDBConnectorConfig.CONNECTOR_RETRY_DELAY_MS, INJECT_RETRY_DELAY_MS));
         waitUntilStreamingReady(error, table);
 
         setTserverFlag(SIMULATE_GET_CHANGES_ERROR_FLAG, String.valueOf(simulateCode));
         try {
             Awaitility.await()
-                    .atMost(Duration.ofSeconds(20))
+                    // yb-client keeps retrying until operation.timeout.ms (15s) before the connector retries.
+                    .atMost(Duration.ofSeconds(60))
                     .pollInterval(Duration.ofMillis(200))
                     .until(() -> logs.containsMessage("will attempt retry"));
+            assertTrue(logs.containsStacktraceElement("Simulated error"),
+                    "Injected error should reach the classifier, not be dropped by yb-client.");
         }
         finally {
-            setTserverFlag(SIMULATE_GET_CHANGES_ERROR_FLAG, "99");
+            setTserverFlag(SIMULATE_GET_CHANGES_ERROR_FLAG, "-1");
         }
         TestHelper.execute("INSERT INTO " + table + " VALUES (2, 'inject-retry');");
 
@@ -366,19 +370,9 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
                     if (error.get() != null) {
                         throw new AssertionError("Connector failed before streaming loop.", error.get());
                     }
-                    return logs.containsMessage(STREAMING_LOOP_LOG)
-                            || logs.containsMessage(CONSISTENT_STREAMING_LOOP_LOG)
-                            || logs.containsMessage("Requesting changes for table " + table);
+                    return logs.containsMessage(STREAMING_READY_LOG);
                 });
         if (transactionOrdering) {
-            // Drain schema/DDL already in the change-event queue. A non-empty queue makes
-            // ConsistentStreamingSource skip GetChanges, so stream-delete would never be seen.
-            for (int i = 0; i < 20; i++) {
-                if (consumeAvailableRecords(record -> {
-                }) == 0) {
-                    break;
-                }
-            }
             return;
         }
         TestHelper.execute("INSERT INTO " + table + " VALUES (1, 'streaming-ready');");
@@ -417,9 +411,9 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
 
     /** Defaults for every tserver flag this class changes. */
     private static void resetServerFlags() throws Exception {
-        setTserverFlag(SIMULATE_GET_CHANGES_ERROR_FLAG, "99");
+        setTserverFlag(SIMULATE_GET_CHANGES_ERROR_FLAG, "-1");
         setTserverFlag("cdc_intent_retention_ms", "28800000");
-        setTserverFlag("update_metrics_interval_ms", "15000");
+        setTserverFlag("cdcsdk_enable_cleanup_of_expired_table_entries", "true");
         setTserverFlag("enable_log_retention_by_op_idx", "true");
         setTserverFlag("TEST_disable_wal_retention_time", "false");
         setTserverFlag("log_min_segments_to_retain", "2");
@@ -466,13 +460,13 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
 
     private static void applyShortIntentRetentionFlags() throws Exception {
         setTserverFlag("cdc_intent_retention_ms", "5000");
-        setTserverFlag("update_metrics_interval_ms", "1000");
+        setTserverFlag("cdcsdk_enable_cleanup_of_expired_table_entries", "false");
     }
 
-    /** Server defaults: 8h intent retention, 15s metrics interval. */
+    /** Server defaults: 8h intent retention, expired-table cleanup enabled. */
     private static void resetIntentRetentionFlags() throws Exception {
         setTserverFlag("cdc_intent_retention_ms", "28800000");
-        setTserverFlag("update_metrics_interval_ms", "15000");
+        setTserverFlag("cdcsdk_enable_cleanup_of_expired_table_entries", "true");
     }
 
 }
