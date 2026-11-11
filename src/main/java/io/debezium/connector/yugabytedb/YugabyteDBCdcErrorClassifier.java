@@ -97,7 +97,7 @@ final class YugabyteDBCdcErrorClassifier {
     }
 
     /**
-     * True only for CDC {@code TABLET_SPLIT}. {@code INVALID_REQUEST} is not a split.
+     * True only for CDC {@code TABLET_SPLIT}.
      */
     static boolean isTabletSplit(CDCErrorPB error) {
         return error.getCode() == CDCErrorPB.Code.TABLET_SPLIT;
@@ -130,9 +130,8 @@ final class YugabyteDBCdcErrorClassifier {
             case INTERNAL_ERROR:
                 return actionForAmbiguousCdcCode(error);
             default:
-                // Reached for codes not explicitly listed above (e.g., SUBSCRIBER_NOT_FOUND,
-                // AUTO_FLAGS_CONFIG_VERSION_MISMATCH). Kept so any future Code constant is
-                // retried by default rather than causing a compilation error or accidental fail-fast.
+                // Unlisted and future Code values (e.g. SUBSCRIBER_NOT_FOUND,
+                // AUTO_FLAGS_CONFIG_VERSION_MISMATCH). Retry so they are not fail-fast.
                 return CdcErrorAction.RETRY;
         }
     }
