@@ -28,7 +28,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService;
 import org.yb.cdc.CdcService.TabletCheckpointPair;
-import org.yb.cdc.CdcService.CDCErrorPB.Code;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.client.*;
 
@@ -574,7 +573,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                             } catch (CDCErrorException cdcException) {
                                 // Check if exception indicates a tablet split.
                                 LOGGER.info("Code received in CDCErrorException: {}", cdcException.getCDCError().getCode());
-                                if (cdcException.getCDCError().getCode() == Code.TABLET_SPLIT) {
+                                if (YugabyteDBCdcErrorClassifier.isTabletSplit(cdcException.getCDCError())) {
                                     LOGGER.info("Encountered a tablet split on tablet {}, handling it gracefully", tabletId);
                                     if (LOGGER.isDebugEnabled()) {
                                         cdcException.printStackTrace();
@@ -950,7 +949,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             // point because the previous GetChanges call is supposed to throw
             // an exception which will be handled.
         } catch (CDCErrorException cdcErrorException) {
-            if (cdcErrorException.getCDCError().getCode() == Code.TABLET_SPLIT) {
+            if (YugabyteDBCdcErrorClassifier.isTabletSplit(cdcErrorException.getCDCError())) {
                 LOGGER.info("Handling tablet split error gracefully for enqueued tablet {}", partition.getTabletId());
             } else {
                 throw cdcErrorException;
