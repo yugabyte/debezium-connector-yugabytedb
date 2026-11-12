@@ -136,7 +136,7 @@ final class YugabyteDBCdcErrorClassifier {
         }
     }
 
-    /** Shared by INVALID_REQUEST, UNKNOWN_ERROR, and INTERNAL_ERROR. Split is CDC TABLET_SPLIT only. */
+    /** Shared by INVALID_REQUEST, UNKNOWN_ERROR, and INTERNAL_ERROR. */
     private static CdcErrorAction actionForAmbiguousCdcCode(CDCErrorPB error) {
         if (hasFatalMessage(error) || isFatalAppStatus(error)) {
             return CdcErrorAction.FAIL_FAST;
