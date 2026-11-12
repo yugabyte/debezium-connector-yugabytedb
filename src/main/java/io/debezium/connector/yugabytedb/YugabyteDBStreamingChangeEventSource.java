@@ -31,6 +31,8 @@ import org.yb.cdc.CdcService.TabletCheckpointPair;
 import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.client.*;
 
+import io.debezium.connector.yugabytedb.metrics.GetChangesPipelineMetrics;
+
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.*;
@@ -65,6 +67,7 @@ public class YugabyteDBStreamingChangeEventSource implements
      */
     protected static final int GROWING_WAL_WARNING_LOG_INTERVAL = 10_000;
 
+    private static final long CLOSE_DRAIN_MS = 1000;
     private static final Logger LOGGER = LoggerFactory.getLogger(YugabyteDBStreamingChangeEventSource.class);
 
     // PGOUTPUT decoder sends the messages with larger time gaps than other decoders
@@ -347,7 +350,9 @@ public class YugabyteDBStreamingChangeEventSource implements
                              boolean previousOffsetPresent)
             throws Exception {
         LOGGER.info("Processing messages");
-        try (YBClient syncClient = YBClientUtils.getYbClient(this.connectorConfig)) {
+        AsyncYBClient asyncClient = YBClientUtils.getAsyncYbClient(this.connectorConfig);
+        final int maxConcurrentTablets = connectorConfig.cdcPollMaxConcurrentTablets();
+        try (YBClient syncClient = new YBClient(asyncClient)) {
             Map<String, YBTable> tableIdToTable = new HashMap<>();
             Map<String, GetTabletListToPollForCDCResponse> tabletListResponse = new HashMap<>();
             String streamId = connectorConfig.streamId();
@@ -456,7 +461,30 @@ public class YugabyteDBStreamingChangeEventSource implements
             // Track if we received data in the last iteration for adaptive polling
             boolean receivedDataInLastIteration = true;
 
+            final Long maxResponseBytes = maxGetChangesResponseBytes(maxConcurrentTablets);
+            GetChangesPipelineMetrics pipelineMetrics = new GetChangesPipelineMetrics(taskContext.getTaskId(), connectorConfig);
+            pipelineMetrics.register();
+            GetChangesPipeline pipeline = new GetChangesPipeline(maxConcurrentTablets, connectorConfig.operationTimeoutMs(),
+                    (part, explicitCheckpoint) -> {
+                        OpId cp = offsetContext.lsn(part);
+                        return asyncClient.getChangesCDCSDK(
+                                tableIdToTable.get(part.getTableId()), streamId, part.getTabletId(),
+                                cp.getTerm(), cp.getIndex(), cp.getKey(), cp.getWrite_id(), cp.getTime(),
+                                schemaNeeded.get(part.getId()), explicitCheckpoint,
+                                tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part),
+                                maxResponseBytes, offsetContext.getMaxIndexInSortWindow(part));
+                    },
+                    part -> getExplicitCheckpoint(part, offsetContext.lsn(part)),
+                    this::willPoll, pipelineMetrics);
+            // yb-client before 0.8.123 times out a connection only when nothing at all is read from it, which
+            // never happens while other tablets' responses arrive on it, so bound each wait here instead.
+            final long getChangesJoinTimeoutMs = pipeline.isPipelined() && connectorConfig.socketReadTimeoutMs() > 0
+                    ? connectorConfig.socketReadTimeoutMs()
+                    : 2 * syncClient.getDefaultAdminOperationTimeoutMs();
+            LOGGER.info("Polling up to {} of the task's {} tablets concurrently", maxConcurrentTablets, tabletPairList.size());
+
             String curTabletId = "";
+            try {
             while (context.isRunning() && retryCount <= connectorConfig.maxConnectorRetries()) {
                 try {
                     while (context.isRunning() && (offsetContext.getStreamingStoppingLsn() == null ||
@@ -477,7 +505,17 @@ public class YugabyteDBStreamingChangeEventSource implements
                             continue;
                         }
 
-                        for (Pair<String, String> entry : tabletPairList) {
+                        // The pause before the next pass is "active" if any tablet in this pass returned
+                        // records, not just the last one polled.
+                        boolean receivedDataInThisPass = false;
+                        pipeline.retainOnly(tabletPairList.stream()
+                                .map(pair -> GetChangesPipeline.partition(pair).getId())
+                                .collect(Collectors.toSet()));
+                        final long passStartNanos = System.nanoTime();
+                        boolean passSkippedUnansweredTablet = false;
+                        int tabletIdx = 0;
+                        for (; tabletIdx < tabletPairList.size(); tabletIdx++) {
+                            final Pair<String, String> entry = tabletPairList.get(tabletIdx);
                             final String tabletId = entry.getValue();
                             curTabletId = entry.getValue();
                             YBPartition part = YBPartition.forStreaming(entry.getKey() /* tableId */, tabletId);
@@ -523,6 +561,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 }
                             }
 
+                            if (!willPoll(part)) {
+                                pipeline.discard(part);
+                            }
+
                             // If enabled, this will cause the connector to skip GetChanges calls for all the tablets.
                             if (TEST_PAUSE_GET_CHANGES_CALLS) {
                                 LOGGER.info("[Test only] Skipping over the GetChanges call for tablet {}", tabletId);
@@ -536,7 +578,14 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                             YBTable table = tableIdToTable.get(entry.getKey());
 
-                            CdcSdkCheckpoint explicitCheckpoint = getExplicitCheckpoint(part, cp);
+                            // Check again if the thread has been interrupted.
+                            if (!context.isRunning()) {
+                                LOGGER.info("Connector has been stopped");
+                                break;
+                            }
+
+                            GetChangesPipeline.Pending pending = pipeline.take(tabletPairList, tabletIdx);
+                            CdcSdkCheckpoint explicitCheckpoint = pending.explicitCheckpoint;
 
                             if (connectorConfig.logGetChanges() || LOGGER.isDebugEnabled()
                                   || (System.currentTimeMillis() >= (lastLoggedTimeForGetChanges + connectorConfig.logGetChangesIntervalMs()))) {
@@ -546,12 +595,6 @@ public class YugabyteDBStreamingChangeEventSource implements
                                 lastLoggedTimeForGetChanges = System.currentTimeMillis();
                             }
 
-                            // Check again if the thread has been interrupted.
-                            if (!context.isRunning()) {
-                                LOGGER.info("Connector has been stopped");
-                                break;
-                            }
-
                             GetChangesResponse response = null;
 
                             if (schemaNeeded.get(part.getId())) {
@@ -559,12 +602,21 @@ public class YugabyteDBStreamingChangeEventSource implements
                             }
 
                             try {
-                                response = syncClient.getChangesCDCSDK(
-                                        table, streamId, tabletId, cp.getTerm(), cp.getIndex(), cp.getKey(),
-                                        cp.getWrite_id(), cp.getTime(), schemaNeeded.get(part.getId()),
-                                        explicitCheckpoint,
-                                        tabletSafeTime.getOrDefault(part.getId(), cp.getTime()), offsetContext.getWalSegmentIndex(part),
-                                        null /* getchangesRespMaxSizeBytes */, offsetContext.getMaxIndexInSortWindow(part));
+                                try {
+                                    response = pending.response.join(getChangesJoinTimeoutMs);
+                                } catch (com.stumbleupon.async.TimeoutException timeout) {
+                                    if (!pipeline.timedOut(part, pending)) {
+                                        throw timeout;
+                                    }
+                                    // Without spending a connector retry: the sequential loop's single, longer wait doesn't either.
+                                    LOGGER.warn("No GetChanges response for tablet {} after {} ms; still waiting for it",
+                                            tabletId, getChangesJoinTimeoutMs);
+                                    passSkippedUnansweredTablet = true;
+                                    continue;
+                                }
+                                if (pending.completedAtNanos != 0) {
+                                    pipelineMetrics.roundTrip((pending.completedAtNanos - pending.issuedAtNanos) / 1_000_000);
+                                }
 
                                 // Test only.
                                 if (TEST_TRACK_EXPLICIT_CHECKPOINTS) {
@@ -612,7 +664,7 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                             int recordCount = response.getResp().getCdcSdkProtoRecordsList().size();
                             LOGGER.debug("Processing {} records from getChanges call", recordCount);
-                            receivedDataInLastIteration = (recordCount > 0);
+                            receivedDataInThisPass |= (recordCount > 0);
                             for (CdcService.CDCSDKProtoRecordPB record : response
                                     .getResp()
                                     .getCdcSdkProtoRecordsList()) {
@@ -845,9 +897,17 @@ public class YugabyteDBStreamingChangeEventSource implements
 
                             LOGGER.debug("The final opid for tablet {} is {}", part.getId(), finalOpid);
                         }
+                        boolean passCompleted = tabletIdx >= tabletPairList.size();
+                        if (passCompleted) {
+                            pipelineMetrics.passDuration((System.nanoTime() - passStartNanos) / 1_000_000);
+                        }
+                        // A pass cut short (tablet split) goes straight to the next one to use its prefetched requests.
+                        receivedDataInLastIteration = receivedDataInThisPass || (pipeline.isPipelined() && !passCompleted);
                         // Reset the retry count, because if flow reached at this point, it means that the connection
-                        // has succeeded
-                        retryCount = 0;
+                        // has succeeded. A tablet still unanswered keeps the count, so a stuck one fails the task as before.
+                        if (!passSkippedUnansweredTablet) {
+                            retryCount = 0;
+                        }
                     }
                 } catch (Exception e) {
                     ++retryCount;
@@ -870,6 +930,10 @@ public class YugabyteDBStreamingChangeEventSource implements
                     }
                 }
             }
+            } finally {
+                pipeline.close(CLOSE_DRAIN_MS);
+                pipelineMetrics.unregister();
+            }
         }
     }
 
@@ -879,6 +943,29 @@ public class YugabyteDBStreamingChangeEventSource implements
         // connection.prepareQuery("SELECT 1");
         // connection.commit();
         // }
+    }
+
+    /**
+     * Per-request response size cap when several requests are in flight, so their buffered responses
+     * fit {@code cdc.poll.max.inflight.bytes}; {@code null} keeps the tserver's own limit.
+     */
+    private Long maxGetChangesResponseBytes(int maxConcurrentTablets) {
+        long budget = connectorConfig.cdcPollMaxInflightBytes();
+        if (maxConcurrentTablets <= 1 || budget <= 0) {
+            return null;
+        }
+        return Math.max(budget / maxConcurrentTablets, YugabyteDBConnectorConfig.MIN_GETCHANGES_RESPONSE_BYTES);
+    }
+
+    /** Whether the polling loop will request changes for this tablet when it reaches it. */
+    private boolean willPoll(YBPartition part) {
+        if (taskContext.shouldEnableExplicitCheckpointing() && splitTabletsWaitingForCallback.contains(part.getId())) {
+            return false;
+        }
+        if (TEST_PAUSE_GET_CHANGES_CALLS) {
+            return false;
+        }
+        return TEST_TABLETS_TO_SKIP_POLLING == null || !TEST_TABLETS_TO_SKIP_POLLING.contains(part.getTabletId());
     }
 
     /**
