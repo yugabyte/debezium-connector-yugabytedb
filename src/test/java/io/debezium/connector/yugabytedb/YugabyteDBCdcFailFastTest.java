@@ -451,7 +451,7 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
     private static Set<String> listTserverWalSegments(String tabletId) throws Exception {
         ExecResult result = ybContainer.execInContainer(
                 "sh", "-c",
-                "find /home/yugabyte/var/data -name 'wal-*' -path '*tablet-" + tabletId + "*' -type f 2>/dev/null");
+                "find \"$HOME/var/data\" -name 'wal-*' -path '*tablet-" + tabletId + "*' -type f 2>/dev/null");
         return Arrays.stream(result.getStdout().split("\\R"))
                 .map(String::trim)
                 .filter(line -> !line.isEmpty())
