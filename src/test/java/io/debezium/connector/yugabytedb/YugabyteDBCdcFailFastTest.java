@@ -45,8 +45,10 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
  *   <li>{@link #streamExpiredForTabletAfterStopShouldFailFast} and
  *       {@link #streamExpiredForTabletDuringConsistentStreamingShouldFailFast}:
  *       an expired tablet stops the connector.</li>
- *   <li>{@link #walGarbageCollectedAfterStopShouldFailFast}: a missing WAL stops the connector
- *       with {@code CHECKPOINT_TOO_OLD}.</li>
+ *   <li>{@link #walGarbageCollectedAfterStopShouldFailFast}: a missing WAL stops the connector.
+ *       The server reports it as {@code CHECKPOINT_TOO_OLD} when it reads the log cache, or as
+ *       {@code UNKNOWN_ERROR} "is earlier than first_seq_num" when it reads the WAL segment by
+ *       segment.</li>
  *   <li>The {@code inject*} tests: transient GetChanges errors are retried.</li>
  * </ul>
  */
@@ -213,7 +215,8 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
                     });
 
             // rpc.retry.sleep.time.ms=20_000 with operation.timeout.ms=15_000: the first GetChanges
-            // reads the WAL and returns CHECKPOINT_TOO_OLD. The retry sleep would be 20s, but the
+            // reads the WAL and returns CHECKPOINT_TOO_OLD (log cache path) or UNKNOWN_ERROR
+            // "is earlier than first_seq_num" (segment-by-segment path). The retry sleep would be 20s, but the
             // 15s deadline expires first, so yb-client gives up with CDCErrorException on the cause
             // chain and throwIfFailFast stops the task.
             // Do not open a YBClient between this start and the assert: AsyncYBClient.sleepTime is
@@ -224,8 +227,9 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
                     .with(YugabyteDBConnectorConfig.RPC_RETRY_SLEEP_TIME, 20_000));
             waitUntilStopped(error, Duration.ofSeconds(90));
             assertFailFastTaskStopped(error.get());
-            assertTrue(logs.containsMessage("code=CHECKPOINT_TOO_OLD"),
-                    "Expected CHECKPOINT_TOO_OLD in Failing fast log.");
+            assertTrue(logs.containsMessage("code=CHECKPOINT_TOO_OLD")
+                    || logs.containsMessage("is earlier than first_seq_num"),
+                    "Expected CHECKPOINT_TOO_OLD or 'is earlier than first_seq_num' in Failing fast log.");
         }
         finally {
             resetWalGcFlags();
