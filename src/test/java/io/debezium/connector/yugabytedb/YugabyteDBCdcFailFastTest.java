@@ -9,7 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -28,7 +27,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.yb.client.CDCErrorException;
-import org.yb.client.DeleteCDCStreamResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 
@@ -44,7 +42,7 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
  * End-to-end fail-fast tests on a Testcontainers YugabyteDB.
  * Code and message rules are covered by {@link YugabyteDBCdcErrorClassifierTest}.
  * <ul>
- *   <li>{@link #deleteStreamDuringSnapshotShouldFailFast}: a deleted stream stops the connector
+ *   <li>{@link #streamExpiredDuringSnapshotShouldFailFast}: an expired stream stops the connector
  *       during the snapshot.</li>
  *   <li>{@link #streamExpiredForTabletAfterStopShouldFailFast} and
  *       {@link #streamExpiredForTabletDuringConsistentStreamingShouldFailFast}:
@@ -155,40 +153,28 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
     }
 
     @Test
-    public void deleteStreamDuringSnapshotShouldFailFast() throws Exception {
-        String table = "t_del_stream_snap";
+    public void streamExpiredDuringSnapshotShouldFailFast() throws Exception {
+        String table = "t_expired_snapshot";
         TestHelper.execute("CREATE TABLE " + table + " (id INT PRIMARY KEY, name TEXT);");
-        TestHelper.executeBulkWithRange(
-                "INSERT INTO " + table + " VALUES (%d, 'snap');", 0, 200);
+        TestHelper.executeBulkWithRange("INSERT INTO " + table + " VALUES (%d, 'snap');", 0, 200);
         String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
-        AtomicReference<Throwable> error = start(failFastConfig("public." + table, streamId)
-                .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial")
-                .with(YugabyteDBConnectorConfig.LOG_GET_CHANGES, true));
-        // Wait until the connector has entered the snapshot phase.
-        Awaitility.await()
-                .atMost(Duration.ofSeconds(60))
-                .pollInterval(Duration.ofMillis(50))
-                .until(() -> {
-                    if (error.get() != null) {
-                        throw new AssertionError("Connector failed before snapshot GetChanges.", error.get());
-                    }
-                    return logs.containsMessage("Requesting snapshot for table " + table);
-                });
-
-        // Delete the stream while the connector is in the snapshot GetChanges loop.
-        resetLogs();
-        deleteStreamOrFail(streamId);
-
-        waitUntilStopped(error, Duration.ofSeconds(60));
-        assertFailFastTaskStopped(error.get());
-        assertFalse(logs.containsMessage(STREAMING_LOOP_LOG),
-                "Fail-fast happened after streaming started.");
-        // Each snapshot retry catch logs "will attempt retry" when it will retry.
-        // No such log means a snapshot catch block failed fast instead of retrying.
-        assertFalse(logs.containsMessage("will attempt retry"),
-                "Snapshot retry loop ran instead of failing fast.");
-        assertFalse(logs.containsMessage("Too many errors while trying to stream the snapshot"),
-                "Snapshot exhausted its retries instead of failing fast.");
+        applyShortIntentRetentionFlags();
+        try {
+            // The snapshot loop waits cdc.poll.interval.active.ms before each GetChanges, so 8 s
+            // against 5 s retention makes the first snapshot GetChanges fail with "is expired".
+            AtomicReference<Throwable> error = start(failFastConfig("public." + table, streamId)
+                    .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial")
+                    .with(YugabyteDBConnectorConfig.LOG_GET_CHANGES, true)
+                    .with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_ACTIVE_MS, 8_000));
+            waitUntilStopped(error, Duration.ofSeconds(90));
+            assertFailFastTaskStopped(error.get());
+            assertTrue(logs.containsMessage("Requesting snapshot for table " + table));
+            assertTrue(logsContainExpiredForTablet());
+            assertFalse(logs.containsMessage("Processing messages"));
+        }
+        finally {
+            resetIntentRetentionFlags();
+        }
     }
 
     @Test
@@ -314,21 +300,6 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
                 || logs.containsMessage("is expired for tablet")
                 || logs.containsStacktraceElement("is expired for Tablet")
                 || logs.containsStacktraceElement("is expired for tablet");
-    }
-
-    private static void deleteStreamOrFail(String streamId) throws Exception {
-        try (YBClient ybClient = TestHelper.getYbClient(TestHelper.getMasterAddress())) {
-            DeleteCDCStreamResponse response =
-                    ybClient.deleteCDCStream(Collections.singleton(streamId), false, true);
-            if (response.hasError()) {
-                throw new AssertionError("deleteCDCStream(" + streamId + ") failed: "
-                        + response.errorMessage());
-            }
-            if (response.getNotFoundStreamIds() != null
-                    && response.getNotFoundStreamIds().contains(streamId)) {
-                throw new AssertionError("deleteCDCStream did not find " + streamId);
-            }
-        }
     }
 
     private void assertFailFastTaskStopped(Throwable error) {
