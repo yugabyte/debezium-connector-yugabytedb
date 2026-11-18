@@ -210,6 +210,7 @@ public class YugabyteDBCdcErrorClassifierTest {
         String gcedIntents = "CDCSDK Trying to fetch already GCed intents for transaction 123";
         String beforeImage = "Failed to get the beforeimage for tablet_id: abc due to compaction";
         String missingWal = "Unexpectedly did not find a WAL message corresponding to from_op_id: 1.2";
+        String walSegmentGarbageCollected = "Sequence number 1 is earlier than first_seq_num (6)";
         String unpolled = "Stream ID abc unpolled for too long for Tablet ID xyz";
         String expiredForTablet = "Stream ID abc is expired for Tablet ID xyz";
         String streamMissing = "Could not find CDC stream: stream_id: \"abc\"";
@@ -220,6 +221,10 @@ public class YugabyteDBCdcErrorClassifierTest {
                 failure("wal garbage collected", Code.CHECKPOINT_TOO_OLD, ErrorCode.NOT_FOUND, walGarbageCollected),
                 failure("wal garbage collected reported as unknown error", Code.UNKNOWN_ERROR, ErrorCode.NOT_FOUND, walGarbageCollected),
                 failure("wal garbage collected reported as internal error", Code.INTERNAL_ERROR, ErrorCode.NOT_FOUND, walGarbageCollected),
+                failure("wal segment garbage collected reported as unknown error", Code.UNKNOWN_ERROR, ErrorCode.NOT_FOUND,
+                        walSegmentGarbageCollected),
+                failure("wal segment garbage collected reported as internal error", Code.INTERNAL_ERROR, ErrorCode.NOT_FOUND,
+                        walSegmentGarbageCollected),
                 failure("already gced intents as unknown error", Code.UNKNOWN_ERROR, ErrorCode.INTERNAL_ERROR, gcedIntents),
                 failure("already gced intents as internal error", Code.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR, gcedIntents),
                 failure("before image lost to compaction as unknown error", Code.UNKNOWN_ERROR, ErrorCode.INTERNAL_ERROR, beforeImage),
@@ -249,6 +254,7 @@ public class YugabyteDBCdcErrorClassifierTest {
                 Arguments.of("gced without intents", "already GCed"),
                 Arguments.of("before image without compaction", "Failed to get the beforeimage for tablet_id: abc"),
                 Arguments.of("from_op_id without a missing wal record", "from_op_id: 1.2 is not yet available"),
+                Arguments.of("sequence number without the first_seq_num phrase", "Sequence number 1 is earlier than the cache"),
                 Arguments.of("expired without a tablet", "stream expired"),
                 Arguments.of("unpolled without the timeout phrase", "tablet was not polled"),
                 Arguments.of("missing stream without cdc", "Could not find stream: stream_id: \"abc\""),

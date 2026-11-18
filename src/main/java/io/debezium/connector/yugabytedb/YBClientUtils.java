@@ -491,7 +491,9 @@ public class YBClientUtils {
    * @param tableId the UUID of the table for which we need the tablets to poll for
    * @param connectorConfig the configs used by the connector
    * @return an RPC response containing the list of tablets to poll for
-   * @throws Exception when there are error after trying {@link YugabyteDBConnectorConfig#maxConnectorRetries()} times
+   * @throws Exception immediately when {@link YugabyteDBCdcErrorClassifier#throwIfFailFast(Exception)} classifies
+   *         the error as non-retriable; otherwise after exhausting
+   *         {@link YugabyteDBConnectorConfig#maxConnectorRetries()} retries for transient failures
    */
   public static GetTabletListToPollForCDCResponse getTabletListToPollForCDCWithRetry(
       YBClient ybClient, YBTable table, String tableId,
@@ -514,6 +516,8 @@ public class YBClientUtils {
 
         return resp;
       } catch (Exception e) {
+        YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
+
         retryCount++;
         exception = e;
         if (retryCount > connectorConfig.maxConnectorRetries()) {
@@ -574,6 +578,7 @@ public class YBClientUtils {
       try {
         return ybClient.getCheckpoint(ybTable, connectorConfig.streamId(), tabletId);
       } catch (Exception e) {
+        YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
         ++retryCount;
 
         if (retryCount > connectorConfig.maxConnectorRetries()) {

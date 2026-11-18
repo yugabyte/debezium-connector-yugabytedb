@@ -208,6 +208,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // Reset the flag to retry.
                     shouldRetry = false;
                 } catch (Exception e) {
+                    YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
                     ++retryCountForGetCheckpoint;
 
                     shouldRetry = true;
@@ -253,6 +254,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                     // Reset the retry flag if the bootstrap was successful
                     shouldRetry = false;
                 } catch (Exception e) {
+                    YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
                     ++retryCountForBootstrapping;
 
                     // The connector should go for a retry if any exception is thrown
@@ -292,6 +294,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 // Break upon successful request.
                 break;
             } catch (Exception e) {
+                YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
                 ++retryCount;
 
                 if (retryCount > connectorConfig.maxConnectorRetries()) {
@@ -850,6 +853,8 @@ public class YugabyteDBStreamingChangeEventSource implements
                         retryCount = 0;
                     }
                 } catch (Exception e) {
+                    YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
+
                     ++retryCount;
                     // If the retry limit is exceeded, log an error with a description and throw the exception.
                     if (retryCount > connectorConfig.maxConnectorRetries()) {
@@ -1249,7 +1254,9 @@ public class YugabyteDBStreamingChangeEventSource implements
      * @param tableId table UUID of the table to which the split tablet belongs
      * @param splitTabletId tablet UUID of the split tablet
      * @return {@link GetTabletListToPollForCDCResponse} containing the list of child tablets
-     * @throws Exception when the retry limit has been hit or the metronome pause is interrupted
+     * @throws Exception immediately when {@link YugabyteDBCdcErrorClassifier#throwIfFailFast(Exception)} classifies
+     *         the error as non-retriable; otherwise after exhausting
+     *         {@link YugabyteDBConnectorConfig#maxConnectorRetries()} retries for transient failures
      */
     private GetTabletListToPollForCDCResponse getTabletListResponseWithRetry(YBClient syncClient,
         YBTable ybTable, String streamId, String tableId, String splitTabletId) throws Exception {
@@ -1277,6 +1284,7 @@ public class YugabyteDBStreamingChangeEventSource implements
                 retryCount = 0;
                 return response;
             } catch (Exception e) {
+                YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
                 ++retryCount;
                 if (retryCount > connectorConfig.maxConnectorRetries()) {
                     LOGGER.error("Too many errors while trying to get children for split tablet {}", splitTabletId);

@@ -158,6 +158,7 @@ final class YugabyteDBCdcErrorClassifier {
             "already gced intents",
             "due to compaction",
             "did not find a wal message",
+            "is earlier than first_seq_num",
             "is expired for tablet",
             "unpolled for too long",
             "unsupported replica identity",
