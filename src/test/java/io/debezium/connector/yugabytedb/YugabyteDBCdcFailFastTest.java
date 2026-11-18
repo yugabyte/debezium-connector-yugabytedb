@@ -46,9 +46,10 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
  *       {@link #streamExpiredForTabletDuringConsistentStreamingShouldFailFast}:
  *       an expired tablet stops the connector.</li>
  *   <li>{@link #walGarbageCollectedAfterStopShouldFailFast}: a missing WAL stops the connector.
- *       The server reports it as {@code CHECKPOINT_TOO_OLD} when it reads the log cache, or as
- *       {@code UNKNOWN_ERROR} "is earlier than first_seq_num" when it reads the WAL segment by
- *       segment.</li>
+ *       Which error the server reports depends on whether WAL GC has already trimmed the log
+ *       index past the checkpoint: if it has, the server answers {@code CHECKPOINT_TOO_OLD};
+ *       if not, it reads the WAL segments and answers {@code UNKNOWN_ERROR}
+ *       "is earlier than first_seq_num".</li>
  *   <li>The {@code inject*} tests: transient GetChanges errors are retried.</li>
  * </ul>
  */
@@ -215,10 +216,10 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
                     });
 
             // rpc.retry.sleep.time.ms=20_000 with operation.timeout.ms=15_000: the first GetChanges
-            // reads the WAL and returns CHECKPOINT_TOO_OLD (log cache path) or UNKNOWN_ERROR
-            // "is earlier than first_seq_num" (segment-by-segment path). The retry sleep would be 20s, but the
-            // 15s deadline expires first, so yb-client gives up with CDCErrorException on the cause
-            // chain and throwIfFailFast stops the task.
+            // fails with CHECKPOINT_TOO_OLD if WAL GC has already trimmed the log index past the
+            // checkpoint, otherwise with UNKNOWN_ERROR "is earlier than first_seq_num". The retry
+            // sleep would be 20s, but the 15s deadline expires first, so yb-client gives up with
+            // CDCErrorException on the cause chain and throwIfFailFast stops the task.
             // Do not open a YBClient between this start and the assert: AsyncYBClient.sleepTime is
             // static and a new client resets it to 500ms.
             // Drop the first run's logs so a retry logged there cannot fail the restart's assertions.
