@@ -42,6 +42,8 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
  * End-to-end fail-fast tests on a Testcontainers YugabyteDB.
  * Code and message rules are covered by {@link YugabyteDBCdcErrorClassifierTest}.
  * <ul>
+ *   <li>{@link #streamExpiredDuringSnapshotShouldFailFast}: an expired stream stops the connector
+ *       during the snapshot.</li>
  *   <li>{@link #streamExpiredForTabletAfterStopShouldFailFast} and
  *       {@link #streamExpiredForTabletDuringConsistentStreamingShouldFailFast}:
  *       an expired tablet stops the connector.</li>
@@ -144,6 +146,31 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
                     "Expected Stream ID … is expired for Tablet ID ….");
             assertTrue(logs.containsMessage("Processing consistent messages"),
                     "Expected fail-fast on ConsistentStreamingSource path.");
+        }
+        finally {
+            resetIntentRetentionFlags();
+        }
+    }
+
+    @Test
+    public void streamExpiredDuringSnapshotShouldFailFast() throws Exception {
+        String table = "t_expired_snapshot";
+        TestHelper.execute("CREATE TABLE " + table + " (id INT PRIMARY KEY, name TEXT);");
+        TestHelper.executeBulkWithRange("INSERT INTO " + table + " VALUES (%d, 'snap');", 0, 200);
+        String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
+        applyShortIntentRetentionFlags();
+        try {
+            // The snapshot loop waits cdc.poll.interval.active.ms before each GetChanges, so 8 s
+            // against 5 s retention makes the first snapshot GetChanges fail with "is expired".
+            AtomicReference<Throwable> error = start(failFastConfig("public." + table, streamId)
+                    .with(YugabyteDBConnectorConfig.SNAPSHOT_MODE, "initial")
+                    .with(YugabyteDBConnectorConfig.LOG_GET_CHANGES, true)
+                    .with(YugabyteDBConnectorConfig.CDC_POLL_INTERVAL_ACTIVE_MS, 8_000));
+            waitUntilStopped(error, Duration.ofSeconds(90));
+            assertFailFastTaskStopped(error.get());
+            assertTrue(logs.containsMessage("Requesting snapshot for table " + table));
+            assertTrue(logsContainExpiredForTablet());
+            assertFalse(logs.containsMessage("Processing messages"));
         }
         finally {
             resetIntentRetentionFlags();
