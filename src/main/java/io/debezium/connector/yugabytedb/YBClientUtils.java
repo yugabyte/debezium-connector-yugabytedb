@@ -276,7 +276,17 @@ public class YBClientUtils {
    * @return a YBClient instance
    */
   public static YBClient getYbClient(YugabyteDBConnectorConfig connectorConfig) {
-    AsyncYBClient asyncClient = new AsyncYBClient.AsyncYBClientBuilder(connectorConfig.masterAddresses())
+    return new YBClient(getAsyncYbClient(connectorConfig));
+  }
+
+  /**
+   * Get the {@link AsyncYBClient} that {@link #getYbClient(YugabyteDBConnectorConfig)} wraps, for callers that
+   * issue requests without blocking on each one. Closing a {@link YBClient} built on it shuts it down.
+   * @param connectorConfig configuration for the connector
+   * @return an AsyncYBClient instance
+   */
+  public static AsyncYBClient getAsyncYbClient(YugabyteDBConnectorConfig connectorConfig) {
+    return new AsyncYBClient.AsyncYBClientBuilder(connectorConfig.masterAddresses())
                                   .defaultAdminOperationTimeoutMs(connectorConfig.adminOperationTimeoutMs())
                                   .defaultOperationTimeoutMs(connectorConfig.operationTimeoutMs())
                                   .defaultSocketReadTimeoutMs(connectorConfig.socketReadTimeoutMs())
@@ -286,7 +296,6 @@ public class YBClientUtils {
                                   .maxRpcAttempts(connectorConfig.maxRPCRetryAttempts())
                                   .sleepTime(connectorConfig.rpcRetrySleepTime())
                                   .build();
-    return new YBClient(asyncClient);
   }
 
   /**
