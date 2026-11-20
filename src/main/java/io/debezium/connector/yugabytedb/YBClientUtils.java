@@ -520,10 +520,7 @@ public class YBClientUtils {
       } catch (Exception e) {
         YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
 
-        // TABLE_NOT_FOUND is classified RETRY because it covers both metadata lag after adding a table
-        // (transient) and a table removed from the stream (permanent). yb-client waits the full operation
-        // timeout before surfacing it, so blind retries hang ~95 min (5 × 15 min). Check getDBStreamInfo
-        // and fail fast if the table is absent.
+        // Check getDBStreamInfo and fail fast if the table is absent.
         CDCErrorException cdcEx = YugabyteDBCdcErrorClassifier.findCdcError(e);
         if (cdcEx != null
                 && cdcEx.getCDCError().getCode() == CdcService.CDCErrorPB.Code.TABLE_NOT_FOUND) {

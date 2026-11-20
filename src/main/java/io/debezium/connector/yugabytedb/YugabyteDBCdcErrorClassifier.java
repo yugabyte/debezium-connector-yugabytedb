@@ -160,18 +160,8 @@ final class YugabyteDBCdcErrorClassifier {
     }
 
     /**
-     * Permanent CDC failures that often arrive as {@code UNKNOWN_ERROR} or {@code INTERNAL_ERROR},
-     * so the AppStatus message on {@link CDCErrorPB} is what distinguishes them from a retryable
-     * error with the same code. Matched only via {@link #hasFatalMessage(CDCErrorPB)}, not on the
-     * exception message chain (stripped yb-client errors carry no server text to match).
-     * <p>
-     * {@code Stream ID … is expired for Tablet ID …} is fatal. GetChanges checks expiry
-     * before it refreshes the active time, so a retry hits the same error.
-     * {@code Stream ID … unpolled for too long for Tablet ID …} is a different check and is
-     * also a fatal fragment. A bare {@code stream expired} (no tablet) is not matched.
-     * <p>
-     * {@code not found under stream} is {@code TABLE_NOT_FOUND}, not a fatal fragment.
-     * If {@code getDBStreamInfo} still lists the table, retry. If not, fail fast.
+     * Permanent CDC failures that often arrive as {@code UNKNOWN_ERROR} or {@code INTERNAL_ERROR}.
+     * Matched only on the AppStatus message of {@link CDCErrorPB}, not the exception chain.
      */
     private static final String[] FATAL_MESSAGE_FRAGMENTS = {
             "could not find cdc stream",
