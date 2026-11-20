@@ -60,6 +60,22 @@ public class YBClientUtils {
   }
 
   /**
+   * Checks if a table is still in the stream after {@code TABLE_NOT_FOUND}. Package-private for testing.
+   * @param streamInfo response from {@code getDBStreamInfo}
+   * @param tableId the table UUID
+   * @param streamId the stream ID (for the exception message)
+   * @param originalError the {@code TABLE_NOT_FOUND} error to attach as cause
+   * @throws DebeziumException with {@code originalError} as cause when table is not in stream
+   */
+  static void throwIfTableNotInStream(GetDBStreamInfoResponse streamInfo, String tableId,
+                                      String streamId, Exception originalError) {
+    if (!isTableIncludedInStreamId(streamInfo, tableId)) {
+      throw new DebeziumException("Table " + tableId + " is no longer part of stream " + streamId
+              + "; failing fast instead of retrying", originalError);
+    }
+  }
+
+  /**
    * Get the list of all the table UUIDs to be included for streaming.
    * <p>
    * This overload fetches the DB stream info once, up front, and then delegates to
@@ -525,15 +541,8 @@ public class YBClientUtils {
         if (cdcEx != null
                 && cdcEx.getCDCError().getCode() == CdcService.CDCErrorPB.Code.TABLE_NOT_FOUND) {
           try (YBClient checkClient = getYbClient(connectorConfig)) {
-            GetDBStreamInfoResponse streamInfo =
-                    checkClient.getDBStreamInfo(connectorConfig.streamId());
-            boolean tableStillInStream = streamInfo.getTableInfoList().stream()
-                    .anyMatch(t -> tableId.equals(t.getTableId().toStringUtf8()));
-            if (!tableStillInStream) {
-              throw new DebeziumException("Table " + tableId
-                      + " is no longer part of stream " + connectorConfig.streamId()
-                      + "; failing fast instead of retrying");
-            }
+            throwIfTableNotInStream(checkClient.getDBStreamInfo(connectorConfig.streamId()),
+                    tableId, connectorConfig.streamId(), e);
           } catch (DebeziumException de) {
             throw de;  // our own permanent error — propagate immediately
           } catch (Exception streamInfoError) {
