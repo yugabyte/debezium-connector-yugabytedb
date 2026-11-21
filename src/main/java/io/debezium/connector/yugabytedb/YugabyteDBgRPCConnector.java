@@ -12,6 +12,9 @@ import java.sql.SQLException;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import io.debezium.connector.yugabytedb.autoscale.TaskAutoscalePolicy;
+import io.debezium.connector.yugabytedb.autoscale.TaskAutoscaler;
+import io.debezium.connector.yugabytedb.autoscale.WeightedTabletGrouping;
 import io.debezium.connector.yugabytedb.connection.HashPartition;
 import io.debezium.connector.yugabytedb.util.YugabyteDBConnectorUtils;
 import org.apache.kafka.common.config.ConfigDef;
@@ -53,6 +56,8 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
     private boolean usePublication;
 
     private YugabyteDBTablePoller tableMonitorThread;
+    private TaskAutoscaler autoscaler;
+    private int autoscaleMaxTabletsPerTask = Integer.MAX_VALUE;
 
     public YugabyteDBgRPCConnector() {
     }
@@ -93,17 +98,70 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                         .build();
         this.yugabyteDBConnectorConfig = new YugabyteDBConnectorConfig(config);
         
-        tableMonitorThread = new YugabyteDBTablePoller(yugabyteDBConnectorConfig, context, usePublication);
-        if (this.yugabyteDBConnectorConfig.autoAddNewTables()) {
-            tableMonitorThread.start();
-        }
-
         // This guard is to disallow users to deploy a connector with more than a single task when
         // transaction ordering is enabled
         if (this.yugabyteDBConnectorConfig.transactionOrdering() && config.getInteger("tasks.max") != 1) {
             throw new ConnectException("Transaction ordering is only supported with 1 task, "
                                         + "change number of tasks and try again");
         }
+
+        // Before the table poller (it opens a client): Connect doesn't call stop() after a failed start, so
+        // nothing that can still throw may come after a client or thread exists.
+        if (config.getBoolean(YugabyteDBConnectorConfig.TASKS_AUTOSCALE_ENABLED)) {
+            startAutoscaler(config);
+        }
+        tableMonitorThread = new YugabyteDBTablePoller(yugabyteDBConnectorConfig, context, usePublication);
+        if (this.yugabyteDBConnectorConfig.autoAddNewTables()) {
+            tableMonitorThread.start();
+        }
+    }
+
+    /**
+     * A task only keeps its pass to one round trip while it has no more tablets than GetChanges requests
+     * in flight, so the autoscaler never gives a task more tablets than the pipelining concurrency.
+     * Without pipelining (concurrency 1) that would mean one tablet per task, so the configured cap stands.
+     */
+    static int effectiveMaxTabletsPerTask(int configured, int concurrency) {
+        if (concurrency <= 1) {
+            LOGGER.warn("Task autoscaler: cdc.poll.max.concurrent.tablets is 1, so each task polls its tablets one after "
+                    + "another; latency will grow with the up to {} tablets per task", configured);
+            return configured;
+        }
+        return Math.min(configured, concurrency);
+    }
+
+    /**
+     * Tasks to run with autoscaling: the plan's count, or {@code tasks.autoscale.min} before the first plan, raised so
+     * no task exceeds the tablet cap (tablets added since the plan), within {@code [1, maxGroups]}.
+     */
+    static int autoscaleTaskCount(long tablets, int maxTabletsPerTask, int maxGroups, int min, Integer planned) {
+        int byCap = (int) Math.ceil(tablets / (double) maxTabletsPerTask);
+        return Math.max(1, Math.min(maxGroups, Math.max(byCap, planned == null ? min : planned)));
+    }
+
+    private void startAutoscaler(Configuration config) {
+        // The table list is resolved the same way task configs resolve it.
+        validateTServerConnection(new HashMap<>(validateAllFields(config)), config);
+        int maxTasks = config.getInteger("tasks.max", 1);
+        autoscaleMaxTabletsPerTask = effectiveMaxTabletsPerTask(
+                config.getInteger(YugabyteDBConnectorConfig.TASKS_AUTOSCALE_MAX_TABLETS_PER_TASK),
+                yugabyteDBConnectorConfig.cdcPollMaxConcurrentTablets());
+        TaskAutoscalePolicy.Settings settings = new TaskAutoscalePolicy.Settings(
+                config.getInteger(YugabyteDBConnectorConfig.TASKS_AUTOSCALE_MIN),
+                maxTasks,
+                config.getLong(YugabyteDBConnectorConfig.TASKS_AUTOSCALE_TARGET_OPS_PER_TASK),
+                autoscaleMaxTabletsPerTask,
+                config.getLong(YugabyteDBConnectorConfig.TASKS_AUTOSCALE_LAG_SECONDS),
+                config.getInteger(YugabyteDBConnectorConfig.TASKS_AUTOSCALE_SCALE_UP_EVALUATIONS),
+                config.getInteger(YugabyteDBConnectorConfig.TASKS_AUTOSCALE_SCALE_DOWN_EVALUATIONS),
+                config.getLong(YugabyteDBConnectorConfig.TASKS_AUTOSCALE_SCALE_UP_COOLDOWN_MS),
+                config.getLong(YugabyteDBConnectorConfig.TASKS_AUTOSCALE_SCALE_DOWN_COOLDOWN_MS),
+                config.getInteger(YugabyteDBConnectorConfig.TASKS_AUTOSCALE_SCALE_DOWN_HEADROOM) / 100.0);
+        autoscaler = new TaskAutoscaler(config.getString("name", yugabyteDBConnectorConfig.getLogicalName()),
+                yugabyteDBConnectorConfig, context, new ArrayList<>(tableIds), settings,
+                config.getLong(YugabyteDBConnectorConfig.TASKS_AUTOSCALE_INTERVAL_MS),
+                config.getLong(YugabyteDBConnectorConfig.TASKS_AUTOSCALE_STARTUP_SAMPLE_MS));
+        autoscaler.start();
     }
 
     @Override
@@ -196,8 +254,25 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
         int numGroups = Math.min(hashRanges.size(), maxTasks);
         LOGGER.info("Total tablets to be grouped: " + hashRanges.size() + " within maximum tasks: " + maxTasks);
 
-        List<List<HashPartition>> hashRangesGrouped =
-          YugabyteDBConnectorUtils.groupPartitionsSmartly(this.hashRanges, numGroups);
+        List<List<HashPartition>> hashRangesGrouped;
+        if (autoscaler != null) {
+            autoscaler.setTableIds(tableIds);
+        }
+        // An autoscaler that can't sample falls back to tasks.max in hash order, as without autoscaling.
+        TaskAutoscalePolicy.Plan plan = autoscaler == null || autoscaler.unavailable() ? null
+                : autoscaler.plan(2 * yugabyteDBConnectorConfig.getConfig().getLong(YugabyteDBConnectorConfig.TASKS_AUTOSCALE_STARTUP_SAMPLE_MS));
+        if (autoscaler != null && !autoscaler.unavailable()) {
+            long tablets = this.hashRanges.stream().map(HashPartition::getTabletId).distinct().count();
+            numGroups = autoscaleTaskCount(tablets, autoscaleMaxTabletsPerTask, numGroups,
+                    yugabyteDBConnectorConfig.getConfig().getInteger(YugabyteDBConnectorConfig.TASKS_AUTOSCALE_MIN),
+                    plan == null ? null : plan.taskCount);
+            hashRangesGrouped = WeightedTabletGrouping.group(this.hashRanges, numGroups, plan == null ? Map.of() : plan.weights,
+                    autoscaleMaxTabletsPerTask);
+            LOGGER.info("Task autoscaler: {} task(s), plan {}", numGroups, plan == null ? "not ready yet" : plan);
+        }
+        else {
+            hashRangesGrouped = YugabyteDBConnectorUtils.groupPartitionsSmartly(this.hashRanges, numGroups);
+        }
 
         taskConfigs = new ArrayList<>(hashRangesGrouped.size());
 
@@ -239,6 +314,15 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
 
     @Override
     public void stop() {
+        if (autoscaler != null) {
+            autoscaler.shutdown();
+            try {
+                autoscaler.join(MAX_TIMEOUT);
+            }
+            catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
         LOGGER.info("Stopping table monitoring thread");
         tableMonitorThread.shutdown();
         try {

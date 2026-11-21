@@ -101,6 +101,10 @@ public class YugabyteDBChangeEventSourceFactory implements ChangeEventSourceFact
                     queue);
         } else {
             LOGGER.info("Instantiating CONSISTENT Streaming Source");
+            if (configuration.cdcPollMaxConcurrentTablets() > 1) {
+                LOGGER.warn("{} is ignored with transaction ordering enabled; tablets are polled one at a time",
+                        YugabyteDBConnectorConfig.CDC_POLL_MAX_CONCURRENT_TABLETS.name());
+            }
             return new YugabyteDBConsistentStreamingSource(
                     configuration,
                     snapshotter,
