@@ -536,12 +536,12 @@ public class YBClientUtils {
       } catch (Exception e) {
         YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
 
-        // Check getDBStreamInfo and fail fast if the table is absent.
+        // On TABLE_NOT_FOUND: use master getDBStreamInfo — fail fast if table absent.
         CDCErrorException cdcEx = YugabyteDBCdcErrorClassifier.findCdcError(e);
         if (cdcEx != null
                 && cdcEx.getCDCError().getCode() == CdcService.CDCErrorPB.Code.TABLE_NOT_FOUND) {
-          try (YBClient checkClient = getYbClient(connectorConfig)) {
-            throwIfTableNotInStream(checkClient.getDBStreamInfo(connectorConfig.streamId()),
+          try {
+            throwIfTableNotInStream(ybClient.getDBStreamInfo(connectorConfig.streamId()),
                     tableId, connectorConfig.streamId(), e);
           } catch (DebeziumException de) {
             throw de;  // our own permanent error — propagate immediately
@@ -550,9 +550,10 @@ public class YBClientUtils {
             // stream deleted), propagate immediately rather than retrying.
             YugabyteDBCdcErrorClassifier.throwIfFailFast(streamInfoError);
             // getDBStreamInfo failed transiently (network blip, leader change, etc.);
-            // fall through and let the normal retry logic handle it.
+            // fall through to tablet-list retry handling; may throw if the retry budget is exhausted.
             LOGGER.warn("getDBStreamInfo check after TABLE_NOT_FOUND failed; "
-                    + "will retry normally. Cause: {}", streamInfoError.getMessage());
+                    + "falling through to tablet-list retry handling (may throw if retries are exhausted). "
+                    + "Cause: {}", streamInfoError.getMessage());
           }
         }
 

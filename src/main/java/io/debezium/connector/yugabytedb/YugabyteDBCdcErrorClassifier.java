@@ -26,11 +26,12 @@ import org.yb.master.MasterTypes.MasterErrorPB;
  * <ul>
  *   <li>{@code GetChanges} "Tablet ID … is not part of stream ID …" is retried. The tserver can
  *       build it from an incomplete tablet list, so it can't be told apart from a real removal.</li>
- *   <li>{@code GetTabletListToPollForCDC} {@code TABLE_NOT_FOUND} is returned both while stream
- *       metadata catches up after adding a table and after a table is removed, so it is retried
- *       here. {@code YBClientUtils.getTabletListToPollForCDCWithRetry} calls {@code getDBStreamInfo}
- *       and fails fast only if the table is gone from the stream. The split-child path does not
- *       make this check.</li>
+*   <li>{@code GetTabletListToPollForCDC} {@code TABLE_NOT_FOUND} can be transient (e.g. tablet-list
+*       CDC metadata not ready while the table is already on the stream) or permanent (table removed
+*       from the stream). The classifier returns {@code RETRY} here because the code alone does not
+*       distinguish them. {@code YBClientUtils.getTabletListToPollForCDCWithRetry} calls master
+*       {@code getDBStreamInfo}: retry if the table is still listed; fail fast only if it is absent.
+*       The split-child path does not make this check.</li>
  * </ul>
  */
 final class YugabyteDBCdcErrorClassifier {
