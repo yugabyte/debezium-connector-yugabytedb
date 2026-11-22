@@ -541,8 +541,15 @@ public class YBClientUtils {
         if (cdcEx != null
                 && cdcEx.getCDCError().getCode() == CdcService.CDCErrorPB.Code.TABLE_NOT_FOUND) {
           try {
-            throwIfTableNotInStream(ybClient.getDBStreamInfo(connectorConfig.streamId()),
-                    tableId, connectorConfig.streamId(), e);
+            if (retryCount == 0) {
+              throwIfTableNotInStream(ybClient.getDBStreamInfo(connectorConfig.streamId()),
+                      tableId, connectorConfig.streamId(), e);
+            } else {
+              try (YBClient checkClient = getYbClient(connectorConfig)) {
+                throwIfTableNotInStream(checkClient.getDBStreamInfo(connectorConfig.streamId()),
+                        tableId, connectorConfig.streamId(), e);
+              }
+            }
           } catch (DebeziumException de) {
             throw de;  // our own permanent error — propagate immediately
           } catch (Exception streamInfoError) {
