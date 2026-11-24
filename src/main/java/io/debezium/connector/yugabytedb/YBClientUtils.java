@@ -536,7 +536,9 @@ public class YBClientUtils {
       } catch (Exception e) {
         YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
 
-        // On TABLE_NOT_FOUND: use master getDBStreamInfo — fail fast if table absent.
+        // On TABLE_NOT_FOUND (table not in the stream's list): re-check via master getDBStreamInfo
+        // and fail fast if the table is absent. Defensive: it reads the same list the tserver
+        // used, so today it always agrees with TABLE_NOT_FOUND.
         CDCErrorException cdcEx = YugabyteDBCdcErrorClassifier.findCdcError(e);
         if (cdcEx != null
                 && cdcEx.getCDCError().getCode() == CdcService.CDCErrorPB.Code.TABLE_NOT_FOUND) {

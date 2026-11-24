@@ -29,8 +29,10 @@ import org.yb.master.MasterTypes.MasterErrorPB;
  *   <li>{@code GetTabletListToPollForCDC} {@code TABLE_NOT_FOUND} means the stream's table list
  *       does not contain the table, which stays true until the table is re-added. The classifier
  *       still returns {@code RETRY}; {@code YBClientUtils.getTabletListToPollForCDCWithRetry}
- *       confirms the absence via master {@code getDBStreamInfo} and fails fast. The split-child
- *       path does not make this check.</li>
+ *       re-reads the list via master {@code getDBStreamInfo} and fails fast if the table is
+ *       absent. That check is defensive: it reads the same list the tserver used, so today it
+ *       always agrees with {@code TABLE_NOT_FOUND}. The split-child path does not make this
+ *       check.</li>
  * </ul>
  */
 final class YugabyteDBCdcErrorClassifier {
@@ -123,7 +125,8 @@ final class YugabyteDBCdcErrorClassifier {
                 return CdcErrorAction.HANDLE_IN_STREAM;
             case TABLE_NOT_FOUND:
                 // The table is not in the stream's table list. Returns RETRY here;
-                // getTabletListToPollForCDCWithRetry confirms via getDBStreamInfo and fails fast.
+                // getTabletListToPollForCDCWithRetry re-checks via getDBStreamInfo and fails fast.
+                // That check is defensive: it reads the same list, so today it always agrees.
                 return CdcErrorAction.RETRY;
             case INVALID_REQUEST:
                 return actionForAmbiguousCdcCode(error);

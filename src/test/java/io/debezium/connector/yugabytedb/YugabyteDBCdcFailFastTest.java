@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
@@ -34,6 +35,7 @@ import ch.qos.logback.classic.Logger;
 
 import org.testcontainers.containers.Container.ExecResult;
 
+import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
 import io.debezium.junit.logging.LogInterceptor;
 import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
@@ -261,6 +263,47 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         }
         finally {
             resetWalGcFlags();
+        }
+    }
+
+    /**
+     * Removes a table from the stream, waits until the master stops listing it, then calls
+     * {@code getTabletListToPollForCDCWithRetry} directly. The connector is not started because
+     * {@code taskConfigs()} would reject the missing table before reaching that method.
+     */
+    @Test
+    public void tableRemovedFromStreamShouldFailFastOnTabletList() throws Exception {
+        String table = "t_removed_from_stream";
+        TestHelper.execute("CREATE TABLE " + table + " (id INT PRIMARY KEY, name TEXT);");
+        String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
+        // The config constructor needs a stream ID, nothing else is started.
+        YugabyteDBConnectorConfig config = new YugabyteDBConnectorConfig(
+                failFastConfig("public." + table, streamId).build());
+
+        // Build the client from the config so it gets the short operation timeout. yb-client keeps
+        // retrying TABLE_NOT_FOUND until that timeout, and TestHelper's client uses the 15 min default.
+        try (YBClient ybClient = YBClientUtils.getYbClient(config)) {
+            YBTable ybTable = TestHelper.getYbTable(ybClient, table);
+            String tableId = ybTable.getTableId();
+
+            ExecResult removal = ybContainer.execInContainer(
+                    "/home/yugabyte/bin/yb-admin", "--master_addresses", containerIpAddress + ":7100",
+                    "remove_user_table_from_change_data_stream", streamId, tableId);
+            assertEquals(0, removal.getExitCode(),
+                    "yb-admin failed: " + removal.getStdout() + removal.getStderr());
+
+            // The removal is asynchronous: wait until the master stops listing the table.
+            Awaitility.await()
+                    .atMost(Duration.ofSeconds(60))
+                    .pollInterval(Duration.ofMillis(500))
+                    .until(() -> !YBClientUtils.isTableIncludedInStreamId(
+                            ybClient.getDBStreamInfo(streamId), tableId));
+
+            DebeziumException e = assertThrows(DebeziumException.class,
+                    () -> YBClientUtils.getTabletListToPollForCDCWithRetry(
+                            ybClient, ybTable, tableId, config));
+            assertTrue(e.getMessage().contains("is no longer part of stream"), e.getMessage());
+            assertNotNull(e.getCause(), "Expected the TABLE_NOT_FOUND error as the cause.");
         }
     }
 
