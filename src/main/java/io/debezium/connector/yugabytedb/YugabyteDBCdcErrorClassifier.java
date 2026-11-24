@@ -26,12 +26,11 @@ import org.yb.master.MasterTypes.MasterErrorPB;
  * <ul>
  *   <li>{@code GetChanges} "Tablet ID … is not part of stream ID …" is retried. The tserver can
  *       build it from an incomplete tablet list, so it can't be told apart from a real removal.</li>
-*   <li>{@code GetTabletListToPollForCDC} {@code TABLE_NOT_FOUND} can be transient (e.g. tablet-list
-*       CDC metadata not ready while the table is already on the stream) or permanent (table removed
-*       from the stream). The classifier returns {@code RETRY} here because the code alone does not
-*       distinguish them. {@code YBClientUtils.getTabletListToPollForCDCWithRetry} calls master
-*       {@code getDBStreamInfo}: retry if the table is still listed; fail fast only if it is absent.
-*       The split-child path does not make this check.</li>
+ *   <li>{@code GetTabletListToPollForCDC} {@code TABLE_NOT_FOUND} means the stream's table list
+ *       does not contain the table, which stays true until the table is re-added. The classifier
+ *       still returns {@code RETRY}; {@code YBClientUtils.getTabletListToPollForCDCWithRetry}
+ *       confirms the absence via master {@code getDBStreamInfo} and fails fast. The split-child
+ *       path does not make this check.</li>
  * </ul>
  */
 final class YugabyteDBCdcErrorClassifier {
@@ -123,9 +122,8 @@ final class YugabyteDBCdcErrorClassifier {
             case TABLET_SPLIT:
                 return CdcErrorAction.HANDLE_IN_STREAM;
             case TABLE_NOT_FOUND:
-                // Transient while CDC metadata catches up after adding a table, or permanent
-                // if table was removed from stream. getTabletListToPollForCDCWithRetry disambiguates
-                // by calling getDBStreamInfo. This returns RETRY; disambiguation throws if not in stream.
+                // The table is not in the stream's table list. Returns RETRY here;
+                // getTabletListToPollForCDCWithRetry confirms via getDBStreamInfo and fails fast.
                 return CdcErrorAction.RETRY;
             case INVALID_REQUEST:
                 return actionForAmbiguousCdcCode(error);
