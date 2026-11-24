@@ -27,6 +27,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.yb.cdc.CdcService.CDCErrorPB;
 import org.yb.client.CDCErrorException;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
@@ -303,7 +304,9 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
                     () -> YBClientUtils.getTabletListToPollForCDCWithRetry(
                             ybClient, ybTable, tableId, config));
             assertTrue(e.getMessage().contains("is no longer part of stream"), e.getMessage());
-            assertNotNull(e.getCause(), "Expected the TABLE_NOT_FOUND error as the cause.");
+            CDCErrorException cdcError = YugabyteDBCdcErrorClassifier.findCdcError(e.getCause());
+            assertNotNull(cdcError, "Cause chain should contain the CDCErrorException from the tserver.");
+            assertEquals(CDCErrorPB.Code.TABLE_NOT_FOUND, cdcError.getCDCError().getCode());
         }
     }
 
