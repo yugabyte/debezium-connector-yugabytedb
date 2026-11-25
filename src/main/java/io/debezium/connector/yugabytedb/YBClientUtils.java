@@ -190,10 +190,6 @@ public class YBClientUtils {
               }
           }
       }
-      catch (DebeziumException e) {
-          // Already the error to surface (e.g. an included table is not part of the stream); do not wrap.
-          throw e;
-      }
       catch (Exception e) {
           // We are ultimately throwing this exception since this will be thrown while initializing 
           // the connector and at this point if this exception is thrown, we should not proceed 

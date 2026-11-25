@@ -403,13 +403,11 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             }
 
             // Pass the already-fetched stream info to avoid per-table getDBStreamInfo RPCs.
-            try {
-                this.tableIds = YBClientUtils.fetchTableList(ybClient, this.yugabyteDBConnectorConfig,
-                        getStreamInfoResp);
-            } catch (DebeziumException e) {
-                // Includes "table is not a part of the stream ID": needs a config or stream change.
-                throw raiseOnPermanentError ? raiseError(e) : e;
-            }
+            // Errors from here are deliberately not raised: fetchTableList wraps every failure of the
+            // master RPC (including transient ones) in a DebeziumException, and "table is not part of the
+            // stream" can resolve as the stream's table list changes (ignore.exceptions skips it).
+            this.tableIds = YBClientUtils.fetchTableList(ybClient, this.yugabyteDBConnectorConfig,
+                    getStreamInfoResp);
 
             if (tableIds == null || tableIds.isEmpty()) {
                 // Permanent: the include list matches nothing.
@@ -447,9 +445,9 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                 }
             } catch (Exception e) {
                 // A DebeziumException from the helpers above is already the error to surface; do not wrap it.
-                // Note: a table missing from the stream is already raised by fetchTableList above; the
-                // "no longer part of stream" error from the tablet lookup can only occur if the table is
-                // removed between the two calls, and is deliberately left to the normal retry handling.
+                // Note: "table not part of the stream" errors (from fetchTableList above, and the "no longer
+                // part of stream" error from the tablet lookup) are deliberately left to the normal retry
+                // handling, since the stream's table list can change.
                 if (e instanceof DebeziumException) {
                     throw (DebeziumException) e;
                 }
