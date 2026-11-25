@@ -473,4 +473,67 @@ public class YugabyteDBHeartbeatTest extends YugabyteDBContainerTestBase {
 
         engine.stop();
     }
+
+    // Physical time, in microseconds, of the latest checkpoint in a heartbeat's offset for the tablet.
+    private static long heartbeatMicros(SourceRecord heartbeat, String tabletId) {
+        long max = -1;
+        for (Map.Entry<String, ?> e : heartbeat.sourceOffset().entrySet()) {
+            if (!(e.getKey().equals(tabletId) || e.getKey().endsWith("." + tabletId)) || !(e.getValue() instanceof String)) {
+                continue;
+            }
+            String[] parts = ((String) e.getValue()).split(":", -1);
+            max = Math.max(max, Long.parseLong(parts[parts.length - 1].trim()) >> 12);
+        }
+        return max;
+    }
+
+    @Test
+    public void heartbeatsMoveAnIdleTabletsOffsetForward() throws Exception {
+        // Two tablets, no write after the connector starts: their offsets would otherwise stay at the
+        // stream's starting checkpoint, which a reader of the offsets can't tell from a stuck tablet.
+        TestHelper.execute("CREATE TABLE t1 (id INT, name TEXT, PRIMARY KEY (id ASC)) SPLIT AT VALUES ((5000));");
+        String dbStreamId = TestHelper.getNewDbStreamId("yugabyte", "t1", false /* before image */,
+                true /* explicit checkpointing */, false, false);
+        Configuration config = TestHelper.getConfigBuilder("public.t1", dbStreamId)
+                .with(EmbeddedEngine.ENGINE_NAME, "heartbeat-idle-tablet-test")
+                .with(StandaloneConfig.OFFSET_STORAGE_FILE_FILENAME_CONFIG,
+                        Testing.Files.createTestingFile("heartbeat-idle-tablet.txt").getAbsolutePath())
+                .with(EmbeddedEngine.OFFSET_FLUSH_INTERVAL_MS, 0)
+                .with("heartbeat.interval.ms", 2000)
+                .with(EmbeddedEngine.CONNECTOR_CLASS, YugabyteDBgRPCConnector.class)
+                .build();
+
+        runEngine(config);
+        awaitUntilConnectorIsReady();
+        long startedMicros = System.currentTimeMillis() * 1000;
+
+        YBClient ybClient = TestHelper.getYbClient(getMasterAddress());
+        try {
+            YBTable table = TestHelper.getYbTable(ybClient, "t1");
+            Set<String> tablets = ybClient.getTabletUUIDs(table);
+            assertEquals(2, tablets.size(), "expected the split point to produce two tablets");
+
+            Awaitility.await().atMost(Duration.ofSeconds(60)).until(() -> tablets.stream().allMatch(tabletId ->
+                    heartbeats().stream().anyMatch(hb -> heartbeatMicros(hb, tabletId) > startedMicros)));
+
+            // A record still sets its tablet's offset, and that tablet's later beats don't go back past it.
+            TestHelper.execute("INSERT INTO t1 VALUES (1, 'after-idle');");
+            Awaitility.await().atMost(Duration.ofSeconds(30)).until(() -> dataRecords().size() == 1);
+            SourceRecord record = dataRecords().get(0);
+            String writtenTablet = distinctTablets(List.of(record)).iterator().next();
+            long recordIndex = tabletMaxIndex(record);
+            int beatsBefore = heartbeats().size();
+            Awaitility.await().atMost(Duration.ofSeconds(30)).until(() -> heartbeats().stream().skip(beatsBefore)
+                    .anyMatch(hb -> distinctTablets(List.of(hb)).contains(writtenTablet)));
+            heartbeats().stream().skip(beatsBefore)
+                    .filter(hb -> distinctTablets(List.of(hb)).contains(writtenTablet))
+                    .forEach(hb -> assertTrue(tabletMaxIndex(hb) >= recordIndex,
+                            "heartbeat index " + tabletMaxIndex(hb) + " went back past record index " + recordIndex));
+        }
+        finally {
+            ybClient.close();
+        }
+
+        engine.stop();
+    }
 }
