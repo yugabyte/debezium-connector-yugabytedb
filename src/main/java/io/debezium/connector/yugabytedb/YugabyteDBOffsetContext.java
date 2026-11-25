@@ -184,6 +184,15 @@ public class YugabyteDBOffsetContext implements OffsetContext {
         return result;
     }
 
+    // The given tablet's offset at `lsn` instead of its last record's.
+    public Map<String, ?> getOffset(YBPartition partition, OpId lsn) {
+        Map<String, Object> result = new HashMap<>();
+        for (String key : getOffset(partition).keySet()) {
+            result.put(key, lsn.toSerString());
+        }
+        return result;
+    }
+
     public Struct getSourceInfoForTablet(YBPartition partition) {
         return this.tabletSourceInfo.get(partition.getId()).struct();
     }

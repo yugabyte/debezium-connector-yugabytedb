@@ -905,6 +905,38 @@ public class YugabyteDBStreamingChangeEventSource implements
         return explicitCheckpoint;
     }
 
+    // Commits the safe position so an idle tablet's offset moves; readers of the offsets can't tell idle from stuck otherwise.
+    protected Map<String, ?> heartbeatOffset(YBPartition part, YugabyteDBOffsetContext offsetContext) {
+        Map<String, ?> lastRecord = offsetContext.getOffset(part);
+        if (!taskContext.shouldEnableExplicitCheckpointing()) {
+            return lastRecord;
+        }
+
+        CdcSdkCheckpoint explicitCheckpoint = tabletToExplicitCheckpoint.get(part.getId());
+        SourceInfo sourceInfo = offsetContext.getSourceInfo(part);
+        if (sourceInfo == null) {
+            return lastRecord;
+        }
+
+        OpId safePosition = heartbeatSafePosition(sourceInfo.lsn(), sourceInfo.lastRecordCheckpoint(), explicitCheckpoint);
+        return safePosition == null ? lastRecord : offsetContext.getOffset(part, safePosition);
+    }
+
+    /**
+     * The explicit checkpoint, when a heartbeat may commit it: no record from the tablet is in flight (its last record is
+     * at or behind the checkpoint) and the tablet's position isn't ahead of it. Null otherwise: commit the last record's.
+     */
+    static OpId heartbeatSafePosition(OpId lsn, OpId lastRecordCheckpoint, CdcSdkCheckpoint explicitCheckpoint) {
+        if (explicitCheckpoint == null) {
+            return null;
+        }
+        boolean nothingInFlight = lastRecordCheckpoint == null || lastRecordCheckpoint.isLesserThanOrEqualTo(explicitCheckpoint);
+        if (!nothingInFlight || (lsn != null && !lsn.isLesserThanOrEqualTo(explicitCheckpoint))) {
+            return null;
+        }
+        return OpId.from(explicitCheckpoint);
+    }
+
     protected void maybeEmitTabletHeartbeat(YBPartition part, YugabyteDBOffsetContext offsetContext) {
         if (!dispatcher.heartbeatsEnabled()) {
             return;
@@ -915,7 +947,7 @@ public class YugabyteDBStreamingChangeEventSource implements
             return;
         }
         try {
-            dispatcher.dispatchHeartbeatEvent(part, offsetContext.getOffset(part));
+            dispatcher.dispatchHeartbeatEvent(part, heartbeatOffset(part, offsetContext));
             tabletToLastHeartbeatMs.put(part.getId(), currentTimeMs);
         }
         catch (InterruptedException e) {
