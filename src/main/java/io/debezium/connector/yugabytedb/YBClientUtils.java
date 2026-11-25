@@ -60,6 +60,22 @@ public class YBClientUtils {
   }
 
   /**
+   * Throws if the table is no longer in the stream after {@code TABLE_NOT_FOUND}.
+   * @param streamInfo response from {@code getDBStreamInfo}
+   * @param tableId the table UUID
+   * @param streamId the stream ID (for the exception message)
+   * @param originalError the {@code TABLE_NOT_FOUND} error to attach as cause
+   * @throws DebeziumException with {@code originalError} as cause when table is not in stream
+   */
+  private static void throwIfTableNotInStream(GetDBStreamInfoResponse streamInfo, String tableId,
+                                              String streamId, Exception originalError) {
+    if (!isTableIncludedInStreamId(streamInfo, tableId)) {
+      throw new DebeziumException("Table " + tableId + " is no longer part of stream " + streamId
+              + "; failing fast instead of retrying", originalError);
+    }
+  }
+
+  /**
    * Get the list of all the table UUIDs to be included for streaming.
    * <p>
    * This overload fetches the DB stream info once, up front, and then delegates to
@@ -491,6 +507,8 @@ public class YBClientUtils {
    * @param tableId the UUID of the table for which we need the tablets to poll for
    * @param connectorConfig the configs used by the connector
    * @return an RPC response containing the list of tablets to poll for
+   * @throws DebeziumException immediately, without retrying, on {@code TABLE_NOT_FOUND} when
+   *         {@code getDBStreamInfo} no longer lists the table in the stream
    * @throws Exception immediately when {@link YugabyteDBCdcErrorClassifier#throwIfFailFast(Exception)} classifies
    *         the error as non-retriable; otherwise after exhausting
    *         {@link YugabyteDBConnectorConfig#maxConnectorRetries()} retries for transient failures
@@ -517,6 +535,36 @@ public class YBClientUtils {
         return resp;
       } catch (Exception e) {
         YugabyteDBCdcErrorClassifier.throwIfFailFast(e);
+
+        // On TABLE_NOT_FOUND (table not in the stream's list): re-check via master getDBStreamInfo
+        // and fail fast if the table is absent. Defensive: it reads the same list the tserver
+        // used, so today it always agrees with TABLE_NOT_FOUND.
+        CDCErrorException cdcEx = YugabyteDBCdcErrorClassifier.findCdcError(e);
+        if (cdcEx != null
+                && cdcEx.getCDCError().getCode() == CdcService.CDCErrorPB.Code.TABLE_NOT_FOUND) {
+          try {
+            if (retryCount == 0) {
+              throwIfTableNotInStream(ybClient.getDBStreamInfo(connectorConfig.streamId()),
+                      tableId, connectorConfig.streamId(), e);
+            } else {
+              try (YBClient checkClient = getYbClient(connectorConfig)) {
+                throwIfTableNotInStream(checkClient.getDBStreamInfo(connectorConfig.streamId()),
+                        tableId, connectorConfig.streamId(), e);
+              }
+            }
+          } catch (DebeziumException de) {
+            throw de;  // our own permanent error — propagate immediately
+          } catch (Exception streamInfoError) {
+            // If getDBStreamInfo itself fails with a permanent error (e.g. OBJECT_NOT_FOUND —
+            // stream deleted), propagate immediately rather than retrying.
+            YugabyteDBCdcErrorClassifier.throwIfFailFast(streamInfoError);
+            // getDBStreamInfo failed transiently (network blip, leader change, etc.);
+            // fall through to tablet-list retry handling; may throw if the retry budget is exhausted.
+            LOGGER.warn("getDBStreamInfo check after TABLE_NOT_FOUND failed; "
+                    + "falling through to tablet-list retry handling (may throw if retries are exhausted). "
+                    + "Cause: {}", streamInfoError.getMessage());
+          }
+        }
 
         retryCount++;
         exception = e;
