@@ -60,15 +60,15 @@ public class YBClientUtils {
   }
 
   /**
-   * Checks if a table is still in the stream after {@code TABLE_NOT_FOUND}. Package-private for testing.
+   * Throws if the table is no longer in the stream after {@code TABLE_NOT_FOUND}.
    * @param streamInfo response from {@code getDBStreamInfo}
    * @param tableId the table UUID
    * @param streamId the stream ID (for the exception message)
    * @param originalError the {@code TABLE_NOT_FOUND} error to attach as cause
    * @throws DebeziumException with {@code originalError} as cause when table is not in stream
    */
-  static void throwIfTableNotInStream(GetDBStreamInfoResponse streamInfo, String tableId,
-                                      String streamId, Exception originalError) {
+  private static void throwIfTableNotInStream(GetDBStreamInfoResponse streamInfo, String tableId,
+                                              String streamId, Exception originalError) {
     if (!isTableIncludedInStreamId(streamInfo, tableId)) {
       throw new DebeziumException("Table " + tableId + " is no longer part of stream " + streamId
               + "; failing fast instead of retrying", originalError);
