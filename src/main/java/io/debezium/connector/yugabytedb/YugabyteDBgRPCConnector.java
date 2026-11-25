@@ -397,15 +397,25 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             if (getStreamInfoResp.getTableInfoList().isEmpty()) {
                 String errorMessage = "The provided stream ID is not associated with any table";
                 LOGGER.error(errorMessage);
-                throw new DebeziumException(errorMessage);
+                // Permanent: the stream will not gain tables without a change by the user.
+                final DebeziumException permanentError = new DebeziumException(errorMessage);
+                throw raiseOnPermanentError ? raiseError(permanentError) : permanentError;
             }
 
             // Pass the already-fetched stream info to avoid per-table getDBStreamInfo RPCs.
-            this.tableIds = YBClientUtils.fetchTableList(ybClient, this.yugabyteDBConnectorConfig,
-                    getStreamInfoResp);
+            try {
+                this.tableIds = YBClientUtils.fetchTableList(ybClient, this.yugabyteDBConnectorConfig,
+                        getStreamInfoResp);
+            } catch (DebeziumException e) {
+                // Includes "table is not a part of the stream ID": needs a config or stream change.
+                throw raiseOnPermanentError ? raiseError(e) : e;
+            }
 
             if (tableIds == null || tableIds.isEmpty()) {
-                throw new DebeziumException("The tables provided in table.include.list do not exist");
+                // Permanent: the include list matches nothing.
+                final DebeziumException permanentError = new DebeziumException(
+                        "The tables provided in table.include.list do not exist");
+                throw raiseOnPermanentError ? raiseError(permanentError) : permanentError;
             }
 
             this.hashRanges = new ArrayList<>();
@@ -437,6 +447,9 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
                 }
             } catch (Exception e) {
                 // A DebeziumException from the helpers above is already the error to surface; do not wrap it.
+                // Note: a table missing from the stream is already raised by fetchTableList above; the
+                // "no longer part of stream" error from the tablet lookup can only occur if the table is
+                // removed between the two calls, and is deliberately left to the normal retry handling.
                 if (e instanceof DebeziumException) {
                     throw (DebeziumException) e;
                 }
@@ -451,7 +464,8 @@ public class YugabyteDBgRPCConnector extends RelationalBaseSourceConnector {
             }
         }
         catch (Exception e) {
-            // Permanent errors already called raiseError. Pass DebeziumException through.
+            // A DebeziumException has already been classified (and raised if permanent); pass it through
+            // unwrapped so the real message is kept.
             if (e instanceof DebeziumException) {
                 throw (DebeziumException) e;
             }

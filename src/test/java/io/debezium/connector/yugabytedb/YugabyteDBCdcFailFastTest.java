@@ -4,14 +4,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -29,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService.CDCErrorPB;
 import org.yb.client.CDCErrorException;
+import org.yb.client.DeleteCDCStreamResponse;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 
@@ -47,8 +51,10 @@ import io.debezium.connector.yugabytedb.common.YugabyteDBContainerTestBase;
  * <ul>
  *   <li>{@link #streamExpiredDuringSnapshotShouldFailFast}: an expired stream stops the connector
  *       during the snapshot.</li>
- *   <li>{@link #deleteStreamAfterStopShouldFailFast}: a deleted stream stops the connector
- *       when it is restarted.</li>
+ *   <li>{@link #taskConfigsShouldRaiseErrorWhenStreamIsDeleted} and
+ *       {@link #taskConfigsShouldRaiseErrorWhenTableIncludeListIsEmpty}: permanent errors from
+ *       {@code taskConfigs()} mark the connector FAILED;
+ *       {@link #validateShouldNotRaiseErrorForPermanentConfigErrors}: config validation does not.</li>
  *   <li>{@link #streamExpiredForTabletAfterStopShouldFailFast} and
  *       {@link #streamExpiredForTabletDuringConsistentStreamingShouldFailFast}:
  *       an expired tablet stops the connector.</li>
@@ -116,29 +122,92 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
         }
     }
 
+    /**
+     * Calls {@code taskConfigs()} directly (no engine) with a recording {@code ConnectorContext}, so the
+     * test sees whether the connector was marked FAILED, not just that it threw.
+     */
     @Test
-    public void deleteStreamAfterStopShouldFailFast() throws Exception {
-        String table = "t_del_stream";
+    public void taskConfigsShouldRaiseErrorWhenStreamIsDeleted() throws Exception {
+        String table = "t_tc_deleted_stream";
         TestHelper.execute("CREATE TABLE " + table + " (id INT PRIMARY KEY, name TEXT);");
         String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
 
+        YugabyteDBgRPCConnectorFailFastTest.RecordingContext recorder =
+                new YugabyteDBgRPCConnectorFailFastTest.RecordingContext();
+        YugabyteDBgRPCConnector connector = YugabyteDBgRPCConnectorFailFastTest.connectorWith(recorder);
+        // The stream must exist at start(): building the connector config looks the stream up. It is then
+        // deleted before taskConfigs(), as when a stream is dropped while the connector is running.
+        connector.start(connectorProps("public." + table, streamId));
+        deleteStreamOrFail(streamId);
+        try {
+            DebeziumException thrown = assertThrows(DebeziumException.class, () -> connector.taskConfigs(1));
 
-        AtomicReference<Throwable> error = start(failFastConfig("public." + table, streamId));
-        waitUntilStreamingReady(error, table);
-        stopConnector();
+            assertEquals(1, recorder.raised.size(),
+                    "A deleted stream is permanent: the connector must be marked FAILED exactly once.");
+            assertSame(thrown, recorder.raised.get(0));
+            assertTrue(thrown.getMessage().startsWith("Failed fetching all tables for the streamid"),
+                    thrown.getMessage());
+        }
+        finally {
+            connector.stop();
+        }
+    }
 
+    @Test
+    public void taskConfigsShouldRaiseErrorWhenTableIncludeListIsEmpty() throws Exception {
+        String table = "t_tc_empty_include_list";
+        TestHelper.execute("CREATE TABLE " + table + " (id INT PRIMARY KEY, name TEXT);");
+        String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
+
+        YugabyteDBgRPCConnectorFailFastTest.RecordingContext recorder =
+                new YugabyteDBgRPCConnectorFailFastTest.RecordingContext();
+        YugabyteDBgRPCConnector connector = YugabyteDBgRPCConnectorFailFastTest.connectorWith(recorder);
+        connector.start(connectorProps("", streamId));
+        try {
+            DebeziumException thrown = assertThrows(DebeziumException.class, () -> connector.taskConfigs(1));
+
+            assertEquals(1, recorder.raised.size(),
+                    "An empty table.include.list is permanent: the connector must be marked FAILED exactly once.");
+            assertSame(thrown, recorder.raised.get(0));
+            assertTrue(thrown.getMessage().contains("table.include.list is empty"), thrown.getMessage());
+        }
+        finally {
+            connector.stop();
+        }
+    }
+
+    /**
+     * Config validation (the REST validate call) runs the same checks but must only report: it must
+     * never mark a connector FAILED.
+     */
+    @Test
+    public void validateShouldNotRaiseErrorForPermanentConfigErrors() throws Exception {
+        String table = "t_tc_validate_only";
+        TestHelper.execute("CREATE TABLE " + table + " (id INT PRIMARY KEY, name TEXT);");
+        String streamId = TestHelper.getNewDbStreamId("yugabyte", table);
+
+        // Building the config looks the stream up and caches the result, so do it while the stream exists.
+        new YugabyteDBConnectorConfig(
+                failFastConfig("public." + table, streamId).build());
         deleteStreamOrFail(streamId);
 
-        AtomicReference<Throwable> restartError = start(failFastConfig("public." + table, streamId)
-                .with(YugabyteDBConnectorConfig.AUTO_ADD_NEW_TABLES, false));
-        waitUntilStopped(restartError, Duration.ofSeconds(60));
-        assertNotNull(completionMessage.get());
-        assertTrue(completionMessage.get().startsWith("Failed fetching all tables for the streamid"),
-                completionMessage.get());
-        assertTrue(YugabyteDBCdcErrorClassifier.isFailFast(restartError.get()),
-                "Expected fail-fast classification on deleted stream.");
-        assertFalse(logs.containsMessage("will attempt retry"),
-                "Should not enter connector retry loop.");
+        YugabyteDBgRPCConnectorFailFastTest.RecordingContext recorder =
+                new YugabyteDBgRPCConnectorFailFastTest.RecordingContext();
+        YugabyteDBgRPCConnector connector = YugabyteDBgRPCConnectorFailFastTest.connectorWith(recorder);
+
+        assertThrows(DebeziumException.class,
+                () -> connector.validate(connectorProps("public." + table, streamId)));
+
+        assertTrue(recorder.raised.isEmpty(),
+                "validate must not mark the connector FAILED, but raised: " + recorder.raised);
+    }
+
+    private Map<String, String> connectorProps(String tableInclude, String streamId) throws Exception {
+        // No table monitor thread: nothing here should outlive the test.
+        return failFastConfig(tableInclude, streamId)
+                .with(YugabyteDBConnectorConfig.AUTO_ADD_NEW_TABLES, false)
+                .build()
+                .asMap();
     }
 
     @Test
@@ -373,6 +442,21 @@ public class YugabyteDBCdcFailFastTest extends YugabyteDBContainerTestBase {
                 || logs.containsMessage("is expired for tablet")
                 || logs.containsStacktraceElement("is expired for Tablet")
                 || logs.containsStacktraceElement("is expired for tablet");
+    }
+
+    private static void deleteStreamOrFail(String streamId) throws Exception {
+        try (YBClient ybClient = TestHelper.getYbClient(TestHelper.getMasterAddress())) {
+            DeleteCDCStreamResponse response =
+                    ybClient.deleteCDCStream(Collections.singleton(streamId), false, true);
+            if (response.hasError()) {
+                throw new AssertionError("deleteCDCStream(" + streamId + ") failed: "
+                        + response.errorMessage());
+            }
+            if (response.getNotFoundStreamIds() != null
+                    && response.getNotFoundStreamIds().contains(streamId)) {
+                throw new AssertionError("deleteCDCStream did not find " + streamId);
+            }
+        }
     }
 
     private void assertFailFastTaskStopped(Throwable error) {

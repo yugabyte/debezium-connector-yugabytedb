@@ -32,7 +32,7 @@ public class YugabyteDBgRPCConnectorFailFastTest {
      * A {@link ConnectorContext} that records what the connector reports instead of failing a worker.
      * A proxy keeps the test independent of the methods the Kafka Connect API version adds to the interface.
      */
-    private static final class RecordingContext {
+    static final class RecordingContext {
         final List<Exception> raised = new ArrayList<>();
         int reconfigurationRequests;
 
@@ -50,7 +50,7 @@ public class YugabyteDBgRPCConnectorFailFastTest {
                 });
     }
 
-    private static YugabyteDBgRPCConnector connectorWith(RecordingContext recorder) {
+    static YugabyteDBgRPCConnector connectorWith(RecordingContext recorder) {
         YugabyteDBgRPCConnector connector = new YugabyteDBgRPCConnector();
         connector.initialize(recorder.context);
         return connector;
