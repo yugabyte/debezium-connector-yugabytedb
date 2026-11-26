@@ -611,6 +611,10 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
     protected static final int DEFAULT_MAX_CONNECTOR_RETRIES = 5;
     protected static final long DEFAULT_CONNECTOR_RETRY_DELAY_MS = 60000;
     protected static final boolean DEFAULT_LIMIT_ONE_POLL_PER_ITERATION = false;
+    protected static final int DEFAULT_CDC_POLL_MAX_CONCURRENT_TABLETS = 1;
+    public static final int MAX_CDC_POLL_MAX_CONCURRENT_TABLETS = 32;
+    protected static final long DEFAULT_CDC_POLL_MAX_INFLIGHT_BYTES = 0;
+    public static final long MIN_GETCHANGES_RESPONSE_BYTES = 64 * 1024;
     protected static final boolean DEFAULT_LOG_GET_CHANGES = false;
     protected static final long DEFAULT_NEW_TABLE_POLL_INTERVAL_MS = 5 * 60 * 1000L;
     protected static final long DEFAULT_LOG_GET_CHANGES_INTERVAL_MS = 5 * 60 * 1000L;
@@ -726,6 +730,32 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withImportance(Importance.LOW)
             .withDefault(DEFAULT_CDC_POLL_INTERVAL_IDLE_MS)
             .withDescription("The poll interval in milliseconds when the connector is not receiving any changes from the database");
+
+    public static final Field CDC_POLL_MAX_CONCURRENT_TABLETS = Field.create("cdc.poll.max.concurrent.tablets")
+            .withDisplayName("Maximum concurrent GetChanges requests per task")
+            .withType(Type.INT)
+            .withImportance(Importance.LOW)
+            .withDefault(DEFAULT_CDC_POLL_MAX_CONCURRENT_TABLETS)
+            .withValidation(YugabyteDBConnectorConfig::validateMaxConcurrentTablets)
+            .withDescription("How many of a task's tablets can have a GetChanges request in flight at once, from 1 "
+                    + "(sequential, the default) to " + MAX_CDC_POLL_MAX_CONCURRENT_TABLETS + ". Responses are still "
+                    + "processed one tablet at a time in the usual order; a value above 1 only issues the next "
+                    + "tablets' requests while the current one is awaited and processed, so a pass over the task's "
+                    + "tablets costs about one round trip instead of one per tablet. Each in-flight response is "
+                    + "buffered until processed; see 'cdc.poll.max.inflight.bytes'. Ignored with "
+                    + "'transaction.ordering' enabled.");
+
+    public static final Field CDC_POLL_MAX_INFLIGHT_BYTES = Field.create("cdc.poll.max.inflight.bytes")
+            .withDisplayName("Maximum bytes of GetChanges responses in flight per task")
+            .withType(Type.LONG)
+            .withImportance(Importance.LOW)
+            .withDefault(DEFAULT_CDC_POLL_MAX_INFLIGHT_BYTES)
+            .withValidation(Field::isNonNegativeLong)
+            .withDescription("When 'cdc.poll.max.concurrent.tablets' is above 1, sets each GetChanges request's response "
+                    + "size limit to this budget divided by the concurrency (at least " + MIN_GETCHANGES_RESPONSE_BYTES
+                    + " bytes), so the responses a task buffers stay within it. The value replaces the tserver's limit "
+                    + "(cdc_stream_records_threshold_size_bytes, 4 MiB by default) rather than lowering it. 0 (default) "
+                    + "keeps the tserver's limit for every request.");
 
     public static final Field CDC_LIMIT_POLL_PER_ITERATION = Field.create("cdc.poll.limit")
             .withDisplayName("Limit number of polls per iteration to 1")
@@ -1054,6 +1084,90 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
             .withDefault(DEFAULT_NEW_TABLE_POLL_INTERVAL_MS)
             .withValidation(Field::isNonNegativeLong)
             .withDescription("Interval at which the poller thread should poll to check if there are any new tables added to the stream");
+
+    public static final Field TASKS_AUTOSCALE_ENABLED = Field.create("tasks.autoscale.enabled")
+            .withDisplayName("Scale tasks automatically")
+            .withType(Type.BOOLEAN)
+            .withImportance(Importance.LOW)
+            .withDefault(false)
+            .withDescription("When true, the connector picks how many of up to 'tasks.max' tasks to run, and which "
+                    + "tablets each one polls, from the stream's write rate (WAL index growth per tablet), its CDC "
+                    + "backlog and its tablet count, and asks Kafka Connect to reconfigure the tasks when that changes.");
+
+    public static final Field TASKS_AUTOSCALE_MIN = Field.create("tasks.autoscale.min")
+            .withDisplayName("Minimum tasks when scaling automatically")
+            .withType(Type.INT).withImportance(Importance.LOW).withDefault(1)
+            .withValidation(Field::isPositiveInteger)
+            .withDescription("Fewest tasks the autoscaler runs.");
+
+    public static final Field TASKS_AUTOSCALE_INTERVAL_MS = Field.create("tasks.autoscale.interval.ms")
+            .withDisplayName("Autoscaler evaluation interval")
+            .withType(Type.LONG).withImportance(Importance.LOW).withDefault(60_000L)
+            .withValidation(Field::isPositiveLong)
+            .withDescription("How often the autoscaler samples the stream's tablets.");
+
+    public static final Field TASKS_AUTOSCALE_STARTUP_SAMPLE_MS = Field.create("tasks.autoscale.startup.sample.ms")
+            .withDisplayName("Autoscaler startup sample")
+            .withType(Type.LONG).withImportance(Importance.LOW).withDefault(10_000L)
+            .withValidation(Field::isPositiveLong)
+            .withDescription("Gap between the two samples the first plan is built from when the connector starts.");
+
+    public static final Field TASKS_AUTOSCALE_TARGET_OPS_PER_TASK = Field.create("tasks.autoscale.target.ops.per.task")
+            .withDisplayName("Target WAL operations per second per task")
+            .withType(Type.LONG).withImportance(Importance.LOW).withDefault(6000L)
+            .withValidation(Field::isPositiveLong)
+            .withDescription("Write rate, in WAL operations per second, one task is sized for. A single-row update is about two "
+                    + "operations, so the default sizes a task for about 3,000 events/s, about 60% of the 5,000 one "
+                    + "pipelined task sustained in load tests; short bursts are absorbed without scaling.");
+
+    public static final Field TASKS_AUTOSCALE_MAX_TABLETS_PER_TASK = Field.create("tasks.autoscale.max.tablets.per.task")
+            .withDisplayName("Maximum tablets per task")
+            .withType(Type.INT).withImportance(Importance.LOW).withDefault(32)
+            .withValidation(Field::isPositiveInteger)
+            .withDescription("Most tablets one task polls; lowered to cdc.poll.max.concurrent.tablets when that is above 1, "
+                    + "so a pass stays one round trip.");
+
+    public static final Field TASKS_AUTOSCALE_LAG_SECONDS = Field.create("tasks.autoscale.lag.seconds")
+            .withDisplayName("Backlog that counts as lagging")
+            .withType(Type.LONG).withImportance(Importance.LOW).withDefault(180L)
+            .withValidation(Field::isPositiveLong)
+            .withDescription("A backlog (WAL index past the stored CDC checkpoint) larger than this many seconds of the "
+                    + "highest write rate seen in that many seconds, or of tasks.autoscale.target.ops.per.task if that is higher, "
+                    + "counts as behind while it grows or clears too slowly (see tasks.autoscale.catch.up.seconds).");
+
+    public static final Field TASKS_AUTOSCALE_SCALE_UP_EVALUATIONS = Field.create("tasks.autoscale.scale.up.evaluations")
+            .withType(Type.INT).withImportance(Importance.LOW).withDefault(20).withValidation(Field::isPositiveInteger)
+            .withDescription("Consecutive evaluations that must want more tasks before scaling up. A backlog that counts as behind skips them.");
+
+    public static final Field TASKS_AUTOSCALE_SCALE_DOWN_EVALUATIONS = Field.create("tasks.autoscale.scale.down.evaluations")
+            .withType(Type.INT).withImportance(Importance.LOW).withDefault(120).withValidation(Field::isPositiveInteger)
+            .withDescription("Consecutive evaluations that must want fewer tasks before scaling down, straight to the target.");
+
+    public static final Field TASKS_AUTOSCALE_SCALE_UP_COOLDOWN_MS = Field.create("tasks.autoscale.scale.up.cooldown.ms")
+            .withType(Type.LONG).withImportance(Importance.LOW).withDefault(30 * 60_000L).withValidation(Field::isNonNegativeLong)
+            .withDescription("Minimum time after any reconfiguration before scaling up. With catch-up on, a backlog spread over the tasks waits tasks.autoscale.lag.cooldown.ms instead.");
+
+    public static final Field TASKS_AUTOSCALE_SCALE_DOWN_COOLDOWN_MS = Field.create("tasks.autoscale.scale.down.cooldown.ms")
+            .withType(Type.LONG).withImportance(Importance.LOW).withDefault(60 * 60_000L).withValidation(Field::isNonNegativeLong)
+            .withDescription("Minimum time after any reconfiguration before scaling down.");
+
+    public static final Field TASKS_AUTOSCALE_SCALE_DOWN_HEADROOM = Field.create("tasks.autoscale.scale.down.headroom.percent")
+            .withType(Type.INT).withImportance(Importance.LOW).withDefault(60).withValidation(Field::isPositiveInteger)
+            .withDescription("When scaling down, the smaller task count must carry the peak rate of the whole low stretch "
+                    + "at this percentage of the target, so a rate near a task boundary does not flip the count back and forth.");
+
+    public static final Field TASKS_AUTOSCALE_LAG_COOLDOWN_MS = Field.create("tasks.autoscale.lag.cooldown.ms")
+            .withType(Type.LONG).withImportance(Importance.LOW).withDefault(5 * 60_000L).withValidation(Field::isNonNegativeLong)
+            .withDescription("Minimum time since the last change before a backlog spread over the tasks (growing, or shrinking "
+                    + "too slowly) adds tasks; ignored when tasks.autoscale.catch.up.seconds is 0. "
+                    + "Shorter than the scale-up cooldown, but longer than a restart and its catch-up take (a minute or two), "
+                    + "or each change undoes the progress of the last.");
+
+    public static final Field TASKS_AUTOSCALE_CATCH_UP_SECONDS = Field.create("tasks.autoscale.catch.up.seconds")
+            .withType(Type.LONG).withImportance(Importance.LOW).withDefault(900L).withValidation(Field::isNonNegativeLong)
+            .withDescription("When behind, tasks are sized to carry the write rate plus clearing the backlog within this many "
+                    + "seconds, and a shrinking backlog that would take longer to clear also adds tasks. 0 turns this off: "
+                    + "a growing backlog then adds one task at a time after the scale-up cooldown.");
 
     public static final Field LOG_GET_CHANGES = Field.create("log.get.changes")
             .withDisplayName("Whether to log GetChanges requests")
@@ -1402,6 +1516,14 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         return cdcPollIntervalIdleMs;
     }
 
+    public int cdcPollMaxConcurrentTablets() {
+        return getConfig().getInteger(CDC_POLL_MAX_CONCURRENT_TABLETS);
+    }
+
+    public long cdcPollMaxInflightBytes() {
+        return getConfig().getLong(CDC_POLL_MAX_INFLIGHT_BYTES);
+    }
+
     public boolean cdcLimitPollPerIteration() {
         return getConfig().getBoolean(CDC_LIMIT_POLL_PER_ITERATION);
     }
@@ -1599,6 +1721,20 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     MAX_NUM_TABLETS,
                     AUTO_ADD_NEW_TABLES,
                     NEW_TABLE_POLL_INTERVAL_MS,
+                    TASKS_AUTOSCALE_ENABLED,
+                    TASKS_AUTOSCALE_MIN,
+                    TASKS_AUTOSCALE_INTERVAL_MS,
+                    TASKS_AUTOSCALE_STARTUP_SAMPLE_MS,
+                    TASKS_AUTOSCALE_TARGET_OPS_PER_TASK,
+                    TASKS_AUTOSCALE_MAX_TABLETS_PER_TASK,
+                    TASKS_AUTOSCALE_LAG_SECONDS,
+                    TASKS_AUTOSCALE_SCALE_UP_EVALUATIONS,
+                    TASKS_AUTOSCALE_SCALE_DOWN_EVALUATIONS,
+                    TASKS_AUTOSCALE_SCALE_UP_COOLDOWN_MS,
+                    TASKS_AUTOSCALE_SCALE_DOWN_COOLDOWN_MS,
+                    TASKS_AUTOSCALE_SCALE_DOWN_HEADROOM,
+                    TASKS_AUTOSCALE_LAG_COOLDOWN_MS,
+                    TASKS_AUTOSCALE_CATCH_UP_SECONDS,
                     LOG_GET_CHANGES,
                     LOG_GET_CHANGES_INTERVAL_MS,
                     LOG_COMMIT_OFFSET_INTERVAL_MS,
@@ -1606,7 +1742,9 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
                     MBEAN_REGISTRATION_RETRY_DELAY_MS,
                     CDC_POLL_INTERVAL_MS,
                     CDC_POLL_INTERVAL_ACTIVE_MS,
-                    CDC_POLL_INTERVAL_IDLE_MS)
+                    CDC_POLL_INTERVAL_IDLE_MS,
+                    CDC_POLL_MAX_CONCURRENT_TABLETS,
+                    CDC_POLL_MAX_INFLIGHT_BYTES)
             .events(
                     INCLUDE_UNKNOWN_DATATYPES)
             .connector(
@@ -1667,6 +1805,17 @@ public class YugabyteDBConnectorConfig extends RelationalDatabaseConnectorConfig
         if (hasStreamIdAndSlotNameConflict(config)) {
             throw new DebeziumException(buildStreamIdAndSlotNameConflictMessage(config, additionalMessage));
         }
+    }
+
+    private static int validateMaxConcurrentTablets(Configuration config, Field field, Field.ValidationOutput problems) {
+        // Each in-flight request holds a buffered response and a tserver RPC slot; past a few dozen the
+        // round-trip saving is gone and only memory and tserver load grow.
+        int value = config.getInteger(field);
+        if (value < 1 || value > MAX_CDC_POLL_MAX_CONCURRENT_TABLETS) {
+            problems.accept(field, value, "must be between 1 and " + MAX_CDC_POLL_MAX_CONCURRENT_TABLETS);
+            return 1;
+        }
+        return 0;
     }
 
     // Source of the validation rules - https://doxygen.postgresql.org/slot_8c.html#afac399f07320b9adfd2c599cf822aaa3
