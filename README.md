@@ -100,3 +100,22 @@ The YugabyteDB connector can also be used as a library without Kafka or Kafka Co
   docker run -it --rm --name consumer --link zookeeper:zookeeper --link kafka:kafka debezium/kafka:1.9.5.Final \
   watch-topic -a dbserver1.public.test
   ```
+
+## Polling configuration
+
+Each task polls its tablets with `GetChanges`, then pauses before the next pass over them.
+
+| Property | Default | Description |
+|---|---|---|
+| `cdc.poll.interval.active.ms` | `10` | Pause before the next pass when any tablet in the last pass returned changes. |
+| `cdc.poll.interval.idle.ms` | `500` | Pause before the next pass when no tablet returned changes. |
+| `cdc.poll.max.concurrent.tablets` | `1` | How many of the task's tablets can have a `GetChanges` request in flight at once (1–32). At `1` a pass costs one round trip per tablet; above `1` the next tablets' requests are sent while the current tablet's response is awaited and processed, so a pass costs about one round trip. Responses are still processed one tablet at a time, in order. Values around 8–16 capture most of the gain when tablets per task are high or the connector is far from the tservers. Ignored with `transaction.ordering` enabled. |
+| `cdc.poll.max.inflight.bytes` | `0` | With concurrency above `1`, sets each `GetChanges` request's response size limit to this budget divided by the concurrency (at least 64 KiB), bounding the memory a task's buffered responses use. The value replaces the tserver limit (`cdc_stream_records_threshold_size_bytes`, 4 MiB by default) rather than lowering it, so a budget above concurrency × 4 MiB allows larger responses. `0` keeps the tserver limit. |
+
+The pipelining metrics of a task are exported as `debezium.yugabytedb:type=connector-metrics,server=<server>,task=<task>,context=getchanges` (in-flight requests, requests issued, reused and abandoned, last round trip, last pass duration).
+
+Compatibility of `cdc.poll.max.concurrent.tablets` above `1`:
+
+- Server: any version that serves the gRPC CDC `GetChanges` API; tested against 2025.2.8.0-b60. `cdc.poll.max.inflight.bytes` sets the request's `getchanges_resp_max_size_bytes`, which the tserver honours while its `enable_cdcsdk_setting_get_changes_response_byte_limit` flag is on (the default).
+- yb-client 0.8.122 and older (and the client shipped with 2025.2.8) close a tserver connection only when nothing has been read from it for `socket.read.timeout.ms`. With several requests on one connection, the other tablets' responses keep it open, so a single lost response is never timed out by the client. The connector therefore waits at most `socket.read.timeout.ms` (which must then be positive) at a time on each response when pipelining, moving on to the task's other tablets in between, and sends a new request for the tablet only once the old one is older than `operation.timeout.ms`, when yb-client has stopped retrying it. yb-client 0.8.123 and newer time out each request on its own.
+- A tablet never has two requests outstanding: the tserver stores the checkpoint of each request it serves without comparing it to the stored one, so a late older request could move the tablet's checkpoint backwards.
